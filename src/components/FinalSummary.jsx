@@ -3,7 +3,7 @@ import GCBadge from './GCBadge';
 import FaceitBadge from './FaceitBadge';
 import PlayerAvatar from './PlayerAvatar';
 import { CS2_MAPS } from '../data/maps';
-import { Trophy, Share2, Terminal, RotateCcw, Shield, Flame, Check, History } from 'lucide-react';
+import { Trophy, Share2, Terminal, RotateCcw, Shield, Flame, Check, History, Zap, Radio } from 'lucide-react';
 import { formatDiscordSummary, formatServerCommand } from '../utils/exportText';
 import { playClickSound } from '../utils/audio';
 import ServerConnectBar from './ServerConnectBar';
@@ -12,13 +12,16 @@ export default function FinalSummary({
   room,
   onResetMix,
   onUpdateServerIp,
+  onUpdateRconPassword,
+  onChangeServerMapRcon,
+  onOpenGsiSetup,
   onOpenHistory,
   soundEnabled,
 }) {
   const [copiedDiscord, setCopiedDiscord] = useState(false);
   const [copiedRcon, setCopiedRcon] = useState(false);
 
-  const { finalMap, teamA = [], teamB = [], metrics, startingSideTeamB, name: roomName = 'MIX', serverIp = '', rankingSystem = 'gc' } = room;
+  const { finalMap, teamA = [], teamB = [], metrics, startingSideTeamB, name: roomName = 'MIX', serverIp = '', rconPassword = '', liveMatch = null, rankingSystem = 'gc' } = room;
   const isFaceit = rankingSystem === 'faceit';
   const fullMap = CS2_MAPS.find((m) => m.id === finalMap?.id) || finalMap;
 
@@ -83,29 +86,71 @@ export default function FinalSummary({
           </p>
 
           <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
+            {onChangeServerMapRcon && serverIp && (
+              <button
+                onClick={() => {
+                  if (soundEnabled) playClickSound();
+                  onChangeServerMapRcon(fullMap?.file || 'de_mirage');
+                }}
+                className="px-5 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 text-slate-950 font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-emerald-500/25 active:scale-95"
+                title={`Muda o mapa no servidor FireGames para ${fullMap?.file} automaticamente via RCON`}
+              >
+                <Zap size={15} />
+                <span>Mudar Servidor para {fullMap?.name} (RCON)</span>
+              </button>
+            )}
+
             <button
               onClick={handleCopyDiscord}
-              className="px-5 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-sm tracking-wide shadow-lg shadow-amber-500/25 flex items-center gap-2 transition-all cursor-pointer"
+              className="px-5 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs uppercase tracking-wider shadow-lg shadow-amber-500/25 flex items-center gap-2 transition-all cursor-pointer active:scale-95"
             >
               {copiedDiscord ? <Check size={16} /> : <Share2 size={16} />}
-              <span>{copiedDiscord ? 'Copiado p/ Área de Transferência!' : 'Copiar Escalação (Discord / WhatsApp)'}</span>
+              <span>{copiedDiscord ? 'Copiado!' : 'Copiar Escalação (Discord)'}</span>
             </button>
 
             <button
               onClick={handleCopyRcon}
-              className="px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold text-xs flex items-center gap-2 transition-all cursor-pointer font-mono"
+              className="px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold text-xs flex items-center gap-2 transition-all cursor-pointer font-mono active:scale-95"
             >
               {copiedRcon ? <Check size={14} className="text-emerald-400" /> : <Terminal size={14} />}
-              <span>{copiedRcon ? 'Comando Copiado!' : 'Comando RCON (changelevel)'}</span>
+              <span>{copiedRcon ? 'Copiado!' : 'Copiar RCON'}</span>
             </button>
           </div>
         </div>
       </div>
 
+      {/* Valve GSI Live Scorecard (If match is in progress or completed) */}
+      {liveMatch?.connected && (
+        <div className="bg-emerald-950/40 border border-emerald-500/50 rounded-2xl p-4 text-center shadow-lg shadow-emerald-950/40 animate-fadeIn">
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold uppercase tracking-wider mb-2">
+            <Radio size={12} className="animate-pulse text-emerald-400" /> Transmissão Valve GSI Ao Vivo
+          </div>
+          <div className="flex items-center justify-center gap-8 text-3xl font-black font-heading text-white">
+            <div className="text-center">
+              <span className="text-[11px] text-sky-400 block font-normal font-sans uppercase font-bold">Time CT</span>
+              <span className="font-mono text-sky-400">{liveMatch.scoreCT}</span>
+            </div>
+            <span className="text-slate-600 text-2xl font-light">x</span>
+            <div className="text-center">
+              <span className="text-[11px] text-amber-400 block font-normal font-sans uppercase font-bold">Time TR</span>
+              <span className="font-mono text-amber-400">{liveMatch.scoreTR}</span>
+            </div>
+          </div>
+          <p className="text-xs text-slate-400 mt-2 font-mono">
+            Round #{liveMatch.roundNumber} • Mapa: {liveMatch.mapName} • Fase: {liveMatch.phase}
+          </p>
+        </div>
+      )}
+
       {/* Direct CS2 Server Connect Widget */}
       <ServerConnectBar
         serverIp={serverIp}
         onUpdateServerIp={onUpdateServerIp}
+        rconPassword={rconPassword}
+        onUpdateRconPassword={onUpdateRconPassword}
+        roomId={room.id}
+        liveMatch={liveMatch}
+        onOpenGsiSetup={onOpenGsiSetup}
         soundEnabled={soundEnabled}
       />
 

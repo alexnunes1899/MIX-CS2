@@ -17,6 +17,7 @@ import CaptainsDraftView from './components/CaptainsDraftView';
 import LandingPage from './components/LandingPage';
 import SteamLoginGateModal from './components/SteamLoginGateModal';
 import PlayerProfileModal from './components/PlayerProfileModal';
+import GsiSetupModal from './components/GsiSetupModal';
 import { recordMatchResult } from './utils/playerStats';
 import { ACTIVE_DUTY_MAPS, OFFICIAL_ACTIVE_DUTY, EXTRA_CS2_MAPS } from './data/maps';
 import { balanceTeams, shuffleTeams } from './utils/balance';
@@ -49,6 +50,7 @@ export default function App() {
   const [steamGateModalOpen, setSteamGateModalOpen] = useState(false);
   const [steamGateActionText, setSteamGateActionText] = useState('criar ou entrar no mix');
   const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [gsiModalOpen, setGsiModalOpen] = useState(false);
   const [roomNotice, setRoomNotice] = useState(null);
 
   // Official Active Duty Live Rotation State (sourced from Wikipedia / Valve records)
@@ -110,6 +112,8 @@ export default function App() {
     finalMap: null,
     startingSideTeamB: null,
     serverIp: '',
+    rconPassword: '',
+    liveMatch: null,
     chat: [],
     history: [],
     coin: null,
@@ -192,6 +196,10 @@ export default function App() {
       }
     });
 
+    socket.on('gsi_update', (liveMatch) => {
+      setRoom((prev) => ({ ...prev, liveMatch }));
+    });
+
     socket.on('chat_message', (msg) => {
       setRoom((prev) => {
         if (prev.chat.some((m) => m.id === msg.id)) return prev;
@@ -217,6 +225,7 @@ export default function App() {
       socket.off('connect');
       socket.off('room_state');
       socket.off('active_rotation_updated');
+      socket.off('gsi_update');
       socket.off('chat_message');
       socket.off('room_deleted');
     };
@@ -380,6 +389,36 @@ export default function App() {
       socket.emit('update_server_ip', { roomId, serverIp });
     } else {
       setRoom((prev) => ({ ...prev, serverIp }));
+    }
+  };
+
+  // Update RCON Password
+  const handleUpdateRconPassword = (rconPassword) => {
+    if (socket.connected) {
+      socket.emit('set_rcon_password', { roomId, rconPassword });
+    } else {
+      setRoom((prev) => ({ ...prev, rconPassword }));
+    }
+  };
+
+  // Change Server Map via RCON
+  const handleChangeServerMapRcon = (mapFile) => {
+    if (socket.connected) {
+      socket.emit('change_server_map', { roomId, mapFile }, (res) => {
+        if (res?.success) {
+          setRoomNotice({
+            title: 'Mapa Alterado no Servidor',
+            message: `Servidor da FireGames mudou para ${mapFile} com sucesso via RCON!`,
+            type: 'info',
+          });
+        } else {
+          setRoomNotice({
+            title: 'Erro no RCON',
+            message: res?.error || 'Não foi possível alterar o mapa no servidor.',
+            type: 'warning',
+          });
+        }
+      });
     }
   };
 
@@ -923,6 +962,11 @@ export default function App() {
                 onOpenQuickMapRoll={() => setQuickMapRollOpen(true)}
                 serverIp={room.serverIp || ''}
                 onUpdateServerIp={handleUpdateServerIp}
+                rconPassword={room.rconPassword || ''}
+                onUpdateRconPassword={handleUpdateRconPassword}
+                roomId={roomId}
+                liveMatch={room.liveMatch}
+                onOpenGsiSetup={() => setGsiModalOpen(true)}
                 soundEnabled={soundEnabled}
               />
             </div>
@@ -953,6 +997,11 @@ export default function App() {
             onBackToLobby={() => setRoom((prev) => ({ ...prev, phase: 'lobby' }))}
             serverIp={room.serverIp || ''}
             onUpdateServerIp={handleUpdateServerIp}
+            rconPassword={room.rconPassword || ''}
+            onUpdateRconPassword={handleUpdateRconPassword}
+            roomId={roomId}
+            liveMatch={room.liveMatch}
+            onOpenGsiSetup={() => setGsiModalOpen(true)}
             soundEnabled={soundEnabled}
           />
         )}
@@ -974,6 +1023,9 @@ export default function App() {
             room={room}
             onResetMix={handleResetMix}
             onUpdateServerIp={handleUpdateServerIp}
+            onUpdateRconPassword={handleUpdateRconPassword}
+            onChangeServerMapRcon={handleChangeServerMapRcon}
+            onOpenGsiSetup={() => setGsiModalOpen(true)}
             onOpenHistory={() => setHistoryOpen(true)}
             soundEnabled={soundEnabled}
           />
@@ -1065,6 +1117,14 @@ export default function App() {
         rankingSystem={room.rankingSystem || 'gc'}
         onLogout={handleLogoutSteam}
         onSwitchAccount={handleSwitchSteamAccount}
+        soundEnabled={soundEnabled}
+      />
+
+      <GsiSetupModal
+        isOpen={gsiModalOpen}
+        onClose={() => setGsiModalOpen(false)}
+        roomId={roomId}
+        liveMatch={room.liveMatch}
         soundEnabled={soundEnabled}
       />
 

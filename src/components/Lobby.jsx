@@ -21,6 +21,11 @@ export default function Lobby({
   onOpenQuickMapRoll,
   serverIp = '',
   onUpdateServerIp,
+  rconPassword = '',
+  onUpdateRconPassword,
+  roomId = 'MIX-PRO',
+  liveMatch = null,
+  onOpenGsiSetup,
   soundEnabled,
 }) {
   const maxSlots = 10;
@@ -210,9 +215,14 @@ export default function Lobby({
         <ServerConnectBar
           serverIp={serverIp}
           onUpdateServerIp={onUpdateServerIp}
+          rconPassword={rconPassword}
+          onUpdateRconPassword={onUpdateRconPassword}
+          roomId={roomId}
+          liveMatch={liveMatch}
+          onOpenGsiSetup={onOpenGsiSetup}
           soundEnabled={soundEnabled}
-          title="Servidor de Jogo (CS2)"
-          description="Configure o IP do servidor para que os jogadores possam entrar com 1 clique"
+          title="Servidor de Jogo (FireGames / Dedicado)"
+          description="Configure o IP e o RCON do servidor para gerenciar mapa e placar com 1 clique"
         />
       )}
 

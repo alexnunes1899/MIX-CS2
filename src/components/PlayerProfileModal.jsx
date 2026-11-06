@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, ExternalLink, Copy, Check, LogOut, ArrowRightLeft, Shield, Flame, Trophy, Sparkles, User, RefreshCw, Zap } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, ExternalLink, Copy, Check, LogOut, ArrowRightLeft, Shield, Flame, Trophy, Sparkles, User, RefreshCw, Zap, ShieldCheck, Clock, AlertTriangle } from 'lucide-react';
 import PlayerAvatar from './PlayerAvatar';
 import GCBadge from './GCBadge';
 import FaceitBadge from './FaceitBadge';
@@ -18,13 +18,23 @@ export default function PlayerProfileModal({
   soundEnabled,
 }) {
   const [copiedId, setCopiedId] = useState(false);
+  const [steamStats, setSteamStats] = useState(null);
+  const [loadingSteam, setLoadingSteam] = useState(false);
 
-  if (!isOpen || !profile) return null;
-
-  const { nick = 'Jogador', steamId, avatar = '🎯', level = 12, faceitLevel = 5, faceitElo = 1200, side = 'ANY' } = profile;
+  const { nick = 'Jogador', steamId, avatar = '🎯', level = 12, faceitLevel = 5, faceitElo = 1200, side = 'ANY' } = profile || {};
   const isSteamUser = Boolean(steamId);
   const stats = getPlayerStats(steamId);
   const gcTier = getGCTier(level);
+
+  useEffect(() => {
+    if (!isOpen || !steamId) return;
+    setLoadingSteam(true);
+    fetch(`/api/steam/player-stats/${steamId}`)
+      .then((res) => res.json())
+      .then((data) => setSteamStats(data))
+      .catch(() => {})
+      .finally(() => setLoadingSteam(false));
+  }, [isOpen, steamId]);
 
   const handleCopySteamId = () => {
     if (!steamId) return;
@@ -167,6 +177,66 @@ export default function PlayerProfileModal({
             </div>
           </div>
         </div>
+
+        {/* Official Valve Steam Data Card */}
+        {isSteamUser && (
+          <div className="relative z-10 py-4 border-b border-slate-800 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                <SteamIcon className="w-3.5 h-3.5 text-[#66c0f4]" />
+                <span>Dados Oficiais da Valve (Steam)</span>
+              </h3>
+              <span className="text-[10px] font-mono text-[#66c0f4] bg-[#1b2838] px-2 py-0.5 rounded-full border border-[#66c0f4]/30">
+                {steamStats?.source || 'Steam Web API'}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+              {/* CS2 Playtime */}
+              <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center justify-center shrink-0">
+                  <Clock size={16} />
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 block">Horas de CS2</span>
+                  <strong className="text-white font-mono text-sm">
+                    {steamStats?.cs2Hours ? `${steamStats.cs2Hours.toLocaleString('pt-BR')} hrs` : 'Disponível'}
+                  </strong>
+                </div>
+              </div>
+
+              {/* VAC Ban Status */}
+              <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 flex items-center gap-2.5">
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border ${
+                  steamStats?.vacBanned
+                    ? 'bg-rose-500/15 text-rose-400 border-rose-500/30'
+                    : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                }`}>
+                  {steamStats?.vacBanned ? <AlertTriangle size={16} /> : <ShieldCheck size={16} />}
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 block">Status VAC Valve</span>
+                  <strong className={`font-mono text-xs ${steamStats?.vacBanned ? 'text-rose-400' : 'text-emerald-400'}`}>
+                    {steamStats?.vacBanned ? `${steamStats.vacBansCount} Ban VAC` : 'Conta 100% Limpa'}
+                  </strong>
+                </div>
+              </div>
+
+              {/* Account Age */}
+              <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-sky-500/10 text-sky-400 border border-sky-500/20 flex items-center justify-center shrink-0">
+                  <User size={16} />
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 block">Tempo de Steam</span>
+                  <strong className="text-white font-mono text-xs">
+                    {steamStats?.accountAgeYears ? `${steamStats.accountAgeYears} anos (desde ${steamStats.createdYear})` : 'Steam Ativa'}
+                  </strong>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* CS2 Mix Hub Match Performance Statistics */}
         <div className="relative z-10 py-5 border-b border-slate-800 space-y-3">

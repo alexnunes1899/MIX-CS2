@@ -5,6 +5,9 @@ import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { fetchLiveOfficialRotation, getCurrentRotationState, ALL_MAPS_CATALOGUE } from './mapSync.js';
+import { executeRconCommand } from './rcon.js';
+import { handleGsiPayload, getGsiState, generateGsiConfig } from './gsi.js';
+import { getSteamPlayerDetails } from './steamApi.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -111,6 +114,8 @@ function getOrCreateRoom(roomId, customName = '', rankingSystem = 'gc', serverIp
       finalMap: null,
       startingSideTeamB: null,
       serverIp: serverIp ? serverIp.trim() : '',
+      rconPassword: '',
+      liveMatch: null,
       chat: [],
       history: [],
       coin: null, // { winner: 'teamA'|'teamB', choice: 'first'|'pass' }
@@ -694,6 +699,63 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Set RCON Password for Room
+  socket.on('set_rcon_password', ({ roomId, rconPassword }) => {
+    const room = getRoomAndTouch(roomId);
+    if (!room) return;
+    room.rconPassword = (rconPassword || '').trim();
+    io.to(roomId).emit('room_state', room);
+  });
+
+  // Execute RCON Command
+  socket.on('exec_rcon_command', async ({ roomId, command }, callback) => {
+    const room = getRoomAndTouch(roomId);
+    if (!room || !room.serverIp || !room.rconPassword) {
+      if (typeof callback === 'function') {
+        callback({ error: 'Servidor ou senha RCON não configurados nesta sala.' });
+      }
+      return;
+    }
+
+    const parsed = parseHostPort(room.serverIp);
+    try {
+      const res = await executeRconCommand({
+        host: parsed.host,
+        port: parsed.port,
+        password: room.rconPassword,
+        command,
+      });
+      if (typeof callback === 'function') callback({ success: true, ...res });
+    } catch (err) {
+      if (typeof callback === 'function') callback({ error: err.message });
+    }
+  });
+
+  // Change Map on Server via RCON
+  socket.on('change_server_map', async ({ roomId, mapFile }, callback) => {
+    const room = getRoomAndTouch(roomId);
+    if (!room || !room.serverIp || !room.rconPassword) {
+      if (typeof callback === 'function') {
+        callback({ error: 'Servidor ou senha RCON não configurados nesta sala.' });
+      }
+      return;
+    }
+
+    const parsed = parseHostPort(room.serverIp);
+    const cleanMap = (mapFile || 'de_mirage').trim().toLowerCase();
+    try {
+      const res = await executeRconCommand({
+        host: parsed.host,
+        port: parsed.port,
+        password: room.rconPassword,
+        command: `changelevel ${cleanMap}`,
+      });
+      if (typeof callback === 'function') callback({ success: true, ...res });
+    } catch (err) {
+      if (typeof callback === 'function') callback({ error: err.message });
+    }
+  });
+
   socket.on('disconnect', () => {
     // Keep slots
   });
@@ -786,6 +848,121 @@ app.post('/api/maps/sync-rotation', async (req, res) => {
     res.json({ success: true, ...updatedState });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+function parseHostPort(raw) {
+  if (!raw) return { host: '127.0.0.1', port: 27015 };
+  let str = raw.trim().replace(/^connect\s+/i, '').replace(/;.*$/, '');
+  const colonIdx = str.lastIndexOf(':');
+  if (colonIdx !== -1) {
+    const host = str.substring(0, colonIdx).trim();
+    const port = Number(str.substring(colonIdx + 1).trim()) || 27015;
+    return { host, port };
+  }
+  return { host: str, port: 27015 };
+}
+
+// ----------------------------------------------------
+// VALVE OFFICIAL INTEGRATIONS: GSI, RCON & STEAM API
+// ----------------------------------------------------
+
+// 1. Valve CS2 Game State Integration (GSI) Webhook
+app.post('/api/gsi/:roomId', (req, res) => {
+  const roomId = (req.params.roomId || req.body?.auth?.token || 'MIX-PRO').trim().toUpperCase();
+  const room = getRoomAndTouch(roomId);
+
+  const liveState = handleGsiPayload(roomId, req.body);
+  if (room && liveState) {
+    room.liveMatch = liveState;
+
+    // Broadcast GSI real-time event to everyone in this room
+    io.to(roomId).emit('gsi_update', liveState);
+
+    // If game ended, record score automatically in history
+    if (liveState.isGameOver && liveState.phase === 'gameover') {
+      const matchKey = `${liveState.mapName}-${liveState.scoreCT}-${liveState.scoreTR}`;
+      const lastMatch = room.history[0];
+      if (!lastMatch || lastMatch.key !== matchKey) {
+        room.history.unshift({
+          id: `match-gsi-${Date.now()}`,
+          key: matchKey,
+          date: new Date().toLocaleDateString('pt-BR'),
+          time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+          map: liveState.mapName,
+          scoreA: liveState.scoreCT,
+          scoreB: liveState.scoreTR,
+          winner: liveState.scoreCT > liveState.scoreTR ? 'Time CT' : liveState.scoreTR > liveState.scoreCT ? 'Time TR' : 'Empate',
+          source: 'Valve CS2 GSI',
+        });
+        if (room.history.length > 20) room.history.pop();
+        io.to(roomId).emit('room_state', room);
+      }
+    }
+  }
+
+  res.json({ success: true });
+});
+
+// Fallback GSI endpoint (CS2 sent without roomId in path)
+app.post('/api/gsi', (req, res) => {
+  const token = (req.body?.auth?.token || 'MIX-PRO').trim().toUpperCase();
+  const room = getRoomAndTouch(token);
+  const liveState = handleGsiPayload(token, req.body);
+  if (room && liveState) {
+    room.liveMatch = liveState;
+    io.to(token).emit('gsi_update', liveState);
+  }
+  res.json({ success: true });
+});
+
+// Download ready-to-use CS2 .cfg for FireGames or local client
+app.get('/api/gsi/cfg/:roomId', (req, res) => {
+  const roomId = req.params.roomId || 'MIX-PRO';
+  const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+  const host = req.get('host');
+  const serverBaseUrl = `${protocol}://${host}`;
+
+  const cfgContent = generateGsiConfig(serverBaseUrl, roomId);
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="gamestate_integration_cs2mixhub.cfg"');
+  res.send(cfgContent);
+});
+
+// Check GSI connection status for a room
+app.get('/api/gsi/status/:roomId', (req, res) => {
+  const state = getGsiState(req.params.roomId);
+  res.json(state);
+});
+
+// 2. Valve Source RCON Remote Management (FireGames / Dedicated Server)
+app.post('/api/rcon/test', async (req, res) => {
+  const { host, port, password } = req.body;
+  try {
+    const result = await executeRconCommand({ host, port, password, command: 'test' });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/rcon/exec', async (req, res) => {
+  const { host, port, password, command } = req.body;
+  try {
+    const result = await executeRconCommand({ host, port, password, command });
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// 3. Valve Steam Web API (CS2 Hours, VAC Bans, Account Age)
+app.get('/api/steam/player-stats/:steamId', async (req, res) => {
+  try {
+    const details = await getSteamPlayerDetails(req.params.steamId);
+    res.json(details);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
   }
 });
 

@@ -18,6 +18,11 @@ export default function TeamsView({
   onBackToLobby,
   serverIp = '',
   onUpdateServerIp,
+  rconPassword = '',
+  onUpdateRconPassword,
+  roomId = 'MIX-PRO',
+  liveMatch = null,
+  onOpenGsiSetup,
   soundEnabled,
 }) {
   const isFaceit = rankingSystem === 'faceit' || metrics?.rankingSystem === 'faceit';
@@ -83,6 +88,11 @@ export default function TeamsView({
         <ServerConnectBar
           serverIp={serverIp}
           onUpdateServerIp={onUpdateServerIp}
+          rconPassword={rconPassword}
+          onUpdateRconPassword={onUpdateRconPassword}
+          roomId={roomId}
+          liveMatch={liveMatch}
+          onOpenGsiSetup={onOpenGsiSetup}
           soundEnabled={soundEnabled}
         />
       )}

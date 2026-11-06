@@ -1,18 +1,29 @@
 import React, { useState } from 'react';
-import { Server, Copy, Check, Edit2, Play, Trash2, Key, Radio } from 'lucide-react';
+import { Server, Copy, Check, Edit2, Play, Trash2, Key, Radio, Terminal, RefreshCw, Zap, ShieldCheck } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
 import { parseServerDetails } from '../utils/serverParser';
 
 export default function ServerConnectBar({
   serverIp,
   onUpdateServerIp,
+  rconPassword = '',
+  onUpdateRconPassword,
+  roomId,
+  liveMatch = null,
+  onOpenGsiSetup,
   soundEnabled,
-  title = 'Servidor do Mix',
-  description = 'Conecte-se diretamente ou copie o comando do console',
+  title = 'Servidor do Mix (FireGames / Dedicado)',
+  description = 'Conecte-se diretamente ou envie comandos de administração via RCON',
 }) {
   const [editing, setEditing] = useState(false);
   const [ipInput, setIpInput] = useState(serverIp || '');
   const [copied, setCopied] = useState(false);
+
+  // RCON Drawer state
+  const [showRcon, setShowRcon] = useState(false);
+  const [rconPassInput, setRconPassInput] = useState(rconPassword || '');
+  const [rconTesting, setRconTesting] = useState(false);
+  const [rconStatusMsg, setRconStatusMsg] = useState(null);
 
   const parsed = parseServerDetails(serverIp);
 
@@ -42,6 +53,78 @@ export default function ServerConnectBar({
     navigator.clipboard.writeText(parsed.connectCommand);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleSaveRcon = (e) => {
+    e.preventDefault();
+    if (soundEnabled) playClickSound();
+    if (onUpdateRconPassword) {
+      onUpdateRconPassword(rconPassInput.trim());
+    }
+    setRconStatusMsg({ text: 'Senha RCON salva!', type: 'success' });
+    setTimeout(() => setRconStatusMsg(null), 3000);
+  };
+
+  const handleTestRcon = async () => {
+    if (!parsed.isValid || !rconPassInput) {
+      setRconStatusMsg({ text: 'Preencha o IP do servidor e a senha RCON.', type: 'error' });
+      return;
+    }
+    setRconTesting(true);
+    setRconStatusMsg(null);
+    try {
+      const res = await fetch('/api/rcon/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          host: parsed.ip.split(':')[0],
+          port: parsed.port || 27015,
+          password: rconPassInput.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setRconStatusMsg({ text: 'Conectado com sucesso ao RCON do servidor!', type: 'success' });
+        if (onUpdateRconPassword) onUpdateRconPassword(rconPassInput.trim());
+      } else {
+        setRconStatusMsg({ text: data.error || 'Falha ao autenticar no RCON.', type: 'error' });
+      }
+    } catch (e) {
+      setRconStatusMsg({ text: 'Erro ao comunicar com o servidor RCON.', type: 'error' });
+    } finally {
+      setRconTesting(false);
+    }
+  };
+
+  const handleExecRcon = async (cmd, label) => {
+    if (!parsed.isValid || !rconPassInput) {
+      setRconStatusMsg({ text: 'Configure a senha RCON primeiro.', type: 'error' });
+      return;
+    }
+    setRconTesting(true);
+    try {
+      const res = await fetch('/api/rcon/exec', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          host: parsed.ip.split(':')[0],
+          port: parsed.port || 27015,
+          password: rconPassInput.trim(),
+          command: cmd,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setRconStatusMsg({ text: `${label}: executado com sucesso no servidor!`, type: 'success' });
+      } else {
+        setRconStatusMsg({ text: data.error || 'Erro ao executar comando.', type: 'error' });
+      }
+    } catch (e) {
+      setRconStatusMsg({ text: 'Erro na requisição RCON.', type: 'error' });
+    } finally {
+      setRconTesting(false);
+      setTimeout(() => setRconStatusMsg(null), 4000);
+    }
   };
 
   return (
@@ -80,11 +163,19 @@ export default function ServerConnectBar({
                 </span>
               )}
 
+              {/* GSI Live Match Badge */}
+              {liveMatch?.connected && (
+                <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded-full bg-teal-500/20 border border-teal-500/40 text-teal-300 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-teal-400 animate-ping"></span>
+                  GSI AO VIVO: CT {liveMatch.scoreCT} x {liveMatch.scoreTR} TR
+                </span>
+              )}
+
               {!editing && (
                 <button
                   onClick={handleStartEditing}
                   className="text-slate-400 hover:text-amber-400 transition-colors p-1 cursor-pointer"
-                  title="Editar dados do servidor"
+                  title="Editar IP e Porta do servidor"
                 >
                   <Edit2 size={13} />
                 </button>
@@ -124,7 +215,7 @@ export default function ServerConnectBar({
           </div>
         </div>
 
-        {/* Right: Actions or Edit Form */}
+        {/* Right: Actions (Connect, RCON, GSI) */}
         <div className="w-full md:w-auto">
           {editing ? (
             <form onSubmit={handleSave} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
@@ -157,7 +248,7 @@ export default function ServerConnectBar({
               {/* Copy Connect Button */}
               <button
                 onClick={handleCopy}
-                className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold transition-all shadow-sm cursor-pointer active:scale-95"
+                className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold transition-all shadow-sm cursor-pointer active:scale-95"
                 title={`Copiar para área de transferência: ${parsed.connectCommand}`}
               >
                 {copied ? (
@@ -180,26 +271,142 @@ export default function ServerConnectBar({
                   onClick={() => {
                     if (soundEnabled) playClickSound();
                   }}
-                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-black text-xs uppercase tracking-wider transition-all shadow-lg shadow-emerald-500/25 cursor-pointer active:scale-95"
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-black text-xs uppercase tracking-wider transition-all shadow-lg shadow-emerald-500/25 cursor-pointer active:scale-95"
                   title="Abrir o Counter-Strike 2 e conectar automaticamente ao servidor"
                 >
                   <Play size={13} fill="currentColor" />
-                  <span>Conectar no CS2</span>
+                  <span>Conectar CS2</span>
                 </a>
+              )}
+
+              {/* RCON Toggle Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (soundEnabled) playClickSound();
+                  setShowRcon(!showRcon);
+                }}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                  showRcon
+                    ? 'bg-amber-500/20 border-amber-400 text-amber-300'
+                    : 'bg-slate-800 hover:bg-slate-750 border-slate-700 text-slate-300'
+                }`}
+                title="Administrar servidor via RCON (FireGames)"
+              >
+                <Terminal size={13} className="text-amber-400" />
+                <span>RCON</span>
+              </button>
+
+              {/* GSI Setup Button */}
+              {onOpenGsiSetup && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (soundEnabled) playClickSound();
+                    onOpenGsiSetup();
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-teal-500/15 hover:bg-teal-500/25 border border-teal-500/40 text-teal-300 text-xs font-bold transition-all cursor-pointer"
+                  title="Configurar Placar Automático Oficial Valve (GSI)"
+                >
+                  <Radio size={13} className={liveMatch?.connected ? 'text-teal-400 animate-pulse' : 'text-slate-400'} />
+                  <span>Placar GSI</span>
+                </button>
               )}
             </div>
           ) : (
-            <button
-              onClick={handleStartEditing}
-              className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 border border-amber-500/30 hover:border-amber-400 text-xs font-bold transition-all shadow-sm cursor-pointer active:scale-95"
-            >
-              <Server size={14} />
-              <span>Configurar Servidor</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleStartEditing}
+                className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 border border-amber-500/30 hover:border-amber-400 text-xs font-bold transition-all shadow-sm cursor-pointer active:scale-95"
+              >
+                <Server size={14} />
+                <span>Configurar Servidor</span>
+              </button>
+
+              {onOpenGsiSetup && (
+                <button
+                  type="button"
+                  onClick={onOpenGsiSetup}
+                  className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-teal-500/15 border border-teal-500/30 hover:border-teal-400 text-teal-300 text-xs font-bold transition-all cursor-pointer"
+                >
+                  <Radio size={13} />
+                  <span>GSI Valve</span>
+                </button>
+              )}
+            </div>
           )}
         </div>
-
       </div>
+
+      {/* RCON CONTROL DRAWER */}
+      {showRcon && (
+        <div className="mt-4 pt-3.5 border-t border-slate-800/80 animate-fadeIn">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3">
+            <div>
+              <h5 className="text-xs font-bold uppercase tracking-wider text-white flex items-center gap-1.5">
+                <Terminal size={13} className="text-amber-400" />
+                <span>Controle Remoto Valve RCON (FireGames)</span>
+              </h5>
+              <p className="text-[11px] text-slate-400">
+                Envie comandos de administração diretamente para o servidor da FireGames sem abrir o console.
+              </p>
+            </div>
+
+            {/* RCON Status Feedback */}
+            {rconStatusMsg && (
+              <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-lg border ${
+                rconStatusMsg.type === 'success'
+                  ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                  : 'bg-rose-500/15 border-rose-500/40 text-rose-300'
+              }`}>
+                {rconStatusMsg.text}
+              </span>
+            )}
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+            <div className="relative flex-1">
+              <Key size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              <input
+                type="password"
+                value={rconPassInput}
+                onChange={(e) => setRconPassInput(e.target.value)}
+                placeholder="Senha RCON do servidor FireGames (rcon_password)"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-600 outline-none focus:border-amber-400 font-mono shadow-inner"
+              />
+            </div>
+
+            <button
+              type="button"
+              disabled={rconTesting || !rconPassInput}
+              onClick={handleTestRcon}
+              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+            >
+              {rconTesting ? 'Conectando...' : 'Testar Conexão RCON'}
+            </button>
+
+            <button
+              type="button"
+              disabled={rconTesting || !rconPassInput}
+              onClick={() => handleExecRcon('mp_restartgame 1', 'Reiniciar Jogo')}
+              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 text-xs font-semibold transition-all cursor-pointer disabled:opacity-50"
+              title="Executa mp_restartgame 1"
+            >
+              Reiniciar Partida
+            </button>
+
+            <button
+              type="button"
+              disabled={rconTesting || !rconPassInput}
+              onClick={() => handleExecRcon('mp_warmup_end', 'Iniciar Jogo')}
+              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 text-xs font-semibold transition-all cursor-pointer disabled:opacity-50"
+              title="Executa mp_warmup_end"
+            >
+              Fim Aquecimento
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
