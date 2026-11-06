@@ -1,0 +1,397 @@
+import express from 'express';
+import http from 'http';
+import { Server } from 'socket.io';
+import cors from 'cors';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const app = express();
+app.use(cors());
+app.use(express.json());
+
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: '*',
+    methods: ['GET', 'POST'],
+  },
+});
+
+const isDev = process.argv.includes('--dev');
+const portArg = process.argv.find((arg) => arg.startsWith('--port='));
+const PORT = process.env.PORT || (portArg ? Number(portArg.split('=')[1]) : (isDev ? 3001 : 3000));
+
+// Default CS2 Active Duty Pool
+const DEFAULT_MAPS = [
+  { id: 'de_mirage', name: 'Mirage', file: 'de_mirage', location: 'Marrocos', color: '#f59e0b' },
+  { id: 'de_inferno', name: 'Inferno', file: 'de_inferno', location: 'Itália', color: '#ea580c' },
+  { id: 'de_nuke', name: 'Nuke', file: 'de_nuke', location: 'EUA', color: '#0ea5e9' },
+  { id: 'de_dust2', name: 'Dust II', file: 'de_dust2', location: 'Oriente Médio', color: '#eab308' },
+  { id: 'de_ancient', name: 'Ancient', file: 'de_ancient', location: 'América Central', color: '#10b981' },
+  { id: 'de_anubis', name: 'Anubis', file: 'de_anubis', location: 'Egito', color: '#d97706' },
+  { id: 'de_vertigo', name: 'Vertigo', file: 'de_vertigo', location: 'Arranha-céu', color: '#6366f1' },
+];
+
+const MOCK_BOTS = [
+  { id: 'bot-1', nick: 'FalleN', level: 21, side: 'CT', ready: true, avatar: '👑' },
+  { id: 'bot-2', nick: 'coldzera', level: 20, side: 'TR', ready: true, avatar: '🎯' },
+  { id: 'bot-3', nick: 'fer', level: 19, side: 'TR', ready: true, avatar: '⚡' },
+  { id: 'bot-4', nick: 'fnx', level: 18, side: 'ANY', ready: true, avatar: '🔥' },
+  { id: 'bot-5', nick: 'TACO', level: 17, side: 'CT', ready: true, avatar: '🛡️' },
+  { id: 'bot-6', nick: 'kNgV-', level: 20, side: 'TR', ready: true, avatar: '💀' },
+  { id: 'bot-7', nick: 'felps', level: 19, side: 'TR', ready: true, avatar: '🚀' },
+  { id: 'bot-8', nick: 'boltz', level: 18, side: 'CT', ready: true, avatar: '💣' },
+  { id: 'bot-9', nick: 'yel', level: 17, side: 'CT', ready: true, avatar: '🦅' },
+  { id: 'bot-10', nick: 'bit', level: 16, side: 'CT', ready: true, avatar: '🧠' },
+];
+
+// In-memory rooms
+const rooms = new Map();
+
+function getOrCreateRoom(roomId, customName = '') {
+  const id = roomId.trim().toUpperCase() || 'MIX-1';
+  if (!rooms.has(id)) {
+    rooms.set(id, {
+      id,
+      name: customName || `Sala ${id}`,
+      createdAt: Date.now(),
+      phase: 'lobby', // 'lobby' | 'teams' | 'veto' | 'finished'
+      players: [],
+      teamA: [],
+      teamB: [],
+      metrics: null,
+      maps: [...DEFAULT_MAPS],
+      bannedMaps: [], // [{ mapId, bannedBy: 'teamA'|'teamB', timestamp }]
+      currentTurn: 'teamA',
+      finalMap: null,
+      startingSideTeamB: null,
+    });
+  }
+  return rooms.get(id);
+}
+
+// Balance helper in node server
+function calculateBalance(players) {
+  if (players.length < 2) return { teamA: players, teamB: [], metrics: null };
+  const half = Math.floor(players.length / 2);
+
+  function getCombinations(arr, k) {
+    const results = [];
+    function backtrack(start, combo) {
+      if (combo.length === k) {
+        results.push([...combo]);
+        return;
+      }
+      for (let i = start; i < arr.length; i++) {
+        combo.push(arr[i]);
+        backtrack(i + 1, combo);
+        combo.pop();
+      }
+    }
+    backtrack(0, []);
+    return results;
+  }
+
+  const allCombinations = getCombinations(players, half);
+  let bestSplit = null;
+  let minDiff = Infinity;
+  let bestScore = -Infinity;
+
+  for (const comboA of allCombinations) {
+    const idsA = new Set(comboA.map((p) => p.id));
+    const comboB = players.filter((p) => !idsA.has(p.id));
+
+    const sumA = comboA.reduce((acc, p) => acc + (Number(p.level) || 1), 0);
+    const sumB = comboB.reduce((acc, p) => acc + (Number(p.level) || 1), 0);
+    const diff = Math.abs(sumA - sumB);
+
+    let sideScore = 0;
+    comboA.forEach((p) => { if (p.side === 'CT') sideScore += 1; });
+    comboB.forEach((p) => { if (p.side === 'TR') sideScore += 1; });
+
+    const score = -diff * 100 + sideScore;
+    if (diff < minDiff || (diff === minDiff && score > bestScore)) {
+      minDiff = diff;
+      bestScore = score;
+      bestSplit = { teamA: comboA, teamB: comboB, sumA, sumB, diff };
+    }
+  }
+
+  const avgA = (bestSplit.sumA / bestSplit.teamA.length).toFixed(1);
+  const avgB = (bestSplit.sumB / bestSplit.teamB.length).toFixed(1);
+  const maxPossible = Math.max(bestSplit.sumA, bestSplit.sumB) || 1;
+  const balancePercentage = Math.max(0, Math.min(100, Math.round(100 - (bestSplit.diff / maxPossible) * 100)));
+
+  return {
+    teamA: bestSplit.teamA,
+    teamB: bestSplit.teamB,
+    metrics: {
+      sumA: bestSplit.sumA,
+      sumB: bestSplit.sumB,
+      avgA,
+      avgB,
+      diff: bestSplit.diff,
+      balancePercentage,
+    },
+  };
+}
+
+io.on('connection', (socket) => {
+  // Join Room
+  socket.on('join_room', ({ roomId, player, roomName }) => {
+    const cleanRoomId = (roomId || 'MIX-1').trim().toUpperCase();
+    socket.join(cleanRoomId);
+    socket.roomId = cleanRoomId;
+
+    const room = getOrCreateRoom(cleanRoomId, roomName);
+
+    if (player && player.nick) {
+      socket.playerId = player.id || socket.id;
+      const existingIdx = room.players.findIndex((p) => p.id === socket.playerId || (p.nick === player.nick && !p.id.startsWith('bot-')));
+      
+      const playerData = {
+        id: socket.playerId,
+        nick: player.nick.trim(),
+        level: Math.max(1, Math.min(21, Number(player.level) || 10)),
+        side: player.side || 'ANY',
+        avatar: player.avatar || '🎯',
+        ready: player.ready !== undefined ? player.ready : true,
+        socketId: socket.id,
+      };
+
+      if (existingIdx >= 0) {
+        room.players[existingIdx] = { ...room.players[existingIdx], ...playerData };
+      } else if (room.players.length < 10) {
+        room.players.push(playerData);
+      }
+    }
+
+    io.to(cleanRoomId).emit('room_state', room);
+  });
+
+  // Add / Update Player
+  socket.on('update_player', ({ roomId, player }) => {
+    const room = rooms.get(roomId);
+    if (!room || !player) return;
+
+    const idx = room.players.findIndex((p) => p.id === player.id);
+    if (idx >= 0) {
+      room.players[idx] = { ...room.players[idx], ...player };
+      io.to(roomId).emit('room_state', room);
+    }
+  });
+
+  // Remove Player
+  socket.on('remove_player', ({ roomId, playerId }) => {
+    const room = rooms.get(roomId);
+    if (!room) return;
+    room.players = room.players.filter((p) => p.id !== playerId);
+    io.to(roomId).emit('room_state', room);
+  });
+
+  // Fill Mock Bots for fast testing
+  socket.on('fill_mock_bots', ({ roomId }) => {
+    const room = rooms.get(roomId);
+    if (!room) return;
+    room.players = JSON.parse(JSON.stringify(MOCK_BOTS));
+    io.to(roomId).emit('room_state', room);
+  });
+
+  // Clear Players
+  socket.on('clear_players', ({ roomId }) => {
+    const room = rooms.get(roomId);
+    if (!room) return;
+    room.players = [];
+    room.phase = 'lobby';
+    room.teamA = [];
+    room.teamB = [];
+    room.metrics = null;
+    room.bannedMaps = [];
+    room.finalMap = null;
+    room.startingSideTeamB = null;
+    io.to(roomId).emit('room_state', room);
+  });
+
+  // Balance & Draw Teams
+  socket.on('draw_teams', ({ roomId, mode = 'balanced' }) => {
+    const room = rooms.get(roomId);
+    if (!room || room.players.length < 2) return;
+
+    if (mode === 'balanced') {
+      const { teamA, teamB, metrics } = calculateBalance(room.players);
+      room.teamA = teamA;
+      room.teamB = teamB;
+      room.metrics = metrics;
+    } else {
+      // Random
+      const shuffled = [...room.players].sort(() => Math.random() - 0.5);
+      const half = Math.floor(shuffled.length / 2);
+      room.teamA = shuffled.slice(0, half);
+      room.teamB = shuffled.slice(half);
+      const sumA = room.teamA.reduce((acc, p) => acc + p.level, 0);
+      const sumB = room.teamB.reduce((acc, p) => acc + p.level, 0);
+      const diff = Math.abs(sumA - sumB);
+      room.metrics = {
+        sumA,
+        sumB,
+        avgA: (sumA / room.teamA.length).toFixed(1),
+        avgB: (sumB / room.teamB.length).toFixed(1),
+        diff,
+        balancePercentage: Math.max(0, Math.min(100, Math.round(100 - (diff / Math.max(sumA, sumB || 1)) * 100))),
+      };
+    }
+
+    room.phase = 'teams';
+    io.to(roomId).emit('room_state', room);
+  });
+
+  // Swap Sides (CT <-> TR / Team A <-> Team B)
+  socket.on('swap_teams', ({ roomId }) => {
+    const room = rooms.get(roomId);
+    if (!room) return;
+    const temp = room.teamA;
+    room.teamA = room.teamB;
+    room.teamB = temp;
+    if (room.metrics) {
+      const { sumA, sumB, avgA, avgB } = room.metrics;
+      room.metrics.sumA = sumB;
+      room.metrics.sumB = sumA;
+      room.metrics.avgA = avgB;
+      room.metrics.avgB = avgA;
+    }
+    io.to(roomId).emit('room_state', room);
+  });
+
+  // Swap specific players
+  socket.on('swap_players', ({ roomId, playerAId, playerBId }) => {
+    const room = rooms.get(roomId);
+    if (!room) return;
+
+    const idxA = room.teamA.findIndex((p) => p.id === playerAId);
+    const idxB = room.teamB.findIndex((p) => p.id === playerBId);
+
+    if (idxA >= 0 && idxB >= 0) {
+      const pA = room.teamA[idxA];
+      const pB = room.teamB[idxB];
+      room.teamA[idxA] = pB;
+      room.teamB[idxB] = pA;
+
+      const sumA = room.teamA.reduce((acc, p) => acc + p.level, 0);
+      const sumB = room.teamB.reduce((acc, p) => acc + p.level, 0);
+      const diff = Math.abs(sumA - sumB);
+      room.metrics = {
+        sumA,
+        sumB,
+        avgA: (sumA / room.teamA.length).toFixed(1),
+        avgB: (sumB / room.teamB.length).toFixed(1),
+        diff,
+        balancePercentage: Math.max(0, Math.min(100, Math.round(100 - (diff / Math.max(sumA, sumB || 1)) * 100))),
+      };
+      io.to(roomId).emit('room_state', room);
+    }
+  });
+
+  // Start Veto Phase
+  socket.on('start_veto', ({ roomId }) => {
+    const room = rooms.get(roomId);
+    if (!room) return;
+
+    room.phase = 'veto';
+    room.bannedMaps = [];
+    room.currentTurn = 'teamA';
+    room.finalMap = null;
+    room.startingSideTeamB = null;
+
+    io.to(roomId).emit('room_state', room);
+  });
+
+  // Ban Map
+  socket.on('ban_map', ({ roomId, mapId }) => {
+    const room = rooms.get(roomId);
+    if (!room || room.phase !== 'veto') return;
+    if (room.bannedMaps.some((b) => b.mapId === mapId)) return;
+
+    room.bannedMaps.push({
+      mapId,
+      bannedBy: room.currentTurn,
+      timestamp: Date.now(),
+    });
+
+    // Check remaining maps
+    const remaining = room.maps.filter((m) => !room.bannedMaps.some((b) => b.mapId === m.id));
+
+    if (remaining.length === 1) {
+      // We found the Decider!
+      room.finalMap = remaining[0];
+      room.phase = 'side_pick'; // The other team picks starting side
+    } else {
+      // Toggle turn
+      room.currentTurn = room.currentTurn === 'teamA' ? 'teamB' : 'teamA';
+    }
+
+    io.to(roomId).emit('room_state', room);
+  });
+
+  // Side Pick (CT / TR) on decider map
+  socket.on('select_side', ({ roomId, side }) => {
+    const room = rooms.get(roomId);
+    if (!room || room.phase !== 'side_pick') return;
+
+    room.startingSideTeamB = side; // The team choosing picks their side
+    room.phase = 'finished';
+
+    io.to(roomId).emit('room_state', room);
+  });
+
+  // Reset to Lobby
+  socket.on('reset_mix', ({ roomId }) => {
+    const room = rooms.get(roomId);
+    if (!room) return;
+
+    room.phase = 'lobby';
+    room.teamA = [];
+    room.teamB = [];
+    room.metrics = null;
+    room.bannedMaps = [];
+    room.finalMap = null;
+    room.startingSideTeamB = null;
+    room.currentTurn = 'teamA';
+
+    io.to(roomId).emit('room_state', room);
+  });
+
+  socket.on('disconnect', () => {
+    // Keep player in room so reloads or temporary disconnects don't drop the slot
+  });
+});
+
+// Serve frontend build if dist folder exists
+const distPath = path.join(__dirname, '..', 'dist');
+app.use(express.static(distPath));
+
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', time: new Date().toISOString(), activeRooms: rooms.size });
+});
+
+app.use((req, res) => {
+  res.sendFile(path.join(distPath, 'index.html'), (err) => {
+    if (err) {
+      res.status(200).send(`
+        <html>
+          <body style="background:#090d16;color:#f1f5f9;font-family:sans-serif;text-align:center;padding:50px;">
+            <h1>CS2 Mix Hub Backend Running!</h1>
+            <p>Port: ${PORT}</p>
+            <p>Para abrir a interface em desenvolvimento, acesse <a href="http://localhost:5173" style="color:#f59e0b">http://localhost:5173</a></p>
+          </body>
+        </html>
+      `);
+    }
+  });
+});
+
+server.listen(PORT, '0.0.0.0', () => {
+  console.log(`🎮 [CS2 MIX HUB] Servidor rodando na porta ${PORT} em 0.0.0.0`);
+});
