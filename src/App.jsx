@@ -41,9 +41,14 @@ export default function App() {
     const params = new URLSearchParams(window.location.search);
     return params.get('pwd') || params.get('pass') || params.get('password') || '';
   });
+  const [inviteKey, setInviteKey] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('key') || params.get('token') || '';
+  });
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
   const [pendingRoomAuth, setPendingRoomAuth] = useState(null);
   const [passwordError, setPasswordError] = useState(null);
+  const [authErrorType, setAuthErrorType] = useState('wrong_password');
 
   const [view, setView] = useState(() => {
     const params = new URLSearchParams(window.location.search);
@@ -253,6 +258,7 @@ export default function App() {
         roomId,
         player: myProfile.nick ? myProfile : null,
         password: roomPassword || undefined,
+        inviteKey: inviteKey || undefined,
       });
     });
 
@@ -279,9 +285,31 @@ export default function App() {
       });
     });
 
+    socket.on('room_authenticated', ({ roomId: authRoomId, password: authPassword, inviteKey: authKey, isPrivate: authIsPrivate }) => {
+      if (authRoomId === roomId) {
+        if (authPassword) setRoomPassword(authPassword);
+        if (authKey) setInviteKey(authKey);
+        // Ensure browser address bar has &key for private rooms so if user copies URL, friends enter directly
+        const u = new URL(window.location);
+        u.searchParams.set('room', authRoomId);
+        if (authIsPrivate && authKey) {
+          u.searchParams.set('key', authKey);
+        } else {
+          u.searchParams.delete('key');
+        }
+        if (authPassword) {
+          u.searchParams.set('pwd', authPassword);
+        } else {
+          u.searchParams.delete('pwd');
+        }
+        window.history.replaceState({}, '', u);
+      }
+    });
+
     socket.on('room_auth_error', ({ roomId: authRoomId, roomName: authRoomName, error, message }) => {
       setPendingRoomAuth({ roomId: authRoomId, roomName: authRoomName });
-      setPasswordError(message || 'Esta sala requer uma senha para entrar.');
+      setAuthErrorType(error || 'wrong_password');
+      setPasswordError(message || (error === 'private_room' ? 'Esta sala é privada. O acesso é exclusivo via link direto de convite.' : 'Esta sala requer uma senha para entrar.'));
       setPasswordModalOpen(true);
     });
 
@@ -331,6 +359,7 @@ export default function App() {
       socket.off('active_rotation_updated');
       socket.off('gsi_update');
       socket.off('chat_message');
+      socket.off('room_authenticated');
       socket.off('room_auth_error');
       socket.off('kicked_from_room');
       socket.off('admin_error');
@@ -338,8 +367,8 @@ export default function App() {
     };
   }, [roomId, myProfile, roomPassword]);
 
-  // Switch Room (Multi-room hub support with password & privacy)
-  const handleSelectRoom = (newRoomCode, customName, rankingSystem = 'gc', serverIp = '', password = undefined, isPrivate = false) => {
+  // Switch Room (Multi-room hub support with password, GC privacy & direct link)
+  const handleSelectRoom = (newRoomCode, customName, rankingSystem = 'gc', serverIp = '', password = undefined, isPrivate = false, key = undefined) => {
     const clean = newRoomCode.trim().toUpperCase();
     setRoomId(clean);
     setView('mix');
@@ -349,12 +378,22 @@ export default function App() {
       setRoomPassword(password || '');
     }
 
+    const targetKey = key !== undefined ? key : inviteKey;
+    if (key !== undefined) {
+      setInviteKey(key || '');
+    }
+
     const url = new URL(window.location);
     url.searchParams.set('room', clean);
     if (targetPassword) {
       url.searchParams.set('pwd', targetPassword);
     } else {
       url.searchParams.delete('pwd');
+    }
+    if (targetKey && isPrivate) {
+      url.searchParams.set('key', targetKey);
+    } else {
+      url.searchParams.delete('key');
     }
     window.history.pushState({}, '', url);
 
@@ -365,6 +404,7 @@ export default function App() {
       serverIp: serverIp ? serverIp.trim() : undefined,
       password: targetPassword || undefined,
       isPrivate: Boolean(isPrivate),
+      inviteKey: targetKey || undefined,
       player: myProfile.nick ? myProfile : null,
     });
   };
@@ -1109,6 +1149,8 @@ export default function App() {
           roomName={pendingRoomAuth?.roomName || room.name}
           onSubmitPassword={handleSubmitRoomPassword}
           errorMessage={passwordError}
+          errorType={authErrorType}
+          onOpenRoomsHub={() => setRoomsHubOpen(true)}
           soundEnabled={soundEnabled}
         />
       </>
@@ -1138,11 +1180,13 @@ export default function App() {
           const u = new URL(window.location);
           u.searchParams.delete('room');
           u.searchParams.delete('pwd');
+          u.searchParams.delete('key');
           window.history.pushState({}, '', u);
         }}
         roomPassword={roomPassword}
         hasPassword={Boolean(room.hasPassword)}
         isPrivate={Boolean(room.isPrivate)}
+        inviteKey={inviteKey || room.inviteKey}
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-6">
@@ -1192,6 +1236,7 @@ export default function App() {
                 roomPassword={roomPassword}
                 isPrivate={Boolean(room.isPrivate)}
                 hasPassword={Boolean(room.hasPassword || roomPassword)}
+                inviteKey={inviteKey || room.inviteKey}
               />
             </div>
           </div>
@@ -1369,6 +1414,8 @@ export default function App() {
         roomName={pendingRoomAuth?.roomName || room.name}
         onSubmitPassword={handleSubmitRoomPassword}
         errorMessage={passwordError}
+        errorType={authErrorType}
+        onOpenRoomsHub={() => setRoomsHubOpen(true)}
         soundEnabled={soundEnabled}
       />
 

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Share2, Check, Users, Swords, MapPin, Trophy, Volume2, VolumeX, Layers, History, Dices, Zap, Home, Server, Play, Copy, User, Trash2, Lock } from 'lucide-react';
+import { Share2, Check, Users, Swords, MapPin, Trophy, Volume2, VolumeX, Layers, History, Dices, Zap, Home, Server, Play, Copy, User, Trash2, Lock, KeyRound, Eye, EyeOff } from 'lucide-react';
 import PlayerAvatar from './PlayerAvatar';
 import DeleteRoomModal from './DeleteRoomModal';
 import { playClickSound } from '../utils/audio';
@@ -24,18 +24,26 @@ export default function Header({
   roomPassword = '',
   hasPassword = false,
   isPrivate = false,
+  inviteKey = '',
 }) {
   const [copied, setCopied] = useState(false);
   const [copiedServer, setCopiedServer] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [showHeaderPassword, setShowHeaderPassword] = useState(false);
 
   const parsedServer = parseServerDetails(serverIp);
 
   const copyInviteLink = () => {
     if (soundEnabled) playClickSound();
-    const pwdParam = roomPassword ? `&pwd=${encodeURIComponent(roomPassword)}` : '';
-    const url = `${window.location.origin}?room=${encodeURIComponent(roomId)}${pwdParam}`;
-    navigator.clipboard.writeText(url);
+    const url = new URL(window.location.origin);
+    url.searchParams.set('room', roomId);
+    if (isPrivate && inviteKey) {
+      url.searchParams.set('key', inviteKey);
+    }
+    if (roomPassword) {
+      url.searchParams.set('pwd', roomPassword);
+    }
+    navigator.clipboard.writeText(url.toString());
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -79,15 +87,26 @@ export default function Header({
                   }`}>
                     {rankingSystem === 'faceit' ? '⚡ FACEIT' : '🛡️ GC'}
                   </span>
-                  {isPrivate && (
+                  {isPrivate ? (
                     <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border text-purple-400 bg-purple-500/15 border-purple-500/30 flex items-center gap-1 font-mono">
-                      <Lock size={10} /> Privada (Link)
+                      <Lock size={10} /> Privado (Apenas com Link)
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border text-emerald-400 bg-emerald-500/15 border-emerald-500/30 flex items-center gap-1 font-mono">
+                      <Globe size={10} /> Mix Público
                     </span>
                   )}
-                  {hasPassword && (
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border text-amber-300 bg-amber-500/15 border-amber-500/30 flex items-center gap-1 font-mono">
-                      <Lock size={10} /> Com Senha
-                    </span>
+                  {(hasPassword || roomPassword) && (
+                    <button
+                      type="button"
+                      onClick={() => setShowHeaderPassword(!showHeaderPassword)}
+                      className="text-[10px] font-bold px-2 py-0.5 rounded-full border text-amber-300 bg-amber-500/15 border-amber-500/30 hover:bg-amber-500/25 flex items-center gap-1 font-mono cursor-pointer transition-colors"
+                      title={roomPassword ? 'Clique para mostrar/ocultar senha' : 'Sala protegida com senha'}
+                    >
+                      <Lock size={10} />
+                      <span>Senha: {roomPassword ? (showHeaderPassword ? roomPassword : '••••') : 'Ativa'}</span>
+                      {roomPassword && (showHeaderPassword ? <EyeOff size={10} className="opacity-70" /> : <Eye size={10} className="opacity-70" />)}
+                    </button>
                   )}
                 </div>
                 <p className="text-[11px] text-slate-400">
@@ -264,19 +283,28 @@ export default function Header({
               </div>
             )}
 
-            {/* Room Code & Invite button */}
+            {/* Room Code, Password & Invite button */}
             <div className="flex items-center bg-slate-900 border border-slate-800 rounded-lg p-1 pl-3 shadow-inner">
-              <div className="text-xs mr-2 font-mono">
+              <div className="text-xs mr-2 font-mono flex items-center gap-1.5">
                 <span className="text-slate-500 text-[10px]">SALA:</span>{' '}
                 <span className="font-bold text-amber-400">{roomId}</span>
+                {roomPassword && (
+                  <>
+                    <span className="text-slate-600">|</span>
+                    <span className="text-slate-500 text-[10px]">PIN:</span>{' '}
+                    <span className="font-bold text-amber-300">
+                      {showHeaderPassword ? roomPassword : '••••'}
+                    </span>
+                  </>
+                )}
               </div>
               <button
                 onClick={copyInviteLink}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs transition-colors shadow-sm cursor-pointer"
-                title="Copiar link para os amigos entrarem com seu nick e level GC"
+                title="Copiar link de convite com acesso direto sem senha"
               >
                 {copied ? <Check size={14} className="text-slate-950" /> : <Share2 size={14} />}
-                <span>{copied ? 'Copiado!' : 'Convidar'}</span>
+                <span>{copied ? 'Link Copiado!' : 'Convidar'}</span>
               </button>
             </div>
 

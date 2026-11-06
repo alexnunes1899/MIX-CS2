@@ -3,7 +3,7 @@ import GCBadge from './GCBadge';
 import FaceitBadge from './FaceitBadge';
 import PlayerAvatar from './PlayerAvatar';
 import ServerConnectBar from './ServerConnectBar';
-import { Users, Trash2, Bot, Scale, Shuffle, Shield, Flame, CheckCircle2, Crown, Check, AlertCircle, Zap, Dices, ArrowLeftRight, Lock, Globe, Share2, Layers } from 'lucide-react';
+import { Users, Trash2, Bot, Scale, Shuffle, Shield, Flame, CheckCircle2, Crown, Check, AlertCircle, Zap, Dices, ArrowLeftRight, Lock, Globe, Share2, Layers, Copy, KeyRound, Hash, Eye, EyeOff, Sparkles } from 'lucide-react';
 import { playClickSound, playReadySound } from '../utils/audio';
 
 export default function Lobby({
@@ -34,8 +34,13 @@ export default function Lobby({
   roomPassword = '',
   isPrivate = false,
   hasPassword = false,
+  inviteKey = '',
 }) {
   const [copiedInvite, setCopiedInvite] = useState(false);
+  const [copiedUser, setCopiedUser] = useState(false);
+  const [copiedPwd, setCopiedPwd] = useState(false);
+  const [showLobbyPassword, setShowLobbyPassword] = useState(false);
+
   const maxSlots = 10;
   const emptySlots = Math.max(0, maxSlots - players.length);
   const isFaceit = rankingSystem === 'faceit';
@@ -59,12 +64,30 @@ export default function Lobby({
     if (soundEnabled) playClickSound();
     const url = new URL(window.location.origin);
     url.searchParams.set('room', roomId);
+    if (isPrivate && inviteKey) {
+      url.searchParams.set('key', inviteKey);
+    }
     if (roomPassword) {
       url.searchParams.set('pwd', roomPassword);
     }
     navigator.clipboard.writeText(url.toString());
     setCopiedInvite(true);
     setTimeout(() => setCopiedInvite(false), 2000);
+  };
+
+  const handleCopyUser = () => {
+    if (soundEnabled) playClickSound();
+    navigator.clipboard.writeText(roomId);
+    setCopiedUser(true);
+    setTimeout(() => setCopiedUser(false), 2000);
+  };
+
+  const handleCopyPassword = () => {
+    if (!roomPassword) return;
+    if (soundEnabled) playClickSound();
+    navigator.clipboard.writeText(roomPassword);
+    setCopiedPwd(true);
+    setTimeout(() => setCopiedPwd(false), 2000);
   };
 
   const handleMyReadyToggle = () => {
@@ -77,51 +100,119 @@ export default function Lobby({
   return (
     <div className="space-y-6">
       {/* Room Security & Privacy Card */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 backdrop-blur">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs font-bold uppercase tracking-wider text-white flex items-center gap-1.5">
-              <Layers size={14} className="text-amber-400" />
-              Sala: <span className="font-mono text-amber-400 font-bold">{roomId}</span>
-            </span>
+      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-lg space-y-3 backdrop-blur">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-bold uppercase tracking-wider text-white flex items-center gap-1.5">
+                <Layers size={14} className="text-amber-400" />
+                Sala: <span className="font-mono text-amber-400 font-bold">{roomId}</span>
+              </span>
 
-            {isPrivate ? (
-              <span className="text-[10px] font-bold text-purple-300 bg-purple-500/15 border border-purple-500/30 px-2 py-0.5 rounded-full flex items-center gap-1 font-mono">
-                <Lock size={10} /> Privada (Somente com Link)
-              </span>
-            ) : (
-              <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-full flex items-center gap-1 font-mono">
-                <Globe size={10} /> Pública
-              </span>
-            )}
+              {isPrivate ? (
+                <span className="text-[10px] font-bold text-purple-300 bg-purple-500/15 border border-purple-500/30 px-2 py-0.5 rounded-full flex items-center gap-1 font-mono">
+                  <Lock size={10} /> Privado (Apenas com Link)
+                </span>
+              ) : (
+                <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-full flex items-center gap-1 font-mono">
+                  <Globe size={10} /> Mix Público
+                </span>
+              )}
 
-            {hasPassword && (
-              <span className="text-[10px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full flex items-center gap-1 font-mono">
-                <Lock size={10} /> Com Senha
-              </span>
-            )}
+              {(hasPassword || roomPassword) && (
+                <span className="text-[10px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full flex items-center gap-1 font-mono">
+                  <Lock size={10} /> Protegida com Senha
+                </span>
+              )}
 
-            {isAdmin && (
-              <span className="text-[10px] font-bold text-amber-300 bg-amber-500/20 border border-amber-500/40 px-2 py-0.5 rounded-full flex items-center gap-1 font-mono">
-                <Crown size={10} className="text-amber-400" /> Admin da Sala
-              </span>
-            )}
+              {isAdmin && (
+                <span className="text-[10px] font-bold text-amber-300 bg-amber-500/20 border border-amber-500/40 px-2 py-0.5 rounded-full flex items-center gap-1 font-mono">
+                  <Crown size={10} className="text-amber-400" /> Admin da Sala
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-slate-400">
+              {isPrivate
+                ? 'Esta sala é privada (estilo Gamers Club). Apenas quem tiver o link exclusivo abaixo consegue entrar.'
+                : 'Mix público aberto. Qualquer jogador da comunidade pode entrar pelo Hub ou pelo link.'}
+            </p>
           </div>
-          <p className="text-[11px] text-slate-400">
-            {isPrivate
-              ? 'Esta sala está oculta da lista pública. Envie o link exclusivo abaixo para seus amigos entrarem.'
-              : 'Compartilhe o link da sala para seus amigos entrarem direto no lobby.'}
-          </p>
+
+          <button
+            type="button"
+            onClick={handleCopyInviteLink}
+            className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs uppercase tracking-wider shadow-md shadow-amber-500/20 flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95 shrink-0"
+            title={isPrivate ? 'Copiar link de acesso exclusivo para convidados' : 'Copiar link para amigos entrarem'}
+          >
+            {copiedInvite ? <Check size={14} className="text-slate-950" /> : <Share2 size={14} />}
+            <span>{copiedInvite ? 'Link Copiado!' : isPrivate ? 'Copiar Link (Acesso Exclusivo)' : 'Copiar Link da Sala'}</span>
+          </button>
         </div>
 
-        <button
-          type="button"
-          onClick={handleCopyInviteLink}
-          className="w-full sm:w-auto px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs uppercase tracking-wider shadow-md shadow-amber-500/20 flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95 shrink-0"
-        >
-          {copiedInvite ? <Check size={14} className="text-slate-950" /> : <Share2 size={14} />}
-          <span>{copiedInvite ? 'Link Copiado!' : 'Copiar Link de Convite'}</span>
-        </button>
+        {/* Room Credentials Bar (Usuário & Senha da Sala) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-slate-800/80">
+          {/* Room User */}
+          <div className="bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Hash size={14} className="text-amber-400 shrink-0" />
+              <div>
+                <span className="text-[10px] text-slate-400 font-semibold block uppercase">Usuário da Sala (Login)</span>
+                <span className="text-xs font-mono font-bold text-white">{roomId}</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleCopyUser}
+              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer text-[10px] font-bold flex items-center gap-1"
+              title="Copiar Usuário da Sala"
+            >
+              {copiedUser ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+              <span>{copiedUser ? 'Copiado' : 'Copiar'}</span>
+            </button>
+          </div>
+
+          {/* Room Password */}
+          <div className="bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <KeyRound size={14} className="text-amber-400 shrink-0" />
+              <div>
+                <span className="text-[10px] text-slate-400 font-semibold block uppercase">Senha da Sala (PIN)</span>
+                <span className="text-xs font-mono font-bold text-amber-300 tracking-wider">
+                  {roomPassword ? (showLobbyPassword ? roomPassword : '••••') : (hasPassword ? '••••' : 'Sem Senha')}
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center gap-1">
+              {roomPassword && (
+                <button
+                  type="button"
+                  onClick={() => setShowLobbyPassword(!showLobbyPassword)}
+                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                  title={showLobbyPassword ? 'Ocultar senha' : 'Ver senha'}
+                >
+                  {showLobbyPassword ? <EyeOff size={12} /> : <Eye size={12} />}
+                </button>
+              )}
+              {roomPassword && (
+                <button
+                  type="button"
+                  onClick={handleCopyPassword}
+                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer text-[10px] font-bold flex items-center gap-1"
+                  title="Copiar Senha da Sala"
+                >
+                  {copiedPwd ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                  <span>{copiedPwd ? 'Copiada' : 'Copiar'}</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Informative Note */}
+        <div className="text-[11px] text-slate-400 flex items-center gap-1.5 pt-0.5">
+          <Sparkles size={12} className="text-amber-400 shrink-0" />
+          <span>Amigos que clicarem no link de convite entram direto no lobby <strong>sem precisar digitar senha</strong>!</span>
+        </div>
       </div>
 
       {/* Quick Mode Shortcuts Bar */}
@@ -198,205 +289,245 @@ export default function Lobby({
                 }}
                 className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold font-mono uppercase tracking-wider flex items-center gap-1 border transition-all cursor-pointer ${
                   isFaceit
-                    ? 'bg-orange-500/15 border-orange-500/40 text-orange-400 hover:bg-orange-500/25'
-                    : 'bg-amber-500/15 border-amber-500/40 text-amber-400 hover:bg-amber-500/25'
+                    ? 'bg-orange-500/20 border-orange-500/50 text-orange-400 hover:bg-orange-500/30'
+                    : 'bg-amber-500/20 border-amber-500/50 text-amber-300 hover:bg-amber-500/30'
                 }`}
-                title="Clique para alternar entre o ranking Gamers Club e FACEIT"
+                title="Clique para alternar entre ranking da Gamers Club (1-21) e FACEIT (1-10)"
               >
-                <span>{isFaceit ? '⚡ Modo: FACEIT' : '🛡️ Modo: GC'}</span>
-                <ArrowLeftRight size={10} />
+                {isFaceit ? <Zap size={11} /> : <Shield size={11} />}
+                <span>Ranking: {isFaceit ? 'FACEIT' : 'Gamers Club'}</span>
+                <ArrowLeftRight size={9} className="opacity-70" />
               </button>
             )}
           </div>
 
-          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+          <div className="flex items-center gap-3 text-xs text-slate-400 mt-1 flex-wrap">
             {isFaceit ? (
               <>
-                <span className="text-[11px] bg-slate-950/80 border border-orange-500/30 px-2.5 py-0.5 rounded-lg text-slate-300 font-mono">
-                  Média FACEIT: <strong className="text-orange-400">Lvl {avgFaceit}</strong>
-                </span>
+                <span>Média FACEIT: <strong className="text-orange-400 font-mono">Nv {avgFaceit}</strong></span>
                 {avgElo && (
-                  <span className="text-[11px] bg-slate-950/80 border border-slate-800 px-2.5 py-0.5 rounded-lg text-slate-300 font-mono">
-                    Média ELO: <strong className="text-amber-300">{avgElo} pts</strong>
-                  </span>
+                  <>
+                    <span>•</span>
+                    <span>Média ELO: <strong className="text-orange-300 font-mono">{avgElo}</strong></span>
+                  </>
                 )}
+                <span>•</span>
+                <span className="text-[11px] text-slate-500">Puxado da Steam</span>
               </>
             ) : (
               <>
-                <span className="text-[11px] bg-slate-950/80 border border-amber-500/30 px-2.5 py-0.5 rounded-lg text-slate-300 font-mono">
-                  Média GC: <strong className="text-amber-400">Lvl {avgLevel}</strong>
-                </span>
-                <span className="text-[11px] bg-slate-950/80 border border-slate-800 px-2.5 py-0.5 rounded-lg text-slate-300 font-mono">
-                  Soma Total: <strong className="text-slate-200">{totalLevel} pts</strong>
-                </span>
+                <span>Média Gamers Club: <strong className="text-amber-400 font-mono">Nv {avgLevel}</strong></span>
+                <span>•</span>
+                <span className="text-[11px] text-slate-500">Distribuição Oficial 1-21</span>
               </>
             )}
           </div>
         </div>
 
-        {/* Action Buttons & My Ready Toggle */}
-        <div className="flex items-center flex-wrap gap-2">
+        {/* Action Buttons */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Quick Ready / Cancel Ready Button for Myself */}
           {myPlayer && (
             <button
               onClick={handleMyReadyToggle}
-              className={`flex items-center gap-1.5 px-4 py-2 rounded-xl font-bold text-xs transition-all shadow-md cursor-pointer ${
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-xl font-bold text-xs uppercase tracking-wider transition-all cursor-pointer shadow-md ${
                 isMyPlayerReady
-                  ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-emerald-500/20'
-                  : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
+                  ? 'bg-emerald-500/20 border border-emerald-500/50 text-emerald-300 hover:bg-emerald-500/30 shadow-emerald-500/20'
+                  : 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-500/25 active:scale-95'
               }`}
             >
-              <Check size={15} />
-              <span>{isMyPlayerReady ? 'Você está Pronto! ✅' : 'Dar Ready (Pronto)'}</span>
+              <CheckCircle2 size={14} />
+              <span>{isMyPlayerReady ? 'Pronto! (Cancelar)' : 'Ficar Pronto'}</span>
             </button>
           )}
 
-          <button
-            onClick={() => {
-              if (soundEnabled) playClickSound();
-              onFillMockBots();
-            }}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 border border-amber-500/30 text-xs font-semibold transition-all shadow-sm cursor-pointer"
-            title="Preencher com 10 jogadores profissionais brasileiros para testar o sorteio imediatamente"
-          >
-            <Bot size={15} />
-            <span>⚡ 10 Bots</span>
-          </button>
+          {isAdmin && (
+            <>
+              <button
+                onClick={() => {
+                  if (soundEnabled) playClickSound();
+                  onFillMockBots();
+                }}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-semibold transition-all cursor-pointer"
+                title="Preencher com bots de teste para balanceamento rápido"
+              >
+                <Bot size={14} className="text-amber-400" />
+                <span className="hidden sm:inline">Preencher Bots</span>
+              </button>
 
-          {players.length > 0 && (
-            <button
-              onClick={() => {
-                if (soundEnabled) playClickSound();
-                onClearPlayers();
-              }}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 border border-slate-700/50 hover:border-rose-500/40 text-xs font-semibold transition-all cursor-pointer"
-              title="Limpar todos os jogadores da sala"
-            >
-              <Trash2 size={14} />
-              <span>Limpar</span>
-            </button>
+              <button
+                onClick={() => {
+                  if (soundEnabled) playClickSound();
+                  onClearPlayers();
+                }}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs font-semibold transition-all cursor-pointer"
+                title="Limpar todos os jogadores do lobby"
+              >
+                <Trash2 size={14} />
+                <span className="hidden sm:inline">Limpar</span>
+              </button>
+            </>
           )}
         </div>
       </div>
 
-      {/* CS2 Server Connect Widget in Lobby */}
-      {onUpdateServerIp && (
-        <ServerConnectBar
-          serverIp={serverIp}
-          onUpdateServerIp={onUpdateServerIp}
-          rconPassword={rconPassword}
-          onUpdateRconPassword={onUpdateRconPassword}
-          roomId={roomId}
-          liveMatch={liveMatch}
-          onOpenGsiSetup={onOpenGsiSetup}
-          soundEnabled={soundEnabled}
-          title="Servidor de Jogo (FireGames / Dedicado)"
-          description="Configure o IP e o RCON do servidor para gerenciar mapa e placar com 1 clique"
-        />
-      )}
+      {/* Server Connect Bar */}
+      <ServerConnectBar
+        serverIp={serverIp}
+        onUpdateServerIp={onUpdateServerIp}
+        rconPassword={rconPassword}
+        onUpdateRconPassword={onUpdateRconPassword}
+        liveMatch={liveMatch}
+        onOpenGsiSetup={onOpenGsiSetup}
+        soundEnabled={soundEnabled}
+        isAdmin={isAdmin}
+      />
 
       {/* Players Grid (10 Slots) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-        {players.map((p) => {
-          const pFaceitLevel = p.faceitLevel || (p.level <= 10 ? p.level : Math.round(p.level / 2.1)) || 5;
+        {players.map((p, idx) => {
+          const isMe = p.id === myProfile?.id || (p.nick && p.nick === myProfile?.nick);
+          const isSlotAdmin = adminId && p.id === adminId;
 
           return (
             <div
-              key={p.id}
-              className={`group relative border rounded-xl p-3.5 transition-all shadow-md flex flex-col justify-between hover:border-slate-700 ${
+              key={p.id || idx}
+              className={`relative bg-slate-900/90 border rounded-2xl p-3.5 flex flex-col justify-between transition-all group ${
                 p.ready
-                  ? 'bg-slate-900/95 border-emerald-500/40 shadow-emerald-500/5 ring-1 ring-emerald-500/20'
-                  : 'bg-slate-900/80 border-slate-800'
-              }`}
+                  ? 'border-emerald-500/40 shadow-sm shadow-emerald-500/10'
+                  : 'border-slate-800 hover:border-slate-700'
+              } ${isMe ? 'ring-2 ring-amber-500/40 bg-slate-900' : ''}`}
             >
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <PlayerAvatar avatar={p.avatar} nick={p.nick} size="md" />
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <h3 className="font-bold text-sm text-white truncate max-w-[105px] sm:max-w-[85px] lg:max-w-[95px] xl:max-w-[115px]" title={p.nick}>
-                        {p.nick}
-                      </h3>
-                      {p.id === adminId && (
-                        <span className="text-[9px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.2 rounded-full flex items-center gap-1 font-mono shadow-sm" title="Criador / Administrador da Sala">
-                          <Crown size={9} className="fill-amber-400 text-amber-400" /> Admin
-                        </span>
-                      )}
-                      {p.ready && (
-                        <span className="text-emerald-400 font-bold shrink-0 text-xs" title="Jogador pronto">
-                          ✓
-                        </span>
-                      )}
-                    </div>
+              {/* Ready Indicator Dot */}
+              <div
+                className={`absolute top-2.5 right-2.5 w-2.5 h-2.5 rounded-full ${
+                  p.ready ? 'bg-emerald-400 shadow-sm shadow-emerald-400' : 'bg-slate-700'
+                }`}
+                title={p.ready ? 'Pronto' : 'Aguardando'}
+              />
 
-                    <div className="flex items-center gap-1 mt-0.5">
+              {/* Admin Crown Badge */}
+              {isSlotAdmin && (
+                <div
+                  className="absolute top-2.5 left-2.5 w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30"
+                  title="Administrador / Criador da Sala"
+                >
+                  <Crown size={11} />
+                </div>
+              )}
+
+              {/* Top: Avatar & Player Nick */}
+              <div className="flex items-center gap-2.5 mb-3">
+                <PlayerAvatar avatar={p.avatar} size="md" />
+                <div className="overflow-hidden pr-3">
+                  <div className="flex items-center gap-1">
+                    <span className="font-bold text-xs text-white truncate block">
+                      {p.nick}
+                    </span>
+                    {isMe && (
+                      <span className="text-[9px] font-bold text-amber-400 bg-amber-500/20 px-1 rounded shrink-0">
+                        VOCÊ
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[10px] text-slate-500 font-mono block">
+                    Slot #{idx + 1}
+                  </span>
+                </div>
+              </div>
+
+              {/* Middle: Badges based on selected ranking */}
+              <div className="space-y-1.5 my-2">
+                {isFaceit ? (
+                  <div className="flex items-center justify-between bg-slate-950/60 p-1.5 rounded-xl border border-slate-800/80">
+                    <FaceitBadge level={p.faceitLevel} elo={p.faceitElo} size="sm" showElo={true} />
+                    <span className="text-[9px] font-mono text-slate-500">Auto Steam</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between bg-slate-950/60 p-1.5 rounded-xl border border-slate-800/80">
+                    <GCBadge level={p.level} size="sm" />
+                    <span className="text-[9px] font-mono text-slate-500">Gamers Club</span>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between text-[10px] text-slate-400 px-1">
+                  <span>Lado:</span>
+                  {isAdmin && onAdminChangeSide ? (
+                    <div className="flex items-center gap-1 bg-slate-950 border border-slate-800 rounded-md p-0.5">
                       <button
                         type="button"
-                        onClick={() => {
-                          if (isAdmin && onAdminChangeSide) {
-                            const next = p.side === 'CT' ? 'TR' : p.side === 'TR' ? 'ANY' : 'CT';
-                            if (soundEnabled) playClickSound();
-                            onAdminChangeSide(p.id, next);
-                          }
-                        }}
-                        className={`transition-all ${isAdmin ? 'cursor-pointer hover:scale-105 active:scale-95' : 'cursor-default'}`}
-                        title={isAdmin ? 'Admin: Clique para mudar o lado do jogador (CT / TR / Flex)' : ''}
+                        onClick={() => onAdminChangeSide(p.id, 'CT')}
+                        className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${
+                          p.side === 'CT' ? 'bg-sky-500/20 text-sky-400 border border-sky-500/40' : 'text-slate-500 hover:text-slate-300'
+                        }`}
+                        title="Fixar no lado CT"
                       >
-                        {p.side === 'CT' && (
-                          <span className="flex items-center gap-0.5 text-[9px] font-bold text-sky-400 bg-sky-500/10 px-1.5 py-0.2 rounded border border-sky-500/20">
-                            <Shield size={9} /> CT
-                          </span>
-                        )}
-                        {p.side === 'TR' && (
-                          <span className="flex items-center gap-0.5 text-[9px] font-bold text-amber-400 bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20">
-                            <Flame size={9} /> TR
-                          </span>
-                        )}
-                        {p.side === 'ANY' && (
-                          <span className="text-[9px] font-bold text-purple-400 bg-purple-500/10 px-1.5 py-0.2 rounded border border-purple-500/20">
-                            Flex
-                          </span>
-                        )}
+                        CT
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onAdminChangeSide(p.id, 'TR')}
+                        className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${
+                          p.side === 'TR' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40' : 'text-slate-500 hover:text-slate-300'
+                        }`}
+                        title="Fixar no lado TR"
+                      >
+                        TR
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onAdminChangeSide(p.id, 'ANY')}
+                        className={`px-1 py-0.2 rounded text-[9px] font-bold ${
+                          !p.side || p.side === 'ANY' ? 'bg-slate-800 text-slate-300' : 'text-slate-500 hover:text-slate-300'
+                        }`}
+                        title="Qualquer lado (Automático)"
+                      >
+                        Qualquer
                       </button>
                     </div>
-                  </div>
-                </div>
-
-                <div className="shrink-0">
-                  {isFaceit ? (
-                    <FaceitBadge level={pFaceitLevel} elo={p.faceitElo} size="md" />
                   ) : (
-                    <GCBadge level={p.level} size="md" />
+                    <span
+                      className={`font-bold font-mono px-1.5 py-0.2 rounded text-[9px] ${
+                        p.side === 'CT'
+                          ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30'
+                          : p.side === 'TR'
+                          ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                          : 'bg-slate-800 text-slate-400'
+                      }`}
+                    >
+                      {p.side || 'ANY'}
+                    </span>
                   )}
                 </div>
               </div>
 
-              <div className="mt-3 pt-2 border-t border-slate-800/60 flex items-center justify-between text-[11px] text-slate-500">
-                <span className={`font-mono text-[10px] tracking-wider uppercase ${p.ready ? 'text-emerald-400 font-bold flex items-center gap-1' : 'text-slate-500 font-medium'}`}>
-                  {p.ready ? (
-                    <>
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-                      PRONTO
-                    </>
-                  ) : (
-                    'AGUARDANDO'
-                  )}
-                </span>
+              {/* Bottom: Action buttons */}
+              <div className="flex items-center justify-between pt-2 border-t border-slate-800/80 mt-1">
+                <button
+                  onClick={() => {
+                    if (soundEnabled) playReadySound();
+                    onToggleReady(p.id);
+                  }}
+                  className={`text-[10px] font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer ${
+                    p.ready
+                      ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
+                      : 'bg-slate-800 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  {p.ready ? 'Pronto ✓' : 'Aguardando'}
+                </button>
 
-                {(isAdmin || p.id === myProfile?.id) && (
+                {(isAdmin || isMe) && (
                   <button
                     onClick={() => {
                       if (soundEnabled) playClickSound();
-                      if (isAdmin && p.id !== myProfile?.id && onKickPlayer) {
+                      if (isAdmin && !isMe && onKickPlayer) {
                         onKickPlayer(p.id);
                       } else {
                         onRemovePlayer(p.id);
                       }
                     }}
-                    className={`p-1 rounded-md transition-colors cursor-pointer ${
-                      isAdmin && p.id !== myProfile?.id
-                        ? 'text-rose-400 hover:text-rose-200 hover:bg-rose-500/20 border border-rose-500/20'
-                        : 'text-slate-500 hover:text-rose-400 hover:bg-slate-800'
-                    }`}
+                    className="p-1 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
                     title={isAdmin && p.id !== myProfile?.id ? 'Expulsar jogador da sala (Admin)' : 'Sair da sala'}
                   >
                     <Trash2 size={13} />

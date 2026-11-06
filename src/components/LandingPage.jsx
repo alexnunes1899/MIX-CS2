@@ -147,7 +147,7 @@ export default function LandingPage({
             )}
 
             <button
-              onClick={() => handleCreateMix('MIX-PRO')}
+              onClick={() => onOpenRoomsHub()}
               className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs uppercase tracking-wider transition-all shadow-lg shadow-amber-500/25 cursor-pointer flex items-center gap-1.5 active:scale-95"
             >
               <Play size={13} fill="currentColor" />
@@ -434,7 +434,7 @@ export default function LandingPage({
           </p>
           <div className="pt-2">
             <button
-              onClick={() => handleCreateMix('MIX-PRO')}
+              onClick={() => onOpenRoomsHub()}
               className="px-8 py-4 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 font-black text-sm uppercase tracking-wider transition-all shadow-xl shadow-amber-500/30 cursor-pointer inline-flex items-center gap-2 active:scale-95"
             >
               <Play size={16} fill="currentColor" />

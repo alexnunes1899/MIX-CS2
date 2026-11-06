@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Layers, Plus, Users, ArrowRight, X, Sparkles, Hash, Lock, Shield, Zap, Server, Trash2 } from 'lucide-react';
+import { Layers, Plus, Users, ArrowRight, X, Sparkles, Hash, Lock, Shield, Zap, Server, Trash2, Dices, Eye, EyeOff, KeyRound, Globe, Link2 } from 'lucide-react';
 import SteamIcon from './SteamIcon';
 import DeleteRoomModal from './DeleteRoomModal';
 import { playClickSound } from '../utils/audio';
+import { generateRoomCredentials, generateRoomUser, generateRoomPassword } from '../utils/roomCredentials';
 
 export default function RoomsHubModal({
   isOpen,
@@ -19,7 +20,8 @@ export default function RoomsHubModal({
   const [newRoomCode, setNewRoomCode] = useState('');
   const [newServerIp, setNewServerIp] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [isPrivate, setIsPrivate] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [isPrivate, setIsPrivate] = useState(false); // Default: false = Mix Público (like GC default)
   const [rankingSystem, setRankingSystem] = useState('gc'); // 'gc' | 'faceit'
   const [loading, setLoading] = useState(false);
   const [roomToDelete, setRoomToDelete] = useState(null);
@@ -27,8 +29,35 @@ export default function RoomsHubModal({
   useEffect(() => {
     if (isOpen) {
       fetchRooms();
+      // Auto-generate room user & password when opening
+      if (!newRoomCode) {
+        const creds = generateRoomCredentials();
+        setNewRoomCode(creds.roomUser);
+        setNewPassword(creds.roomPassword);
+        setNewRoomName(creds.suggestedName);
+      }
     }
   }, [isOpen]);
+
+  const handleGenerateAll = () => {
+    if (soundEnabled) playClickSound();
+    const creds = generateRoomCredentials();
+    setNewRoomCode(creds.roomUser);
+    setNewPassword(creds.roomPassword);
+    setNewRoomName(creds.suggestedName);
+  };
+
+  const handleGenerateUserOnly = () => {
+    if (soundEnabled) playClickSound();
+    const user = generateRoomUser();
+    setNewRoomCode(user);
+    setNewRoomName(`Mix ${user.replace('MIX-', '')}`);
+  };
+
+  const handleGeneratePasswordOnly = () => {
+    if (soundEnabled) playClickSound();
+    setNewPassword(generateRoomPassword());
+  };
 
   const fetchRooms = async () => {
     setLoading(true);
@@ -104,8 +133,8 @@ export default function RoomsHubModal({
             <Layers size={20} />
           </div>
           <div>
-            <h2 className="text-lg font-bold font-heading text-white">Hub de Salas de Mix</h2>
-            <p className="text-xs text-slate-400">Entre em um mix existente ou crie uma nova sala para seus amigos</p>
+            <h2 className="text-lg font-bold font-heading text-white">Hub de Salas de Mix (Estilo GC)</h2>
+            <p className="text-xs text-slate-400">Crie mix público para a comunidade ou privado exclusivo via link</p>
           </div>
         </div>
 
@@ -122,19 +151,112 @@ export default function RoomsHubModal({
             )}
           </div>
 
+          {/* Gamers Club Style Lobby Type Selector: Mix Público vs Mix Privado */}
+          <div>
+            <label className="text-[10px] text-slate-300 font-bold uppercase tracking-wide block mb-1.5">
+              Tipo de Sala (Gamers Club)
+            </label>
+            <div className="grid grid-cols-2 gap-2.5">
+              {/* Public Mix */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (soundEnabled) playClickSound();
+                  setIsPrivate(false);
+                }}
+                className={`p-3 rounded-2xl border text-left transition-all cursor-pointer relative overflow-hidden ${
+                  !isPrivate
+                    ? 'bg-emerald-500/15 border-emerald-500 text-white shadow-lg shadow-emerald-500/10 ring-1 ring-emerald-500/30'
+                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="font-bold text-xs text-emerald-400 flex items-center gap-1.5">
+                    <Globe size={14} /> Mix Público
+                  </span>
+                  {!isPrivate && (
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400" />
+                  )}
+                </div>
+                <p className="text-[10px] text-slate-300 leading-tight">
+                  Aparece no Hub. <strong>Qualquer pessoa pode entrar</strong> livremente.
+                </p>
+              </button>
+
+              {/* Private Mix */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (soundEnabled) playClickSound();
+                  setIsPrivate(true);
+                }}
+                className={`p-3 rounded-2xl border text-left transition-all cursor-pointer relative overflow-hidden ${
+                  isPrivate
+                    ? 'bg-purple-500/15 border-purple-500 text-white shadow-lg shadow-purple-500/10 ring-1 ring-purple-500/30'
+                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="font-bold text-xs text-purple-300 flex items-center gap-1.5">
+                    <Lock size={14} /> Mix Privado
+                  </span>
+                  {isPrivate && (
+                    <span className="w-2 h-2 rounded-full bg-purple-400 shadow-sm shadow-purple-400" />
+                  )}
+                </div>
+                <p className="text-[10px] text-slate-300 leading-tight">
+                  Oculto da lista pública. <strong>Só entra quem tiver o link direto</strong>.
+                </p>
+              </button>
+            </div>
+          </div>
+
+          {/* Gamers Club Explanation Notice */}
+          <div className={`p-3 rounded-xl border text-xs flex items-start gap-2.5 transition-colors ${
+            isPrivate
+              ? 'bg-purple-500/10 border-purple-500/30 text-purple-200'
+              : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'
+          }`}>
+            {isPrivate ? (
+              <Lock size={15} className="text-purple-400 shrink-0 mt-0.5" />
+            ) : (
+              <Globe size={15} className="text-emerald-400 shrink-0 mt-0.5" />
+            )}
+            <div className="space-y-0.5">
+              <span className="font-bold block">
+                {isPrivate ? '🔒 Modo Privado Selecionado:' : '🌐 Modo Público Selecionado:'}
+              </span>
+              <p className="text-[11px] text-slate-300 leading-relaxed">
+                {isPrivate
+                  ? 'A sala ficará oculta da lista do Hub. Apenas seus amigos que receberem o Link Direto de Convite entrarão automaticamente.'
+                  : 'Sua sala aparecerá na lista de Salas Ativas para qualquer jogador da comunidade encontrar e entrar com 1 clique.'}
+              </p>
+            </div>
+          </div>
+
+          {/* Room User and Name inputs */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
-              <label className="text-[10px] text-slate-400 font-semibold block mb-1">CÓDIGO DA SALA (URL)</label>
-              <div className="relative">
-                <Hash size={13} className="absolute left-3 top-3 text-slate-500" />
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[10px] text-slate-400 font-semibold block">CÓDIGO / IDENTIFICADOR</label>
+                <button
+                  type="button"
+                  onClick={handleGenerateUserOnly}
+                  className="text-[10px] text-amber-400 hover:underline flex items-center gap-0.5 cursor-pointer"
+                >
+                  <Dices size={10} /> Gerar
+                </button>
+              </div>
+              <div className="relative flex items-center">
+                <Hash size={13} className="absolute left-3 text-slate-500" />
                 <input
                   type="text"
-                  placeholder="EX: MIX-CORUJA"
+                  placeholder="EX: MIX-CORUJA-42"
                   value={newRoomCode}
                   onChange={(e) => setNewRoomCode(e.target.value.toUpperCase())}
                   required
-                  maxLength={15}
-                  className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-8 pr-3 py-2 text-xs font-mono text-white placeholder-slate-600 outline-none focus:border-amber-400"
+                  maxLength={20}
+                  className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-8 pr-3 py-2 text-xs font-mono font-bold text-white placeholder-slate-600 outline-none focus:border-amber-400"
                 />
               </div>
             </div>
@@ -146,11 +268,42 @@ export default function RoomsHubModal({
                 placeholder="Ex: Mix dos Cria"
                 value={newRoomName}
                 onChange={(e) => setNewRoomName(e.target.value)}
-                maxLength={25}
+                maxLength={30}
                 className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 outline-none focus:border-amber-400"
               />
             </div>
           </div>
+
+          {/* Optional Password only for private or special rooms */}
+          {isPrivate && (
+            <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-3">
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[10px] text-slate-400 font-semibold block uppercase">
+                  Senha da Sala (Opcional)
+                </label>
+                <span className="text-[9px] text-slate-500 font-mono">Deixe em branco para usar apenas o link</span>
+              </div>
+              <div className="relative flex items-center">
+                <KeyRound size={13} className="absolute left-3 text-slate-500" />
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="PIN opcional (Ex: 7492)"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  maxLength={20}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-8 pr-9 py-2 text-xs font-mono text-white placeholder-slate-600 outline-none focus:border-amber-400"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-2.5 text-slate-500 hover:text-slate-300 cursor-pointer"
+                  title={showPassword ? 'Ocultar senha' : 'Ver senha'}
+                >
+                  {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Ranking System Selector: GC (Manual) vs FACEIT (Auto) */}
           <div>
@@ -222,55 +375,6 @@ export default function RoomsHubModal({
                 className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-8 pr-3 py-2 text-xs font-mono text-white placeholder-slate-600 outline-none focus:border-amber-400"
               />
             </div>
-            <p className="text-[10px] text-slate-500 mt-1">
-              Os jogadores poderão entrar automaticamente no CS2 ou copiar o comando <code className="text-amber-400">connect</code>.
-            </p>
-          </div>
-
-          {/* Security & Privacy (Password & Link-only) */}
-          <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3 space-y-3">
-            <div className="flex items-center gap-1.5 text-xs font-bold text-amber-400 uppercase tracking-wide">
-              <Lock size={13} /> Segurança & Privacidade da Sala
-            </div>
-
-            {/* Password input */}
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-[10px] text-slate-400 font-semibold block uppercase">
-                  Senha da Sala (Opcional)
-                </label>
-                <span className="text-[9px] text-slate-500 font-mono">Deixe em branco para aberta</span>
-              </div>
-              <div className="relative">
-                <Lock size={13} className="absolute left-3 top-3 text-slate-500" />
-                <input
-                  type="text"
-                  placeholder="Ex: 1234 (opcional)"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  maxLength={20}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-8 pr-3 py-2 text-xs font-mono text-white placeholder-slate-600 outline-none focus:border-amber-400"
-                />
-              </div>
-            </div>
-
-            {/* Private Room Checkbox */}
-            <label className="flex items-start gap-2.5 cursor-pointer pt-2 border-t border-slate-800/80">
-              <input
-                type="checkbox"
-                checked={isPrivate}
-                onChange={(e) => setIsPrivate(e.target.checked)}
-                className="mt-0.5 rounded bg-slate-950 border-slate-700 text-amber-500 focus:ring-0 focus:ring-offset-0 cursor-pointer"
-              />
-              <div>
-                <span className="text-xs font-bold text-slate-200 block">
-                  Sala Privada (Oculta da lista do Hub)
-                </span>
-                <span className="text-[10px] text-slate-400 block leading-tight">
-                  A sala não aparecerá na lista pública de salas. O acesso será exclusivo para quem tiver o link direto da sala.
-                </span>
-              </div>
-            </label>
           </div>
 
           {!isSteamLogged ? (
@@ -294,16 +398,17 @@ export default function RoomsHubModal({
               className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 shadow-md cursor-pointer active:scale-95"
             >
               <Sparkles size={14} />
-              <span>Criar Sala e Entrar</span>
+              <span>{isPrivate ? 'Criar Mix Privado (Link)' : 'Criar Mix Público'}</span>
             </button>
           )}
         </form>
 
-        {/* Existing Rooms List */}
+        {/* Existing Rooms List (Public Rooms) */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-              Salas Ativas no Momento ({rooms.length})
+            <span className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+              <Globe size={13} className="text-emerald-400" />
+              Mixes Públicos Ativos ({rooms.length})
             </span>
             <button
               onClick={fetchRooms}
@@ -316,7 +421,7 @@ export default function RoomsHubModal({
           <div className="max-h-56 overflow-y-auto space-y-2 pr-1">
             {rooms.length === 0 ? (
               <div className="text-center py-6 text-xs text-slate-500 bg-slate-950/40 rounded-xl border border-slate-800/60">
-                Nenhuma outra sala ativa no momento. Crie a sua acima!
+                Nenhum mix público aberto no momento. Crie o seu acima!
               </div>
             ) : (
               rooms.map((r) => {
@@ -333,7 +438,7 @@ export default function RoomsHubModal({
                     onClick={() => {
                       if (!isCurrent) {
                         if (soundEnabled) playClickSound();
-                        onSelectRoom(r.id, r.name, r.rankingSystem, r.serverIp, null);
+                        onSelectRoom(r.id, r.name, r.rankingSystem, r.serverIp, null, false);
                         onClose();
                       }
                     }}
@@ -344,6 +449,9 @@ export default function RoomsHubModal({
                         <span className="font-mono text-[10px] text-amber-400 bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20">
                           #{r.id}
                         </span>
+                        <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.2 rounded font-mono flex items-center gap-1">
+                          <Globe size={9} /> Público
+                        </span>
                         {isFaceit ? (
                           <span className="text-[9px] font-bold text-orange-400 bg-orange-500/15 border border-orange-500/30 px-1.5 py-0.2 rounded font-mono">
                             ⚡ FACEIT
@@ -351,11 +459,6 @@ export default function RoomsHubModal({
                         ) : (
                           <span className="text-[9px] font-bold text-amber-400 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.2 rounded font-mono">
                             🛡️ GC
-                          </span>
-                        )}
-                        {Boolean(r.hasPassword) && (
-                          <span className="text-[9px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.2 rounded font-mono flex items-center gap-1">
-                            <Lock size={9} /> Senha
                           </span>
                         )}
                         {Boolean(r.hasServer || r.serverIp) && (

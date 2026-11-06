@@ -179,10 +179,11 @@ function cleanupInactiveRooms() {
 // Periodic cleanup every 60 seconds
 setInterval(cleanupInactiveRooms, 60 * 1000);
 
-function getOrCreateRoom(roomId, customName = '', rankingSystem = 'gc', serverIp = '', password = '', isPrivate = false, creatorId = null, creatorSteamId = null) {
+function getOrCreateRoom(roomId, customName = '', rankingSystem = 'gc', serverIp = '', password = '', isPrivate = false, creatorId = null, creatorSteamId = null, inviteKey = null) {
   const id = roomId.trim().toUpperCase() || 'MIX-1';
   if (!rooms.has(id)) {
     const now = Date.now();
+    const finalInviteKey = inviteKey || `gc_${Math.random().toString(36).substring(2, 9)}`;
     rooms.set(id, {
       id,
       name: customName || `Mix ${id}`,
@@ -206,6 +207,7 @@ function getOrCreateRoom(roomId, customName = '', rankingSystem = 'gc', serverIp
       rconPassword: '',
       password: (password || '').trim(),
       isPrivate: Boolean(isPrivate),
+      inviteKey: finalInviteKey,
       liveMatch: null,
       chat: [],
       history: [],
@@ -274,6 +276,7 @@ function getSafeRoomState(room) {
     creatorId: room.creatorId || null,
     hasPassword: Boolean(password && password.trim()),
     isPrivate: Boolean(room.isPrivate),
+    inviteKey: room.inviteKey || null,
   };
 }
 
@@ -397,22 +400,43 @@ io.on('connection', (socket) => {
   });
 
   // Join Room
-  socket.on('join_room', async ({ roomId, player, roomName, rankingSystem, serverIp, password, isPrivate }) => {
+  socket.on('join_room', async ({ roomId, player, roomName, rankingSystem, serverIp, password, isPrivate, inviteKey }) => {
     const cleanRoomId = sanitizeInput(roomId || 'MIX-1', 20).toUpperCase();
     const cleanRoomName = sanitizeInput(roomName, 40);
     const cleanPassword = sanitizeInput(password || '', 32);
+    const cleanKey = sanitizeInput(inviteKey || '', 32);
 
-    // Check if room already exists and requires password
+    // Check if room already exists
     const existingRoom = rooms.get(cleanRoomId);
-    if (existingRoom && existingRoom.password) {
-      if (cleanPassword !== existingRoom.password) {
-        socket.emit('room_auth_error', {
-          roomId: cleanRoomId,
-          roomName: existingRoom.name,
-          error: 'wrong_password',
-          message: cleanPassword ? 'Senha incorreta para esta sala.' : 'Esta sala requer uma senha para entrar.',
-        });
-        return;
+    if (existingRoom) {
+      // 1. Gamers Club style Private Room check: ONLY enters via direct invite link or matching key
+      if (existingRoom.isPrivate) {
+        const matchesKey = cleanKey && existingRoom.inviteKey && cleanKey === existingRoom.inviteKey;
+        const matchesPassword = cleanPassword && existingRoom.password && cleanPassword === existingRoom.password;
+        const isKnownPlayer = player?.id && existingRoom.players.some((p) => p.id === player.id);
+        const isCreator = (socket.playerId && existingRoom.creatorId === socket.playerId) ||
+                          (player?.steamId && existingRoom.creatorSteamId === player.steamId);
+
+        if (!matchesKey && !matchesPassword && !isKnownPlayer && !isCreator) {
+          socket.emit('room_auth_error', {
+            roomId: cleanRoomId,
+            roomName: existingRoom.name,
+            error: 'private_room',
+            message: 'Esta sala é privada (estilo Gamers Club). O acesso é exclusivo via link direto de convite.',
+          });
+          return;
+        }
+      } else if (existingRoom.password) {
+        // Public room with password (if configured)
+        if (cleanPassword !== existingRoom.password) {
+          socket.emit('room_auth_error', {
+            roomId: cleanRoomId,
+            roomName: existingRoom.name,
+            error: 'wrong_password',
+            message: cleanPassword ? 'Senha incorreta para esta sala.' : 'Esta sala requer uma senha para entrar.',
+          });
+          return;
+        }
       }
     }
 
@@ -422,13 +446,32 @@ io.on('connection', (socket) => {
     socket.join(cleanRoomId);
     socket.roomId = cleanRoomId;
 
-    const room = getOrCreateRoom(cleanRoomId, cleanRoomName, rankingSystem, serverIp, cleanPassword, isPrivate);
+    const room = getOrCreateRoom(
+      cleanRoomId,
+      cleanRoomName,
+      rankingSystem,
+      serverIp,
+      cleanPassword,
+      isPrivate,
+      socket.playerId,
+      player?.steamId,
+      cleanKey
+    );
     if (rankingSystem && room.players.length === 0) {
       room.rankingSystem = rankingSystem === 'faceit' ? 'faceit' : 'gc';
     }
     if (serverIp && serverIp.trim()) {
       room.serverIp = sanitizeInput(serverIp, 64);
     }
+
+    // Deliver authenticated room credentials and invite key to the joining client
+    socket.emit('room_authenticated', {
+      roomId: cleanRoomId,
+      password: room.password || '',
+      inviteKey: room.inviteKey || '',
+      isPrivate: Boolean(room.isPrivate),
+      isCreator: room.creatorId === socket.playerId,
+    });
 
     if (player && player.nick) {
       socket.playerId = player.id || socket.id;
