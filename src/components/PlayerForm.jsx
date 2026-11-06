@@ -28,6 +28,11 @@ export default function PlayerForm({
   const [avatar, setAvatar] = useState(currentProfile?.avatar || '🎯');
   const [faceitNick, setFaceitNick] = useState(currentProfile?.faceitNick || '');
   const [faceitSyncError, setFaceitSyncError] = useState(null);
+  const [activeRankingTab, setActiveRankingTab] = useState(rankingSystem === 'faceit' ? 'faceit' : 'gc');
+
+  useEffect(() => {
+    if (rankingSystem) setActiveRankingTab(rankingSystem);
+  }, [rankingSystem]);
   const [isSaved, setIsSaved] = useState(false);
   const [levelSynced, setLevelSynced] = useState(false);
   const [syncingFaceit, setSyncingFaceit] = useState(false);
@@ -243,15 +248,14 @@ export default function PlayerForm({
             Seu Perfil no Mix
           </h2>
           <div className="flex items-center gap-1.5 mt-0.5">
-            {isFaceitMode ? (
-              <span className="text-[10px] text-orange-400 font-bold bg-orange-500/15 border border-orange-500/30 px-1.5 py-0.2 rounded font-mono flex items-center gap-1">
-                <Zap size={10} /> MODO FACEIT (AUTO)
-              </span>
-            ) : (
+            <div className="flex items-center gap-1.5">
               <span className="text-[10px] text-amber-400 font-bold bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.2 rounded font-mono flex items-center gap-1">
-                <Shield size={10} /> MODO GAMERS CLUB (1-21)
+                <Shield size={10} /> GC: LVL {level}
               </span>
-            )}
+              <span className="text-[10px] text-orange-400 font-bold bg-orange-500/15 border border-orange-500/30 px-1.5 py-0.2 rounded font-mono flex items-center gap-1">
+                <Zap size={10} /> FACEIT: LVL {faceitLevel}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -428,8 +432,43 @@ export default function PlayerForm({
           </div>
         </div>
 
-        {/* RANKING CONTROLS: FACEIT VS GAMERS CLUB */}
-        {isFaceitMode ? (
+        {/* RANKING TABS: GAMERS CLUB VS FACEIT */}
+        <div className="grid grid-cols-2 gap-2 bg-slate-950/90 p-1.5 rounded-xl border border-slate-800 shadow-inner">
+          <button
+            type="button"
+            onClick={() => {
+              if (soundEnabled) playClickSound();
+              setActiveRankingTab('gc');
+            }}
+            className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+              activeRankingTab === 'gc'
+                ? 'bg-amber-500 text-slate-950 shadow-md font-black'
+                : 'text-slate-400 hover:text-white hover:bg-slate-900 border border-transparent'
+            }`}
+          >
+            <Shield size={13} />
+            <span>Gamers Club ({level})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (soundEnabled) playClickSound();
+              setActiveRankingTab('faceit');
+            }}
+            className={`py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+              activeRankingTab === 'faceit'
+                ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 shadow-md font-black'
+                : 'text-slate-400 hover:text-white hover:bg-slate-900 border border-transparent'
+            }`}
+          >
+            <Zap size={13} />
+            <span>FACEIT Oficial ({faceitLevel})</span>
+          </button>
+        </div>
+
+        {/* ACTIVE RANKING PANEL */}
+        {activeRankingTab === 'faceit' ? (
           /* FACEIT Controls */
           <div className="bg-slate-950/60 border border-orange-500/30 rounded-xl p-3.5 space-y-3">
             <div className="flex items-center justify-between">
@@ -632,6 +671,32 @@ export default function PlayerForm({
                   </button>
                 );
               })}
+            </div>
+
+            {/* Always Visible FACEIT Quick-Sync Bar inside GC view */}
+            <div className="pt-2 border-t border-slate-800/80 mt-2 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <FaceitBadge level={faceitLevel} elo={faceitElo} size="sm" />
+                <div className="min-w-0 text-[11px]">
+                  <span className="font-bold text-white truncate block">
+                    {faceitNick || nick || 'Conta FACEIT'}
+                  </span>
+                  <span className="text-[10px] text-orange-400 font-mono">
+                    Nível {faceitLevel} {faceitElo ? `(${faceitElo} ELO)` : ''}
+                  </span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => handleRefreshFaceit(faceitNick || nick)}
+                disabled={syncingFaceit}
+                className="px-2.5 py-1 rounded-lg bg-orange-500 hover:bg-orange-400 text-slate-950 font-bold text-xs flex items-center gap-1 transition-all cursor-pointer shadow-md shadow-orange-500/20 disabled:opacity-50 active:scale-95 shrink-0"
+                title="Puxar nível e ELO da FACEIT agora"
+              >
+                <RefreshCw size={11} className={syncingFaceit ? 'animate-spin' : ''} />
+                <span>{syncingFaceit ? 'Buscando...' : 'Puxar FACEIT'}</span>
+              </button>
             </div>
           </div>
         )}
