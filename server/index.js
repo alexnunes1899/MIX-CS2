@@ -26,7 +26,7 @@ const io = new Server(server, {
 
 const isDev = process.argv.includes('--dev');
 const portArg = process.argv.find((arg) => arg.startsWith('--port='));
-const PORT = process.env.PORT || (portArg ? Number(portArg.split('=')[1]) : (isDev ? 3001 : 3000));
+const PORT = process.env.PORT || (portArg ? Number(portArg.split('=')[1]) : 3000);
 
 // Live CS2 Active Duty Map Pool Sync (Wikipedia / Valve Esports Records)
 fetchLiveOfficialRotation()
@@ -907,11 +907,12 @@ app.post('/api/gsi/:roomId', (req, res) => {
 // Fallback GSI endpoint (CS2 sent without roomId in path)
 app.post('/api/gsi', (req, res) => {
   const token = (req.body?.auth?.token || 'MIX-PRO').trim().toUpperCase();
-  const room = getRoomAndTouch(token);
   const liveState = handleGsiPayload(token, req.body);
-  if (room && liveState) {
-    room.liveMatch = liveState;
-    io.to(token).emit('gsi_update', liveState);
+  if (liveState) {
+    rooms.forEach((room) => {
+      room.liveMatch = liveState;
+      io.to(room.id).emit('gsi_update', liveState);
+    });
   }
   res.json({ success: true });
 });
