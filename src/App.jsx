@@ -22,7 +22,7 @@ import RoomPasswordModal from './components/RoomPasswordModal';
 import FailoverBanner from './components/FailoverBanner';
 import { recordMatchResult } from './utils/playerStats';
 import { ACTIVE_DUTY_MAPS, OFFICIAL_ACTIVE_DUTY, EXTRA_CS2_MAPS } from './data/maps';
-import { balanceTeams, shuffleTeams } from './utils/balance';
+import { balanceTeams, shuffleTeams, calculateMetricsForTeams } from './utils/balance';
 import { MOCK_PLAYERS } from './data/mockPlayers';
 
 const socket = io('/', {
@@ -300,7 +300,11 @@ export default function App() {
       }
     });
 
-    socket.on('kicked_from_room', ({ roomId: kickedRoomId, reason }) => {
+    socket.on('kicked_from_room', ({ roomId: kickedRoomId, targetPlayerId, reason }) => {
+      // If a specific targetPlayerId was kicked, only act if it matches myProfile.id
+      if (targetPlayerId && myProfile?.id && myProfile.id !== targetPlayerId) {
+        return;
+      }
       setRoomNotice({
         title: 'Removido da Sala',
         message: reason || 'Você foi removido da sala pelo administrador.',
@@ -377,6 +381,16 @@ export default function App() {
   const handleKickPlayer = (targetPlayerId) => {
     if (socket.connected) {
       socket.emit('kick_player', { roomId, targetPlayerId });
+    } else {
+      setRoom((prev) => {
+        const teamA = prev.teamA.filter((p) => p.id !== targetPlayerId);
+        const teamB = prev.teamB.filter((p) => p.id !== targetPlayerId);
+        const players = prev.players.filter((p) => p.id !== targetPlayerId);
+        const metrics = (prev.phase === 'teams' || prev.phase === 'veto')
+          ? calculateMetricsForTeams(teamA, teamB, prev.rankingSystem || 'gc')
+          : prev.metrics;
+        return { ...prev, players, teamA, teamB, metrics };
+      });
     }
   };
 
@@ -391,7 +405,8 @@ export default function App() {
         const teamB = prev.teamB.filter((p) => p.id !== playerId);
         if (targetTeam === 'teamA') teamA.push(player);
         else teamB.push(player);
-        return { ...prev, teamA, teamB };
+        const metrics = calculateMetricsForTeams(teamA, teamB, prev.rankingSystem || 'gc');
+        return { ...prev, teamA, teamB, metrics };
       });
     }
   };
@@ -399,6 +414,26 @@ export default function App() {
   const handleSwapPlayers = (playerAId, playerBId) => {
     if (socket.connected) {
       socket.emit('swap_players', { roomId, playerAId, playerBId });
+    } else {
+      setRoom((prev) => {
+        let idxA = prev.teamA.findIndex((p) => p.id === playerAId);
+        let idxB = prev.teamB.findIndex((p) => p.id === playerBId);
+        if (idxA === -1 || idxB === -1) {
+          idxA = prev.teamA.findIndex((p) => p.id === playerBId);
+          idxB = prev.teamB.findIndex((p) => p.id === playerAId);
+        }
+        if (idxA >= 0 && idxB >= 0) {
+          const newTeamA = [...prev.teamA];
+          const newTeamB = [...prev.teamB];
+          const pA = newTeamA[idxA];
+          const pB = newTeamB[idxB];
+          newTeamA[idxA] = pB;
+          newTeamB[idxB] = pA;
+          const metrics = calculateMetricsForTeams(newTeamA, newTeamB, prev.rankingSystem || 'gc');
+          return { ...prev, teamA: newTeamA, teamB: newTeamB, metrics };
+        }
+        return prev;
+      });
     }
   };
 

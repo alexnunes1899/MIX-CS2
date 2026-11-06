@@ -131,3 +131,26 @@ export function shuffleTeams(players, rankingSystem = 'gc') {
     },
   };
 }
+
+/**
+ * Calculates current balance metrics for two arbitrary teams
+ */
+export function calculateMetricsForTeams(teamA = [], teamB = [], rankingSystem = 'gc') {
+  const sumA = teamA.reduce((acc, p) => acc + getPlayerScore(p, rankingSystem), 0);
+  const sumB = teamB.reduce((acc, p) => acc + getPlayerScore(p, rankingSystem), 0);
+  const diff = Math.abs(sumA - sumB);
+  const avgA = teamA.length > 0 ? (sumA / teamA.length).toFixed(1) : '0';
+  const avgB = teamB.length > 0 ? (sumB / teamB.length).toFixed(1) : '0';
+  const maxPossible = Math.max(sumA, sumB) || 1;
+  const balancePercentage = Math.max(0, Math.min(100, Math.round(100 - (diff / maxPossible) * 100)));
+
+  return {
+    sumA,
+    sumB,
+    avgA,
+    avgB,
+    diff,
+    balancePercentage,
+    rankingSystem,
+  };
+}

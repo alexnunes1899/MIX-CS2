@@ -637,12 +637,20 @@ io.on('connection', (socket) => {
       if (targetSock) {
         targetSock.emit('kicked_from_room', {
           roomId: room.id,
+          targetPlayerId,
           reason: 'Você foi removido da sala pelo administrador.',
         });
         targetSock.leave(room.id);
         targetSock.roomId = null;
       }
     }
+
+    // Broadcast kick event to room with targetPlayerId for resilient multi-tab/reconnect handling
+    io.to(room.id).emit('kicked_from_room', {
+      roomId: room.id,
+      targetPlayerId,
+      reason: 'Você foi removido da sala pelo administrador.',
+    });
 
     // Chat broadcast
     const chatMsg = {
@@ -705,8 +713,15 @@ io.on('connection', (socket) => {
       return;
     }
 
-    const idxA = room.teamA.findIndex((p) => p.id === playerAId);
-    const idxB = room.teamB.findIndex((p) => p.id === playerBId);
+    let idxA = room.teamA.findIndex((p) => p.id === playerAId);
+    let idxB = room.teamB.findIndex((p) => p.id === playerBId);
+
+    // Support reverse order swap
+    if (idxA === -1 || idxB === -1) {
+      idxA = room.teamA.findIndex((p) => p.id === playerBId);
+      idxB = room.teamB.findIndex((p) => p.id === playerAId);
+    }
+
     if (idxA >= 0 && idxB >= 0) {
       const pA = room.teamA[idxA];
       const pB = room.teamB[idxB];
