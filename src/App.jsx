@@ -165,6 +165,31 @@ export default function App() {
     }
   }, []);
 
+  // Automatic background FACEIT stats sync on mount
+  useEffect(() => {
+    if (!myProfile?.steamId) return;
+    const cleanNick = myProfile.nick || '';
+    fetch(`/api/faceit/${myProfile.steamId}?nickname=${encodeURIComponent(cleanNick)}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && data.found && data.level) {
+          setMyProfile((prev) => {
+            if (prev.faceitLevel === data.level && prev.faceitElo === data.elo) return prev;
+            const updated = {
+              ...prev,
+              faceitLevel: data.level,
+              faceitElo: data.elo,
+            };
+            try {
+              localStorage.setItem('cs2_mix_profile', JSON.stringify(updated));
+            } catch (e) {}
+            return updated;
+          });
+        }
+      })
+      .catch(() => {});
+  }, [myProfile?.steamId]);
+
   // Fetch Official Rotation on Mount
   useEffect(() => {
     fetch('/api/maps/rotation')

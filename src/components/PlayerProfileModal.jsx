@@ -23,6 +23,10 @@ export default function PlayerProfileModal({
   const [loadingSteam, setLoadingSteam] = useState(false);
   const [faceitSaved, setFaceitSaved] = useState(false);
   const [tempElo, setTempElo] = useState(null);
+  const [syncingFaceit, setSyncingFaceit] = useState(false);
+  const [faceitSyncMessage, setFaceitSyncMessage] = useState(null);
+  const [customFaceitNick, setCustomFaceitNick] = useState('');
+  const [showNickInput, setShowNickInput] = useState(false);
 
   const { nick = 'Jogador', steamId, avatar = '🎯', level = 12, faceitLevel = 5, faceitElo = 1200, side = 'ANY' } = profile || {};
   const isSteamUser = Boolean(steamId);
@@ -51,6 +55,45 @@ export default function PlayerProfileModal({
       .then((data) => setSteamStats(data))
       .catch(() => {})
       .finally(() => setLoadingSteam(false));
+  }, [isOpen, steamId]);
+
+  const handleSyncFaceitAuto = async (overrideNick) => {
+    if (!steamId && !overrideNick) return;
+    setSyncingFaceit(true);
+    setFaceitSyncMessage(null);
+    if (soundEnabled) playClickSound();
+    const queryNick = overrideNick || customFaceitNick || nick || '';
+    try {
+      const res = await fetch(`/api/faceit/${steamId || 'custom'}?nickname=${encodeURIComponent(queryNick)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.found && data.level) {
+          const updated = {
+            ...profile,
+            faceitLevel: data.level,
+            faceitElo: data.elo,
+          };
+          if (onSaveProfile) onSaveProfile(updated);
+          setFaceitSyncMessage(`✓ Sincronizado: Nível ${data.level} (${data.elo} ELO)`);
+          setTimeout(() => setFaceitSyncMessage(null), 4000);
+          setShowNickInput(false);
+        } else {
+          setFaceitSyncMessage('Conta FACEIT não encontrada');
+          setTimeout(() => setFaceitSyncMessage(null), 3000);
+        }
+      }
+    } catch (e) {
+      setFaceitSyncMessage('Erro na consulta');
+      setTimeout(() => setFaceitSyncMessage(null), 3000);
+    } finally {
+      setSyncingFaceit(false);
+    }
+  };
+
+  // Auto-sync FACEIT on modal open
+  useEffect(() => {
+    if (!isOpen || !steamId) return;
+    handleSyncFaceitAuto();
   }, [isOpen, steamId]);
 
   if (!isOpen || !profile) return null;
@@ -245,7 +288,8 @@ export default function PlayerProfileModal({
               </div>
 
               {/* FACEIT Card */}
-              <div className="bg-slate-950/80 border border-orange-500/30 rounded-2xl p-3.5 flex items-center justify-between shadow-sm">
+              <div className="bg-slate-950/80 border border-orange-500/30 rounded-2xl p-3.5 shadow-sm space-y-2.5">
+                <div className="flex items-center justify-between">
                 <div>
                   <span className="text-[10px] font-mono uppercase text-orange-400/80 font-bold block mb-0.5">
                     FACEIT Oficial
@@ -258,6 +302,50 @@ export default function PlayerProfileModal({
                   </span>
                 </div>
                 <FaceitBadge level={faceitLevel} elo={faceitElo} size="lg" />
+                </div>
+                <div className="pt-2 border-t border-slate-900 flex flex-col gap-1.5">
+                  <div className="flex items-center justify-between gap-1.5 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => handleSyncFaceitAuto()}
+                      disabled={syncingFaceit}
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 hover:text-orange-300 border border-orange-500/40 text-[10px] font-bold transition-all cursor-pointer disabled:opacity-50 active:scale-95"
+                    >
+                      <RefreshCw size={11} className={syncingFaceit ? 'animate-spin' : ''} />
+                      <span>{syncingFaceit ? 'Buscando na FACEIT...' : 'Puxar Automático da FACEIT'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowNickInput(!showNickInput)}
+                      className="text-[10px] text-slate-400 hover:text-slate-200 underline cursor-pointer"
+                    >
+                      {showNickInput ? 'Fechar' : 'Nick diferente?'}
+                    </button>
+                  </div>
+                  {showNickInput && (
+                    <div className="flex items-center gap-1.5 pt-1">
+                      <input
+                        type="text"
+                        placeholder="Ex: Lxn1899"
+                        value={customFaceitNick}
+                        onChange={(e) => setCustomFaceitNick(e.target.value)}
+                        className="bg-slate-900 border border-orange-500/40 rounded-lg px-2.5 py-1 text-xs text-white placeholder-slate-500 outline-none flex-1 font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleSyncFaceitAuto(customFaceitNick)}
+                        className="px-2.5 py-1 bg-orange-600 hover:bg-orange-500 text-white rounded-lg text-xs font-bold cursor-pointer"
+                      >
+                        Buscar
+                      </button>
+                    </div>
+                  )}
+                  {faceitSyncMessage && (
+                    <span className="text-[10px] text-emerald-400 font-bold block animate-pulse">
+                      {faceitSyncMessage}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 

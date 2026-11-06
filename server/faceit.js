@@ -63,12 +63,13 @@ export async function fetchFaceitPlayer({ steamId, nickname }) {
 
     // 2b. Try search players by partial nickname
     try {
-      const searchRes = await fetch(`https://open.faceit.com/data/v4/search/players?nickname=${encodeURIComponent(nickname.trim())}&limit=2`, { headers });
+      const searchRes = await fetch(`https://open.faceit.com/data/v4/search/players?nickname=${encodeURIComponent(nickname.trim())}&limit=10`, { headers });
       if (searchRes.ok) {
         const sData = await searchRes.json();
         if (sData.items && sData.items.length > 0) {
-          const firstPlayer = sData.items[0];
-          const pRes = await fetch(`https://open.faceit.com/data/v4/players/${firstPlayer.player_id}`, { headers });
+          // Prioritize Brazilian account or first match
+          const targetPlayer = sData.items.find((it) => it.country === 'BR') || sData.items[0];
+          const pRes = await fetch(`https://open.faceit.com/data/v4/players/${targetPlayer.player_id}`, { headers });
           if (pRes.ok) {
             const pData = await pRes.json();
             const cs = pData.games?.cs2 || pData.games?.csgo;
