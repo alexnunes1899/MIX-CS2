@@ -7,11 +7,14 @@ import TeamsView from './components/TeamsView';
 import MapVeto from './components/MapVeto';
 import FinalSummary from './components/FinalSummary';
 import RoomsHubModal from './components/RoomsHubModal';
+import MatchHistoryModal from './components/MatchHistoryModal';
+import QuickVetoModal from './components/QuickVetoModal';
+import QuickMapRollModal from './components/QuickMapRollModal';
 import ChatDrawer from './components/ChatDrawer';
 import CoinFlipModal from './components/CoinFlipModal';
 import DraftRoulette from './components/DraftRoulette';
 import CaptainsDraftView from './components/CaptainsDraftView';
-import { CS2_MAPS } from './data/maps';
+import { ACTIVE_DUTY_MAPS } from './data/maps';
 import { balanceTeams, shuffleTeams } from './utils/balance';
 import { MOCK_PLAYERS } from './data/mockPlayers';
 
@@ -30,6 +33,8 @@ export default function App() {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [roomsHubOpen, setRoomsHubOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [quickVetoOpen, setQuickVetoOpen] = useState(false);
+  const [quickMapRollOpen, setQuickMapRollOpen] = useState(false);
   const [rouletteActive, setRouletteActive] = useState(false);
   const [pendingDrawMode, setPendingDrawMode] = useState('balanced');
 
@@ -59,7 +64,7 @@ export default function App() {
     teamA: [],
     teamB: [],
     metrics: null,
-    maps: CS2_MAPS.slice(0, 7),
+    maps: [...ACTIVE_DUTY_MAPS],
     bannedMaps: [],
     currentTurn: 'teamA',
     finalMap: null,
@@ -204,6 +209,39 @@ export default function App() {
           ...prev.history,
         ],
       }));
+    }
+  };
+
+  // Direct Veto Start (Teams already made)
+  const handleStartQuickVeto = (teamAName, teamBName) => {
+    if (socket.connected) {
+      socket.emit('quick_start_veto', { roomId, teamAName, teamBName });
+    } else {
+      setRoom((prev) => ({
+        ...prev,
+        phase: 'veto',
+        bannedMaps: [],
+        currentTurn: 'teamA',
+        finalMap: null,
+        startingSideTeamB: null,
+        teamA: [{ id: 't1', nick: teamAName || 'Time A', level: 15, avatar: '🛡️' }],
+        teamB: [{ id: 't2', nick: teamBName || 'Time B', level: 15, avatar: '⚔️' }],
+      }));
+    }
+  };
+
+  // Direct Quick Map Roll
+  const handleApplyQuickMap = (map, startingSide) => {
+    setRoom((prev) => ({
+      ...prev,
+      phase: 'finished',
+      finalMap: map,
+      startingSideTeamB: startingSide,
+      teamA: prev.teamA.length > 0 ? prev.teamA : [{ id: 't1', nick: 'Time A', level: 15, avatar: '🛡️' }],
+      teamB: prev.teamB.length > 0 ? prev.teamB : [{ id: 't2', nick: 'Time B', level: 15, avatar: '⚔️' }],
+    }));
+    if (socket.connected) {
+      socket.emit('quick_random_map', { roomId });
     }
   };
 
@@ -485,6 +523,8 @@ export default function App() {
         setSoundEnabled={setSoundEnabled}
         onOpenRoomsHub={() => setRoomsHubOpen(true)}
         onOpenHistory={() => setHistoryOpen(true)}
+        onOpenQuickVeto={() => setQuickVetoOpen(true)}
+        onOpenQuickMapRoll={() => setQuickMapRollOpen(true)}
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-6">
@@ -510,6 +550,8 @@ export default function App() {
                 onClearPlayers={handleClearPlayers}
                 onDrawTeams={handleTriggerDraw}
                 onStartCaptainDraft={handleStartCaptainDraft}
+                onOpenQuickVeto={() => setQuickVetoOpen(true)}
+                onOpenQuickMapRoll={() => setQuickMapRollOpen(true)}
                 soundEnabled={soundEnabled}
               />
             </div>
@@ -573,6 +615,28 @@ export default function App() {
         soundEnabled={soundEnabled}
       />
 
+      <MatchHistoryModal
+        isOpen={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        history={room.history}
+        onSaveScore={handleSaveScore}
+        soundEnabled={soundEnabled}
+      />
+
+      <QuickVetoModal
+        isOpen={quickVetoOpen}
+        onClose={() => setQuickVetoOpen(false)}
+        onStartQuickVeto={handleStartQuickVeto}
+        soundEnabled={soundEnabled}
+      />
+
+      <QuickMapRollModal
+        isOpen={quickMapRollOpen}
+        onClose={() => setQuickMapRollOpen(false)}
+        onApplyMap={handleApplyQuickMap}
+        soundEnabled={soundEnabled}
+      />
+
       <CoinFlipModal
         isOpen={room.phase === 'coin_flip'}
         coin={room.coin}
@@ -598,7 +662,7 @@ export default function App() {
       {/* Footer */}
       <footer className="border-t border-slate-900 bg-slate-950/80 py-4 text-center text-xs text-slate-500">
         <p>
-          CS2 Mix Hub • Múltiplas Salas de Mix com Sorteador Gamers Club & Pick/Ban em Tempo Real
+          CS2 Mix Hub • Rotação Oficial Valve (Active Duty) • Sorteador Gamers Club & Pick/Ban em Tempo Real
         </p>
       </footer>
     </div>

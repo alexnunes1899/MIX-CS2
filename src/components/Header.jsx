@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Share2, Check, Users, Swords, MapPin, Trophy, Volume2, VolumeX, Layers, History } from 'lucide-react';
+import { Share2, Check, Users, Swords, MapPin, Trophy, Volume2, VolumeX, Layers, History, Dices, Zap } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
 
 export default function Header({
@@ -10,6 +10,8 @@ export default function Header({
   setSoundEnabled,
   onOpenRoomsHub,
   onOpenHistory,
+  onOpenQuickVeto,
+  onOpenQuickMapRoll,
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -64,18 +66,25 @@ export default function Header({
             {/* Quick action buttons on mobile */}
             <div className="flex md:hidden items-center gap-1.5">
               <button
+                onClick={onOpenQuickMapRoll}
+                className="p-2 rounded-lg bg-slate-800 text-amber-400 hover:text-white"
+                title="Roleta de Mapa Rápido"
+              >
+                <Dices size={17} />
+              </button>
+              <button
+                onClick={onOpenQuickVeto}
+                className="p-2 rounded-lg bg-slate-800 text-sky-400 hover:text-white"
+                title="Veto Rápido (Times Prontos)"
+              >
+                <Zap size={17} />
+              </button>
+              <button
                 onClick={onOpenRoomsHub}
                 className="p-2 rounded-lg bg-slate-800 text-slate-300 hover:text-white"
                 title="Trocar de Sala / Criar Mix"
               >
                 <Layers size={17} />
-              </button>
-              <button
-                onClick={onOpenHistory}
-                className="p-2 rounded-lg bg-slate-800 text-slate-300 hover:text-white"
-                title="Histórico de Placares"
-              >
-                <History size={17} />
               </button>
             </div>
           </div>
@@ -109,22 +118,32 @@ export default function Header({
 
           {/* Room Controls & Actions */}
           <div className="flex items-center flex-wrap gap-2">
+            {/* Quick Tools */}
             <button
-              onClick={onOpenRoomsHub}
-              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-700/60 text-xs font-semibold transition-all cursor-pointer"
-              title="Ver todas as salas ou criar um novo mix"
+              onClick={onOpenQuickMapRoll}
+              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-amber-400 border border-amber-500/30 text-xs font-semibold transition-all cursor-pointer"
+              title="Sortear um mapa aleatório rapidamente entre a rotação da Valve"
             >
-              <Layers size={14} className="text-amber-400" />
-              <span>Trocar Sala</span>
+              <Dices size={14} />
+              <span>Roleta de Mapa</span>
             </button>
 
             <button
-              onClick={onOpenHistory}
-              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-700/60 text-xs font-semibold transition-all cursor-pointer"
-              title="Ver histórico de partidas jogadas nesta sala"
+              onClick={onOpenQuickVeto}
+              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-sky-400 border border-sky-500/30 text-xs font-semibold transition-all cursor-pointer"
+              title="Ir direto para o veto de mapas se os times já estiverem formados"
             >
-              <History size={14} className="text-amber-400" />
-              <span>Placares</span>
+              <Zap size={14} />
+              <span>Veto Rápido</span>
+            </button>
+
+            <button
+              onClick={onOpenRoomsHub}
+              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-700/60 text-xs font-semibold transition-all cursor-pointer"
+              title="Ver todas as salas ou criar um novo mix"
+            >
+              <Layers size={14} className="text-slate-400" />
+              <span>Salas</span>
             </button>
 
             {/* Room Code & Invite button */}

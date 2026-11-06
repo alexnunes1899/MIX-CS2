@@ -24,7 +24,7 @@ const isDev = process.argv.includes('--dev');
 const portArg = process.argv.find((arg) => arg.startsWith('--port='));
 const PORT = process.env.PORT || (portArg ? Number(portArg.split('=')[1]) : (isDev ? 3001 : 3000));
 
-// Default CS2 Active Duty Pool
+// Default CS2 Active Duty Pool (Oficial Valve)
 const DEFAULT_MAPS = [
   { id: 'de_mirage', name: 'Mirage', file: 'de_mirage', location: 'Marrocos', color: '#f59e0b' },
   { id: 'de_inferno', name: 'Inferno', file: 'de_inferno', location: 'Itália', color: '#ea580c' },
@@ -32,7 +32,7 @@ const DEFAULT_MAPS = [
   { id: 'de_dust2', name: 'Dust II', file: 'de_dust2', location: 'Oriente Médio', color: '#eab308' },
   { id: 'de_ancient', name: 'Ancient', file: 'de_ancient', location: 'América Central', color: '#10b981' },
   { id: 'de_anubis', name: 'Anubis', file: 'de_anubis', location: 'Egito', color: '#d97706' },
-  { id: 'de_vertigo', name: 'Vertigo', file: 'de_vertigo', location: 'Arranha-céu', color: '#6366f1' },
+  { id: 'de_train', name: 'Train', file: 'de_train', location: 'Rússia', color: '#64748b' },
 ];
 
 const MOCK_BOTS = [
@@ -418,6 +418,46 @@ io.on('connection', (socket) => {
     room.currentTurn = 'teamA';
     room.finalMap = null;
     room.startingSideTeamB = null;
+
+    io.to(roomId).emit('room_state', room);
+  });
+
+  // Quick Start Veto (when teams are already formed)
+  socket.on('quick_start_veto', ({ roomId, teamAName, teamBName }) => {
+    const room = rooms.get(roomId);
+    if (!room) return;
+
+    room.phase = 'veto';
+    room.bannedMaps = [];
+    room.currentTurn = 'teamA';
+    room.finalMap = null;
+    room.startingSideTeamB = null;
+
+    if (room.teamA.length === 0) {
+      room.teamA = [{ id: 't1', nick: teamAName || 'Time A', level: 15, avatar: '🛡️' }];
+    }
+    if (room.teamB.length === 0) {
+      room.teamB = [{ id: 't2', nick: teamBName || 'Time B', level: 15, avatar: '⚔️' }];
+    }
+    io.to(roomId).emit('room_state', room);
+  });
+
+  // Quick Random Map Draw
+  socket.on('quick_random_map', ({ roomId }) => {
+    const room = rooms.get(roomId);
+    if (!room) return;
+
+    const randomMap = room.maps[Math.floor(Math.random() * room.maps.length)];
+    room.finalMap = randomMap;
+    room.startingSideTeamB = Math.random() < 0.5 ? 'CT' : 'TR';
+    room.phase = 'finished';
+
+    if (room.teamA.length === 0) {
+      room.teamA = [{ id: 't1', nick: 'Time A', level: 15, avatar: '🛡️' }];
+    }
+    if (room.teamB.length === 0) {
+      room.teamB = [{ id: 't2', nick: 'Time B', level: 15, avatar: '⚔️' }];
+    }
 
     io.to(roomId).emit('room_state', room);
   });

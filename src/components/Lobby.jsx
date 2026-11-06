@@ -1,6 +1,6 @@
 import React from 'react';
 import GCBadge from './GCBadge';
-import { Users, Trash2, Bot, Scale, Shuffle, Shield, Flame, CheckCircle2, Crown, Check, AlertCircle } from 'lucide-react';
+import { Users, Trash2, Bot, Scale, Shuffle, Shield, Flame, CheckCircle2, Crown, Check, AlertCircle, Zap, Dices } from 'lucide-react';
 import { playClickSound, playReadySound } from '../utils/audio';
 
 export default function Lobby({
@@ -12,6 +12,8 @@ export default function Lobby({
   onClearPlayers,
   onDrawTeams,
   onStartCaptainDraft,
+  onOpenQuickVeto,
+  onOpenQuickMapRoll,
   soundEnabled,
 }) {
   const maxSlots = 10;
@@ -32,13 +34,58 @@ export default function Lobby({
 
   return (
     <div className="space-y-6">
+      {/* Quick Mode Shortcuts Bar */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div
+          onClick={() => {
+            if (soundEnabled) playClickSound();
+            onOpenQuickVeto();
+          }}
+          className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-sky-500/50 rounded-2xl p-3.5 flex items-center justify-between cursor-pointer transition-all shadow-sm group"
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-sky-500/20 text-sky-400 border border-sky-500/30 flex items-center justify-center group-hover:scale-105 transition-transform">
+              <Zap size={18} />
+            </div>
+            <div>
+              <h4 className="font-bold text-xs uppercase tracking-wider text-white group-hover:text-sky-300 transition-colors">
+                Times Já Montados?
+              </h4>
+              <p className="text-[11px] text-slate-400">Ir direto para o Pick & Ban de Mapas</p>
+            </div>
+          </div>
+          <span className="text-xs font-bold text-sky-400 group-hover:translate-x-1 transition-transform">➔</span>
+        </div>
+
+        <div
+          onClick={() => {
+            if (soundEnabled) playClickSound();
+            onOpenQuickMapRoll();
+          }}
+          className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-amber-500/50 rounded-2xl p-3.5 flex items-center justify-between cursor-pointer transition-all shadow-sm group"
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center group-hover:scale-105 transition-transform">
+              <Dices size={18} />
+            </div>
+            <div>
+              <h4 className="font-bold text-xs uppercase tracking-wider text-white group-hover:text-amber-300 transition-colors">
+                Sorteio Rápido de Mapa
+              </h4>
+              <p className="text-[11px] text-slate-400">Girar roleta entre os mapas da Valve</p>
+            </div>
+          </div>
+          <span className="text-xs font-bold text-amber-400 group-hover:translate-x-1 transition-transform">➔</span>
+        </div>
+      </div>
+
       {/* Top Banner & Quick Controls */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 backdrop-blur flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-bold font-heading text-white flex items-center gap-2">
               <Users size={20} className="text-amber-400" />
-              Lobby ({players.length}/{maxSlots})
+              Lobby de Jogadores ({players.length}/{maxSlots})
             </h2>
             <span
               className={`px-2.5 py-0.5 rounded-full text-xs font-semibold flex items-center gap-1 ${
@@ -101,7 +148,7 @@ export default function Lobby({
 
       {/* Players Grid (10 Slots) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-        {players.map((p, idx) => (
+        {players.map((p) => (
           <div
             key={p.id}
             className={`group relative border rounded-xl p-3.5 transition-all shadow-md flex flex-col justify-between ${
@@ -121,7 +168,7 @@ export default function Lobby({
                       {p.nick}
                     </h3>
                     {p.ready && (
-                      <span className="text-emerald-400" title="Jogador pronto">
+                      <span className="text-emerald-400 font-bold" title="Jogador pronto">
                         ✓
                       </span>
                     )}
@@ -186,17 +233,17 @@ export default function Lobby({
       <div className="bg-gradient-to-r from-amber-500/10 via-slate-900 to-amber-500/10 border border-amber-500/20 rounded-2xl p-5 text-center space-y-4">
         <div>
           <h3 className="text-base font-bold font-heading text-white">
-            Escolha o Formato do Mix
+            Formação dos Times para o Mix
           </h3>
           <p className="text-xs text-slate-400 max-w-lg mx-auto mt-1">
-            Escolha entre o balanceamento matemático automático por nível GC, sorteio puro ou o modo capitães com escolhas alternadas ao vivo!
+            Sorteie com inteligência matemática para somas de nível Gamers Club idênticas, ou monte com escolhas de capitães ao vivo!
           </p>
         </div>
 
         {players.length < 2 && (
           <div className="flex items-center justify-center gap-2 text-xs text-amber-400/90 bg-amber-500/10 border border-amber-500/20 rounded-xl py-2 px-4 max-w-md mx-auto">
             <AlertCircle size={15} />
-            <span>Adicione pelo menos 2 jogadores para iniciar o sorteio.</span>
+            <span>Adicione pelo menos 2 jogadores para iniciar o sorteio (ou use os atalhos no topo).</span>
           </div>
         )}
 

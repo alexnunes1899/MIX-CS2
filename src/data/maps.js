@@ -5,8 +5,9 @@ export const CS2_MAPS = [
     file: 'de_mirage',
     activeDuty: true,
     location: 'Marrocos',
-    image: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=1200&q=80', // Fallback or styled
+    image: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=1200&q=80',
     accentColor: '#f59e0b',
+    description: 'Rotação Oficial Competitiva da Valve',
   },
   {
     id: 'de_inferno',
@@ -16,6 +17,7 @@ export const CS2_MAPS = [
     location: 'Itália',
     image: 'https://images.unsplash.com/photo-1516483638261-f4dbaf036963?auto=format&fit=crop&w=1200&q=80',
     accentColor: '#ea580c',
+    description: 'Rotação Oficial Competitiva da Valve',
   },
   {
     id: 'de_nuke',
@@ -25,6 +27,7 @@ export const CS2_MAPS = [
     location: 'EUA',
     image: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=80',
     accentColor: '#0ea5e9',
+    description: 'Rotação Oficial Competitiva da Valve',
   },
   {
     id: 'de_dust2',
@@ -34,6 +37,7 @@ export const CS2_MAPS = [
     location: 'Oriente Médio',
     image: 'https://images.unsplash.com/photo-1509316975850-ff9c5deb0cd9?auto=format&fit=crop&w=1200&q=80',
     accentColor: '#eab308',
+    description: 'Rotação Oficial Competitiva da Valve',
   },
   {
     id: 'de_ancient',
@@ -43,6 +47,7 @@ export const CS2_MAPS = [
     location: 'América Central',
     image: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=1200&q=80',
     accentColor: '#10b981',
+    description: 'Rotação Oficial Competitiva da Valve',
   },
   {
     id: 'de_anubis',
@@ -52,24 +57,27 @@ export const CS2_MAPS = [
     location: 'Egito',
     image: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80',
     accentColor: '#d97706',
-  },
-  {
-    id: 'de_vertigo',
-    name: 'Vertigo',
-    file: 'de_vertigo',
-    activeDuty: true,
-    location: 'Arranha-céu, EUA',
-    image: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=1200&q=80',
-    accentColor: '#6366f1',
+    description: 'Rotação Oficial Competitiva da Valve',
   },
   {
     id: 'de_train',
     name: 'Train',
     file: 'de_train',
-    activeDuty: false,
+    activeDuty: true,
     location: 'Rússia',
     image: 'https://images.unsplash.com/photo-1474487548417-781cb71495f3?auto=format&fit=crop&w=1200&q=80',
     accentColor: '#64748b',
+    description: 'Rotação Oficial Competitiva da Valve (Atualizada)',
+  },
+  {
+    id: 'de_vertigo',
+    name: 'Vertigo',
+    file: 'de_vertigo',
+    activeDuty: false,
+    location: 'EUA',
+    image: 'https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=1200&q=80',
+    accentColor: '#6366f1',
+    description: 'Reserva / Opcional',
   },
   {
     id: 'de_overpass',
@@ -79,5 +87,8 @@ export const CS2_MAPS = [
     location: 'Berlim, Alemanha',
     image: 'https://images.unsplash.com/photo-1477959858617-67f30bc75b82?auto=format&fit=crop&w=1200&q=80',
     accentColor: '#06b6d4',
+    description: 'Reserva / Opcional',
   },
 ];
+
+export const ACTIVE_DUTY_MAPS = CS2_MAPS.filter((m) => m.activeDuty);
