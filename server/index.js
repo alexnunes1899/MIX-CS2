@@ -107,7 +107,7 @@ const MOCK_BOTS = [
 // In-memory rooms
 const rooms = new Map();
 
-function getOrCreateRoom(roomId, customName = '', rankingSystem = 'gc') {
+function getOrCreateRoom(roomId, customName = '', rankingSystem = 'gc', serverIp = '') {
   const id = roomId.trim().toUpperCase() || 'MIX-1';
   if (!rooms.has(id)) {
     rooms.set(id, {
@@ -125,7 +125,7 @@ function getOrCreateRoom(roomId, customName = '', rankingSystem = 'gc') {
       currentTurn: 'teamA',
       finalMap: null,
       startingSideTeamB: null,
-      serverIp: '',
+      serverIp: serverIp ? serverIp.trim() : '',
       chat: [],
       history: [],
       coin: null, // { winner: 'teamA'|'teamB', choice: 'first'|'pass' }
@@ -147,6 +147,8 @@ function broadcastRoomsList() {
       playerCount: r.players.length,
       phase: r.phase,
       rankingSystem: r.rankingSystem || 'gc',
+      hasServer: Boolean(r.serverIp && r.serverIp.trim()),
+      serverIp: r.serverIp || '',
       createdAt: r.createdAt,
     });
   });
@@ -236,7 +238,7 @@ io.on('connection', (socket) => {
   });
 
   // Join Room
-  socket.on('join_room', ({ roomId, player, roomName, rankingSystem }) => {
+  socket.on('join_room', ({ roomId, player, roomName, rankingSystem, serverIp }) => {
     const cleanRoomId = (roomId || 'MIX-1').trim().toUpperCase();
     if (socket.roomId && socket.roomId !== cleanRoomId) {
       socket.leave(socket.roomId);
@@ -244,9 +246,12 @@ io.on('connection', (socket) => {
     socket.join(cleanRoomId);
     socket.roomId = cleanRoomId;
 
-    const room = getOrCreateRoom(cleanRoomId, roomName, rankingSystem);
+    const room = getOrCreateRoom(cleanRoomId, roomName, rankingSystem, serverIp);
     if (rankingSystem && room.players.length === 0) {
       room.rankingSystem = rankingSystem === 'faceit' ? 'faceit' : 'gc';
+    }
+    if (serverIp && serverIp.trim()) {
+      room.serverIp = serverIp.trim();
     }
 
     if (player && player.nick) {
@@ -675,6 +680,9 @@ app.get('/api/rooms', (req, res) => {
       name: r.name,
       playerCount: r.players.length,
       phase: r.phase,
+      rankingSystem: r.rankingSystem || 'gc',
+      hasServer: Boolean(r.serverIp && r.serverIp.trim()),
+      serverIp: r.serverIp || '',
       createdAt: r.createdAt,
     });
   });

@@ -168,7 +168,7 @@ export default function App() {
   }, [roomId, myProfile]);
 
   // Switch Room (Multi-room hub support)
-  const handleSelectRoom = (newRoomCode, customName, rankingSystem = 'gc') => {
+  const handleSelectRoom = (newRoomCode, customName, rankingSystem = 'gc', serverIp = '') => {
     const clean = newRoomCode.trim().toUpperCase();
     setRoomId(clean);
     setView('mix');
@@ -180,6 +180,7 @@ export default function App() {
       roomId: clean,
       roomName: customName,
       rankingSystem,
+      serverIp: serverIp ? serverIp.trim() : undefined,
       player: myProfile.nick ? myProfile : null,
     });
   };
@@ -665,6 +666,8 @@ export default function App() {
         roomId={roomId}
         roomName={room.name}
         phase={room.phase}
+        rankingSystem={room.rankingSystem || 'gc'}
+        serverIp={room.serverIp || ''}
         soundEnabled={soundEnabled}
         setSoundEnabled={setSoundEnabled}
         onOpenRoomsHub={() => setRoomsHubOpen(true)}
@@ -708,6 +711,8 @@ export default function App() {
                 onStartCaptainDraft={handleStartCaptainDraft}
                 onOpenQuickVeto={() => setQuickVetoOpen(true)}
                 onOpenQuickMapRoll={() => setQuickMapRollOpen(true)}
+                serverIp={room.serverIp || ''}
+                onUpdateServerIp={handleUpdateServerIp}
                 soundEnabled={soundEnabled}
               />
             </div>
@@ -736,6 +741,8 @@ export default function App() {
             onStartCoinFlip={handleStartCoinFlip}
             onStartVeto={handleStartVeto}
             onBackToLobby={() => setRoom((prev) => ({ ...prev, phase: 'lobby' }))}
+            serverIp={room.serverIp || ''}
+            onUpdateServerIp={handleUpdateServerIp}
             soundEnabled={soundEnabled}
           />
         )}

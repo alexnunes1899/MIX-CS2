@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
-import { Share2, Check, Users, Swords, MapPin, Trophy, Volume2, VolumeX, Layers, History, Dices, Zap, Home } from 'lucide-react';
+import { Share2, Check, Users, Swords, MapPin, Trophy, Volume2, VolumeX, Layers, History, Dices, Zap, Home, Server, Play, Copy } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
+import { parseServerDetails } from '../utils/serverParser';
 
 export default function Header({
   roomId,
   roomName,
   phase,
+  rankingSystem = 'gc',
+  serverIp = '',
   soundEnabled,
   setSoundEnabled,
   onOpenRoomsHub,
@@ -15,6 +18,9 @@ export default function Header({
   onGoHome,
 }) {
   const [copied, setCopied] = useState(false);
+  const [copiedServer, setCopiedServer] = useState(false);
+
+  const parsedServer = parseServerDetails(serverIp);
 
   const copyInviteLink = () => {
     if (soundEnabled) playClickSound();
@@ -56,11 +62,17 @@ export default function Header({
                   <h1 className="text-lg font-bold font-heading tracking-wide text-white">
                     {roomName || 'MIX HUB'}
                   </h1>
-                  <span className="text-amber-400 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30">
-                    GC
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                    rankingSystem === 'faceit'
+                      ? 'text-orange-400 bg-orange-500/10 border-orange-500/30'
+                      : 'text-amber-400 bg-amber-500/10 border-amber-500/30'
+                  }`}>
+                    {rankingSystem === 'faceit' ? '⚡ FACEIT' : '🛡️ GC'}
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-400">Balanceamento por Nível Gamers Club & Pick/Ban</p>
+                <p className="text-[11px] text-slate-400">
+                  {rankingSystem === 'faceit' ? 'Balanceamento por Nível FACEIT & Pick/Ban' : 'Balanceamento por Nível Gamers Club & Pick/Ban'}
+                </p>
               </div>
             </div>
 
@@ -158,6 +170,38 @@ export default function Header({
               <Layers size={14} className="text-slate-400" />
               <span>Salas</span>
             </button>
+
+            {/* Quick Server Action in Header if Configured */}
+            {parsedServer.isValid && (
+              <div className="hidden xl:flex items-center gap-1.5 bg-slate-900 border border-emerald-500/30 rounded-lg p-1 pl-2.5 shadow-inner">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span className="text-[11px] font-mono text-emerald-400 font-bold truncate max-w-[130px]" title={parsedServer.ip}>
+                  {parsedServer.ip}
+                </span>
+                <button
+                  onClick={() => {
+                    if (soundEnabled) playClickSound();
+                    navigator.clipboard.writeText(parsedServer.connectCommand);
+                    setCopiedServer(true);
+                    setTimeout(() => setCopiedServer(false), 2000);
+                  }}
+                  className="p-1 px-1.5 text-slate-400 hover:text-white rounded hover:bg-slate-800 transition-colors text-[11px] font-semibold flex items-center gap-1"
+                  title="Copiar comando connect"
+                >
+                  {copiedServer ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                  <span>{copiedServer ? 'Copiado' : 'Connect'}</span>
+                </button>
+                {parsedServer.steamUrl && (
+                  <a
+                    href={parsedServer.steamUrl}
+                    className="px-2 py-1 rounded bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-[10px] flex items-center gap-1 shadow-sm transition-colors"
+                    title="Conectar automaticamente ao CS2"
+                  >
+                    <Play size={10} fill="currentColor" /> CS2
+                  </a>
+                )}
+              </div>
+            )}
 
             {/* Room Code & Invite button */}
             <div className="flex items-center bg-slate-900 border border-slate-800 rounded-lg p-1 pl-3 shadow-inner">

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Layers, Plus, Users, ArrowRight, X, Sparkles, Hash, Lock, Shield, Zap } from 'lucide-react';
+import { Layers, Plus, Users, ArrowRight, X, Sparkles, Hash, Lock, Shield, Zap, Server } from 'lucide-react';
 import SteamIcon from './SteamIcon';
 import { playClickSound } from '../utils/audio';
 
@@ -15,6 +15,7 @@ export default function RoomsHubModal({
   const [rooms, setRooms] = useState([]);
   const [newRoomName, setNewRoomName] = useState('');
   const [newRoomCode, setNewRoomCode] = useState('');
+  const [newServerIp, setNewServerIp] = useState('');
   const [rankingSystem, setRankingSystem] = useState('gc'); // 'gc' | 'faceit'
   const [loading, setLoading] = useState(false);
 
@@ -57,7 +58,7 @@ export default function RoomsHubModal({
     if (soundEnabled) playClickSound();
 
     const code = newRoomCode.trim().toUpperCase().replace(/\s+/g, '-');
-    onSelectRoom(code, newRoomName.trim() || `Mix ${code}`, rankingSystem);
+    onSelectRoom(code, newRoomName.trim() || `Mix ${code}`, rankingSystem, newServerIp.trim());
     onClose();
   };
 
@@ -191,6 +192,29 @@ export default function RoomsHubModal({
             </div>
           </div>
 
+          {/* Dedicated CS2 Server Configuration */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[10px] text-slate-400 font-semibold block uppercase">
+                Servidor do Mix (IP / Connect) - Opcional
+              </label>
+              <span className="text-[9px] text-slate-500 font-mono">1-Clique ou Console</span>
+            </div>
+            <div className="relative">
+              <Server size={13} className="absolute left-3 top-3 text-slate-500" />
+              <input
+                type="text"
+                placeholder="Ex: 189.1.168.10:27015 ou connect 189.1.168.10:27015; password mix"
+                value={newServerIp}
+                onChange={(e) => setNewServerIp(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-8 pr-3 py-2 text-xs font-mono text-white placeholder-slate-600 outline-none focus:border-amber-400"
+              />
+            </div>
+            <p className="text-[10px] text-slate-500 mt-1">
+              Os jogadores poderão entrar automaticamente no CS2 ou copiar o comando <code className="text-amber-400">connect</code>.
+            </p>
+          </div>
+
           {!isSteamLogged ? (
             <button
               type="button"
@@ -269,6 +293,11 @@ export default function RoomsHubModal({
                         ) : (
                           <span className="text-[9px] font-bold text-amber-400 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.2 rounded font-mono">
                             🛡️ GC
+                          </span>
+                        )}
+                        {Boolean(r.hasServer || r.serverIp) && (
+                          <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.2 rounded font-mono flex items-center gap-1">
+                            <Server size={9} /> Servidor
                           </span>
                         )}
                       </div>

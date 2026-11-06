@@ -2,6 +2,7 @@ import React from 'react';
 import GCBadge from './GCBadge';
 import FaceitBadge from './FaceitBadge';
 import PlayerAvatar from './PlayerAvatar';
+import ServerConnectBar from './ServerConnectBar';
 import { Shield, Flame, ArrowLeftRight, RotateCcw, MapPin, Scale, ChevronLeft, CheckCircle2, Coins, Zap } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
 
@@ -15,6 +16,8 @@ export default function TeamsView({
   onStartCoinFlip,
   onStartVeto,
   onBackToLobby,
+  serverIp = '',
+  onUpdateServerIp,
   soundEnabled,
 }) {
   const isFaceit = rankingSystem === 'faceit' || metrics?.rankingSystem === 'faceit';
@@ -74,6 +77,15 @@ export default function TeamsView({
           </div>
         </div>
       </div>
+
+      {/* CS2 Server Connect Bar */}
+      {onUpdateServerIp && (
+        <ServerConnectBar
+          serverIp={serverIp}
+          onUpdateServerIp={onUpdateServerIp}
+          soundEnabled={soundEnabled}
+        />
+      )}
 
       {/* Teams Comparison Side-by-Side */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">

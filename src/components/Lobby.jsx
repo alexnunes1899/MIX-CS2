@@ -2,6 +2,7 @@ import React from 'react';
 import GCBadge from './GCBadge';
 import FaceitBadge from './FaceitBadge';
 import PlayerAvatar from './PlayerAvatar';
+import ServerConnectBar from './ServerConnectBar';
 import { Users, Trash2, Bot, Scale, Shuffle, Shield, Flame, CheckCircle2, Crown, Check, AlertCircle, Zap, Dices, ArrowLeftRight } from 'lucide-react';
 import { playClickSound, playReadySound } from '../utils/audio';
 
@@ -18,6 +19,8 @@ export default function Lobby({
   onStartCaptainDraft,
   onOpenQuickVeto,
   onOpenQuickMapRoll,
+  serverIp = '',
+  onUpdateServerIp,
   soundEnabled,
 }) {
   const maxSlots = 10;
@@ -190,6 +193,17 @@ export default function Lobby({
           )}
         </div>
       </div>
+
+      {/* CS2 Server Connect Widget in Lobby */}
+      {onUpdateServerIp && (
+        <ServerConnectBar
+          serverIp={serverIp}
+          onUpdateServerIp={onUpdateServerIp}
+          soundEnabled={soundEnabled}
+          title="Servidor de Jogo (CS2)"
+          description="Configure o IP do servidor para que os jogadores possam entrar com 1 clique"
+        />
+      )}
 
       {/* Players Grid (10 Slots) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
