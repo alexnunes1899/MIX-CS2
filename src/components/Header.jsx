@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Share2, Check, Users, Swords, MapPin, Trophy, Volume2, VolumeX, Layers, History, Dices, Zap, Home, Server, Play, Copy, User, Trash2 } from 'lucide-react';
+import { Share2, Check, Users, Swords, MapPin, Trophy, Volume2, VolumeX, Layers, History, Dices, Zap, Home, Server, Play, Copy, User, Trash2, Lock } from 'lucide-react';
 import PlayerAvatar from './PlayerAvatar';
 import DeleteRoomModal from './DeleteRoomModal';
 import { playClickSound } from '../utils/audio';
@@ -21,6 +21,9 @@ export default function Header({
   onOpenQuickVeto,
   onOpenQuickMapRoll,
   onGoHome,
+  roomPassword = '',
+  hasPassword = false,
+  isPrivate = false,
 }) {
   const [copied, setCopied] = useState(false);
   const [copiedServer, setCopiedServer] = useState(false);
@@ -30,7 +33,8 @@ export default function Header({
 
   const copyInviteLink = () => {
     if (soundEnabled) playClickSound();
-    const url = `${window.location.origin}?room=${roomId}`;
+    const pwdParam = roomPassword ? `&pwd=${encodeURIComponent(roomPassword)}` : '';
+    const url = `${window.location.origin}?room=${encodeURIComponent(roomId)}${pwdParam}`;
     navigator.clipboard.writeText(url);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -64,7 +68,7 @@ export default function Header({
                 <img src="/favicon.png" alt="CS2 Mix" className="w-10 h-10 object-contain drop-shadow-[0_2px_10px_rgba(245,158,11,0.3)] hover:scale-105 transition-transform" />
               </div>
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <h1 className="text-lg font-bold font-heading tracking-wide text-white">
                     {roomName || 'MIX HUB'}
                   </h1>
@@ -75,6 +79,16 @@ export default function Header({
                   }`}>
                     {rankingSystem === 'faceit' ? '⚡ FACEIT' : '🛡️ GC'}
                   </span>
+                  {isPrivate && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border text-purple-400 bg-purple-500/15 border-purple-500/30 flex items-center gap-1 font-mono">
+                      <Lock size={10} /> Privada (Link)
+                    </span>
+                  )}
+                  {hasPassword && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border text-amber-300 bg-amber-500/15 border-amber-500/30 flex items-center gap-1 font-mono">
+                      <Lock size={10} /> Com Senha
+                    </span>
+                  )}
                 </div>
                 <p className="text-[11px] text-slate-400">
                   {rankingSystem === 'faceit' ? 'Balanceamento por Nível FACEIT & Pick/Ban' : 'Balanceamento por Nível Gamers Club & Pick/Ban'}

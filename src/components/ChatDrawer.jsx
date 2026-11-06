@@ -126,8 +126,17 @@ export default function ChatDrawer({
               </div>
             ) : (
               chat.map((m) => {
-                const isMe = m.sender?.nick && myProfile?.nick && m.sender.nick.toLowerCase() === myProfile.nick.toLowerCase();
+                const senderNick = typeof m.sender === 'object' && m.sender?.nick
+                  ? m.sender.nick
+                  : (typeof m.sender === 'string' && m.sender ? m.sender : 'Jogador');
+
+                const myNick = myProfile?.nick || '';
+                const isMe = senderNick && myNick && senderNick.toLowerCase() === myNick.toLowerCase();
                 const isFaceit = rankingSystem === 'faceit';
+                const senderAvatar = (typeof m.sender === 'object' ? m.sender?.avatar : null) || (isMe ? myProfile?.avatar : '🎯') || '🎯';
+                const senderLevel = typeof m.sender === 'object' ? (m.sender?.level || 10) : 10;
+                const senderFaceitLevel = typeof m.sender === 'object' ? (m.sender?.faceitLevel || 5) : 5;
+                const senderFaceitElo = typeof m.sender === 'object' ? m.sender?.faceitElo : null;
 
                 return (
                   <div
@@ -135,14 +144,14 @@ export default function ChatDrawer({
                     className={`flex items-end gap-2 text-xs ${isMe ? 'justify-end' : 'justify-start'}`}
                   >
                     {!isMe && (
-                      <span className="text-sm select-none shrink-0 mb-1" title={m.sender?.nick}>
-                        {m.sender?.avatar || '🎯'}
+                      <span className="text-sm select-none shrink-0 mb-1" title={senderNick}>
+                        {senderAvatar}
                       </span>
                     )}
 
                     {/* Speech Balloon */}
                     <div
-                      className={`max-w-[82%] p-3 shadow-md transition-all ${
+                      className={`max-w-[85%] p-3 shadow-md transition-all ${
                         isMe
                           ? 'bg-gradient-to-br from-amber-500/20 via-amber-600/15 to-amber-500/10 border border-amber-500/40 text-amber-50 rounded-2xl rounded-tr-xs'
                           : 'bg-slate-950/85 border border-slate-800 text-slate-200 rounded-2xl rounded-tl-xs'
@@ -151,28 +160,28 @@ export default function ChatDrawer({
                       <div className="flex items-center justify-between gap-3 mb-1.5 pb-1 border-b border-white/[0.06]">
                         <div className="flex items-center gap-1.5">
                           <span className={`font-bold text-[11px] ${isMe ? 'text-amber-300' : 'text-white'}`}>
-                            {isMe ? 'Você' : m.sender?.nick}
+                            {isMe ? `${senderNick} (Você)` : senderNick}
                           </span>
                           {isFaceit ? (
                             <FaceitBadge
-                              level={m.sender?.faceitLevel || (m.sender?.level <= 10 ? m.sender?.level : Math.round(m.sender?.level / 2.1)) || 5}
-                              elo={m.sender?.faceitElo}
+                              level={senderFaceitLevel}
+                              elo={senderFaceitElo}
                               size="sm"
                             />
                           ) : (
-                            <GCBadge level={m.sender?.level || 1} size="sm" />
+                            <GCBadge level={senderLevel} size="sm" />
                           )}
                         </div>
                         <span className="text-[9px] text-slate-500 font-mono shrink-0">
-                          {new Date(m.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                          {m.timestamp ? new Date(m.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : ''}
                         </span>
                       </div>
                       <p className="text-xs break-words leading-relaxed font-normal">{m.text}</p>
                     </div>
 
                     {isMe && (
-                      <span className="text-sm select-none shrink-0 mb-1" title="Você">
-                        {myProfile?.avatar || '🎯'}
+                      <span className="text-sm select-none shrink-0 mb-1" title={senderNick}>
+                        {senderAvatar}
                       </span>
                     )}
                   </div>

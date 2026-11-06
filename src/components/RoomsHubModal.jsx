@@ -18,6 +18,8 @@ export default function RoomsHubModal({
   const [newRoomName, setNewRoomName] = useState('');
   const [newRoomCode, setNewRoomCode] = useState('');
   const [newServerIp, setNewServerIp] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [isPrivate, setIsPrivate] = useState(false);
   const [rankingSystem, setRankingSystem] = useState('gc'); // 'gc' | 'faceit'
   const [loading, setLoading] = useState(false);
   const [roomToDelete, setRoomToDelete] = useState(null);
@@ -61,7 +63,14 @@ export default function RoomsHubModal({
     if (soundEnabled) playClickSound();
 
     const code = newRoomCode.trim().toUpperCase().replace(/\s+/g, '-');
-    onSelectRoom(code, newRoomName.trim() || `Mix ${code}`, rankingSystem, newServerIp.trim());
+    onSelectRoom(
+      code,
+      newRoomName.trim() || `Mix ${code}`,
+      rankingSystem,
+      newServerIp.trim(),
+      newPassword.trim(),
+      isPrivate
+    );
     onClose();
   };
 
@@ -218,6 +227,52 @@ export default function RoomsHubModal({
             </p>
           </div>
 
+          {/* Security & Privacy (Password & Link-only) */}
+          <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3 space-y-3">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-amber-400 uppercase tracking-wide">
+              <Lock size={13} /> Segurança & Privacidade da Sala
+            </div>
+
+            {/* Password input */}
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[10px] text-slate-400 font-semibold block uppercase">
+                  Senha da Sala (Opcional)
+                </label>
+                <span className="text-[9px] text-slate-500 font-mono">Deixe em branco para aberta</span>
+              </div>
+              <div className="relative">
+                <Lock size={13} className="absolute left-3 top-3 text-slate-500" />
+                <input
+                  type="text"
+                  placeholder="Ex: 1234 (opcional)"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  maxLength={20}
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-8 pr-3 py-2 text-xs font-mono text-white placeholder-slate-600 outline-none focus:border-amber-400"
+                />
+              </div>
+            </div>
+
+            {/* Private Room Checkbox */}
+            <label className="flex items-start gap-2.5 cursor-pointer pt-2 border-t border-slate-800/80">
+              <input
+                type="checkbox"
+                checked={isPrivate}
+                onChange={(e) => setIsPrivate(e.target.checked)}
+                className="mt-0.5 rounded bg-slate-950 border-slate-700 text-amber-500 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+              />
+              <div>
+                <span className="text-xs font-bold text-slate-200 block">
+                  Sala Privada (Oculta da lista do Hub)
+                </span>
+                <span className="text-[10px] text-slate-400 block leading-tight">
+                  A sala não aparecerá na lista pública de salas. O acesso será exclusivo para quem tiver o link direto da sala.
+                </span>
+              </div>
+            </label>
+          </div>
+
           {!isSteamLogged ? (
             <button
               type="button"
@@ -278,13 +333,13 @@ export default function RoomsHubModal({
                     onClick={() => {
                       if (!isCurrent) {
                         if (soundEnabled) playClickSound();
-                        onSelectRoom(r.id, r.name, r.rankingSystem);
+                        onSelectRoom(r.id, r.name, r.rankingSystem, r.serverIp, null);
                         onClose();
                       }
                     }}
                   >
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-bold text-sm text-white">{r.name}</span>
                         <span className="font-mono text-[10px] text-amber-400 bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20">
                           #{r.id}
@@ -296,6 +351,11 @@ export default function RoomsHubModal({
                         ) : (
                           <span className="text-[9px] font-bold text-amber-400 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.2 rounded font-mono">
                             🛡️ GC
+                          </span>
+                        )}
+                        {Boolean(r.hasPassword) && (
+                          <span className="text-[9px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.2 rounded font-mono flex items-center gap-1">
+                            <Lock size={9} /> Senha
                           </span>
                         )}
                         {Boolean(r.hasServer || r.serverIp) && (

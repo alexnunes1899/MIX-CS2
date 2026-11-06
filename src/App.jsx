@@ -18,6 +18,7 @@ import LandingPage from './components/LandingPage';
 import SteamLoginGateModal from './components/SteamLoginGateModal';
 import PlayerProfileModal from './components/PlayerProfileModal';
 import GsiSetupModal from './components/GsiSetupModal';
+import RoomPasswordModal from './components/RoomPasswordModal';
 import { recordMatchResult } from './utils/playerStats';
 import { ACTIVE_DUTY_MAPS, OFFICIAL_ACTIVE_DUTY, EXTRA_CS2_MAPS } from './data/maps';
 import { balanceTeams, shuffleTeams } from './utils/balance';
@@ -34,6 +35,14 @@ export default function App() {
     const params = new URLSearchParams(window.location.search);
     return params.get('room') || 'MIX-PRO';
   });
+
+  const [roomPassword, setRoomPassword] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('pwd') || '';
+  });
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const [pendingRoomAuth, setPendingRoomAuth] = useState(null);
+  const [passwordError, setPasswordError] = useState(null);
 
   const [view, setView] = useState(() => {
     const params = new URLSearchParams(window.location.search);
@@ -208,6 +217,7 @@ export default function App() {
       socket.emit('join_room', {
         roomId,
         player: myProfile.nick ? myProfile : null,
+        password: roomPassword || undefined,
       });
     });
 
@@ -234,6 +244,12 @@ export default function App() {
       });
     });
 
+    socket.on('room_auth_error', ({ roomId: authRoomId, roomName: authRoomName, error, message }) => {
+      setPendingRoomAuth({ roomId: authRoomId, roomName: authRoomName });
+      setPasswordError(message || 'Esta sala requer uma senha para entrar.');
+      setPasswordModalOpen(true);
+    });
+
     socket.on('room_deleted', ({ roomId: deletedId, message, reason }) => {
       if (deletedId === roomId) {
         setRoomNotice({
@@ -244,6 +260,7 @@ export default function App() {
         setView('landing');
         const u = new URL(window.location);
         u.searchParams.delete('room');
+        u.searchParams.delete('pwd');
         window.history.pushState({}, '', u);
       }
     });
@@ -254,17 +271,29 @@ export default function App() {
       socket.off('active_rotation_updated');
       socket.off('gsi_update');
       socket.off('chat_message');
+      socket.off('room_auth_error');
       socket.off('room_deleted');
     };
-  }, [roomId, myProfile]);
+  }, [roomId, myProfile, roomPassword]);
 
-  // Switch Room (Multi-room hub support)
-  const handleSelectRoom = (newRoomCode, customName, rankingSystem = 'gc', serverIp = '') => {
+  // Switch Room (Multi-room hub support with password & privacy)
+  const handleSelectRoom = (newRoomCode, customName, rankingSystem = 'gc', serverIp = '', password = undefined, isPrivate = false) => {
     const clean = newRoomCode.trim().toUpperCase();
     setRoomId(clean);
     setView('mix');
+
+    const targetPassword = password !== undefined ? password : roomPassword;
+    if (password !== undefined) {
+      setRoomPassword(password || '');
+    }
+
     const url = new URL(window.location);
     url.searchParams.set('room', clean);
+    if (targetPassword) {
+      url.searchParams.set('pwd', targetPassword);
+    } else {
+      url.searchParams.delete('pwd');
+    }
     window.history.pushState({}, '', url);
 
     socket.emit('join_room', {
@@ -272,8 +301,19 @@ export default function App() {
       roomName: customName,
       rankingSystem,
       serverIp: serverIp ? serverIp.trim() : undefined,
+      password: targetPassword || undefined,
+      isPrivate: Boolean(isPrivate),
       player: myProfile.nick ? myProfile : null,
     });
+  };
+
+  const handleSubmitRoomPassword = (enteredPassword) => {
+    if (!pendingRoomAuth) return;
+    const targetId = pendingRoomAuth.roomId;
+    const targetName = pendingRoomAuth.roomName;
+    setPasswordError(null);
+    setPasswordModalOpen(false);
+    handleSelectRoom(targetId, targetName, undefined, undefined, enteredPassword);
   };
 
   const handleEnterRoom = (code = 'MIX-PRO') => {
@@ -927,6 +967,20 @@ export default function App() {
           soundEnabled={soundEnabled}
           onSaveProfile={handleSaveProfile}
         />
+
+        <RoomPasswordModal
+          isOpen={passwordModalOpen}
+          onClose={() => {
+            setPasswordModalOpen(false);
+            setPasswordError(null);
+            setPendingRoomAuth(null);
+          }}
+          roomId={pendingRoomAuth?.roomId || roomId}
+          roomName={pendingRoomAuth?.roomName || room.name}
+          onSubmitPassword={handleSubmitRoomPassword}
+          errorMessage={passwordError}
+          soundEnabled={soundEnabled}
+        />
       </>
     );
   }
@@ -952,8 +1006,12 @@ export default function App() {
           setView('landing');
           const u = new URL(window.location);
           u.searchParams.delete('room');
+          u.searchParams.delete('pwd');
           window.history.pushState({}, '', u);
         }}
+        roomPassword={roomPassword}
+        hasPassword={Boolean(room.hasPassword)}
+        isPrivate={Boolean(room.isPrivate)}
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-6">
@@ -1154,6 +1212,20 @@ export default function App() {
         onClose={() => setGsiModalOpen(false)}
         roomId={roomId}
         liveMatch={room.liveMatch}
+        soundEnabled={soundEnabled}
+      />
+
+      <RoomPasswordModal
+        isOpen={passwordModalOpen}
+        onClose={() => {
+          setPasswordModalOpen(false);
+          setPasswordError(null);
+          setPendingRoomAuth(null);
+        }}
+        roomId={pendingRoomAuth?.roomId || roomId}
+        roomName={pendingRoomAuth?.roomName || room.name}
+        onSubmitPassword={handleSubmitRoomPassword}
+        errorMessage={passwordError}
         soundEnabled={soundEnabled}
       />
 

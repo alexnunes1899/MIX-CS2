@@ -179,7 +179,7 @@ function cleanupInactiveRooms() {
 // Periodic cleanup every 60 seconds
 setInterval(cleanupInactiveRooms, 60 * 1000);
 
-function getOrCreateRoom(roomId, customName = '', rankingSystem = 'gc', serverIp = '') {
+function getOrCreateRoom(roomId, customName = '', rankingSystem = 'gc', serverIp = '', password = '', isPrivate = false) {
   const id = roomId.trim().toUpperCase() || 'MIX-1';
   if (!rooms.has(id)) {
     const now = Date.now();
@@ -201,6 +201,8 @@ function getOrCreateRoom(roomId, customName = '', rankingSystem = 'gc', serverIp
       startingSideTeamB: null,
       serverIp: serverIp ? serverIp.trim() : '',
       rconPassword: '',
+      password: (password || '').trim(),
+      isPrivate: Boolean(isPrivate),
       liveMatch: null,
       chat: [],
       history: [],
@@ -216,6 +218,22 @@ function getOrCreateRoom(roomId, customName = '', rankingSystem = 'gc', serverIp
   return room;
 }
 
+function getSafeRoomState(room) {
+  if (!room) return null;
+  const { password, rconPassword, ...safe } = room;
+  return {
+    ...safe,
+    hasPassword: Boolean(password && password.trim()),
+    isPrivate: Boolean(room.isPrivate),
+  };
+}
+
+function emitRoomState(targetRoomId, room) {
+  if (!room) return;
+  const safeRoom = getSafeRoomState(room);
+  io.to(targetRoomId).emit('room_state', safeRoom);
+}
+
 function getRoomAndTouch(roomId) {
   if (!roomId) return null;
   const cleanId = String(roomId).trim().toUpperCase();
@@ -229,6 +247,7 @@ function getRoomAndTouch(roomId) {
 function broadcastRoomsList() {
   const list = [];
   rooms.forEach((r) => {
+    if (r.isPrivate) return; // Hide private/unlisted rooms from public discovery
     list.push({
       id: r.id,
       name: r.name,
@@ -237,6 +256,8 @@ function broadcastRoomsList() {
       rankingSystem: r.rankingSystem || 'gc',
       hasServer: Boolean(r.serverIp && r.serverIp.trim()),
       serverIp: r.serverIp || '',
+      hasPassword: Boolean(r.password && r.password.trim()),
+      isPrivate: false,
       createdAt: r.createdAt,
       lastActivity: r.lastActivity || r.createdAt,
     });
@@ -327,16 +348,32 @@ io.on('connection', (socket) => {
   });
 
   // Join Room
-  socket.on('join_room', ({ roomId, player, roomName, rankingSystem, serverIp }) => {
+  socket.on('join_room', async ({ roomId, player, roomName, rankingSystem, serverIp, password, isPrivate }) => {
     const cleanRoomId = sanitizeInput(roomId || 'MIX-1', 20).toUpperCase();
     const cleanRoomName = sanitizeInput(roomName, 40);
+    const cleanPassword = sanitizeInput(password || '', 32);
+
+    // Check if room already exists and requires password
+    const existingRoom = rooms.get(cleanRoomId);
+    if (existingRoom && existingRoom.password) {
+      if (cleanPassword !== existingRoom.password) {
+        socket.emit('room_auth_error', {
+          roomId: cleanRoomId,
+          roomName: existingRoom.name,
+          error: 'wrong_password',
+          message: cleanPassword ? 'Senha incorreta para esta sala.' : 'Esta sala requer uma senha para entrar.',
+        });
+        return;
+      }
+    }
+
     if (socket.roomId && socket.roomId !== cleanRoomId) {
       socket.leave(socket.roomId);
     }
     socket.join(cleanRoomId);
     socket.roomId = cleanRoomId;
 
-    const room = getOrCreateRoom(cleanRoomId, cleanRoomName, rankingSystem, serverIp);
+    const room = getOrCreateRoom(cleanRoomId, cleanRoomName, rankingSystem, serverIp, cleanPassword, isPrivate);
     if (rankingSystem && room.players.length === 0) {
       room.rankingSystem = rankingSystem === 'faceit' ? 'faceit' : 'gc';
     }
@@ -350,9 +387,10 @@ io.on('connection', (socket) => {
       const existingIdx = room.players.findIndex((p) => p.id === socket.playerId || (p.nick === cleanNick && !p.id.startsWith('bot-')));
       
       const parsedLevel = Math.max(1, Math.min(21, Number(player.level) || 10));
-      const parsedFaceitLvl = player.faceitLevel
+      let parsedFaceitLvl = player.faceitLevel
         ? Math.max(1, Math.min(10, Number(player.faceitLevel)))
         : (parsedLevel <= 10 ? parsedLevel : Math.round(parsedLevel / 2.1));
+      let parsedFaceitElo = player.faceitElo ? Number(player.faceitElo) : null;
 
       const validSide = ['CT', 'TR', 'ANY'].includes(player.side) ? player.side : 'ANY';
 
@@ -361,7 +399,7 @@ io.on('connection', (socket) => {
         nick: cleanNick,
         level: parsedLevel,
         faceitLevel: parsedFaceitLvl,
-        faceitElo: player.faceitElo ? Number(player.faceitElo) : null,
+        faceitElo: parsedFaceitElo,
         side: validSide,
         avatar: sanitizeInput(player.avatar, 120) || '🎯',
         steamId: player.steamId ? sanitizeInput(player.steamId, 32) : null,
@@ -378,10 +416,36 @@ io.on('connection', (socket) => {
       } else if (room.players.length < 10) {
         room.players.push(playerData);
       }
+
+      // If player has Steam ID and default faceit level, attempt automatic FACEIT lookup in background
+      if (player.steamId && (!player.faceitElo || player.faceitLevel === 5)) {
+        fetchFaceitPlayer({ steamId: player.steamId, nickname: cleanNick }).then((faceitData) => {
+          if (faceitData && faceitData.found && faceitData.level) {
+            const pIdx = room.players.findIndex((p) => p.id === socket.playerId);
+            if (pIdx >= 0) {
+              room.players[pIdx].faceitLevel = faceitData.level;
+              room.players[pIdx].faceitElo = faceitData.elo;
+              emitRoomState(cleanRoomId, room);
+            }
+          }
+        }).catch(() => {});
+      }
     }
 
-    io.to(cleanRoomId).emit('room_state', room);
+    emitRoomState(cleanRoomId, room);
     broadcastRoomsList();
+  });
+
+  // Verify room password directly
+  socket.on('verify_room_password', ({ roomId, password }, callback) => {
+    const cleanRoomId = sanitizeInput(roomId || '', 20).toUpperCase();
+    const room = getRoomAndTouch(cleanRoomId);
+    if (!room) return callback && callback({ valid: false, error: 'not_found' });
+    if (!room.password) return callback && callback({ valid: true });
+    const matches = sanitizeInput(password || '', 32) === room.password;
+    if (callback) {
+      callback({ valid: matches, error: matches ? null : 'wrong_password' });
+    }
   });
 
   // Toggle Ranking System (GC vs FACEIT)
@@ -389,7 +453,7 @@ io.on('connection', (socket) => {
     const room = getRoomAndTouch(roomId);
     if (!room) return;
     room.rankingSystem = rankingSystem === 'faceit' ? 'faceit' : 'gc';
-    io.to(roomId).emit('room_state', room);
+    emitRoomState(roomId, room);
     broadcastRoomsList();
   });
 
@@ -400,22 +464,41 @@ io.on('connection', (socket) => {
     const player = room.players.find((p) => p.id === playerId);
     if (player) {
       player.ready = !player.ready;
-      io.to(roomId).emit('room_state', room);
+      emitRoomState(roomId, room);
     }
   });
 
-  // Chat message
+  // Chat message with verified sender details
   socket.on('send_chat', ({ roomId, message }) => {
     const room = getRoomAndTouch(roomId);
     if (!room || !message || !message.text) return;
 
-    const cleanSender = sanitizeInput(message.sender, 32) || 'Jogador';
+    let senderObj = {
+      nick: 'Jogador',
+      level: 10,
+      faceitLevel: 5,
+      faceitElo: null,
+      avatar: '🎯',
+    };
+
+    if (typeof message.sender === 'object' && message.sender !== null) {
+      senderObj = {
+        nick: sanitizeInput(message.sender.nick, 32) || 'Jogador',
+        level: Math.max(1, Math.min(21, Number(message.sender.level) || 10)),
+        faceitLevel: Math.max(1, Math.min(10, Number(message.sender.faceitLevel) || 5)),
+        faceitElo: message.sender.faceitElo ? Number(message.sender.faceitElo) : null,
+        avatar: sanitizeInput(message.sender.avatar, 120) || '🎯',
+      };
+    } else if (typeof message.sender === 'string') {
+      senderObj.nick = sanitizeInput(message.sender, 32) || 'Jogador';
+    }
+
     const cleanText = sanitizeInput(message.text, 250);
     if (!cleanText) return;
 
     const chatMsg = {
       id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-      sender: cleanSender,
+      sender: senderObj,
       text: cleanText,
       timestamp: Date.now(),
     };
@@ -431,7 +514,7 @@ io.on('connection', (socket) => {
     const room = getRoomAndTouch(roomId);
     if (!room) return;
     room.serverIp = serverIp ? sanitizeInput(serverIp, 64) : '';
-    io.to(roomId).emit('room_state', room);
+    emitRoomState(roomId, room);
   });
 
   // Add / Update Player
@@ -446,7 +529,7 @@ io.on('connection', (socket) => {
       if (sanitizedPlayer.avatar) sanitizedPlayer.avatar = sanitizeInput(sanitizedPlayer.avatar, 120);
       if (sanitizedPlayer.side && !['CT', 'TR', 'ANY'].includes(sanitizedPlayer.side)) sanitizedPlayer.side = 'ANY';
       room.players[idx] = { ...room.players[idx], ...sanitizedPlayer };
-      io.to(roomId).emit('room_state', room);
+      emitRoomState(roomId, room);
     }
   });
 
@@ -455,7 +538,7 @@ io.on('connection', (socket) => {
     const room = getRoomAndTouch(roomId);
     if (!room) return;
     room.players = room.players.filter((p) => p.id !== playerId);
-    io.to(roomId).emit('room_state', room);
+    emitRoomState(roomId, room);
     broadcastRoomsList();
   });
 
@@ -464,7 +547,7 @@ io.on('connection', (socket) => {
     const room = getRoomAndTouch(roomId);
     if (!room) return;
     room.players = JSON.parse(JSON.stringify(MOCK_BOTS));
-    io.to(roomId).emit('room_state', room);
+    emitRoomState(roomId, room);
     broadcastRoomsList();
   });
 
@@ -480,7 +563,7 @@ io.on('connection', (socket) => {
     room.bannedMaps = [];
     room.finalMap = null;
     room.startingSideTeamB = null;
-    io.to(roomId).emit('room_state', room);
+    emitRoomState(roomId, room);
     broadcastRoomsList();
   });
 
@@ -516,7 +599,7 @@ io.on('connection', (socket) => {
     }
 
     room.phase = 'teams';
-    io.to(roomId).emit('room_state', room);
+    emitRoomState(roomId, room);
     broadcastRoomsList();
   });
 
@@ -535,7 +618,7 @@ io.on('connection', (socket) => {
     room.captainTurn = 'captainA';
     room.phase = 'captains_draft';
 
-    io.to(roomId).emit('room_state', room);
+    emitRoomState(roomId, room);
   });
 
   // Captain picks player
@@ -572,7 +655,7 @@ io.on('connection', (socket) => {
       room.phase = 'teams';
     }
 
-    io.to(roomId).emit('room_state', room);
+    emitRoomState(roomId, room);
   });
 
   // Coin Flip (Cara ou Coroa CT vs TR)
@@ -587,7 +670,7 @@ io.on('connection', (socket) => {
       choice: null,
     };
     room.phase = 'coin_flip';
-    io.to(roomId).emit('room_state', room);
+    emitRoomState(roomId, room);
   });
 
   // Winner of coin picks to ban first or pass
@@ -606,7 +689,7 @@ io.on('connection', (socket) => {
     room.finalMap = null;
     room.startingSideTeamB = null;
 
-    io.to(roomId).emit('room_state', room);
+    emitRoomState(roomId, room);
   });
 
   // Start Veto Phase directly
@@ -620,7 +703,7 @@ io.on('connection', (socket) => {
     room.finalMap = null;
     room.startingSideTeamB = null;
 
-    io.to(roomId).emit('room_state', room);
+    emitRoomState(roomId, room);
   });
 
   // Quick Start Veto (when teams are already formed)
@@ -640,7 +723,7 @@ io.on('connection', (socket) => {
     if (room.teamB.length === 0) {
       room.teamB = [{ id: 't2', nick: teamBName || 'Time B', level: 15, avatar: '⚔️' }];
     }
-    io.to(roomId).emit('room_state', room);
+    emitRoomState(roomId, room);
   });
 
   // Quick Random Map Draw
@@ -660,7 +743,7 @@ io.on('connection', (socket) => {
       room.teamB = [{ id: 't2', nick: 'Time B', level: 15, avatar: '⚔️' }];
     }
 
-    io.to(roomId).emit('room_state', room);
+    emitRoomState(roomId, room);
   });
 
   // Ban Map
@@ -684,7 +767,7 @@ io.on('connection', (socket) => {
       room.currentTurn = room.currentTurn === 'teamA' ? 'teamB' : 'teamA';
     }
 
-    io.to(roomId).emit('room_state', room);
+    emitRoomState(roomId, room);
   });
 
   // Side Pick (CT / TR) on decider map
@@ -695,7 +778,7 @@ io.on('connection', (socket) => {
     room.startingSideTeamB = side;
     room.phase = 'finished';
 
-    io.to(roomId).emit('room_state', room);
+    emitRoomState(roomId, room);
   });
 
   // Save match score to history
@@ -717,7 +800,7 @@ io.on('connection', (socket) => {
     });
 
     if (room.history.length > 20) room.history.pop();
-    io.to(roomId).emit('room_state', room);
+    emitRoomState(roomId, room);
   });
 
   // Swap Sides (CT <-> TR / Team A <-> Team B)
@@ -734,7 +817,7 @@ io.on('connection', (socket) => {
       room.metrics.avgA = avgB;
       room.metrics.avgB = avgA;
     }
-    io.to(roomId).emit('room_state', room);
+    emitRoomState(roomId, room);
   });
 
   // Reset to Lobby
@@ -756,7 +839,7 @@ io.on('connection', (socket) => {
     // unready players
     room.players.forEach((p) => { p.ready = false; });
 
-    io.to(roomId).emit('room_state', room);
+    emitRoomState(roomId, room);
     broadcastRoomsList();
   });
 
@@ -789,7 +872,7 @@ io.on('connection', (socket) => {
       rooms.forEach((r) => {
         if (r.phase === 'lobby') {
           r.maps = [...updatedState.activeDutyMaps];
-          io.to(r.id).emit('room_state', r);
+          emitRoomState(r.id, r);
         }
       });
     } catch (err) {
@@ -802,7 +885,7 @@ io.on('connection', (socket) => {
     const room = getRoomAndTouch(roomId);
     if (!room) return;
     room.rconPassword = (rconPassword || '').trim();
-    io.to(roomId).emit('room_state', room);
+    emitRoomState(roomId, room);
   });
 
   // Execute RCON Command (Sanitized against injection)
@@ -887,6 +970,7 @@ app.get('/api/rooms', (req, res) => {
   cleanupInactiveRooms();
   const list = [];
   rooms.forEach((r) => {
+    if (r.isPrivate) return; // Hide private/unlisted rooms from public discovery
     list.push({
       id: r.id,
       name: r.name,
@@ -895,6 +979,8 @@ app.get('/api/rooms', (req, res) => {
       rankingSystem: r.rankingSystem || 'gc',
       hasServer: Boolean(r.serverIp && r.serverIp.trim()),
       serverIp: r.serverIp || '',
+      hasPassword: Boolean(r.password && r.password.trim()),
+      isPrivate: false,
       createdAt: r.createdAt,
       lastActivity: r.lastActivity || r.createdAt,
     });
@@ -954,7 +1040,7 @@ app.post('/api/maps/sync-rotation', sensitiveLimiter, async (req, res) => {
     rooms.forEach((r) => {
       if (r.phase === 'lobby') {
         r.maps = [...updatedState.activeDutyMaps];
-        io.to(r.id).emit('room_state', r);
+        emitRoomState(r.id, r);
       }
     });
 
@@ -1009,7 +1095,7 @@ app.post('/api/gsi/:roomId', (req, res) => {
           source: 'Valve CS2 GSI',
         });
         if (room.history.length > 20) room.history.pop();
-        io.to(roomId).emit('room_state', room);
+        emitRoomState(roomId, room);
       }
     }
   }
