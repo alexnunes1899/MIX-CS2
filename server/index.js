@@ -56,21 +56,43 @@ function getOrCreateRoom(roomId, customName = '') {
   if (!rooms.has(id)) {
     rooms.set(id, {
       id,
-      name: customName || `Sala ${id}`,
+      name: customName || `Mix ${id}`,
       createdAt: Date.now(),
-      phase: 'lobby', // 'lobby' | 'teams' | 'veto' | 'finished'
+      phase: 'lobby', // 'lobby' | 'teams' | 'captains_draft' | 'coin_flip' | 'veto' | 'side_pick' | 'finished'
       players: [],
       teamA: [],
       teamB: [],
       metrics: null,
       maps: [...DEFAULT_MAPS],
-      bannedMaps: [], // [{ mapId, bannedBy: 'teamA'|'teamB', timestamp }]
+      bannedMaps: [],
       currentTurn: 'teamA',
       finalMap: null,
       startingSideTeamB: null,
+      serverIp: '',
+      chat: [],
+      history: [],
+      coin: null, // { winner: 'teamA'|'teamB', choice: 'first'|'pass' }
+      captainA: null,
+      captainB: null,
+      captainTurn: 'captainA',
+      unassignedPlayers: [],
     });
   }
   return rooms.get(id);
+}
+
+function broadcastRoomsList() {
+  const list = [];
+  rooms.forEach((r) => {
+    list.push({
+      id: r.id,
+      name: r.name,
+      playerCount: r.players.length,
+      phase: r.phase,
+      createdAt: r.createdAt,
+    });
+  });
+  io.emit('rooms_list', list);
 }
 
 // Balance helper in node server
@@ -140,9 +162,17 @@ function calculateBalance(players) {
 }
 
 io.on('connection', (socket) => {
+  // Get active rooms list
+  socket.on('get_rooms_list', () => {
+    broadcastRoomsList();
+  });
+
   // Join Room
   socket.on('join_room', ({ roomId, player, roomName }) => {
     const cleanRoomId = (roomId || 'MIX-1').trim().toUpperCase();
+    if (socket.roomId && socket.roomId !== cleanRoomId) {
+      socket.leave(socket.roomId);
+    }
     socket.join(cleanRoomId);
     socket.roomId = cleanRoomId;
 
@@ -158,7 +188,7 @@ io.on('connection', (socket) => {
         level: Math.max(1, Math.min(21, Number(player.level) || 10)),
         side: player.side || 'ANY',
         avatar: player.avatar || '🎯',
-        ready: player.ready !== undefined ? player.ready : true,
+        ready: player.ready !== undefined ? player.ready : false,
         socketId: socket.id,
       };
 
@@ -170,6 +200,44 @@ io.on('connection', (socket) => {
     }
 
     io.to(cleanRoomId).emit('room_state', room);
+    broadcastRoomsList();
+  });
+
+  // Toggle ready status
+  socket.on('toggle_ready', ({ roomId, playerId }) => {
+    const room = rooms.get(roomId);
+    if (!room) return;
+    const player = room.players.find((p) => p.id === playerId);
+    if (player) {
+      player.ready = !player.ready;
+      io.to(roomId).emit('room_state', room);
+    }
+  });
+
+  // Chat message
+  socket.on('send_chat', ({ roomId, message }) => {
+    const room = rooms.get(roomId);
+    if (!room || !message || !message.text) return;
+
+    const chatMsg = {
+      id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      sender: message.sender,
+      text: message.text.slice(0, 200),
+      timestamp: Date.now(),
+    };
+
+    room.chat.push(chatMsg);
+    if (room.chat.length > 50) room.chat.shift();
+
+    io.to(roomId).emit('chat_message', chatMsg);
+  });
+
+  // Update Server IP
+  socket.on('update_server_ip', ({ roomId, serverIp }) => {
+    const room = rooms.get(roomId);
+    if (!room) return;
+    room.serverIp = serverIp ? serverIp.trim() : '';
+    io.to(roomId).emit('room_state', room);
   });
 
   // Add / Update Player
@@ -190,6 +258,7 @@ io.on('connection', (socket) => {
     if (!room) return;
     room.players = room.players.filter((p) => p.id !== playerId);
     io.to(roomId).emit('room_state', room);
+    broadcastRoomsList();
   });
 
   // Fill Mock Bots for fast testing
@@ -198,6 +267,7 @@ io.on('connection', (socket) => {
     if (!room) return;
     room.players = JSON.parse(JSON.stringify(MOCK_BOTS));
     io.to(roomId).emit('room_state', room);
+    broadcastRoomsList();
   });
 
   // Clear Players
@@ -213,9 +283,10 @@ io.on('connection', (socket) => {
     room.finalMap = null;
     room.startingSideTeamB = null;
     io.to(roomId).emit('room_state', room);
+    broadcastRoomsList();
   });
 
-  // Balance & Draw Teams
+  // Balance & Draw Teams (Auto)
   socket.on('draw_teams', ({ roomId, mode = 'balanced' }) => {
     const room = rooms.get(roomId);
     if (!room || room.players.length < 2) return;
@@ -226,7 +297,6 @@ io.on('connection', (socket) => {
       room.teamB = teamB;
       room.metrics = metrics;
     } else {
-      // Random
       const shuffled = [...room.players].sort(() => Math.random() - 0.5);
       const half = Math.floor(shuffled.length / 2);
       room.teamA = shuffled.slice(0, half);
@@ -246,39 +316,47 @@ io.on('connection', (socket) => {
 
     room.phase = 'teams';
     io.to(roomId).emit('room_state', room);
+    broadcastRoomsList();
   });
 
-  // Swap Sides (CT <-> TR / Team A <-> Team B)
-  socket.on('swap_teams', ({ roomId }) => {
+  // Start Captain Draft
+  socket.on('start_captain_draft', ({ roomId }) => {
     const room = rooms.get(roomId);
-    if (!room) return;
-    const temp = room.teamA;
-    room.teamA = room.teamB;
-    room.teamB = temp;
-    if (room.metrics) {
-      const { sumA, sumB, avgA, avgB } = room.metrics;
-      room.metrics.sumA = sumB;
-      room.metrics.sumB = sumA;
-      room.metrics.avgA = avgB;
-      room.metrics.avgB = avgA;
-    }
+    if (!room || room.players.length < 2) return;
+
+    // Pick top 2 highest levels as captains
+    const sorted = [...room.players].sort((a, b) => b.level - a.level);
+    room.captainA = sorted[0];
+    room.captainB = sorted[1];
+    room.teamA = [sorted[0]];
+    room.teamB = [sorted[1]];
+    room.unassignedPlayers = sorted.slice(2);
+    room.captainTurn = 'captainA';
+    room.phase = 'captains_draft';
+
     io.to(roomId).emit('room_state', room);
   });
 
-  // Swap specific players
-  socket.on('swap_players', ({ roomId, playerAId, playerBId }) => {
+  // Captain picks player
+  socket.on('captain_pick', ({ roomId, playerId }) => {
     const room = rooms.get(roomId);
-    if (!room) return;
+    if (!room || room.phase !== 'captains_draft') return;
 
-    const idxA = room.teamA.findIndex((p) => p.id === playerAId);
-    const idxB = room.teamB.findIndex((p) => p.id === playerBId);
+    const playerIdx = room.unassignedPlayers.findIndex((p) => p.id === playerId);
+    if (playerIdx === -1) return;
 
-    if (idxA >= 0 && idxB >= 0) {
-      const pA = room.teamA[idxA];
-      const pB = room.teamB[idxB];
-      room.teamA[idxA] = pB;
-      room.teamB[idxB] = pA;
+    const chosenPlayer = room.unassignedPlayers.splice(playerIdx, 1)[0];
 
+    if (room.captainTurn === 'captainA') {
+      room.teamA.push(chosenPlayer);
+      room.captainTurn = 'captainB';
+    } else {
+      room.teamB.push(chosenPlayer);
+      room.captainTurn = 'captainA';
+    }
+
+    // Check if draft finished
+    if (room.unassignedPlayers.length === 0) {
       const sumA = room.teamA.reduce((acc, p) => acc + p.level, 0);
       const sumB = room.teamB.reduce((acc, p) => acc + p.level, 0);
       const diff = Math.abs(sumA - sumB);
@@ -290,11 +368,47 @@ io.on('connection', (socket) => {
         diff,
         balancePercentage: Math.max(0, Math.min(100, Math.round(100 - (diff / Math.max(sumA, sumB || 1)) * 100))),
       };
-      io.to(roomId).emit('room_state', room);
+      room.phase = 'teams';
     }
+
+    io.to(roomId).emit('room_state', room);
   });
 
-  // Start Veto Phase
+  // Coin Flip (Cara ou Coroa CT vs TR)
+  socket.on('flip_coin', ({ roomId }) => {
+    const room = rooms.get(roomId);
+    if (!room) return;
+
+    const winner = Math.random() < 0.5 ? 'teamA' : 'teamB';
+    room.coin = {
+      winner,
+      timestamp: Date.now(),
+      choice: null,
+    };
+    room.phase = 'coin_flip';
+    io.to(roomId).emit('room_state', room);
+  });
+
+  // Winner of coin picks to ban first or pass
+  socket.on('coin_choice', ({ roomId, choice }) => {
+    const room = rooms.get(roomId);
+    if (!room || room.phase !== 'coin_flip' || !room.coin) return;
+
+    room.coin.choice = choice; // 'first' or 'pass'
+    if (choice === 'first') {
+      room.currentTurn = room.coin.winner;
+    } else {
+      room.currentTurn = room.coin.winner === 'teamA' ? 'teamB' : 'teamA';
+    }
+    room.phase = 'veto';
+    room.bannedMaps = [];
+    room.finalMap = null;
+    room.startingSideTeamB = null;
+
+    io.to(roomId).emit('room_state', room);
+  });
+
+  // Start Veto Phase directly
   socket.on('start_veto', ({ roomId }) => {
     const room = rooms.get(roomId);
     if (!room) return;
@@ -320,15 +434,12 @@ io.on('connection', (socket) => {
       timestamp: Date.now(),
     });
 
-    // Check remaining maps
     const remaining = room.maps.filter((m) => !room.bannedMaps.some((b) => b.mapId === m.id));
 
     if (remaining.length === 1) {
-      // We found the Decider!
       room.finalMap = remaining[0];
-      room.phase = 'side_pick'; // The other team picks starting side
+      room.phase = 'side_pick';
     } else {
-      // Toggle turn
       room.currentTurn = room.currentTurn === 'teamA' ? 'teamB' : 'teamA';
     }
 
@@ -340,9 +451,48 @@ io.on('connection', (socket) => {
     const room = rooms.get(roomId);
     if (!room || room.phase !== 'side_pick') return;
 
-    room.startingSideTeamB = side; // The team choosing picks their side
+    room.startingSideTeamB = side;
     room.phase = 'finished';
 
+    io.to(roomId).emit('room_state', room);
+  });
+
+  // Save match score to history
+  socket.on('save_score', ({ roomId, scoreA, scoreB }) => {
+    const room = rooms.get(roomId);
+    if (!room) return;
+
+    const numA = Number(scoreA) || 0;
+    const numB = Number(scoreB) || 0;
+
+    room.history.unshift({
+      id: `match-${Date.now()}`,
+      date: new Date().toLocaleDateString('pt-BR'),
+      time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+      map: room.finalMap?.name || 'Indefinido',
+      scoreA: numA,
+      scoreB: numB,
+      winner: numA > numB ? 'Time A' : numB > numA ? 'Time B' : 'Empate',
+    });
+
+    if (room.history.length > 20) room.history.pop();
+    io.to(roomId).emit('room_state', room);
+  });
+
+  // Swap Sides (CT <-> TR / Team A <-> Team B)
+  socket.on('swap_teams', ({ roomId }) => {
+    const room = rooms.get(roomId);
+    if (!room) return;
+    const temp = room.teamA;
+    room.teamA = room.teamB;
+    room.teamB = temp;
+    if (room.metrics) {
+      const { sumA, sumB, avgA, avgB } = room.metrics;
+      room.metrics.sumA = sumB;
+      room.metrics.sumB = sumA;
+      room.metrics.avgA = avgB;
+      room.metrics.avgB = avgA;
+    }
     io.to(roomId).emit('room_state', room);
   });
 
@@ -359,12 +509,18 @@ io.on('connection', (socket) => {
     room.finalMap = null;
     room.startingSideTeamB = null;
     room.currentTurn = 'teamA';
+    room.coin = null;
+    room.unassignedPlayers = [];
+
+    // unready players
+    room.players.forEach((p) => { p.ready = false; });
 
     io.to(roomId).emit('room_state', room);
+    broadcastRoomsList();
   });
 
   socket.on('disconnect', () => {
-    // Keep player in room so reloads or temporary disconnects don't drop the slot
+    // Keep slots
   });
 });
 
@@ -376,6 +532,20 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString(), activeRooms: rooms.size });
 });
 
+app.get('/api/rooms', (req, res) => {
+  const list = [];
+  rooms.forEach((r) => {
+    list.push({
+      id: r.id,
+      name: r.name,
+      playerCount: r.players.length,
+      phase: r.phase,
+      createdAt: r.createdAt,
+    });
+  });
+  res.json(list);
+});
+
 app.use((req, res) => {
   res.sendFile(path.join(distPath, 'index.html'), (err) => {
     if (err) {
@@ -384,7 +554,6 @@ app.use((req, res) => {
           <body style="background:#090d16;color:#f1f5f9;font-family:sans-serif;text-align:center;padding:50px;">
             <h1>CS2 Mix Hub Backend Running!</h1>
             <p>Port: ${PORT}</p>
-            <p>Para abrir a interface em desenvolvimento, acesse <a href="http://localhost:5173" style="color:#f59e0b">http://localhost:5173</a></p>
           </body>
         </html>
       `);

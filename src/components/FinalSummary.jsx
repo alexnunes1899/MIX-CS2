@@ -1,22 +1,24 @@
 import React, { useState } from 'react';
 import GCBadge from './GCBadge';
 import { CS2_MAPS } from '../data/maps';
-import { Trophy, Copy, Check, Terminal, RotateCcw, Shield, Flame, Share2, Sparkles } from 'lucide-react';
+import { Trophy, Share2, Terminal, RotateCcw, Shield, Flame, Check, History } from 'lucide-react';
 import { formatDiscordSummary, formatServerCommand } from '../utils/exportText';
 import { playClickSound } from '../utils/audio';
+import ServerConnectBar from './ServerConnectBar';
 
 export default function FinalSummary({
   room,
   onResetMix,
+  onUpdateServerIp,
+  onOpenHistory,
   soundEnabled,
 }) {
   const [copiedDiscord, setCopiedDiscord] = useState(false);
   const [copiedRcon, setCopiedRcon] = useState(false);
 
-  const { finalMap, teamA, teamB, metrics, startingSideTeamB, name: roomName = 'MIX' } = room;
+  const { finalMap, teamA = [], teamB = [], metrics, startingSideTeamB, name: roomName = 'MIX', serverIp = '' } = room;
   const fullMap = CS2_MAPS.find((m) => m.id === finalMap?.id) || finalMap;
 
-  // If Team B chose CT, Team A starts TR, and vice versa
   const sideTeamB = startingSideTeamB || 'CT';
   const sideTeamA = sideTeamB === 'CT' ? 'TR' : 'CT';
 
@@ -88,6 +90,13 @@ export default function FinalSummary({
         </div>
       </div>
 
+      {/* Direct CS2 Server Connect Widget */}
+      <ServerConnectBar
+        serverIp={serverIp}
+        onUpdateServerIp={onUpdateServerIp}
+        soundEnabled={soundEnabled}
+      />
+
       {/* Starting Teams & Sides */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         
@@ -125,7 +134,7 @@ export default function FinalSummary({
           </div>
 
           <div className="divide-y divide-slate-800/60 mt-3">
-            {teamA.map((p, i) => (
+            {teamA.map((p) => (
               <div key={p.id} className="py-2 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-lg select-none">{p.avatar || '🎯'}</span>
@@ -171,7 +180,7 @@ export default function FinalSummary({
           </div>
 
           <div className="divide-y divide-slate-800/60 mt-3">
-            {teamB.map((p, i) => (
+            {teamB.map((p) => (
               <div key={p.id} className="py-2 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-lg select-none">{p.avatar || '🎯'}</span>
@@ -185,17 +194,28 @@ export default function FinalSummary({
 
       </div>
 
-      {/* Bottom Reset Actions */}
-      <div className="flex items-center justify-center pt-4">
+      {/* Bottom Actions */}
+      <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-3">
+        <button
+          onClick={() => {
+            if (soundEnabled) playClickSound();
+            onOpenHistory();
+          }}
+          className="w-full sm:w-auto px-5 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-300 border border-slate-800 text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer"
+        >
+          <History size={16} />
+          <span>Registrar / Ver Placar da Partida</span>
+        </button>
+
         <button
           onClick={() => {
             if (soundEnabled) playClickSound();
             onResetMix();
           }}
-          className="px-6 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center gap-2 transition-all cursor-pointer"
+          className="w-full sm:w-auto px-6 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer"
         >
           <RotateCcw size={15} />
-          <span>Jogar Outro Mix (Voltar ao Lobby)</span>
+          <span>Jogar Novo Mix (Voltar ao Lobby)</span>
         </button>
       </div>
     </div>

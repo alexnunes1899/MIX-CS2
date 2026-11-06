@@ -1,14 +1,15 @@
 import React from 'react';
 import GCBadge from './GCBadge';
-import { Shield, Flame, ArrowLeftRight, RotateCcw, MapPin, Scale, ChevronLeft, CheckCircle2 } from 'lucide-react';
+import { Shield, Flame, ArrowLeftRight, RotateCcw, MapPin, Scale, ChevronLeft, CheckCircle2, Coins } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
 
 export default function TeamsView({
-  teamA,
-  teamB,
+  teamA = [],
+  teamB = [],
   metrics,
   onSwapTeams,
   onReDraw,
+  onStartCoinFlip,
   onStartVeto,
   onBackToLobby,
   soundEnabled,
@@ -25,7 +26,7 @@ export default function TeamsView({
               </span>
               <div>
                 <h2 className="text-lg font-bold font-heading text-white">
-                  Times Definidos com Sucesso!
+                  Times Definidos!
                 </h2>
                 <p className="text-xs text-slate-400">
                   Diferença de apenas <strong className="text-amber-400 font-mono">{metrics?.diff ?? 0} level(s)</strong> entre as duas equipes
@@ -51,10 +52,10 @@ export default function TeamsView({
                 onSwapTeams();
               }}
               className="flex items-center gap-1.5 px-3 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold transition-all cursor-pointer"
-              title="Trocar Time A e Time B de lado"
+              title="Inverter Time A e Time B"
             >
               <ArrowLeftRight size={15} />
-              <span>Inverter Lados</span>
+              <span>Inverter</span>
             </button>
           </div>
         </div>
@@ -68,7 +69,6 @@ export default function TeamsView({
           <div className="absolute top-0 right-0 w-36 h-36 bg-sky-500/10 rounded-full blur-2xl pointer-events-none" />
 
           <div>
-            {/* Header */}
             <div className="flex items-center justify-between pb-4 border-b border-slate-800">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-sky-500/20 border border-sky-400/40 text-sky-400 flex items-center justify-center">
@@ -90,7 +90,6 @@ export default function TeamsView({
               </div>
             </div>
 
-            {/* Players List */}
             <div className="divide-y divide-slate-800/60 mt-2">
               {teamA.map((p, i) => (
                 <div key={p.id} className="py-2.5 flex items-center justify-between">
@@ -113,7 +112,6 @@ export default function TeamsView({
           <div className="absolute top-0 right-0 w-36 h-36 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
 
           <div>
-            {/* Header */}
             <div className="flex items-center justify-between pb-4 border-b border-slate-800">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-400/40 text-amber-400 flex items-center justify-center">
@@ -135,7 +133,6 @@ export default function TeamsView({
               </div>
             </div>
 
-            {/* Players List */}
             <div className="divide-y divide-slate-800/60 mt-2">
               {teamB.map((p, i) => (
                 <div key={p.id} className="py-2.5 flex items-center justify-between">
@@ -181,16 +178,30 @@ export default function TeamsView({
           </button>
         </div>
 
-        <button
-          onClick={() => {
-            if (soundEnabled) playClickSound();
-            onStartVeto();
-          }}
-          className="w-full sm:w-auto px-7 py-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-sm tracking-wide shadow-lg shadow-amber-500/25 flex items-center justify-center gap-2 transition-all cursor-pointer"
-        >
-          <MapPin size={18} />
-          <span>Avançar para o Pick & Ban de Mapas ➔</span>
-        </button>
+        <div className="flex items-center gap-2.5 w-full sm:w-auto">
+          <button
+            onClick={() => {
+              if (soundEnabled) playClickSound();
+              onStartCoinFlip();
+            }}
+            className="flex-1 sm:flex-initial px-5 py-3.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/40 font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer"
+            title="Sortear quem começa o veto com cara ou coroa animada"
+          >
+            <Coins size={16} className="text-amber-400" />
+            <span>🪙 Cara ou Coroa</span>
+          </button>
+
+          <button
+            onClick={() => {
+              if (soundEnabled) playClickSound();
+              onStartVeto();
+            }}
+            className="flex-1 sm:flex-initial px-6 py-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-sm tracking-wide shadow-lg shadow-amber-500/25 flex items-center justify-center gap-2 transition-all cursor-pointer"
+          >
+            <MapPin size={18} />
+            <span>Iniciar Veto ➔</span>
+          </button>
+        </div>
       </div>
     </div>
   );

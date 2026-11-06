@@ -6,11 +6,15 @@ import Lobby from './components/Lobby';
 import TeamsView from './components/TeamsView';
 import MapVeto from './components/MapVeto';
 import FinalSummary from './components/FinalSummary';
+import RoomsHubModal from './components/RoomsHubModal';
+import ChatDrawer from './components/ChatDrawer';
+import CoinFlipModal from './components/CoinFlipModal';
+import DraftRoulette from './components/DraftRoulette';
+import CaptainsDraftView from './components/CaptainsDraftView';
 import { CS2_MAPS } from './data/maps';
 import { balanceTeams, shuffleTeams } from './utils/balance';
 import { MOCK_PLAYERS } from './data/mockPlayers';
 
-// Connect to socket backend
 const socket = io('/', {
   autoConnect: true,
   reconnectionAttempts: 5,
@@ -24,6 +28,10 @@ export default function App() {
   });
 
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [roomsHubOpen, setRoomsHubOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [rouletteActive, setRouletteActive] = useState(false);
+  const [pendingDrawMode, setPendingDrawMode] = useState('balanced');
 
   // User's own saved profile (stored in localStorage)
   const [myProfile, setMyProfile] = useState(() => {
@@ -45,41 +53,34 @@ export default function App() {
   // Room state synchronized with server or local fallback
   const [room, setRoom] = useState({
     id: roomId,
-    name: `Sala ${roomId}`,
+    name: `Mix ${roomId}`,
     phase: 'lobby',
     players: [],
     teamA: [],
     teamB: [],
     metrics: null,
-    maps: [
-      { id: 'de_mirage', name: 'Mirage', file: 'de_mirage', location: 'Marrocos' },
-      { id: 'de_inferno', name: 'Inferno', file: 'de_inferno', location: 'Itália' },
-      { id: 'de_nuke', name: 'Nuke', file: 'de_nuke', location: 'EUA' },
-      { id: 'de_dust2', name: 'Dust II', file: 'de_dust2', location: 'Oriente Médio' },
-      { id: 'de_ancient', name: 'Ancient', file: 'de_ancient', location: 'América Central' },
-      { id: 'de_anubis', name: 'Anubis', file: 'de_anubis', location: 'Egito' },
-      { id: 'de_vertigo', name: 'Vertigo', file: 'de_vertigo', location: 'Arranha-céu' },
-    ],
+    maps: CS2_MAPS.slice(0, 7),
     bannedMaps: [],
     currentTurn: 'teamA',
     finalMap: null,
     startingSideTeamB: null,
+    serverIp: '',
+    chat: [],
+    history: [],
+    coin: null,
+    captainA: null,
+    captainB: null,
+    captainTurn: 'captainA',
+    unassignedPlayers: [],
   });
-
-  const [connected, setConnected] = useState(false);
 
   // Setup Socket listener
   useEffect(() => {
     socket.on('connect', () => {
-      setConnected(true);
       socket.emit('join_room', {
         roomId,
         player: myProfile.nick ? myProfile : null,
       });
-    });
-
-    socket.on('disconnect', () => {
-      setConnected(false);
     });
 
     socket.on('room_state', (updatedRoom) => {
@@ -88,12 +89,34 @@ export default function App() {
       }
     });
 
+    socket.on('chat_message', (msg) => {
+      setRoom((prev) => {
+        if (prev.chat.some((m) => m.id === msg.id)) return prev;
+        return { ...prev, chat: [...prev.chat, msg] };
+      });
+    });
+
     return () => {
       socket.off('connect');
-      socket.off('disconnect');
       socket.off('room_state');
+      socket.off('chat_message');
     };
   }, [roomId, myProfile]);
+
+  // Switch Room (Multi-room hub support)
+  const handleSelectRoom = (newRoomCode, customName) => {
+    const clean = newRoomCode.trim().toUpperCase();
+    setRoomId(clean);
+    const url = new URL(window.location);
+    url.searchParams.set('room', clean);
+    window.history.pushState({}, '', url);
+
+    socket.emit('join_room', {
+      roomId: clean,
+      roomName: customName,
+      player: myProfile.nick ? myProfile : null,
+    });
+  };
 
   // Save profile changes
   const handleSaveProfile = (newProfile) => {
@@ -110,7 +133,6 @@ export default function App() {
         player: newProfile,
       });
     } else {
-      // Offline / Local state fallback
       setRoom((prev) => {
         const existingIdx = prev.players.findIndex((p) => p.id === newProfile.id || p.nick === newProfile.nick);
         let updatedPlayers = [...prev.players];
@@ -121,6 +143,67 @@ export default function App() {
         }
         return { ...prev, players: updatedPlayers };
       });
+    }
+  };
+
+  // Toggle ready status
+  const handleToggleReady = (playerId) => {
+    if (socket.connected) {
+      socket.emit('toggle_ready', { roomId, playerId });
+    } else {
+      setRoom((prev) => ({
+        ...prev,
+        players: prev.players.map((p) => (p.id === playerId ? { ...p, ready: !p.ready } : p)),
+      }));
+    }
+  };
+
+  // Send chat message
+  const handleSendMessage = (message) => {
+    if (socket.connected) {
+      socket.emit('send_chat', { roomId, message });
+    } else {
+      const chatMsg = {
+        id: `msg-${Date.now()}`,
+        sender: message.sender,
+        text: message.text,
+        timestamp: Date.now(),
+      };
+      setRoom((prev) => ({ ...prev, chat: [...prev.chat, chatMsg] }));
+    }
+  };
+
+  // Update Server IP
+  const handleUpdateServerIp = (serverIp) => {
+    if (socket.connected) {
+      socket.emit('update_server_ip', { roomId, serverIp });
+    } else {
+      setRoom((prev) => ({ ...prev, serverIp }));
+    }
+  };
+
+  // Save match score
+  const handleSaveScore = (scoreA, scoreB) => {
+    if (socket.connected) {
+      socket.emit('save_score', { roomId, scoreA, scoreB });
+    } else {
+      const numA = Number(scoreA) || 0;
+      const numB = Number(scoreB) || 0;
+      setRoom((prev) => ({
+        ...prev,
+        history: [
+          {
+            id: `match-${Date.now()}`,
+            date: new Date().toLocaleDateString('pt-BR'),
+            time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+            map: prev.finalMap?.name || 'Mirage',
+            scoreA: numA,
+            scoreB: numB,
+            winner: numA > numB ? 'Time A' : numB > numA ? 'Time B' : 'Empate',
+          },
+          ...prev.history,
+        ],
+      }));
     }
   };
 
@@ -166,12 +249,18 @@ export default function App() {
     }
   };
 
-  // Balance or random draw teams
-  const handleDrawTeams = (mode = 'balanced') => {
+  // Trigger draw with suspense roulette
+  const handleTriggerDraw = (mode = 'balanced') => {
+    setPendingDrawMode(mode);
+    setRouletteActive(true);
+  };
+
+  const handleRouletteComplete = () => {
+    setRouletteActive(false);
     if (socket.connected) {
-      socket.emit('draw_teams', { roomId, mode });
+      socket.emit('draw_teams', { roomId, mode: pendingDrawMode });
     } else {
-      const result = mode === 'balanced' ? balanceTeams(room.players) : shuffleTeams(room.players);
+      const result = pendingDrawMode === 'balanced' ? balanceTeams(room.players) : shuffleTeams(room.players);
       setRoom((prev) => ({
         ...prev,
         phase: 'teams',
@@ -179,6 +268,103 @@ export default function App() {
         teamB: result.teamB,
         metrics: result.metrics,
       }));
+    }
+  };
+
+  // Captains Draft
+  const handleStartCaptainDraft = () => {
+    if (socket.connected) {
+      socket.emit('start_captain_draft', { roomId });
+    } else {
+      const sorted = [...room.players].sort((a, b) => b.level - a.level);
+      setRoom((prev) => ({
+        ...prev,
+        phase: 'captains_draft',
+        captainA: sorted[0],
+        captainB: sorted[1],
+        teamA: [sorted[0]],
+        teamB: [sorted[1]],
+        unassignedPlayers: sorted.slice(2),
+        captainTurn: 'captainA',
+      }));
+    }
+  };
+
+  const handleCaptainPick = (playerId) => {
+    if (socket.connected) {
+      socket.emit('captain_pick', { roomId, playerId });
+    } else {
+      setRoom((prev) => {
+        const idx = prev.unassignedPlayers.findIndex((p) => p.id === playerId);
+        if (idx === -1) return prev;
+        const chosen = prev.unassignedPlayers[idx];
+        const newUnassigned = prev.unassignedPlayers.filter((p) => p.id !== playerId);
+
+        const newTeamA = prev.captainTurn === 'captainA' ? [...prev.teamA, chosen] : prev.teamA;
+        const newTeamB = prev.captainTurn === 'captainB' ? [...prev.teamB, chosen] : prev.teamB;
+        const nextTurn = prev.captainTurn === 'captainA' ? 'captainB' : 'captainA';
+
+        if (newUnassigned.length === 0) {
+          const sumA = newTeamA.reduce((acc, p) => acc + p.level, 0);
+          const sumB = newTeamB.reduce((acc, p) => acc + p.level, 0);
+          const diff = Math.abs(sumA - sumB);
+          return {
+            ...prev,
+            phase: 'teams',
+            teamA: newTeamA,
+            teamB: newTeamB,
+            unassignedPlayers: [],
+            metrics: {
+              sumA,
+              sumB,
+              avgA: (sumA / newTeamA.length).toFixed(1),
+              avgB: (sumB / newTeamB.length).toFixed(1),
+              diff,
+              balancePercentage: Math.max(0, Math.min(100, Math.round(100 - (diff / Math.max(sumA, sumB || 1)) * 100))),
+            },
+          };
+        }
+
+        return {
+          ...prev,
+          teamA: newTeamA,
+          teamB: newTeamB,
+          unassignedPlayers: newUnassigned,
+          captainTurn: nextTurn,
+        };
+      });
+    }
+  };
+
+  // Coin Flip Cara ou Coroa
+  const handleStartCoinFlip = () => {
+    if (socket.connected) {
+      socket.emit('flip_coin', { roomId });
+    } else {
+      const winner = Math.random() < 0.5 ? 'teamA' : 'teamB';
+      setRoom((prev) => ({
+        ...prev,
+        phase: 'coin_flip',
+        coin: { winner, timestamp: Date.now(), choice: null },
+      }));
+    }
+  };
+
+  const handleCoinChoice = (choice) => {
+    if (socket.connected) {
+      socket.emit('coin_choice', { roomId, choice });
+    } else {
+      setRoom((prev) => {
+        const turn = choice === 'first' ? prev.coin?.winner || 'teamA' : prev.coin?.winner === 'teamA' ? 'teamB' : 'teamA';
+        return {
+          ...prev,
+          phase: 'veto',
+          currentTurn: turn,
+          bannedMaps: [],
+          finalMap: null,
+          startingSideTeamB: null,
+        };
+      });
     }
   };
 
@@ -208,7 +394,7 @@ export default function App() {
     }
   };
 
-  // Start Veto Phase
+  // Start Veto Phase directly
   const handleStartVeto = () => {
     if (socket.connected) {
       socket.emit('start_veto', { roomId });
@@ -283,6 +469,8 @@ export default function App() {
         finalMap: null,
         startingSideTeamB: null,
         currentTurn: 'teamA',
+        coin: null,
+        unassignedPlayers: [],
       }));
     }
   };
@@ -291,10 +479,12 @@ export default function App() {
     <div className="min-h-screen flex flex-col bg-[#090d16] text-slate-100 font-sans">
       <Header
         roomId={roomId}
+        roomName={room.name}
         phase={room.phase}
         soundEnabled={soundEnabled}
         setSoundEnabled={setSoundEnabled}
-        playerCount={room.players.length}
+        onOpenRoomsHub={() => setRoomsHubOpen(true)}
+        onOpenHistory={() => setHistoryOpen(true)}
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-6">
@@ -313,14 +503,27 @@ export default function App() {
             <div className="lg:col-span-8">
               <Lobby
                 players={room.players}
+                myProfile={myProfile}
+                onToggleReady={handleToggleReady}
                 onRemovePlayer={handleRemovePlayer}
                 onFillMockBots={handleFillMockBots}
                 onClearPlayers={handleClearPlayers}
-                onDrawTeams={handleDrawTeams}
+                onDrawTeams={handleTriggerDraw}
+                onStartCaptainDraft={handleStartCaptainDraft}
                 soundEnabled={soundEnabled}
               />
             </div>
           </div>
+        )}
+
+        {/* CAPTAINS DRAFT PHASE */}
+        {room.phase === 'captains_draft' && (
+          <CaptainsDraftView
+            room={room}
+            onPickPlayer={handleCaptainPick}
+            onCancel={() => setRoom((prev) => ({ ...prev, phase: 'lobby' }))}
+            soundEnabled={soundEnabled}
+          />
         )}
 
         {/* TEAMS PHASE */}
@@ -330,7 +533,8 @@ export default function App() {
             teamB={room.teamB}
             metrics={room.metrics}
             onSwapTeams={handleSwapTeams}
-            onReDraw={() => handleDrawTeams('balanced')}
+            onReDraw={() => handleTriggerDraw('balanced')}
+            onStartCoinFlip={handleStartCoinFlip}
             onStartVeto={handleStartVeto}
             onBackToLobby={() => setRoom((prev) => ({ ...prev, phase: 'lobby' }))}
             soundEnabled={soundEnabled}
@@ -353,15 +557,48 @@ export default function App() {
           <FinalSummary
             room={room}
             onResetMix={handleResetMix}
+            onUpdateServerIp={handleUpdateServerIp}
+            onOpenHistory={() => setHistoryOpen(true)}
             soundEnabled={soundEnabled}
           />
         )}
       </main>
 
+      {/* MODALS & DRAWERS */}
+      <RoomsHubModal
+        isOpen={roomsHubOpen}
+        onClose={() => setRoomsHubOpen(false)}
+        currentRoomId={roomId}
+        onSelectRoom={handleSelectRoom}
+        soundEnabled={soundEnabled}
+      />
+
+      <CoinFlipModal
+        isOpen={room.phase === 'coin_flip'}
+        coin={room.coin}
+        onChooseAction={handleCoinChoice}
+        soundEnabled={soundEnabled}
+      />
+
+      {rouletteActive && (
+        <DraftRoulette
+          players={room.players}
+          onComplete={handleRouletteComplete}
+          soundEnabled={soundEnabled}
+        />
+      )}
+
+      <ChatDrawer
+        chat={room.chat}
+        onSendMessage={handleSendMessage}
+        myProfile={myProfile}
+        soundEnabled={soundEnabled}
+      />
+
       {/* Footer */}
       <footer className="border-t border-slate-900 bg-slate-950/80 py-4 text-center text-xs text-slate-500">
         <p>
-          CS2 Mix Hub • Feito para jogar com os amigos • Sincronização em tempo real via WebSockets
+          CS2 Mix Hub • Múltiplas Salas de Mix com Sorteador Gamers Club & Pick/Ban em Tempo Real
         </p>
       </footer>
     </div>

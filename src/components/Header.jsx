@@ -1,8 +1,16 @@
 import React, { useState } from 'react';
-import { Copy, Check, Users, Swords, MapPin, Trophy, Volume2, VolumeX, Share2 } from 'lucide-react';
+import { Share2, Check, Users, Swords, MapPin, Trophy, Volume2, VolumeX, Layers, History } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
 
-export default function Header({ roomId, phase, soundEnabled, setSoundEnabled, playerCount }) {
+export default function Header({
+  roomId,
+  roomName,
+  phase,
+  soundEnabled,
+  setSoundEnabled,
+  onOpenRoomsHub,
+  onOpenHistory,
+}) {
   const [copied, setCopied] = useState(false);
 
   const copyInviteLink = () => {
@@ -14,15 +22,15 @@ export default function Header({ roomId, phase, soundEnabled, setSoundEnabled, p
   };
 
   const steps = [
-    { id: 'lobby', label: '1. Lobby (Jogadores)', icon: Users },
-    { id: 'teams', label: '2. Times Equilibrados', icon: Swords },
-    { id: 'veto', label: '3. Veto de Mapas', icon: MapPin },
-    { id: 'finished', label: '4. Pronto pro Jogo', icon: Trophy },
+    { id: 'lobby', label: '1. Lobby', icon: Users },
+    { id: 'teams', label: '2. Times', icon: Swords },
+    { id: 'veto', label: '3. Veto', icon: MapPin },
+    { id: 'finished', label: '4. Jogo', icon: Trophy },
   ];
 
   const getStepStatus = (stepId) => {
-    const order = ['lobby', 'teams', 'veto', 'side_pick', 'finished'];
-    const currentIdx = order.indexOf(phase === 'side_pick' ? 'veto' : phase);
+    const order = ['lobby', 'teams', 'captains_draft', 'coin_flip', 'veto', 'side_pick', 'finished'];
+    const currentIdx = order.indexOf(phase === 'side_pick' || phase === 'coin_flip' ? 'veto' : phase);
     const stepIdx = order.indexOf(stepId);
     if (stepIdx < currentIdx) return 'completed';
     if (stepIdx === currentIdx) return 'active';
@@ -30,11 +38,11 @@ export default function Header({ roomId, phase, soundEnabled, setSoundEnabled, p
   };
 
   return (
-    <header className="border-b border-slate-800/80 bg-[#0c1220]/90 backdrop-blur sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-4 py-3 sm:py-4">
+    <header className="border-b border-slate-800/80 bg-[#0c1220]/90 backdrop-blur sticky top-0 z-40">
+      <div className="max-w-7xl mx-auto px-4 py-3 sm:py-3.5">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           
-          {/* Logo & Room Title */}
+          {/* Logo & Room Switcher */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-orange-600 flex items-center justify-center font-black text-xl text-black shadow-lg shadow-amber-500/20 tracking-tighter">
@@ -42,22 +50,32 @@ export default function Header({ roomId, phase, soundEnabled, setSoundEnabled, p
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h1 className="text-xl font-bold font-heading tracking-wide text-white">
-                    MIX HUB <span className="text-amber-400 text-xs px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30">GC</span>
+                  <h1 className="text-lg font-bold font-heading tracking-wide text-white">
+                    {roomName || 'MIX HUB'}
                   </h1>
+                  <span className="text-amber-400 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30">
+                    GC
+                  </span>
                 </div>
-                <p className="text-xs text-slate-400">Balanceamento por Nível Gamers Club & Pick/Ban</p>
+                <p className="text-[11px] text-slate-400">Balanceamento por Nível Gamers Club & Pick/Ban</p>
               </div>
             </div>
 
-            {/* Sound toggle on mobile */}
-            <div className="flex md:hidden items-center gap-2">
+            {/* Quick action buttons on mobile */}
+            <div className="flex md:hidden items-center gap-1.5">
               <button
-                onClick={() => setSoundEnabled(!soundEnabled)}
+                onClick={onOpenRoomsHub}
                 className="p-2 rounded-lg bg-slate-800 text-slate-300 hover:text-white"
-                title={soundEnabled ? 'Silenciar Sons' : 'Ativar Sons'}
+                title="Trocar de Sala / Criar Mix"
               >
-                {soundEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
+                <Layers size={17} />
+              </button>
+              <button
+                onClick={onOpenHistory}
+                className="p-2 rounded-lg bg-slate-800 text-slate-300 hover:text-white"
+                title="Histórico de Placares"
+              >
+                <History size={17} />
               </button>
             </div>
           </div>
@@ -89,17 +107,36 @@ export default function Header({ roomId, phase, soundEnabled, setSoundEnabled, p
             })}
           </div>
 
-          {/* Room Code & Invite button */}
-          <div className="flex items-center gap-2.5">
+          {/* Room Controls & Actions */}
+          <div className="flex items-center flex-wrap gap-2">
+            <button
+              onClick={onOpenRoomsHub}
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-700/60 text-xs font-semibold transition-all cursor-pointer"
+              title="Ver todas as salas ou criar um novo mix"
+            >
+              <Layers size={14} className="text-amber-400" />
+              <span>Trocar Sala</span>
+            </button>
+
+            <button
+              onClick={onOpenHistory}
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-700/60 text-xs font-semibold transition-all cursor-pointer"
+              title="Ver histórico de partidas jogadas nesta sala"
+            >
+              <History size={14} className="text-amber-400" />
+              <span>Placares</span>
+            </button>
+
+            {/* Room Code & Invite button */}
             <div className="flex items-center bg-slate-900 border border-slate-800 rounded-lg p-1 pl-3 shadow-inner">
-              <div className="text-xs mr-2">
-                <span className="text-slate-500">SALA:</span>{' '}
-                <span className="font-mono font-bold text-amber-400">{roomId}</span>
+              <div className="text-xs mr-2 font-mono">
+                <span className="text-slate-500 text-[10px]">SALA:</span>{' '}
+                <span className="font-bold text-amber-400">{roomId}</span>
               </div>
               <button
                 onClick={copyInviteLink}
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold text-xs transition-colors shadow-sm cursor-pointer"
-                title="Copiar link para os amigos entrarem"
+                title="Copiar link para os amigos entrarem com seu nick e level GC"
               >
                 {copied ? <Check size={14} className="text-slate-950" /> : <Share2 size={14} />}
                 <span>{copied ? 'Copiado!' : 'Convidar'}</span>
@@ -108,10 +145,10 @@ export default function Header({ roomId, phase, soundEnabled, setSoundEnabled, p
 
             <button
               onClick={() => setSoundEnabled(!soundEnabled)}
-              className="hidden md:flex p-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors border border-slate-700/40 cursor-pointer"
+              className="p-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors border border-slate-700/40 cursor-pointer"
               title={soundEnabled ? 'Silenciar Sons' : 'Ativar Sons'}
             >
-              {soundEnabled ? <Volume2 size={18} /> : <VolumeX size={18} />}
+              {soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
             </button>
           </div>
 
