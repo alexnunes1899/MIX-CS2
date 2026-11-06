@@ -20,6 +20,7 @@ import PlayerProfileModal from './components/PlayerProfileModal';
 import GsiSetupModal from './components/GsiSetupModal';
 import RoomPasswordModal from './components/RoomPasswordModal';
 import FailoverBanner from './components/FailoverBanner';
+import UpdateNotificationBanner from './components/UpdateNotificationBanner';
 import { recordMatchResult } from './utils/playerStats';
 import { ACTIVE_DUTY_MAPS, OFFICIAL_ACTIVE_DUTY, EXTRA_CS2_MAPS } from './data/maps';
 import { balanceTeams, shuffleTeams, calculateMetricsForTeams } from './utils/balance';
@@ -81,6 +82,56 @@ export default function App() {
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [gsiModalOpen, setGsiModalOpen] = useState(false);
   const [roomNotice, setRoomNotice] = useState(null);
+  const [serverVersion, setServerVersion] = useState(null);
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+
+  const handleApplyUpdate = () => {
+    try {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then((registrations) => {
+          for (const reg of registrations) reg.unregister();
+        });
+      }
+    } catch (e) {}
+    window.location.reload(true);
+  };
+
+  // Real-time Version & Update Detector (fixes caching delays permanently)
+  useEffect(() => {
+    let isMounted = true;
+    const checkVersion = async () => {
+      try {
+        const res = await fetch(`/api/version?_t=${Date.now()}`, { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data?.version && isMounted) {
+          setServerVersion((prev) => {
+            if (prev && prev !== data.version) {
+              setUpdateAvailable(true);
+            }
+            return data.version;
+          });
+        }
+      } catch (e) {}
+    };
+
+    checkVersion();
+    const handleFocus = () => checkVersion();
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') checkVersion();
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibility);
+    const interval = setInterval(checkVersion, 25000);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      clearInterval(interval);
+    };
+  }, []);
 
   // Official Active Duty Live Rotation State (sourced from Wikipedia / Valve records)
   const [officialRotation, setOfficialRotation] = useState(() => ({
@@ -353,6 +404,16 @@ export default function App() {
       });
     });
 
+    socket.on('server_app_version', ({ version }) => {
+      if (!version) return;
+      setServerVersion((prev) => {
+        if (prev && prev !== version) {
+          setUpdateAvailable(true);
+        }
+        return version;
+      });
+    });
+
     return () => {
       socket.off('connect');
       socket.off('room_state');
@@ -364,6 +425,7 @@ export default function App() {
       socket.off('kicked_from_room');
       socket.off('admin_error');
       socket.off('room_deleted');
+      socket.off('server_app_version');
     };
   }, [roomId, myProfile, roomPassword]);
 
@@ -1047,6 +1109,7 @@ export default function App() {
   if (view === 'landing') {
     return (
       <>
+        <UpdateNotificationBanner isAvailable={updateAvailable} onUpdate={handleApplyUpdate} />
         <FailoverBanner roomId={roomId} roomPassword={roomPassword} socketConnected={socketConnected} />
         <LandingPage
           onEnterRoom={handleEnterRoom}
@@ -1159,6 +1222,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col bg-[#090d16] text-slate-100 font-sans">
+      <UpdateNotificationBanner isAvailable={updateAvailable} onUpdate={handleApplyUpdate} />
       <FailoverBanner roomId={roomId} roomPassword={roomPassword} socketConnected={socketConnected} />
       <Header
         roomId={roomId}

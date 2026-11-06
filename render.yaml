@@ -3,7 +3,7 @@ services:
     name: cs2-mix-hub
     runtime: node
     plan: free
-    buildCommand: npm install && npm run build
+    buildCommand: npm ci --prefer-offline --no-audit --no-fund && node -e "if (!require('fs').existsSync('dist/index.html')) require('child_process').execSync('npm run build', {stdio: 'inherit'})"
     startCommand: npm start
     envVars:
       - key: NODE_ENV

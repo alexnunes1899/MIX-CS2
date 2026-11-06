@@ -394,6 +394,9 @@ function calculateBalance(players, rankingSystem = 'gc') {
 }
 
 io.on('connection', (socket) => {
+  // Emit current server version/timestamp to client so client detects deployments instantly
+  socket.emit('server_app_version', { version: BUILD_VERSION });
+
   // Get active rooms list
   socket.on('get_rooms_list', () => {
     broadcastRoomsList();
@@ -1218,9 +1221,34 @@ io.on('connection', (socket) => {
   });
 });
 
-// Serve frontend build if dist folder exists
+const BUILD_VERSION = Date.now().toString();
+
+// Endpoint for live version detection
+app.get('/api/version', (req, res) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.json({ version: BUILD_VERSION });
+});
+
+// Serve frontend build with strict anti-caching for HTML and high-performance caching for hashed assets
 const distPath = path.join(__dirname, '..', 'dist');
-app.use(express.static(distPath));
+app.use(express.static(distPath, {
+  etag: false,
+  lastModified: false,
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html') || filePath.endsWith('index.html')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, proxy-revalidate, max-age=0');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+      res.setHeader('Surrogate-Control', 'no-store');
+    } else if (filePath.includes(path.sep + 'assets' + path.sep) || filePath.includes('/assets/')) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    } else {
+      res.setHeader('Cache-Control', 'no-cache, must-revalidate, max-age=0');
+    }
+  }
+}));
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString(), activeRooms: rooms.size });
@@ -1544,6 +1572,10 @@ app.get('/api/faceit/:steamId', async (req, res) => {
 });
 
 app.use((req, res) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, proxy-revalidate, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Surrogate-Control', 'no-store');
   res.sendFile(path.join(distPath, 'index.html'), (err) => {
     if (err) {
       res.status(200).send(`
