@@ -281,7 +281,7 @@ export default function PlayerProfileModal({
                     Nível {level}
                   </div>
                   <span className={`text-[11px] font-bold uppercase tracking-wider ${gcTier.text}`}>
-                    Patente {gcTier.name}
+                    {gcTier.category}
                   </span>
                 </div>
                 <GCBadge level={level} size="lg" />

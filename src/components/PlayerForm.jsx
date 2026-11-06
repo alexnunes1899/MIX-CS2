@@ -607,10 +607,10 @@ export default function PlayerForm({
             {/* Quick Level Preset Buttons (Sleek Pills) */}
             <div className="grid grid-cols-4 gap-1.5 pt-1">
               {[
-                { lvl: 1, label: 'Lvl 1 (Bronze)' },
-                { lvl: 10, label: 'Lvl 10 (Ouro)' },
-                { lvl: 20, label: 'Lvl 20 (Elite)' },
-                { lvl: 21, label: 'Lvl 21 (Pro)' },
+                { lvl: 1, label: 'Lvl 1 (Iniciante)' },
+                { lvl: 11, label: 'Lvl 11 (START)' },
+                { lvl: 16, label: 'Lvl 16 (RISE)' },
+                { lvl: 21, label: 'Lvl 21 (Hall)' },
               ].map((preset) => {
                 const isCurrent = level === preset.lvl;
                 return (

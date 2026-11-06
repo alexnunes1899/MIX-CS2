@@ -1,14 +1,93 @@
+// Gamers Club CS2 - Sistema Oficial de Níveis (1 a 21)
+// Classificação oficial por faixas de habilidade com as cores oficiais da Gamers Club
+
 export const GC_TIERS = [
-  { min: 1, max: 4, name: 'Bronze', color: 'from-amber-700 to-amber-900', border: 'border-amber-700/60', text: 'text-amber-500', bg: 'bg-amber-950/40' },
-  { min: 5, max: 8, name: 'Prata', color: 'from-slate-400 to-slate-600', border: 'border-slate-400/60', text: 'text-slate-300', bg: 'bg-slate-900/60' },
-  { min: 9, max: 12, name: 'Ouro', color: 'from-yellow-400 to-amber-500', border: 'border-yellow-400/60', text: 'text-yellow-400', bg: 'bg-amber-950/30' },
-  { min: 13, max: 16, name: 'Platina', color: 'from-cyan-400 to-blue-600', border: 'border-cyan-400/60', text: 'text-cyan-400', bg: 'bg-cyan-950/30' },
-  { min: 17, max: 19, name: 'Diamante', color: 'from-purple-400 to-indigo-600', border: 'border-purple-400/60', text: 'text-purple-400', bg: 'bg-purple-950/30' },
-  { min: 20, max: 20, name: 'Desafiante', color: 'from-red-500 to-rose-700', border: 'border-rose-500/80', text: 'text-rose-400', bg: 'bg-rose-950/40' },
-  { min: 21, max: 21, name: 'Pro / Lenda', color: 'from-amber-300 via-orange-500 to-red-600', border: 'border-amber-400', text: 'text-amber-300', bg: 'bg-gradient-to-r from-amber-950/60 to-red-950/60' },
+  {
+    min: 1,
+    max: 4,
+    name: 'Nível 1 a 4',
+    category: 'Iniciante',
+    color: 'from-slate-500 via-slate-600 to-slate-700',
+    border: 'border-slate-400/50',
+    text: 'text-slate-300',
+    bg: 'bg-slate-900/60',
+    badgeGlow: 'shadow-slate-500/20',
+  },
+  {
+    min: 5,
+    max: 8,
+    name: 'Nível 5 a 8',
+    category: 'Amador',
+    color: 'from-sky-400 via-sky-500 to-blue-600',
+    border: 'border-sky-400/60',
+    text: 'text-sky-400',
+    bg: 'bg-sky-950/40',
+    badgeGlow: 'shadow-sky-500/25',
+  },
+  {
+    min: 9,
+    max: 10,
+    name: 'Nível 9 a 10',
+    category: 'Intermediário',
+    color: 'from-blue-600 via-indigo-600 to-indigo-700',
+    border: 'border-blue-400/70',
+    text: 'text-blue-400',
+    bg: 'bg-blue-950/40',
+    badgeGlow: 'shadow-blue-500/30',
+  },
+  {
+    min: 11,
+    max: 14,
+    name: 'Nível 11 a 14',
+    category: 'Ranked START',
+    color: 'from-emerald-500 via-green-600 to-teal-700',
+    border: 'border-emerald-400/70',
+    text: 'text-emerald-400',
+    bg: 'bg-emerald-950/40',
+    badgeGlow: 'shadow-emerald-500/30',
+  },
+  {
+    min: 15,
+    max: 18,
+    name: 'Nível 15 a 18',
+    category: 'Ranked RISE',
+    color: 'from-amber-400 via-orange-500 to-amber-600',
+    border: 'border-amber-400/80',
+    text: 'text-amber-400',
+    bg: 'bg-amber-950/40',
+    badgeGlow: 'shadow-amber-500/35',
+  },
+  {
+    min: 19,
+    max: 20,
+    name: 'Nível 19 e 20',
+    category: 'Ranked PRO',
+    color: 'from-red-600 via-rose-600 to-red-800',
+    border: 'border-red-400/80',
+    text: 'text-red-400',
+    bg: 'bg-red-950/40',
+    badgeGlow: 'shadow-red-500/40',
+  },
+  {
+    min: 21,
+    max: 21,
+    name: 'Nível 21',
+    category: 'Hall da Fama (Top 21)',
+    color: 'from-amber-300 via-red-600 to-yellow-500',
+    border: 'border-amber-300',
+    text: 'text-amber-300',
+    bg: 'bg-gradient-to-r from-red-950/60 to-amber-950/60',
+    badgeGlow: 'shadow-amber-400/50',
+  },
 ];
 
 export function getGCTier(level) {
   const lvl = Math.max(1, Math.min(21, Number(level) || 1));
-  return GC_TIERS.find((t) => lvl >= t.min && lvl <= t.max) || GC_TIERS[0];
+  const tier = GC_TIERS.find((t) => lvl >= t.min && lvl <= t.max) || GC_TIERS[0];
+  return {
+    ...tier,
+    level: lvl,
+    // Preserve name as category or clear label
+    name: tier.category,
+  };
 }
