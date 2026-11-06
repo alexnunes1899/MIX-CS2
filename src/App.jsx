@@ -19,6 +19,7 @@ import SteamLoginGateModal from './components/SteamLoginGateModal';
 import PlayerProfileModal from './components/PlayerProfileModal';
 import GsiSetupModal from './components/GsiSetupModal';
 import RoomPasswordModal from './components/RoomPasswordModal';
+import FailoverBanner from './components/FailoverBanner';
 import { recordMatchResult } from './utils/playerStats';
 import { ACTIVE_DUTY_MAPS, OFFICIAL_ACTIVE_DUTY, EXTRA_CS2_MAPS } from './data/maps';
 import { balanceTeams, shuffleTeams } from './utils/balance';
@@ -50,6 +51,20 @@ export default function App() {
   });
 
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [socketConnected, setSocketConnected] = useState(socket.connected);
+
+  useEffect(() => {
+    const handleConnect = () => setSocketConnected(true);
+    const handleDisconnect = () => setSocketConnected(false);
+    socket.on('connect', handleConnect);
+    socket.on('disconnect', handleDisconnect);
+    socket.on('connect_error', handleDisconnect);
+    return () => {
+      socket.off('connect', handleConnect);
+      socket.off('disconnect', handleDisconnect);
+      socket.off('connect_error', handleDisconnect);
+    };
+  }, []);
   const [roomsHubOpen, setRoomsHubOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [quickVetoOpen, setQuickVetoOpen] = useState(false);
@@ -957,6 +972,7 @@ export default function App() {
   if (view === 'landing') {
     return (
       <>
+        <FailoverBanner roomId={roomId} roomPassword={roomPassword} socketConnected={socketConnected} />
         <LandingPage
           onEnterRoom={handleEnterRoom}
           onOpenQuickVeto={() => setQuickVetoOpen(true)}
@@ -1066,6 +1082,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col bg-[#090d16] text-slate-100 font-sans">
+      <FailoverBanner roomId={roomId} roomPassword={roomPassword} socketConnected={socketConnected} />
       <Header
         roomId={roomId}
         roomName={room.name}
