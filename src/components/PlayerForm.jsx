@@ -124,7 +124,7 @@ export default function PlayerForm({
     if (!currentProfile?.steamId) return;
     setSyncingFaceit(true);
     try {
-      const res = await fetch(`/api/faceit/${currentProfile.steamId}`);
+      const res = await fetch(`/api/faceit/${currentProfile.steamId}?nickname=${encodeURIComponent(nick || '')}`);
       if (res.ok) {
         const data = await res.json();
         if (data.level) {

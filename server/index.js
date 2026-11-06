@@ -8,6 +8,7 @@ import { fetchLiveOfficialRotation, getCurrentRotationState, ALL_MAPS_CATALOGUE 
 import { executeRconCommand } from './rcon.js';
 import { handleGsiPayload, getGsiState, generateGsiConfig } from './gsi.js';
 import { getSteamPlayerDetails } from './steamApi.js';
+import { fetchFaceitPlayer } from './faceit.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1150,29 +1151,15 @@ app.get('/api/auth/steam/return', async (req, res) => {
       console.error('Error fetching steam XML profile:', e);
     }
 
-    // Attempt automatic FACEIT stats lookup via Steam ID
+    // Attempt automatic FACEIT stats lookup via Steam ID & Nickname
     let faceitLevel = 5;
     let faceitElo = 1200;
     let faceitFound = 0;
-    const faceitApiKey = process.env.FACEIT_API_KEY;
-
-    if (faceitApiKey) {
-      try {
-        const fRes = await fetch(`https://open.faceit.com/data/v4/players?game=cs2&game_player_id=${steamId}`, {
-          headers: { Authorization: `Bearer ${faceitApiKey}` },
-        });
-        if (fRes.ok) {
-          const fData = await fRes.json();
-          const cs2 = fData.games?.cs2 || fData.games?.csgo;
-          if (cs2) {
-            faceitLevel = cs2.skill_level || 5;
-            faceitElo = cs2.faceit_elo || 1200;
-            faceitFound = 1;
-          }
-        }
-      } catch (err) {
-        console.error('Error fetching FACEIT data:', err);
-      }
+    const faceitResult = await fetchFaceitPlayer({ steamId, nickname: nick });
+    if (faceitResult && faceitResult.found) {
+      faceitLevel = faceitResult.level;
+      faceitElo = faceitResult.elo;
+      faceitFound = 1;
     }
 
     res.redirect(
@@ -1184,43 +1171,25 @@ app.get('/api/auth/steam/return', async (req, res) => {
   }
 });
 
-// Dedicated FACEIT lookup API by Steam ID
+// Dedicated FACEIT lookup API by Steam ID or Nickname
 app.get('/api/faceit/:steamId', async (req, res) => {
   const { steamId } = req.params;
-  const faceitApiKey = process.env.FACEIT_API_KEY;
-
-  if (!faceitApiKey) {
-    return res.json({
-      success: true,
-      found: false,
-      level: 5,
-      elo: 1200,
-      message: 'Configure FACEIT_API_KEY nas variáveis de ambiente para sincronização oficial.',
-    });
-  }
-
+  const nickname = req.query.nickname || '';
   try {
-    const fRes = await fetch(`https://open.faceit.com/data/v4/players?game=cs2&game_player_id=${steamId}`, {
-      headers: { Authorization: `Bearer ${faceitApiKey}` },
-    });
-    if (fRes.ok) {
-      const fData = await fRes.json();
-      const cs2 = fData.games?.cs2;
+    const faceitResult = await fetchFaceitPlayer({ steamId, nickname });
+    if (faceitResult && faceitResult.found) {
       return res.json({
         success: true,
-        found: Boolean(cs2),
-        nickname: fData.nickname,
-        level: cs2?.skill_level || 5,
-        elo: cs2?.faceit_elo || 1200,
+        found: true,
+        nickname: faceitResult.nickname,
+        level: faceitResult.level,
+        elo: faceitResult.elo,
       });
     }
-
     return res.json({
       success: true,
       found: false,
-      level: 5,
-      elo: 1200,
-      message: 'Conta FACEIT não vinculada ou sem partidas de CS2',
+      message: 'Conta FACEIT não vinculada a este jogador.',
     });
   } catch (err) {
     return res.status(500).json({ error: err.message });
