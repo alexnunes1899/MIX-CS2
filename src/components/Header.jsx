@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Share2, Check, Users, Swords, MapPin, Trophy, Volume2, VolumeX, Layers, History, Dices, Zap, Home, Server, Play, Copy, User } from 'lucide-react';
+import { Share2, Check, Users, Swords, MapPin, Trophy, Volume2, VolumeX, Layers, History, Dices, Zap, Home, Server, Play, Copy, User, Trash2 } from 'lucide-react';
 import PlayerAvatar from './PlayerAvatar';
+import DeleteRoomModal from './DeleteRoomModal';
 import { playClickSound } from '../utils/audio';
 import { parseServerDetails } from '../utils/serverParser';
 
@@ -12,6 +13,7 @@ export default function Header({
   serverIp = '',
   myProfile,
   onOpenProfile,
+  onDeleteRoom,
   soundEnabled,
   setSoundEnabled,
   onOpenRoomsHub,
@@ -22,6 +24,7 @@ export default function Header({
 }) {
   const [copied, setCopied] = useState(false);
   const [copiedServer, setCopiedServer] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   const parsedServer = parseServerDetails(serverIp);
 
@@ -102,6 +105,16 @@ export default function Header({
               >
                 <Layers size={17} />
               </button>
+              <button
+                onClick={() => {
+                  if (soundEnabled) playClickSound();
+                  setDeleteConfirmOpen(true);
+                }}
+                className="p-2 rounded-lg bg-red-500/10 hover:bg-red-500/25 border border-red-500/30 text-red-400 hover:text-red-300 transition-colors"
+                title="Excluir esta sala"
+              >
+                <Trash2 size={17} />
+              </button>
             </div>
           </div>
 
@@ -172,6 +185,19 @@ export default function Header({
             >
               <Layers size={14} className="text-slate-400" />
               <span>Salas</span>
+            </button>
+
+            {/* Delete Room Button */}
+            <button
+              onClick={() => {
+                if (soundEnabled) playClickSound();
+                setDeleteConfirmOpen(true);
+              }}
+              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/25 text-red-400 hover:text-red-300 border border-red-500/30 hover:border-red-500/60 text-xs font-semibold transition-all cursor-pointer shadow-sm"
+              title="Excluir permanentemente esta sala de mix"
+            >
+              <Trash2 size={13} />
+              <span>Excluir Sala</span>
             </button>
 
             {/* Profile & Stats Button in Header */}
@@ -251,6 +277,19 @@ export default function Header({
 
         </div>
       </div>
+
+      {/* Delete Room Confirmation Modal */}
+      <DeleteRoomModal
+        isOpen={deleteConfirmOpen}
+        onClose={() => setDeleteConfirmOpen(false)}
+        onConfirm={(targetId) => {
+          if (onDeleteRoom) onDeleteRoom(targetId);
+          setDeleteConfirmOpen(false);
+        }}
+        roomId={roomId}
+        roomName={roomName}
+        soundEnabled={soundEnabled}
+      />
     </header>
   );
 }

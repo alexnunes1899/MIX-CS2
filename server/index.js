@@ -107,13 +107,54 @@ const MOCK_BOTS = [
 // In-memory rooms
 const rooms = new Map();
 
+function touchRoomActivity(room) {
+  if (room) {
+    room.lastActivity = Date.now();
+  }
+}
+
+// Inactivity cleanup settings
+const INACTIVITY_EMPTY_TIMEOUT = 15 * 60 * 1000; // 15 min if room has 0 players
+const INACTIVITY_IDLE_TIMEOUT = 60 * 60 * 1000;  // 60 min if idle without any action
+
+function cleanupInactiveRooms() {
+  const now = Date.now();
+  let changed = false;
+
+  rooms.forEach((room, id) => {
+    const empty = !room.players || room.players.length === 0;
+    const idleTime = now - (room.lastActivity || room.createdAt || now);
+
+    // Delete if empty for 15+ min or idle for 60+ min
+    if ((empty && idleTime > INACTIVITY_EMPTY_TIMEOUT) || (idleTime > INACTIVITY_IDLE_TIMEOUT)) {
+      console.log(`[CLEANUP] Excluindo sala ${id} por inatividade (${Math.round(idleTime / 60000)} min ociosa, ${room.players?.length || 0} jogadores).`);
+      io.to(id).emit('room_deleted', {
+        roomId: id,
+        reason: 'inactivity',
+        message: `A sala ${room.name || id} foi encerrada automaticamente por inatividade.`,
+      });
+      rooms.delete(id);
+      changed = true;
+    }
+  });
+
+  if (changed) {
+    broadcastRoomsList();
+  }
+}
+
+// Periodic cleanup every 60 seconds
+setInterval(cleanupInactiveRooms, 60 * 1000);
+
 function getOrCreateRoom(roomId, customName = '', rankingSystem = 'gc', serverIp = '') {
   const id = roomId.trim().toUpperCase() || 'MIX-1';
   if (!rooms.has(id)) {
+    const now = Date.now();
     rooms.set(id, {
       id,
       name: customName || `Mix ${id}`,
-      createdAt: Date.now(),
+      createdAt: now,
+      lastActivity: now,
       rankingSystem: rankingSystem === 'faceit' ? 'faceit' : 'gc', // 'gc' | 'faceit'
       phase: 'lobby', // 'lobby' | 'teams' | 'captains_draft' | 'coin_flip' | 'veto' | 'side_pick' | 'finished'
       players: [],
@@ -135,7 +176,19 @@ function getOrCreateRoom(roomId, customName = '', rankingSystem = 'gc', serverIp
       unassignedPlayers: [],
     });
   }
-  return rooms.get(id);
+  const room = rooms.get(id);
+  touchRoomActivity(room);
+  return room;
+}
+
+function getRoomAndTouch(roomId) {
+  if (!roomId) return null;
+  const cleanId = String(roomId).trim().toUpperCase();
+  const room = rooms.get(cleanId);
+  if (room) {
+    room.lastActivity = Date.now();
+  }
+  return room;
 }
 
 function broadcastRoomsList() {
@@ -150,6 +203,7 @@ function broadcastRoomsList() {
       hasServer: Boolean(r.serverIp && r.serverIp.trim()),
       serverIp: r.serverIp || '',
       createdAt: r.createdAt,
+      lastActivity: r.lastActivity || r.createdAt,
     });
   });
   io.emit('rooms_list', list);
@@ -293,7 +347,7 @@ io.on('connection', (socket) => {
 
   // Toggle Ranking System (GC vs FACEIT)
   socket.on('change_ranking_system', ({ roomId, rankingSystem }) => {
-    const room = rooms.get(roomId);
+    const room = getRoomAndTouch(roomId);
     if (!room) return;
     room.rankingSystem = rankingSystem === 'faceit' ? 'faceit' : 'gc';
     io.to(roomId).emit('room_state', room);
@@ -302,7 +356,7 @@ io.on('connection', (socket) => {
 
   // Toggle ready status
   socket.on('toggle_ready', ({ roomId, playerId }) => {
-    const room = rooms.get(roomId);
+    const room = getRoomAndTouch(roomId);
     if (!room) return;
     const player = room.players.find((p) => p.id === playerId);
     if (player) {
@@ -313,7 +367,7 @@ io.on('connection', (socket) => {
 
   // Chat message
   socket.on('send_chat', ({ roomId, message }) => {
-    const room = rooms.get(roomId);
+    const room = getRoomAndTouch(roomId);
     if (!room || !message || !message.text) return;
 
     const chatMsg = {
@@ -331,7 +385,7 @@ io.on('connection', (socket) => {
 
   // Update Server IP
   socket.on('update_server_ip', ({ roomId, serverIp }) => {
-    const room = rooms.get(roomId);
+    const room = getRoomAndTouch(roomId);
     if (!room) return;
     room.serverIp = serverIp ? serverIp.trim() : '';
     io.to(roomId).emit('room_state', room);
@@ -339,7 +393,7 @@ io.on('connection', (socket) => {
 
   // Add / Update Player
   socket.on('update_player', ({ roomId, player }) => {
-    const room = rooms.get(roomId);
+    const room = getRoomAndTouch(roomId);
     if (!room || !player) return;
 
     const idx = room.players.findIndex((p) => p.id === player.id);
@@ -351,7 +405,7 @@ io.on('connection', (socket) => {
 
   // Remove Player
   socket.on('remove_player', ({ roomId, playerId }) => {
-    const room = rooms.get(roomId);
+    const room = getRoomAndTouch(roomId);
     if (!room) return;
     room.players = room.players.filter((p) => p.id !== playerId);
     io.to(roomId).emit('room_state', room);
@@ -360,7 +414,7 @@ io.on('connection', (socket) => {
 
   // Fill Mock Bots for fast testing
   socket.on('fill_mock_bots', ({ roomId }) => {
-    const room = rooms.get(roomId);
+    const room = getRoomAndTouch(roomId);
     if (!room) return;
     room.players = JSON.parse(JSON.stringify(MOCK_BOTS));
     io.to(roomId).emit('room_state', room);
@@ -369,7 +423,7 @@ io.on('connection', (socket) => {
 
   // Clear Players
   socket.on('clear_players', ({ roomId }) => {
-    const room = rooms.get(roomId);
+    const room = getRoomAndTouch(roomId);
     if (!room) return;
     room.players = [];
     room.phase = 'lobby';
@@ -385,7 +439,7 @@ io.on('connection', (socket) => {
 
   // Balance & Draw Teams (Auto)
   socket.on('draw_teams', ({ roomId, mode = 'balanced' }) => {
-    const room = rooms.get(roomId);
+    const room = getRoomAndTouch(roomId);
     if (!room || room.players.length < 2) return;
 
     const rankingSys = room.rankingSystem || 'gc';
@@ -421,7 +475,7 @@ io.on('connection', (socket) => {
 
   // Start Captain Draft
   socket.on('start_captain_draft', ({ roomId }) => {
-    const room = rooms.get(roomId);
+    const room = getRoomAndTouch(roomId);
     if (!room || room.players.length < 2) return;
 
     // Pick top 2 highest levels as captains
@@ -439,7 +493,7 @@ io.on('connection', (socket) => {
 
   // Captain picks player
   socket.on('captain_pick', ({ roomId, playerId }) => {
-    const room = rooms.get(roomId);
+    const room = getRoomAndTouch(roomId);
     if (!room || room.phase !== 'captains_draft') return;
 
     const playerIdx = room.unassignedPlayers.findIndex((p) => p.id === playerId);
@@ -476,7 +530,7 @@ io.on('connection', (socket) => {
 
   // Coin Flip (Cara ou Coroa CT vs TR)
   socket.on('flip_coin', ({ roomId }) => {
-    const room = rooms.get(roomId);
+    const room = getRoomAndTouch(roomId);
     if (!room) return;
 
     const winner = Math.random() < 0.5 ? 'teamA' : 'teamB';
@@ -491,7 +545,7 @@ io.on('connection', (socket) => {
 
   // Winner of coin picks to ban first or pass
   socket.on('coin_choice', ({ roomId, choice }) => {
-    const room = rooms.get(roomId);
+    const room = getRoomAndTouch(roomId);
     if (!room || room.phase !== 'coin_flip' || !room.coin) return;
 
     room.coin.choice = choice; // 'first' or 'pass'
@@ -510,7 +564,7 @@ io.on('connection', (socket) => {
 
   // Start Veto Phase directly
   socket.on('start_veto', ({ roomId }) => {
-    const room = rooms.get(roomId);
+    const room = getRoomAndTouch(roomId);
     if (!room) return;
 
     room.phase = 'veto';
@@ -524,7 +578,7 @@ io.on('connection', (socket) => {
 
   // Quick Start Veto (when teams are already formed)
   socket.on('quick_start_veto', ({ roomId, teamAName, teamBName }) => {
-    const room = rooms.get(roomId);
+    const room = getRoomAndTouch(roomId);
     if (!room) return;
 
     room.phase = 'veto';
@@ -544,7 +598,7 @@ io.on('connection', (socket) => {
 
   // Quick Random Map Draw
   socket.on('quick_random_map', ({ roomId, map, startingSide }) => {
-    const room = rooms.get(roomId);
+    const room = getRoomAndTouch(roomId);
     if (!room) return;
 
     const chosenMap = map || room.maps[Math.floor(Math.random() * room.maps.length)];
@@ -564,7 +618,7 @@ io.on('connection', (socket) => {
 
   // Ban Map
   socket.on('ban_map', ({ roomId, mapId }) => {
-    const room = rooms.get(roomId);
+    const room = getRoomAndTouch(roomId);
     if (!room || room.phase !== 'veto') return;
     if (room.bannedMaps.some((b) => b.mapId === mapId)) return;
 
@@ -588,7 +642,7 @@ io.on('connection', (socket) => {
 
   // Side Pick (CT / TR) on decider map
   socket.on('select_side', ({ roomId, side }) => {
-    const room = rooms.get(roomId);
+    const room = getRoomAndTouch(roomId);
     if (!room || room.phase !== 'side_pick') return;
 
     room.startingSideTeamB = side;
@@ -599,7 +653,7 @@ io.on('connection', (socket) => {
 
   // Save match score to history
   socket.on('save_score', ({ roomId, scoreA, scoreB }) => {
-    const room = rooms.get(roomId);
+    const room = getRoomAndTouch(roomId);
     if (!room) return;
 
     const numA = Number(scoreA) || 0;
@@ -621,7 +675,7 @@ io.on('connection', (socket) => {
 
   // Swap Sides (CT <-> TR / Team A <-> Team B)
   socket.on('swap_teams', ({ roomId }) => {
-    const room = rooms.get(roomId);
+    const room = getRoomAndTouch(roomId);
     if (!room) return;
     const temp = room.teamA;
     room.teamA = room.teamB;
@@ -638,7 +692,7 @@ io.on('connection', (socket) => {
 
   // Reset to Lobby
   socket.on('reset_mix', ({ roomId }) => {
-    const room = rooms.get(roomId);
+    const room = getRoomAndTouch(roomId);
     if (!room) return;
 
     room.phase = 'lobby';
@@ -659,6 +713,25 @@ io.on('connection', (socket) => {
     broadcastRoomsList();
   });
 
+  // Delete Room Manually
+  socket.on('delete_room', ({ roomId }) => {
+    const cleanRoomId = (roomId || '').trim().toUpperCase();
+    if (!rooms.has(cleanRoomId)) return;
+
+    const room = rooms.get(cleanRoomId);
+    const roomName = room.name || cleanRoomId;
+
+    console.log(`[DELETE_ROOM] Sala ${cleanRoomId} excluída pelo usuário via socket.`);
+    io.to(cleanRoomId).emit('room_deleted', {
+      roomId: cleanRoomId,
+      reason: 'manual',
+      message: `A sala ${roomName} foi excluída.`,
+    });
+
+    rooms.delete(cleanRoomId);
+    broadcastRoomsList();
+  });
+
   socket.on('disconnect', () => {
     // Keep slots
   });
@@ -672,7 +745,9 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString(), activeRooms: rooms.size });
 });
 
+// Get active rooms (runs inactivity cleanup first)
 app.get('/api/rooms', (req, res) => {
+  cleanupInactiveRooms();
   const list = [];
   rooms.forEach((r) => {
     list.push({
@@ -684,9 +759,33 @@ app.get('/api/rooms', (req, res) => {
       hasServer: Boolean(r.serverIp && r.serverIp.trim()),
       serverIp: r.serverIp || '',
       createdAt: r.createdAt,
+      lastActivity: r.lastActivity || r.createdAt,
     });
   });
   res.json(list);
+});
+
+// Delete Room via REST API
+app.delete('/api/rooms/:roomId', (req, res) => {
+  const cleanRoomId = (req.params.roomId || '').trim().toUpperCase();
+  if (!rooms.has(cleanRoomId)) {
+    return res.status(404).json({ error: 'Sala não encontrada' });
+  }
+
+  const room = rooms.get(cleanRoomId);
+  const roomName = room.name || cleanRoomId;
+
+  console.log(`[API_DELETE] Sala ${cleanRoomId} excluída via API DELETE.`);
+  io.to(cleanRoomId).emit('room_deleted', {
+    roomId: cleanRoomId,
+    reason: 'manual',
+    message: `A sala ${roomName} foi excluída.`,
+  });
+
+  rooms.delete(cleanRoomId);
+  broadcastRoomsList();
+
+  res.json({ success: true, message: `Sala ${cleanRoomId} excluída com sucesso.` });
 });
 
 // Official CS2 Active Duty Map Rotation API

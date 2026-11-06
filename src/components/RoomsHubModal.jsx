@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Layers, Plus, Users, ArrowRight, X, Sparkles, Hash, Lock, Shield, Zap, Server } from 'lucide-react';
+import { Layers, Plus, Users, ArrowRight, X, Sparkles, Hash, Lock, Shield, Zap, Server, Trash2 } from 'lucide-react';
 import SteamIcon from './SteamIcon';
+import DeleteRoomModal from './DeleteRoomModal';
 import { playClickSound } from '../utils/audio';
 
 export default function RoomsHubModal({
@@ -8,6 +9,7 @@ export default function RoomsHubModal({
   onClose,
   currentRoomId,
   onSelectRoom,
+  onDeleteRoom,
   soundEnabled,
   isSteamLogged = false,
   onRequireSteamLogin,
@@ -18,6 +20,7 @@ export default function RoomsHubModal({
   const [newServerIp, setNewServerIp] = useState('');
   const [rankingSystem, setRankingSystem] = useState('gc'); // 'gc' | 'faceit'
   const [loading, setLoading] = useState(false);
+  const [roomToDelete, setRoomToDelete] = useState(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -306,11 +309,25 @@ export default function RoomsHubModal({
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2.5">
                       <div className="flex items-center gap-1 text-xs font-semibold text-slate-300">
                         <Users size={13} className="text-amber-400" />
                         <span>{r.playerCount}/10</span>
                       </div>
+
+                      {/* Excluir Sala Button */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (soundEnabled) playClickSound();
+                          setRoomToDelete(r);
+                        }}
+                        className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/25 border border-red-500/20 hover:border-red-500/60 text-red-400 hover:text-red-300 transition-colors cursor-pointer"
+                        title={`Excluir sala ${r.name || r.id}`}
+                      >
+                        <Trash2 size={13} />
+                      </button>
 
                       {isCurrent ? (
                         <span className="text-[10px] uppercase font-bold text-amber-400 px-2 py-1 rounded bg-amber-500/20">
@@ -328,6 +345,22 @@ export default function RoomsHubModal({
             )}
           </div>
         </div>
+
+        {/* Delete Confirmation Modal */}
+        <DeleteRoomModal
+          isOpen={Boolean(roomToDelete)}
+          onClose={() => setRoomToDelete(null)}
+          onConfirm={(roomId) => {
+            if (onDeleteRoom) {
+              onDeleteRoom(roomId);
+            }
+            setRooms((prev) => prev.filter((r) => r.id !== roomId));
+            setRoomToDelete(null);
+          }}
+          roomId={roomToDelete?.id || ''}
+          roomName={roomToDelete?.name || ''}
+          soundEnabled={soundEnabled}
+        />
       </div>
     </div>
   );

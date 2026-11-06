@@ -49,6 +49,7 @@ export default function App() {
   const [steamGateModalOpen, setSteamGateModalOpen] = useState(false);
   const [steamGateActionText, setSteamGateActionText] = useState('criar ou entrar no mix');
   const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [roomNotice, setRoomNotice] = useState(null);
 
   // User's own saved profile (stored in localStorage)
   const [myProfile, setMyProfile] = useState(() => {
@@ -75,6 +76,14 @@ export default function App() {
     setSteamGateActionText(actionText);
     setSteamGateModalOpen(true);
   };
+
+  // Auto-dismiss room notices (e.g. room deleted or closed for inactivity)
+  useEffect(() => {
+    if (roomNotice) {
+      const timer = setTimeout(() => setRoomNotice(null), 6000);
+      return () => clearTimeout(timer);
+    }
+  }, [roomNotice]);
 
   // Room state synchronized with server or local fallback
   const [room, setRoom] = useState({
@@ -163,10 +172,25 @@ export default function App() {
       });
     });
 
+    socket.on('room_deleted', ({ roomId: deletedId, message, reason }) => {
+      if (deletedId === roomId) {
+        setRoomNotice({
+          title: reason === 'inactivity' ? 'Sala Encerrada por Inatividade' : 'Sala Excluída',
+          message: message || 'Esta sala de mix foi excluída.',
+          type: 'warning',
+        });
+        setView('landing');
+        const u = new URL(window.location);
+        u.searchParams.delete('room');
+        window.history.pushState({}, '', u);
+      }
+    });
+
     return () => {
       socket.off('connect');
       socket.off('room_state');
       socket.off('chat_message');
+      socket.off('room_deleted');
     };
   }, [roomId, myProfile]);
 
@@ -202,6 +226,28 @@ export default function App() {
       socket.emit('change_ranking_system', { roomId, rankingSystem: newSystem });
     } else {
       setRoom((prev) => ({ ...prev, rankingSystem: newSystem }));
+    }
+  };
+
+  // Delete Room
+  const handleDeleteRoom = (targetRoomId) => {
+    const cleanId = (targetRoomId || roomId).trim().toUpperCase();
+    if (socket.connected) {
+      socket.emit('delete_room', { roomId: cleanId });
+    } else {
+      fetch(`/api/rooms/${encodeURIComponent(cleanId)}`, { method: 'DELETE' }).catch(() => {});
+    }
+
+    if (cleanId === roomId) {
+      setRoomNotice({
+        title: 'Sala Excluída',
+        message: `A sala ${room.name || cleanId} foi excluída com sucesso.`,
+        type: 'info',
+      });
+      setView('landing');
+      const u = new URL(window.location);
+      u.searchParams.delete('room');
+      window.history.pushState({}, '', u);
     }
   };
 
@@ -684,12 +730,41 @@ export default function App() {
           soundEnabled={soundEnabled}
         />
 
+        {/* Room Notification Toast Banner */}
+        {roomNotice && (
+          <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 max-w-md w-full px-4 animate-fadeIn">
+            <div className={`p-4 rounded-2xl border shadow-2xl flex items-start justify-between gap-3 backdrop-blur-xl ${
+              roomNotice.type === 'warning'
+                ? 'bg-amber-950/95 border-amber-500/50 text-amber-200'
+                : 'bg-slate-900/95 border-emerald-500/50 text-slate-100'
+            }`}>
+              <div>
+                <h4 className="font-bold text-xs uppercase tracking-wider font-heading flex items-center gap-1.5">
+                  <span className={`w-2 h-2 rounded-full ${roomNotice.type === 'warning' ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'}`} />
+                  {roomNotice.title}
+                </h4>
+                <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                  {roomNotice.message}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRoomNotice(null)}
+                className="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* MODALS AVAILABLE ON LANDING */}
         <RoomsHubModal
           isOpen={roomsHubOpen}
           onClose={() => setRoomsHubOpen(false)}
           currentRoomId={roomId}
           onSelectRoom={handleSelectRoom}
+          onDeleteRoom={handleDeleteRoom}
           soundEnabled={soundEnabled}
           isSteamLogged={isSteamLogged}
           onRequireSteamLogin={handleRequireSteamLogin}
@@ -740,6 +815,7 @@ export default function App() {
         serverIp={room.serverIp || ''}
         myProfile={myProfile}
         onOpenProfile={() => setProfileModalOpen(true)}
+        onDeleteRoom={handleDeleteRoom}
         soundEnabled={soundEnabled}
         setSoundEnabled={setSoundEnabled}
         onOpenRoomsHub={() => setRoomsHubOpen(true)}
@@ -851,6 +927,7 @@ export default function App() {
         onClose={() => setRoomsHubOpen(false)}
         currentRoomId={roomId}
         onSelectRoom={handleSelectRoom}
+        onDeleteRoom={handleDeleteRoom}
         soundEnabled={soundEnabled}
         isSteamLogged={isSteamLogged}
         onRequireSteamLogin={handleRequireSteamLogin}
