@@ -13,8 +13,93 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+
+// Security Hardening: Disable information disclosure
+app.disable('x-powered-by');
+
+// Security Hardening: OWASP HTTP Headers Middleware
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  if (req.secure || req.headers['x-forwarded-proto'] === 'https') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+  }
+  next();
+});
+
+// Limit JSON and URL-encoded body payload to prevent DoS attacks
+app.use(express.json({ limit: '500kb' }));
+app.use(express.urlencoded({ extended: false, limit: '500kb' }));
 app.use(cors());
-app.use(express.json());
+
+// In-Memory Anti-DDoS & Rate Limiting System
+const ipRateLimits = new Map();
+function createRateLimiter({ windowMs = 60000, max = 250, message = 'Muitas requisições. Tente novamente em breve.' }) {
+  return (req, res, next) => {
+    const rawIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '127.0.0.1';
+    const ip = String(rawIp).split(',')[0].trim();
+    const now = Date.now();
+    const key = `${ip}:${req.baseUrl || req.path}`;
+    let record = ipRateLimits.get(key);
+    if (!record || now > record.resetAt) {
+      record = { count: 1, resetAt: now + windowMs };
+      ipRateLimits.set(key, record);
+    } else {
+      record.count += 1;
+    }
+
+    res.setHeader('X-RateLimit-Limit', max);
+    res.setHeader('X-RateLimit-Remaining', Math.max(0, max - record.count));
+    res.setHeader('X-RateLimit-Reset', Math.ceil(record.resetAt / 1000));
+
+    if (record.count > max) {
+      return res.status(429).json({ error: message, retryAfterSeconds: Math.ceil((record.resetAt - now) / 1000) });
+    }
+    next();
+  };
+}
+
+// Periodic cleanup of expired rate limit entries (every 5 min)
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, val] of ipRateLimits.entries()) {
+    if (now > val.resetAt) ipRateLimits.delete(key);
+  }
+}, 5 * 60 * 1000);
+
+// General & Sensitive Rate Limiters
+const generalApiLimiter = createRateLimiter({ windowMs: 60 * 1000, max: 300, message: 'Limite de requisições excedido na API.' });
+const sensitiveLimiter = createRateLimiter({ windowMs: 60 * 1000, max: 20, message: 'Muitas tentativas em endpoint sensível. Aguarde 1 minuto.' });
+
+app.use('/api', generalApiLimiter);
+
+// Input Sanitization Utilities
+function sanitizeInput(str, maxLength = 100) {
+  if (typeof str !== 'string') return '';
+  return str
+    .replace(/<[^>]*>/g, '') // Strip HTML tags to eliminate XSS
+    .replace(/[\u0000-\u001F\u007F-\u009F]/g, '') // Strip unprintable ASCII/control chars
+    .trim()
+    .slice(0, maxLength);
+}
+
+function isValidMapName(map) {
+  if (typeof map !== 'string') return false;
+  return /^[a-zA-Z0-9_\-]{3,32}$/.test(map.trim());
+}
+
+function sanitizeRconCommand(cmd) {
+  if (typeof cmd !== 'string') return '';
+  // Strip command chain separators (; \r \n ` $) to prevent RCON command injection
+  return cmd
+    .replace(/[\r\n;`$]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 200);
+}
 
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -242,40 +327,44 @@ io.on('connection', (socket) => {
 
   // Join Room
   socket.on('join_room', ({ roomId, player, roomName, rankingSystem, serverIp }) => {
-    const cleanRoomId = (roomId || 'MIX-1').trim().toUpperCase();
+    const cleanRoomId = sanitizeInput(roomId || 'MIX-1', 20).toUpperCase();
+    const cleanRoomName = sanitizeInput(roomName, 40);
     if (socket.roomId && socket.roomId !== cleanRoomId) {
       socket.leave(socket.roomId);
     }
     socket.join(cleanRoomId);
     socket.roomId = cleanRoomId;
 
-    const room = getOrCreateRoom(cleanRoomId, roomName, rankingSystem, serverIp);
+    const room = getOrCreateRoom(cleanRoomId, cleanRoomName, rankingSystem, serverIp);
     if (rankingSystem && room.players.length === 0) {
       room.rankingSystem = rankingSystem === 'faceit' ? 'faceit' : 'gc';
     }
     if (serverIp && serverIp.trim()) {
-      room.serverIp = serverIp.trim();
+      room.serverIp = sanitizeInput(serverIp, 64);
     }
 
     if (player && player.nick) {
       socket.playerId = player.id || socket.id;
-      const existingIdx = room.players.findIndex((p) => p.id === socket.playerId || (p.nick === player.nick && !p.id.startsWith('bot-')));
+      const cleanNick = sanitizeInput(player.nick, 32) || 'Jogador';
+      const existingIdx = room.players.findIndex((p) => p.id === socket.playerId || (p.nick === cleanNick && !p.id.startsWith('bot-')));
       
       const parsedLevel = Math.max(1, Math.min(21, Number(player.level) || 10));
       const parsedFaceitLvl = player.faceitLevel
         ? Math.max(1, Math.min(10, Number(player.faceitLevel)))
         : (parsedLevel <= 10 ? parsedLevel : Math.round(parsedLevel / 2.1));
 
+      const validSide = ['CT', 'TR', 'ANY'].includes(player.side) ? player.side : 'ANY';
+
       const playerData = {
         id: socket.playerId,
-        nick: player.nick.trim(),
+        nick: cleanNick,
         level: parsedLevel,
         faceitLevel: parsedFaceitLvl,
         faceitElo: player.faceitElo ? Number(player.faceitElo) : null,
-        side: player.side || 'ANY',
-        avatar: player.avatar || '🎯',
-        steamId: player.steamId || null,
-        ready: player.ready !== undefined ? player.ready : false,
+        side: validSide,
+        avatar: sanitizeInput(player.avatar, 120) || '🎯',
+        steamId: player.steamId ? sanitizeInput(player.steamId, 32) : null,
+        ready: player.ready !== undefined ? Boolean(player.ready) : false,
         socketId: socket.id,
       };
 
@@ -319,10 +408,14 @@ io.on('connection', (socket) => {
     const room = getRoomAndTouch(roomId);
     if (!room || !message || !message.text) return;
 
+    const cleanSender = sanitizeInput(message.sender, 32) || 'Jogador';
+    const cleanText = sanitizeInput(message.text, 250);
+    if (!cleanText) return;
+
     const chatMsg = {
       id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-      sender: message.sender,
-      text: message.text.slice(0, 200),
+      sender: cleanSender,
+      text: cleanText,
       timestamp: Date.now(),
     };
 
@@ -336,7 +429,7 @@ io.on('connection', (socket) => {
   socket.on('update_server_ip', ({ roomId, serverIp }) => {
     const room = getRoomAndTouch(roomId);
     if (!room) return;
-    room.serverIp = serverIp ? serverIp.trim() : '';
+    room.serverIp = serverIp ? sanitizeInput(serverIp, 64) : '';
     io.to(roomId).emit('room_state', room);
   });
 
@@ -347,7 +440,11 @@ io.on('connection', (socket) => {
 
     const idx = room.players.findIndex((p) => p.id === player.id);
     if (idx >= 0) {
-      room.players[idx] = { ...room.players[idx], ...player };
+      const sanitizedPlayer = { ...player };
+      if (sanitizedPlayer.nick) sanitizedPlayer.nick = sanitizeInput(sanitizedPlayer.nick, 32);
+      if (sanitizedPlayer.avatar) sanitizedPlayer.avatar = sanitizeInput(sanitizedPlayer.avatar, 120);
+      if (sanitizedPlayer.side && !['CT', 'TR', 'ANY'].includes(sanitizedPlayer.side)) sanitizedPlayer.side = 'ANY';
+      room.players[idx] = { ...room.players[idx], ...sanitizedPlayer };
       io.to(roomId).emit('room_state', room);
     }
   });
@@ -707,12 +804,20 @@ io.on('connection', (socket) => {
     io.to(roomId).emit('room_state', room);
   });
 
-  // Execute RCON Command
+  // Execute RCON Command (Sanitized against injection)
   socket.on('exec_rcon_command', async ({ roomId, command }, callback) => {
     const room = getRoomAndTouch(roomId);
     if (!room || !room.serverIp || !room.rconPassword) {
       if (typeof callback === 'function') {
         callback({ error: 'Servidor ou senha RCON não configurados nesta sala.' });
+      }
+      return;
+    }
+
+    const cleanCommand = sanitizeRconCommand(command);
+    if (!cleanCommand) {
+      if (typeof callback === 'function') {
+        callback({ error: 'Comando RCON inválido ou vazio.' });
       }
       return;
     }
@@ -723,7 +828,7 @@ io.on('connection', (socket) => {
         host: parsed.host,
         port: parsed.port,
         password: room.rconPassword,
-        command,
+        command: cleanCommand,
       });
       if (typeof callback === 'function') callback({ success: true, ...res });
     } catch (err) {
@@ -731,7 +836,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Change Map on Server via RCON
+  // Change Map on Server via RCON (Strict map identifier validation)
   socket.on('change_server_map', async ({ roomId, mapFile }, callback) => {
     const room = getRoomAndTouch(roomId);
     if (!room || !room.serverIp || !room.rconPassword) {
@@ -741,8 +846,15 @@ io.on('connection', (socket) => {
       return;
     }
 
-    const parsed = parseHostPort(room.serverIp);
     const cleanMap = (mapFile || 'de_mirage').trim().toLowerCase();
+    if (!isValidMapName(cleanMap)) {
+      if (typeof callback === 'function') {
+        callback({ error: 'Nome de mapa inválido para execução no servidor.' });
+      }
+      return;
+    }
+
+    const parsed = parseHostPort(room.serverIp);
     try {
       const res = await executeRconCommand({
         host: parsed.host,
@@ -831,8 +943,8 @@ app.get('/api/maps/active-duty', (req, res) => {
   });
 });
 
-// Live Sync from reliable web source (Wikipedia / Valve Esports Records)
-app.post('/api/maps/sync-rotation', async (req, res) => {
+// Live Sync from reliable web source (Wikipedia / Valve Esports Records) with Rate Limiting
+app.post('/api/maps/sync-rotation', sensitiveLimiter, async (req, res) => {
   try {
     const updatedState = await fetchLiveOfficialRotation();
     io.emit('active_rotation_updated', updatedState);
@@ -936,8 +1048,8 @@ app.get('/api/gsi/status/:roomId', (req, res) => {
   res.json(state);
 });
 
-// 2. Valve Source RCON Remote Management (FireGames / Dedicated Server)
-app.post('/api/rcon/test', async (req, res) => {
+// 2. Valve Source RCON Remote Management (FireGames / Dedicated Server) - Protected by rate limit & sanitization
+app.post('/api/rcon/test', sensitiveLimiter, async (req, res) => {
   const { host, port, password } = req.body;
   try {
     const result = await executeRconCommand({ host, port, password, command: 'test' });
@@ -947,10 +1059,14 @@ app.post('/api/rcon/test', async (req, res) => {
   }
 });
 
-app.post('/api/rcon/exec', async (req, res) => {
+app.post('/api/rcon/exec', sensitiveLimiter, async (req, res) => {
   const { host, port, password, command } = req.body;
+  const cleanCmd = sanitizeRconCommand(command);
+  if (!cleanCmd) {
+    return res.status(400).json({ error: 'Comando RCON inválido ou vazio.' });
+  }
   try {
-    const result = await executeRconCommand({ host, port, password, command });
+    const result = await executeRconCommand({ host, port, password, command: cleanCmd });
     res.json({ success: true, ...result });
   } catch (err) {
     res.status(400).json({ error: err.message });
