@@ -3,6 +3,7 @@ import confetti from 'canvas-confetti';
 import { CS2_MAPS } from '../data/maps';
 import { Shield, Flame, Ban, Check, MapPin, Sparkles, History, RotateCcw } from 'lucide-react';
 import { playBanSound, playFanfare, playPickSound, playClickSound } from '../utils/audio';
+import { getTeamNames } from '../utils/teamNames';
 
 export default function MapVeto({
   room,
@@ -12,6 +13,7 @@ export default function MapVeto({
   soundEnabled,
 }) {
   const { maps = [], bannedMaps = [], currentTurn = 'teamA', phase, finalMap, startingSideTeamB } = room;
+  const { labelA, labelB, upperA, upperB } = getTeamNames(room);
 
   // Trigger celebration when decider map is crowned
   useEffect(() => {
@@ -69,7 +71,7 @@ export default function MapVeto({
                 turnIsTeamA ? 'text-sky-300' : 'text-amber-300'
               }`}
             >
-              Vez do {turnIsTeamA ? 'TIME A' : 'TIME B'} Banir
+              Vez do {turnIsTeamA ? upperA : upperB} Banir
             </h2>
           </div>
           <p className="text-xs text-slate-300">
@@ -90,7 +92,7 @@ export default function MapVeto({
               {finalMap.name.toUpperCase()}
             </h2>
             <p className="text-xs text-slate-300 max-w-md mx-auto mt-1">
-              Como o último ban foi realizado pelo Time A, agora o <strong className="text-amber-400 font-bold">TIME B</strong> escolhe de qual lado deseja começar a partida:
+              Como o último ban foi realizado pelo {labelA}, agora o <strong className="text-amber-400 font-bold">{upperB}</strong> escolhe de qual lado deseja começar a partida:
             </p>
           </div>
 
@@ -100,7 +102,7 @@ export default function MapVeto({
               className="w-full sm:w-auto px-7 py-3.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-sky-600/30 transition-all cursor-pointer"
             >
               <Shield size={18} />
-              <span>Time B começa de CT (Defesa)</span>
+              <span>{labelB} começa de CT (Defesa)</span>
             </button>
 
             <button
@@ -108,7 +110,7 @@ export default function MapVeto({
               className="w-full sm:w-auto px-7 py-3.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-amber-600/30 transition-all cursor-pointer"
             >
               <Flame size={18} />
-              <span>Time B começa de TR (Ataque)</span>
+              <span>{labelB} começa de TR (Ataque)</span>
             </button>
           </div>
         </div>
@@ -150,7 +152,7 @@ export default function MapVeto({
                     BANIDO
                   </div>
                   <span className="text-xs font-semibold text-rose-300 mt-3 bg-rose-950/80 px-2.5 py-0.5 rounded border border-rose-500/30">
-                    Eliminado pelo {banInfo?.bannedBy === 'teamA' ? 'Time A' : 'Time B'}
+                    Eliminado pelo {banInfo?.bannedBy === 'teamA' ? labelA : labelB}
                   </span>
                 </div>
               )}
@@ -245,7 +247,7 @@ export default function MapVeto({
                       b.bannedBy === 'teamA' ? 'text-sky-400' : 'text-amber-400'
                     }`}
                   >
-                    {b.bannedBy === 'teamA' ? 'Time A' : 'Time B'}
+                    {b.bannedBy === 'teamA' ? labelA : labelB}
                   </span>
                   <span className="text-slate-500 text-[10px]">baniu</span>
                   <span className="text-rose-400 font-bold line-through font-mono">

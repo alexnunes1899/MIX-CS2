@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Shield, Flame, Sparkles, Check } from 'lucide-react';
 import { playCoinSound, playFanfare } from '../utils/audio';
+import { getTeamNames } from '../utils/teamNames';
 
 export default function CoinFlipModal({
   isOpen,
+  room,
   coin,
   onChooseAction,
   soundEnabled,
@@ -24,8 +26,9 @@ export default function CoinFlipModal({
 
   if (!isOpen || !coin) return null;
 
+  const { upperA, upperB } = getTeamNames(room);
   const winner = coin.winner; // 'teamA' or 'teamB'
-  const winnerName = winner === 'teamA' ? 'TIME A' : 'TIME B';
+  const winnerName = winner === 'teamA' ? upperA : upperB;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
@@ -59,12 +62,12 @@ export default function CoinFlipModal({
               ) : winner === 'teamA' ? (
                 <div className="flex flex-col items-center text-white">
                   <Shield size={36} className="text-sky-300 mb-1" />
-                  <span className="text-xs font-black font-heading tracking-wider">TIME A</span>
+                  <span className="text-xs font-black font-heading tracking-wider">{upperA}</span>
                 </div>
               ) : (
                 <div className="flex flex-col items-center text-white">
                   <Flame size={36} className="text-amber-300 mb-1" />
-                  <span className="text-xs font-black font-heading tracking-wider">TIME B</span>
+                  <span className="text-xs font-black font-heading tracking-wider">{upperB}</span>
                 </div>
               )}
             </div>

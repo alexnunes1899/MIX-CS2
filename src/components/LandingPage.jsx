@@ -43,7 +43,10 @@ export default function LandingPage({
 
   const handleJoinByCode = (e) => {
     e.preventDefault();
-    const code = roomCodeInput.trim().toUpperCase() || 'MIX-PRO';
+    const defaultCode = myProfile?.nick
+      ? `TIME-${myProfile.nick.toUpperCase().replace(/[^A-Z0-9]/g, '')}`
+      : 'MIX-PRO';
+    const code = roomCodeInput.trim().toUpperCase() || defaultCode;
     if (!isSteamLogged) {
       if (onRequireSteamLogin) {
         onRequireSteamLogin('criar ou entrar em uma sala de mix');
@@ -189,7 +192,7 @@ export default function LandingPage({
               <Hash size={18} className="text-amber-400 mr-2" />
               <input
                 type="text"
-                placeholder="Código da sala (ex: MIX-CORUJA)..."
+                placeholder={myProfile?.nick ? `Código da sala (ex: TIME-${myProfile.nick.toUpperCase()})...` : 'Código da sala (ex: TIME-ALEX)...'}
                 value={roomCodeInput}
                 onChange={(e) => setRoomCodeInput(e.target.value.toUpperCase())}
                 className="w-full bg-transparent text-sm font-mono text-white placeholder-slate-500 outline-none font-semibold"

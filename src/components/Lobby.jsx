@@ -24,6 +24,7 @@ export default function Lobby({
   rconPassword = '',
   onUpdateRconPassword,
   roomId = 'MIX-PRO',
+  roomName = '',
   liveMatch = null,
   onOpenGsiSetup,
   soundEnabled,
@@ -106,7 +107,10 @@ export default function Lobby({
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-bold uppercase tracking-wider text-white flex items-center gap-1.5">
                 <Layers size={14} className="text-amber-400" />
-                Sala: <span className="font-mono text-amber-400 font-bold">{roomId}</span>
+                Mix: <span className="text-amber-400 font-bold">{roomName || roomId}</span>
+                {roomName && roomName !== roomId && (
+                  <span className="text-slate-500 font-mono text-[10px]">({roomId})</span>
+                )}
               </span>
 
               {isPrivate ? (

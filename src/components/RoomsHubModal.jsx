@@ -14,6 +14,7 @@ export default function RoomsHubModal({
   soundEnabled,
   isSteamLogged = false,
   onRequireSteamLogin,
+  myProfile,
 }) {
   const [rooms, setRooms] = useState([]);
   const [newRoomName, setNewRoomName] = useState('');
@@ -29,19 +30,17 @@ export default function RoomsHubModal({
   useEffect(() => {
     if (isOpen) {
       fetchRooms();
-      // Auto-generate room user & password when opening
-      if (!newRoomCode) {
-        const creds = generateRoomCredentials();
-        setNewRoomCode(creds.roomUser);
-        setNewPassword(creds.roomPassword);
-        setNewRoomName(creds.suggestedName);
-      }
+      // Auto-generate room credentials with creator nick (e.g. Alex -> "Time Alex", "TIME-ALEX")
+      const creds = generateRoomCredentials(myProfile?.nick);
+      setNewRoomCode(creds.roomUser);
+      setNewPassword(creds.roomPassword);
+      setNewRoomName(creds.suggestedName);
     }
-  }, [isOpen]);
+  }, [isOpen, myProfile?.nick]);
 
   const handleGenerateAll = () => {
     if (soundEnabled) playClickSound();
-    const creds = generateRoomCredentials();
+    const creds = generateRoomCredentials(myProfile?.nick);
     setNewRoomCode(creds.roomUser);
     setNewPassword(creds.roomPassword);
     setNewRoomName(creds.suggestedName);
@@ -49,9 +48,13 @@ export default function RoomsHubModal({
 
   const handleGenerateUserOnly = () => {
     if (soundEnabled) playClickSound();
-    const user = generateRoomUser();
+    const user = generateRoomUser(myProfile?.nick);
     setNewRoomCode(user);
-    setNewRoomName(`Mix ${user.replace('MIX-', '')}`);
+    if (myProfile?.nick) {
+      setNewRoomName(`Time ${myProfile.nick.trim()}`);
+    } else {
+      setNewRoomName(`Mix ${user.replace('MIX-', '').replace('TIME-', '')}`);
+    }
   };
 
   const handleGeneratePasswordOnly = () => {
@@ -92,9 +95,10 @@ export default function RoomsHubModal({
     if (soundEnabled) playClickSound();
 
     const code = newRoomCode.trim().toUpperCase().replace(/\s+/g, '-');
+    const defaultName = myProfile?.nick ? `Time ${myProfile.nick.trim()}` : `Mix ${code}`;
     onSelectRoom(
       code,
-      newRoomName.trim() || `Mix ${code}`,
+      newRoomName.trim() || defaultName,
       rankingSystem,
       newServerIp.trim(),
       newPassword.trim(),
@@ -262,14 +266,21 @@ export default function RoomsHubModal({
             </div>
 
             <div>
-              <label className="text-[10px] text-slate-400 font-semibold block mb-1">NOME DA SALA (OPCIONAL)</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[10px] text-slate-400 font-semibold block uppercase">Nome do Mix / Sala</label>
+                {myProfile?.nick && (
+                  <span className="text-[9px] text-amber-400 font-mono">
+                    Líder: {myProfile.nick}
+                  </span>
+                )}
+              </div>
               <input
                 type="text"
-                placeholder="Ex: Mix dos Cria"
+                placeholder={myProfile?.nick ? `Ex: Time ${myProfile.nick}` : 'Ex: Time Alex'}
                 value={newRoomName}
                 onChange={(e) => setNewRoomName(e.target.value)}
                 maxLength={30}
-                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 outline-none focus:border-amber-400"
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 outline-none focus:border-amber-400 font-bold"
               />
             </div>
           </div>

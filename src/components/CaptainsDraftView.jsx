@@ -4,6 +4,7 @@ import FaceitBadge from './FaceitBadge';
 import PlayerAvatar from './PlayerAvatar';
 import { Crown, Shield, Flame, UserCheck, ChevronLeft } from 'lucide-react';
 import { playClickSound, playPickSound } from '../utils/audio';
+import { getTeamNames } from '../utils/teamNames';
 
 export default function CaptainsDraftView({
   room,
@@ -12,6 +13,7 @@ export default function CaptainsDraftView({
   soundEnabled,
 }) {
   const { captainA, captainB, captainTurn = 'captainA', teamA = [], teamB = [], unassignedPlayers = [], rankingSystem = 'gc' } = room;
+  const { labelA, labelB, upperA, upperB } = getTeamNames(room);
   const isTurnA = captainTurn === 'captainA';
   const currentCaptain = isTurnA ? captainA : captainB;
   const isFaceit = rankingSystem === 'faceit';
@@ -38,7 +40,7 @@ export default function CaptainsDraftView({
               isTurnA ? 'text-sky-300' : 'text-amber-300'
             }`}
           >
-            Vez do Capitão {currentCaptain?.nick || (isTurnA ? 'Time A' : 'Time B')} Escolher!
+            Vez do Capitão {currentCaptain?.nick || (isTurnA ? labelA : labelB)} Escolher!
           </h2>
         </div>
         <p className="text-xs text-slate-300">
@@ -97,7 +99,7 @@ export default function CaptainsDraftView({
           <div className="flex items-center justify-between pb-3 border-b border-slate-800">
             <div className="flex items-center gap-2">
               <Shield size={18} className="text-sky-400" />
-              <h4 className="font-bold text-sm text-sky-300">TIME A ({teamA.length}/5)</h4>
+              <h4 className="font-bold text-sm text-sky-300">{upperA} ({teamA.length}/5)</h4>
             </div>
             <span className="text-xs text-slate-400 font-mono">
               Capitão: <strong className="text-white">{captainA?.nick}</strong>
@@ -134,7 +136,7 @@ export default function CaptainsDraftView({
           <div className="flex items-center justify-between pb-3 border-b border-slate-800">
             <div className="flex items-center gap-2">
               <Flame size={18} className="text-amber-400" />
-              <h4 className="font-bold text-sm text-amber-300">TIME B ({teamB.length}/5)</h4>
+              <h4 className="font-bold text-sm text-amber-300">{upperB} ({teamB.length}/5)</h4>
             </div>
             <span className="text-xs text-slate-400 font-mono">
               Capitão: <strong className="text-white">{captainB?.nick}</strong>

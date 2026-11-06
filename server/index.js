@@ -179,18 +179,31 @@ function cleanupInactiveRooms() {
 // Periodic cleanup every 60 seconds
 setInterval(cleanupInactiveRooms, 60 * 1000);
 
-function getOrCreateRoom(roomId, customName = '', rankingSystem = 'gc', serverIp = '', password = '', isPrivate = false, creatorId = null, creatorSteamId = null, inviteKey = null) {
+function getOrCreateRoom(roomId, customName = '', rankingSystem = 'gc', serverIp = '', password = '', isPrivate = false, creatorId = null, creatorSteamId = null, inviteKey = null, creatorNick = '') {
   const id = roomId.trim().toUpperCase() || 'MIX-1';
   if (!rooms.has(id)) {
     const now = Date.now();
     const finalInviteKey = inviteKey || `gc_${Math.random().toString(36).substring(2, 9)}`;
+    const effectiveNick = (creatorNick || '').trim();
+    // Default name follows creator name if available (e.g. Alex -> "Time Alex")
+    let defaultName = `Mix ${id}`;
+    if (effectiveNick) {
+      defaultName = `Time ${effectiveNick}`;
+    } else if (id.startsWith('TIME-')) {
+      const derived = id.replace('TIME-', '').trim();
+      defaultName = `Time ${derived.charAt(0).toUpperCase() + derived.slice(1).toLowerCase()}`;
+    }
+
+    const finalName = (customName && !customName.startsWith('Mix ')) ? customName : defaultName;
+
     rooms.set(id, {
       id,
-      name: customName || `Mix ${id}`,
+      name: finalName,
       createdAt: now,
       lastActivity: now,
       creatorId: creatorId || null,
       creatorSteamId: creatorSteamId || null,
+      creatorNick: effectiveNick || (id.startsWith('TIME-') ? id.replace('TIME-', '') : null),
       adminId: creatorId || null,
       rankingSystem: rankingSystem === 'faceit' ? 'faceit' : 'gc', // 'gc' | 'faceit'
       phase: 'lobby', // 'lobby' | 'teams' | 'captains_draft' | 'coin_flip' | 'veto' | 'side_pick' | 'finished'
@@ -274,6 +287,7 @@ function getSafeRoomState(room) {
     adminId: getRoomAdminId(room),
     creatorSteamId: room.creatorSteamId || null,
     creatorId: room.creatorId || null,
+    creatorNick: room.creatorNick || null,
     hasPassword: Boolean(password && password.trim()),
     isPrivate: Boolean(room.isPrivate),
     inviteKey: room.inviteKey || null,
@@ -310,6 +324,7 @@ function broadcastRoomsList() {
       serverIp: r.serverIp || '',
       hasPassword: Boolean(r.password && r.password.trim()),
       isPrivate: false,
+      creatorNick: r.creatorNick || null,
       createdAt: r.createdAt,
       lastActivity: r.lastActivity || r.createdAt,
     });
@@ -458,8 +473,19 @@ io.on('connection', (socket) => {
       isPrivate,
       socket.playerId,
       player?.steamId,
-      cleanKey
+      cleanKey,
+      player?.nick
     );
+
+    // If the room was created with a default placeholder name or creator connects, ensure room name reflects creator (e.g. Time Alex)
+    if (player?.nick) {
+      if (!room.creatorNick) {
+        room.creatorNick = player.nick;
+      }
+      if (room.players.length === 0 && (room.name.startsWith('Mix ') || room.name === `Mix ${cleanRoomId}`)) {
+        room.name = `Time ${player.nick}`;
+      }
+    }
     if (rankingSystem && room.players.length === 0) {
       room.rankingSystem = rankingSystem === 'faceit' ? 'faceit' : 'gc';
     }
@@ -1270,6 +1296,7 @@ app.get('/api/rooms', (req, res) => {
       serverIp: r.serverIp || '',
       hasPassword: Boolean(r.password && r.password.trim()),
       isPrivate: false,
+      creatorNick: r.creatorNick || null,
       createdAt: r.createdAt,
       lastActivity: r.lastActivity || r.createdAt,
     });

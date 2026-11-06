@@ -435,6 +435,9 @@ export default function App() {
     setRoomId(clean);
     setView('mix');
 
+    const defaultName = myProfile?.nick ? `Time ${myProfile.nick.trim()}` : `Mix ${clean}`;
+    const effectiveName = customName || defaultName;
+
     const targetPassword = password !== undefined ? password : roomPassword;
     if (password !== undefined) {
       setRoomPassword(password || '');
@@ -461,7 +464,7 @@ export default function App() {
 
     socket.emit('join_room', {
       roomId: clean,
-      roomName: customName,
+      roomName: effectiveName,
       rankingSystem,
       serverIp: serverIp ? serverIp.trim() : undefined,
       password: targetPassword || undefined,
@@ -1163,6 +1166,7 @@ export default function App() {
           soundEnabled={soundEnabled}
           isSteamLogged={isSteamLogged}
           onRequireSteamLogin={handleRequireSteamLogin}
+          myProfile={myProfile}
         />
 
         <QuickVetoModal
@@ -1290,6 +1294,7 @@ export default function App() {
                 rconPassword={room.rconPassword || ''}
                 onUpdateRconPassword={handleUpdateRconPassword}
                 roomId={roomId}
+                roomName={room.name}
                 liveMatch={room.liveMatch}
                 onOpenGsiSetup={() => setGsiModalOpen(true)}
                 soundEnabled={soundEnabled}
@@ -1319,6 +1324,7 @@ export default function App() {
         {/* TEAMS PHASE */}
         {room.phase === 'teams' && (
           <TeamsView
+            room={room}
             teamA={room.teamA}
             teamB={room.teamB}
             metrics={room.metrics}
@@ -1380,6 +1386,7 @@ export default function App() {
         soundEnabled={soundEnabled}
         isSteamLogged={isSteamLogged}
         onRequireSteamLogin={handleRequireSteamLogin}
+        myProfile={myProfile}
       />
 
       <SteamLoginGateModal
@@ -1426,6 +1433,7 @@ export default function App() {
 
       <CoinFlipModal
         isOpen={room.phase === 'coin_flip'}
+        room={room}
         coin={room.coin}
         onChooseAction={handleCoinChoice}
         soundEnabled={soundEnabled}

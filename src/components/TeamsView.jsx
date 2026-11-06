@@ -5,8 +5,10 @@ import PlayerAvatar from './PlayerAvatar';
 import ServerConnectBar from './ServerConnectBar';
 import { Shield, Flame, ArrowLeftRight, RotateCcw, MapPin, Scale, ChevronLeft, CheckCircle2, Coins, Zap, Crown, ArrowLeft, ArrowRight, Trash2 } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
+import { getTeamNames } from '../utils/teamNames';
 
 export default function TeamsView({
+  room,
   teamA = [],
   teamB = [],
   metrics,
@@ -31,6 +33,7 @@ export default function TeamsView({
   onKickPlayer,
 }) {
   const isFaceit = rankingSystem === 'faceit' || metrics?.rankingSystem === 'faceit';
+  const { labelA, labelB, upperA, upperB } = getTeamNames(room || { teamA, teamB, metrics, rankingSystem });
 
   return (
     <div className="space-y-6">
@@ -46,7 +49,7 @@ export default function TeamsView({
                 Painel do Administrador da Sala
               </span>
               <p className="text-slate-300 text-[11px] leading-relaxed">
-                Você pode <strong>mudar jogadores de equipe</strong> (Time A ➔ Time B) ou <strong>remover pessoas</strong> da partida usando os controles nas linhas dos jogadores.
+                Você pode <strong>mudar jogadores de equipe</strong> ({labelA} ➔ {labelB}) ou <strong>remover pessoas</strong> da partida usando os controles nas linhas dos jogadores.
               </p>
             </div>
           </div>
@@ -98,7 +101,7 @@ export default function TeamsView({
                 onSwapTeams();
               }}
               className="flex items-center gap-1.5 px-3 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold transition-all cursor-pointer"
-              title="Inverter Time A e Time B"
+              title={`Inverter ${labelA} e ${labelB}`}
             >
               <ArrowLeftRight size={15} />
               <span>Inverter</span>
@@ -136,7 +139,7 @@ export default function TeamsView({
                 </div>
                 <div>
                   <h3 className="text-base font-bold font-heading text-sky-300">
-                    TIME A (Lado 1)
+                    {upperA} (Lado 1)
                   </h3>
                   <span className="text-[11px] text-slate-400">{teamA.length} jogadores escalados</span>
                 </div>
@@ -194,9 +197,9 @@ export default function TeamsView({
                             onMovePlayerTeam(p.id, 'teamB');
                           }}
                           className="px-2 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 hover:text-amber-200 text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-all active:scale-95 shadow-sm"
-                          title="Mover este jogador para o Time B"
+                          title={`Mover este jogador para o ${labelB}`}
                         >
-                          <span>Mover Time B</span>
+                          <span>Mover {labelB}</span>
                           <ArrowRight size={11} />
                         </button>
                         {p.id !== myProfile?.id && (
@@ -239,7 +242,7 @@ export default function TeamsView({
                 </div>
                 <div>
                   <h3 className="text-base font-bold font-heading text-amber-300">
-                    TIME B (Lado 2)
+                    {upperB} (Lado 2)
                   </h3>
                   <span className="text-[11px] text-slate-400">{teamB.length} jogadores escalados</span>
                 </div>
@@ -297,10 +300,10 @@ export default function TeamsView({
                             onMovePlayerTeam(p.id, 'teamA');
                           }}
                           className="px-2 py-1 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/30 text-sky-300 hover:text-sky-200 text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-all active:scale-95 shadow-sm"
-                          title="Mover este jogador para o Time A"
+                          title={`Mover este jogador para o ${labelA}`}
                         >
                           <ArrowLeft size={11} />
-                          <span>Mover Time A</span>
+                          <span>Mover {labelA}</span>
                         </button>
                         {p.id !== myProfile?.id && (
                           <button

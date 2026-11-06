@@ -6,6 +6,7 @@ import { CS2_MAPS } from '../data/maps';
 import { Trophy, Share2, Terminal, RotateCcw, Shield, Flame, Check, History, Zap, Radio } from 'lucide-react';
 import { formatDiscordSummary, formatServerCommand } from '../utils/exportText';
 import { playClickSound } from '../utils/audio';
+import { getTeamNames } from '../utils/teamNames';
 import ServerConnectBar from './ServerConnectBar';
 
 export default function FinalSummary({
@@ -22,6 +23,7 @@ export default function FinalSummary({
   const [copiedRcon, setCopiedRcon] = useState(false);
 
   const { finalMap, teamA = [], teamB = [], metrics, startingSideTeamB, name: roomName = 'MIX', serverIp = '', rconPassword = '', liveMatch = null, rankingSystem = 'gc' } = room;
+  const { labelA, labelB, upperA, upperB } = getTeamNames(room);
   const isFaceit = rankingSystem === 'faceit';
   const fullMap = CS2_MAPS.find((m) => m.id === finalMap?.id) || finalMap;
 
@@ -39,6 +41,8 @@ export default function FinalSummary({
       startingSideTeamB: sideTeamB,
       matchFormat: room.matchFormat || 'MD1',
       drawnSeries: room.drawnSeries || [],
+      nameA: upperA,
+      nameB: upperB,
     });
     navigator.clipboard.writeText(text);
     setCopiedDiscord(true);
@@ -182,8 +186,8 @@ export default function FinalSummary({
                   </div>
 
                   <div className="relative z-10 pt-2 border-t border-white/10 flex items-center justify-between text-[10px] font-mono font-bold">
-                    <span className="text-sky-400">Time A: {sideA}</span>
-                    <span className="text-amber-400">Time B: {sideB}</span>
+                    <span className="text-sky-400">{labelA}: {sideA}</span>
+                    <span className="text-amber-400">{labelB}: {sideB}</span>
                   </div>
                 </div>
               );
@@ -249,7 +253,7 @@ export default function FinalSummary({
               </div>
               <div>
                 <h3 className="text-base font-bold font-heading text-white">
-                  TIME A • Começa de {sideTeamA}
+                  {upperA} • Começa de {sideTeamA}
                 </h3>
                 <span className="text-xs text-slate-400">
                   {sideTeamA === 'CT' ? 'Defesa (Contra-Terroristas)' : 'Ataque (Terroristas)'}
@@ -302,7 +306,7 @@ export default function FinalSummary({
               </div>
               <div>
                 <h3 className="text-base font-bold font-heading text-white">
-                  TIME B • Começa de {sideTeamB}
+                  {upperB} • Começa de {sideTeamB}
                 </h3>
                 <span className="text-xs text-slate-400">
                   {sideTeamB === 'CT' ? 'Defesa (Contra-Terroristas)' : 'Ataque (Terroristas)'}
