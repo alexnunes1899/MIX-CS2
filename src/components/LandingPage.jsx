@@ -66,9 +66,9 @@ export default function LandingPage({
           
           {/* Logo with CS2 Icon */}
           <div className="flex items-center gap-3 cursor-pointer group" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
-            <div className="relative w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-orange-600 flex items-center justify-center font-black text-xl text-black shadow-lg shadow-amber-500/20 tracking-tighter group-hover:scale-105 transition-transform">
-              CS2
-              <span className="absolute -bottom-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-[#0c1220] animate-pulse" />
+            <div className="relative w-10 h-10 flex items-center justify-center group-hover:scale-105 transition-transform">
+              <img src="/favicon.png" alt="CS2 Mix" className="w-10 h-10 object-contain drop-shadow-[0_2px_10px_rgba(245,158,11,0.3)]" />
+              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-[#0c1220] animate-pulse" />
             </div>
             <div>
               <div className="flex items-center gap-2">

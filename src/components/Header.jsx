@@ -60,8 +60,8 @@ export default function Header({
           {/* Logo & Room Switcher */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-orange-600 flex items-center justify-center font-black text-xl text-black shadow-lg shadow-amber-500/20 tracking-tighter">
-                CS2
+              <div className="w-10 h-10 flex items-center justify-center">
+                <img src="/favicon.png" alt="CS2 Mix" className="w-10 h-10 object-contain drop-shadow-[0_2px_10px_rgba(245,158,11,0.3)] hover:scale-105 transition-transform" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
