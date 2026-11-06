@@ -1,9 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import GCBadge from './GCBadge';
 import FaceitBadge from './FaceitBadge';
 import PlayerAvatar from './PlayerAvatar';
 import ServerConnectBar from './ServerConnectBar';
-import { Users, Trash2, Bot, Scale, Shuffle, Shield, Flame, CheckCircle2, Crown, Check, AlertCircle, Zap, Dices, ArrowLeftRight } from 'lucide-react';
+import { Users, Trash2, Bot, Scale, Shuffle, Shield, Flame, CheckCircle2, Crown, Check, AlertCircle, Zap, Dices, ArrowLeftRight, Lock, Globe, Share2, Layers } from 'lucide-react';
 import { playClickSound, playReadySound } from '../utils/audio';
 
 export default function Lobby({
@@ -31,7 +31,11 @@ export default function Lobby({
   adminId = null,
   onKickPlayer,
   onAdminChangeSide,
+  roomPassword = '',
+  isPrivate = false,
+  hasPassword = false,
 }) {
+  const [copiedInvite, setCopiedInvite] = useState(false);
   const maxSlots = 10;
   const emptySlots = Math.max(0, maxSlots - players.length);
   const isFaceit = rankingSystem === 'faceit';
@@ -51,6 +55,18 @@ export default function Lobby({
   const myPlayer = players.find((p) => p.id === myProfile?.id || (p.nick && p.nick === myProfile?.nick));
   const isMyPlayerReady = myPlayer?.ready || false;
 
+  const handleCopyInviteLink = () => {
+    if (soundEnabled) playClickSound();
+    const url = new URL(window.location.origin);
+    url.searchParams.set('room', roomId);
+    if (roomPassword) {
+      url.searchParams.set('pwd', roomPassword);
+    }
+    navigator.clipboard.writeText(url.toString());
+    setCopiedInvite(true);
+    setTimeout(() => setCopiedInvite(false), 2000);
+  };
+
   const handleMyReadyToggle = () => {
     if (soundEnabled) playReadySound();
     if (myPlayer) {
@@ -60,6 +76,54 @@ export default function Lobby({
 
   return (
     <div className="space-y-6">
+      {/* Room Security & Privacy Card */}
+      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 backdrop-blur">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-bold uppercase tracking-wider text-white flex items-center gap-1.5">
+              <Layers size={14} className="text-amber-400" />
+              Sala: <span className="font-mono text-amber-400 font-bold">{roomId}</span>
+            </span>
+
+            {isPrivate ? (
+              <span className="text-[10px] font-bold text-purple-300 bg-purple-500/15 border border-purple-500/30 px-2 py-0.5 rounded-full flex items-center gap-1 font-mono">
+                <Lock size={10} /> Privada (Somente com Link)
+              </span>
+            ) : (
+              <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-full flex items-center gap-1 font-mono">
+                <Globe size={10} /> Pública
+              </span>
+            )}
+
+            {hasPassword && (
+              <span className="text-[10px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full flex items-center gap-1 font-mono">
+                <Lock size={10} /> Com Senha
+              </span>
+            )}
+
+            {isAdmin && (
+              <span className="text-[10px] font-bold text-amber-300 bg-amber-500/20 border border-amber-500/40 px-2 py-0.5 rounded-full flex items-center gap-1 font-mono">
+                <Crown size={10} className="text-amber-400" /> Admin da Sala
+              </span>
+            )}
+          </div>
+          <p className="text-[11px] text-slate-400">
+            {isPrivate
+              ? 'Esta sala está oculta da lista pública. Envie o link exclusivo abaixo para seus amigos entrarem.'
+              : 'Compartilhe o link da sala para seus amigos entrarem direto no lobby.'}
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleCopyInviteLink}
+          className="w-full sm:w-auto px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs uppercase tracking-wider shadow-md shadow-amber-500/20 flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95 shrink-0"
+        >
+          {copiedInvite ? <Check size={14} className="text-slate-950" /> : <Share2 size={14} />}
+          <span>{copiedInvite ? 'Link Copiado!' : 'Copiar Link de Convite'}</span>
+        </button>
+      </div>
+
       {/* Quick Mode Shortcuts Bar */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div

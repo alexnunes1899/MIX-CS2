@@ -37,6 +37,8 @@ export default function FinalSummary({
       metrics,
       finalMap: fullMap,
       startingSideTeamB: sideTeamB,
+      matchFormat: room.matchFormat || 'MD1',
+      drawnSeries: room.drawnSeries || [],
     });
     navigator.clipboard.writeText(text);
     setCopiedDiscord(true);
@@ -64,8 +66,15 @@ export default function FinalSummary({
         <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/80 to-transparent" />
 
         <div className="relative z-10 space-y-3 max-w-2xl mx-auto">
-          <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-amber-500 text-slate-950 font-black text-xs uppercase tracking-wider shadow-lg">
-            <Trophy size={14} /> Mix Pronto para Iniciar!
+          <div className="flex items-center justify-center gap-2 flex-wrap">
+            <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-amber-500 text-slate-950 font-black text-xs uppercase tracking-wider shadow-lg">
+              <Trophy size={14} /> Mix Pronto para Iniciar!
+            </div>
+            {room.matchFormat && room.matchFormat !== 'MD1' && (
+              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-950/80 border border-amber-400 text-amber-300 font-black text-xs uppercase tracking-wider shadow-lg">
+                🏆 Formato {room.matchFormat}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center justify-center gap-4 my-2">
@@ -118,6 +127,70 @@ export default function FinalSummary({
           </div>
         </div>
       </div>
+
+      {/* Series Breakdown Grid for MD3 / MD5 */}
+      {room.drawnSeries && room.drawnSeries.length > 1 && (
+        <div className="bg-slate-900/90 border border-amber-500/30 rounded-3xl p-5 shadow-xl space-y-3">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
+              <h3 className="font-heading font-black text-sm text-white uppercase tracking-wider">
+                Ordem dos Mapas da Série ({room.matchFormat || 'MD3'})
+              </h3>
+            </div>
+            <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+              {room.drawnSeries.length} Mapas Sorteados
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            {room.drawnSeries.map((item, idx) => {
+              const mapObj = CS2_MAPS.find((m) => m.id === item.map?.id) || item.map;
+              const sideA = item.sideTimeA || 'CT';
+              const sideB = sideA === 'CT' ? 'TR' : 'CT';
+              const isFirst = idx === 0;
+
+              return (
+                <div
+                  key={idx}
+                  className={`relative overflow-hidden rounded-2xl border p-3 flex flex-col justify-between transition-all ${
+                    isFirst ? 'border-amber-400/80 bg-slate-950/90 shadow-md ring-1 ring-amber-400/30' : 'border-slate-800 bg-slate-950/70'
+                  }`}
+                >
+                  <div
+                    className="absolute inset-0 bg-cover bg-center opacity-25"
+                    style={{ backgroundImage: `url(${mapObj?.image})` }}
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/80 to-transparent" />
+
+                  <div className="relative z-10 flex items-center justify-between gap-1 mb-2">
+                    <span className="text-[10px] font-mono font-bold text-amber-300 bg-amber-500/20 px-1.5 py-0.5 rounded border border-amber-500/30">
+                      #{idx + 1}
+                    </span>
+                    <span className="text-[9px] font-bold text-slate-300 truncate">
+                      {item.role}
+                    </span>
+                  </div>
+
+                  <div className="relative z-10 my-2">
+                    <div className="font-heading font-black text-sm text-white uppercase tracking-wide">
+                      {mapObj?.name || 'MAPA'}
+                    </div>
+                    <div className="text-[10px] font-mono text-slate-400">
+                      {mapObj?.file}
+                    </div>
+                  </div>
+
+                  <div className="relative z-10 pt-2 border-t border-white/10 flex items-center justify-between text-[10px] font-mono font-bold">
+                    <span className="text-sky-400">Time A: {sideA}</span>
+                    <span className="text-amber-400">Time B: {sideB}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Valve GSI Live Scorecard (If match is in progress or completed) */}
       {liveMatch?.connected && (

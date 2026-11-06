@@ -925,14 +925,18 @@ io.on('connection', (socket) => {
     emitRoomState(roomId, room);
   });
 
-  // Quick Random Map Draw
-  socket.on('quick_random_map', ({ roomId, map, startingSide }) => {
+  // Quick Random Map Draw (Supports MD1, MD3, MD5)
+  socket.on('quick_random_map', ({ roomId, map, startingSide, matchFormat = 'MD1', drawnSeries = [] }) => {
     const room = getRoomAndTouch(roomId);
     if (!room) return;
 
     const chosenMap = map || room.maps[Math.floor(Math.random() * room.maps.length)];
     room.finalMap = chosenMap;
     room.startingSideTeamB = startingSide || (Math.random() < 0.5 ? 'CT' : 'TR');
+    room.matchFormat = matchFormat || 'MD1';
+    room.drawnSeries = Array.isArray(drawnSeries) && drawnSeries.length > 0
+      ? drawnSeries
+      : [{ map: chosenMap, sideTimeA: startingSide || 'CT', role: 'Mapa 1' }];
     room.phase = 'finished';
 
     if (room.teamA.length === 0) {

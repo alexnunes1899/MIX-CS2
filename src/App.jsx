@@ -38,7 +38,7 @@ export default function App() {
 
   const [roomPassword, setRoomPassword] = useState(() => {
     const params = new URLSearchParams(window.location.search);
-    return params.get('pwd') || '';
+    return params.get('pwd') || params.get('pass') || params.get('password') || '';
   });
   const [passwordModalOpen, setPasswordModalOpen] = useState(false);
   const [pendingRoomAuth, setPendingRoomAuth] = useState(null);
@@ -185,28 +185,39 @@ export default function App() {
 
   // Automatic background FACEIT stats sync on mount
   useEffect(() => {
-    if (!myProfile?.steamId) return;
-    const cleanNick = myProfile.nick || '';
-    fetch(`/api/faceit/${myProfile.steamId}?nickname=${encodeURIComponent(cleanNick)}`)
+    if (!myProfile?.steamId && !myProfile?.faceitNick && !myProfile?.nick) return;
+    const cleanNick = myProfile.faceitNick || myProfile.nick || '';
+    const steamId = myProfile.steamId || 'custom';
+    fetch(`/api/faceit/${steamId}?nickname=${encodeURIComponent(cleanNick)}`)
       .then((res) => res.json())
       .then((data) => {
         if (data && data.found && data.level) {
           setMyProfile((prev) => {
-            if (prev.faceitLevel === data.level && prev.faceitElo === data.elo) return prev;
+            if (prev.faceitLevel === data.level && prev.faceitElo === data.elo && prev.faceitNick === data.nickname) return prev;
             const updated = {
               ...prev,
               faceitLevel: data.level,
               faceitElo: data.elo,
+              faceitNick: data.nickname,
             };
             try {
               localStorage.setItem('cs2_mix_profile', JSON.stringify(updated));
             } catch (e) {}
+
+            // Immediately emit to room so lobby & teams update
+            if (socket.connected && prev.nick) {
+              socket.emit('join_room', {
+                roomId,
+                player: updated,
+              });
+            }
+
             return updated;
           });
         }
       })
       .catch(() => {});
-  }, [myProfile?.steamId]);
+  }, [myProfile?.steamId, myProfile?.faceitNick]);
 
   // Fetch Official Rotation on Mount
   useEffect(() => {
@@ -613,19 +624,21 @@ export default function App() {
     }
   };
 
-  // Direct Quick Map Roll
-  const handleApplyQuickMap = (map, startingSide) => {
+  // Direct Quick Map Roll (Supports MD1, MD3, MD5)
+  const handleApplyQuickMap = (map, startingSide, matchFormat = 'MD1', drawnSeries = []) => {
     setView('mix');
     setRoom((prev) => ({
       ...prev,
       phase: 'finished',
       finalMap: map,
       startingSideTeamB: startingSide,
+      matchFormat,
+      drawnSeries: drawnSeries && drawnSeries.length > 0 ? drawnSeries : [{ map, sideTimeA: startingSide, role: 'Mapa da Partida' }],
       teamA: prev.teamA.length > 0 ? prev.teamA : [{ id: 't1', nick: 'Time A', level: 15, avatar: '🛡️' }],
       teamB: prev.teamB.length > 0 ? prev.teamB : [{ id: 't2', nick: 'Time B', level: 15, avatar: '⚔️' }],
     }));
     if (socket.connected) {
-      socket.emit('quick_random_map', { roomId, map, startingSide });
+      socket.emit('quick_random_map', { roomId, map, startingSide, matchFormat, drawnSeries });
     }
   };
 
@@ -1124,6 +1137,9 @@ export default function App() {
                 adminId={room.adminId}
                 onKickPlayer={handleKickPlayer}
                 onAdminChangeSide={handleAdminChangePlayerSide}
+                roomPassword={roomPassword}
+                isPrivate={Boolean(room.isPrivate)}
+                hasPassword={Boolean(room.hasPassword || roomPassword)}
               />
             </div>
           </div>

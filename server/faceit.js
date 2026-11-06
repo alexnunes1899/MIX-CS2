@@ -2,15 +2,21 @@
 const DEFAULT_FACEIT_API_KEY = '95cbdb9a-f1d9-4768-a62e-318453b259a8';
 
 export async function fetchFaceitPlayer({ steamId, nickname }) {
-  const apiKey = process.env.FACEIT_API_KEY || DEFAULT_FACEIT_API_KEY;
+  const apiKey = (process.env.FACEIT_API_KEY && process.env.FACEIT_API_KEY.length > 20)
+    ? process.env.FACEIT_API_KEY
+    : DEFAULT_FACEIT_API_KEY;
+
   if (!apiKey) return null;
 
   const headers = { Authorization: `Bearer ${apiKey}` };
+  const cleanSteamId = steamId ? String(steamId).trim() : '';
+  const isValidSteamId = /^\d{17}$/.test(cleanSteamId);
+  const cleanNick = nickname ? String(nickname).trim() : '';
 
   // 1. Try lookup by SteamID64 (CS2)
-  if (steamId) {
+  if (isValidSteamId) {
     try {
-      const res = await fetch(`https://open.faceit.com/data/v4/players?game=cs2&game_player_id=${steamId}`, { headers });
+      const res = await fetch(`https://open.faceit.com/data/v4/players?game=cs2&game_player_id=${cleanSteamId}`, { headers });
       if (res.ok) {
         const data = await res.json();
         const cs = data.games?.cs2 || data.games?.csgo;
@@ -20,6 +26,7 @@ export async function fetchFaceitPlayer({ steamId, nickname }) {
             nickname: data.nickname,
             level: cs.skill_level || 1,
             elo: cs.faceit_elo || 1000,
+            avatar: data.avatar || null,
           };
         }
       }
@@ -27,7 +34,7 @@ export async function fetchFaceitPlayer({ steamId, nickname }) {
 
     // 1b. Try lookup by SteamID64 (CS:GO fallback)
     try {
-      const res = await fetch(`https://open.faceit.com/data/v4/players?game=csgo&game_player_id=${steamId}`, { headers });
+      const res = await fetch(`https://open.faceit.com/data/v4/players?game=csgo&game_player_id=${cleanSteamId}`, { headers });
       if (res.ok) {
         const data = await res.json();
         const cs = data.games?.cs2 || data.games?.csgo;
@@ -37,6 +44,7 @@ export async function fetchFaceitPlayer({ steamId, nickname }) {
             nickname: data.nickname,
             level: cs.skill_level || 1,
             elo: cs.faceit_elo || 1000,
+            avatar: data.avatar || null,
           };
         }
       }
@@ -44,9 +52,9 @@ export async function fetchFaceitPlayer({ steamId, nickname }) {
   }
 
   // 2. Try lookup by Nickname if provided
-  if (nickname) {
+  if (cleanNick && cleanNick !== 'custom') {
     try {
-      const res = await fetch(`https://open.faceit.com/data/v4/players?nickname=${encodeURIComponent(nickname.trim())}`, { headers });
+      const res = await fetch(`https://open.faceit.com/data/v4/players?nickname=${encodeURIComponent(cleanNick)}`, { headers });
       if (res.ok) {
         const data = await res.json();
         const cs = data.games?.cs2 || data.games?.csgo;
@@ -56,19 +64,25 @@ export async function fetchFaceitPlayer({ steamId, nickname }) {
             nickname: data.nickname,
             level: cs.skill_level || 1,
             elo: cs.faceit_elo || 1000,
+            avatar: data.avatar || null,
           };
         }
       }
     } catch (e) {}
 
-    // 2b. Try search players by partial nickname
+    // 2b. Try search players by case-insensitive / partial nickname
     try {
-      const searchRes = await fetch(`https://open.faceit.com/data/v4/search/players?nickname=${encodeURIComponent(nickname.trim())}&limit=10`, { headers });
+      const searchRes = await fetch(`https://open.faceit.com/data/v4/search/players?nickname=${encodeURIComponent(cleanNick)}&limit=15`, { headers });
       if (searchRes.ok) {
         const sData = await searchRes.json();
         if (sData.items && sData.items.length > 0) {
-          // Prioritize Brazilian account or first match
-          const targetPlayer = sData.items.find((it) => it.country === 'BR') || sData.items[0];
+          // Prioritize exact case-insensitive match, then Brazilian account, then first result
+          const exactMatch = sData.items.find(
+            (it) => it.nickname && it.nickname.toLowerCase() === cleanNick.toLowerCase()
+          );
+          const brMatch = sData.items.find((it) => it.country === 'BR');
+          const targetPlayer = exactMatch || brMatch || sData.items[0];
+
           const pRes = await fetch(`https://open.faceit.com/data/v4/players/${targetPlayer.player_id}`, { headers });
           if (pRes.ok) {
             const pData = await pRes.json();
@@ -79,6 +93,7 @@ export async function fetchFaceitPlayer({ steamId, nickname }) {
                 nickname: pData.nickname,
                 level: cs.skill_level || 1,
                 elo: cs.faceit_elo || 1000,
+                avatar: pData.avatar || null,
               };
             }
           }

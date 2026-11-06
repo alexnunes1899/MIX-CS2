@@ -157,11 +157,16 @@ export default function ChatDrawer({
                           : 'bg-slate-950/85 border border-slate-800 text-slate-200 rounded-2xl rounded-tl-xs'
                       }`}
                     >
-                      <div className="flex items-center justify-between gap-3 mb-1.5 pb-1 border-b border-white/[0.06]">
-                        <div className="flex items-center gap-1.5">
-                          <span className={`font-bold text-[11px] ${isMe ? 'text-amber-300' : 'text-white'}`}>
-                            {isMe ? `${senderNick} (Você)` : senderNick}
+                      <div className="flex items-center justify-between gap-3 mb-1.5 pb-1 border-b border-white/10">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className={`font-black text-xs tracking-wide ${isMe ? 'text-amber-400' : 'text-sky-300'}`}>
+                            {senderNick}
                           </span>
+                          {isMe && (
+                            <span className="text-[9px] font-mono font-bold text-amber-400/90 bg-amber-500/15 border border-amber-500/30 px-1 rounded">
+                              Você
+                            </span>
+                          )}
                           {isFaceit ? (
                             <FaceitBadge
                               level={senderFaceitLevel}
@@ -172,7 +177,7 @@ export default function ChatDrawer({
                             <GCBadge level={senderLevel} size="sm" />
                           )}
                         </div>
-                        <span className="text-[9px] text-slate-500 font-mono shrink-0">
+                        <span className="text-[10px] text-slate-400 font-mono shrink-0">
                           {m.timestamp ? new Date(m.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : ''}
                         </span>
                       </div>

@@ -26,6 +26,8 @@ export default function PlayerForm({
   const [faceitElo, setFaceitElo] = useState(currentProfile?.faceitElo || 1200);
   const [side, setSide] = useState(currentProfile?.side || 'ANY');
   const [avatar, setAvatar] = useState(currentProfile?.avatar || '🎯');
+  const [faceitNick, setFaceitNick] = useState(currentProfile?.faceitNick || '');
+  const [faceitSyncError, setFaceitSyncError] = useState(null);
   const [isSaved, setIsSaved] = useState(false);
   const [levelSynced, setLevelSynced] = useState(false);
   const [syncingFaceit, setSyncingFaceit] = useState(false);
@@ -40,6 +42,7 @@ export default function PlayerForm({
     if (currentProfile?.faceitElo) setFaceitElo(currentProfile.faceitElo);
     if (currentProfile?.side) setSide(currentProfile.side);
     if (currentProfile?.avatar) setAvatar(currentProfile.avatar);
+    if (currentProfile?.faceitNick) setFaceitNick(currentProfile.faceitNick);
   }, [currentProfile]);
 
   const isSteamUser = Boolean(currentProfile?.steamId);
@@ -53,6 +56,7 @@ export default function PlayerForm({
     const nextFaceitElo = partial.faceitElo !== undefined ? partial.faceitElo : faceitElo;
     const nextSide = partial.side !== undefined ? partial.side : side;
     const nextAvatar = partial.avatar !== undefined ? partial.avatar : avatar;
+    const nextFaceitNick = partial.faceitNick !== undefined ? partial.faceitNick : faceitNick;
 
     try {
       const saved = JSON.parse(localStorage.getItem('cs2_mix_profile') || '{}');
@@ -66,6 +70,7 @@ export default function PlayerForm({
           faceitElo: nextFaceitElo,
           side: nextSide,
           avatar: nextAvatar,
+          faceitNick: nextFaceitNick,
         })
       );
     } catch (e) {}
@@ -80,6 +85,7 @@ export default function PlayerForm({
         faceitElo: nextFaceitElo,
         side: nextSide,
         avatar: nextAvatar,
+        faceitNick: nextFaceitNick,
         steamId: currentProfile?.steamId || null,
         ready: currentProfile?.ready !== undefined ? currentProfile.ready : true,
       });
@@ -119,26 +125,51 @@ export default function PlayerForm({
     syncProfileUpdate({ avatar: newAvatar });
   };
 
-  // Fetch / Refresh FACEIT Profile from server by Steam ID
-  const handleRefreshFaceit = async () => {
-    if (!currentProfile?.steamId) return;
+  // Fetch / Refresh FACEIT Profile from server by Steam ID or Nickname
+  const handleRefreshFaceit = async (overrideNick) => {
+    const queryNick = (overrideNick || faceitNick || nick || '').trim();
+    const querySteamId = currentProfile?.steamId || 'custom';
+    if (!querySteamId && !queryNick) return;
+
     setSyncingFaceit(true);
+    setFaceitSyncError(null);
     try {
-      const res = await fetch(`/api/faceit/${currentProfile.steamId}?nickname=${encodeURIComponent(nick || '')}`);
+      const res = await fetch(`/api/faceit/${querySteamId}?nickname=${encodeURIComponent(queryNick)}`);
       if (res.ok) {
         const data = await res.json();
-        if (data.level) {
+        if (data && data.found && data.level) {
           setFaceitLevel(data.level);
           if (data.elo) setFaceitElo(data.elo);
-          syncProfileUpdate({ faceitLevel: data.level, faceitElo: data.elo });
+          if (data.nickname) setFaceitNick(data.nickname);
+          setLevelSynced(true);
+          setTimeout(() => setLevelSynced(false), 2500);
+          syncProfileUpdate({
+            faceitLevel: data.level,
+            faceitElo: data.elo,
+            faceitNick: data.nickname,
+          });
+        } else {
+          setFaceitSyncError('Conta FACEIT não encontrada');
+          setTimeout(() => setFaceitSyncError(null), 3500);
         }
       }
     } catch (e) {
       console.error(e);
+      setFaceitSyncError('Erro na consulta FACEIT');
+      setTimeout(() => setFaceitSyncError(null), 3500);
     } finally {
       setSyncingFaceit(false);
     }
   };
+
+  // Auto-fetch FACEIT stats on mount
+  useEffect(() => {
+    if (isFaceitMode && (currentProfile?.steamId || nick)) {
+      if (!currentProfile?.faceitElo || currentProfile?.faceitLevel === 5) {
+        handleRefreshFaceit();
+      }
+    }
+  }, [isFaceitMode, currentProfile?.steamId]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -400,11 +431,11 @@ export default function PlayerForm({
         {/* RANKING CONTROLS: FACEIT VS GAMERS CLUB */}
         {isFaceitMode ? (
           /* FACEIT Controls */
-          <div className="bg-slate-950/60 border border-orange-500/30 rounded-xl p-3.5 space-y-2.5">
+          <div className="bg-slate-950/60 border border-orange-500/30 rounded-xl p-3.5 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5">
                 <span className="text-xs font-semibold text-orange-300 uppercase tracking-wider flex items-center gap-1">
-                  <Zap size={13} className="text-orange-400" /> Nível FACEIT (1 a 10)
+                  <Zap size={13} className="text-orange-400" /> Nível FACEIT Oficial (1 a 10)
                 </span>
                 <span className="text-[9px] text-orange-400 font-mono font-bold bg-orange-500/10 px-1.5 py-0.2 rounded border border-orange-500/20">
                   Auto API
@@ -412,55 +443,104 @@ export default function PlayerForm({
               </div>
               <div className="flex items-center gap-1.5 font-mono text-sm font-bold text-orange-400">
                 <span className="text-slate-500 text-xs">LVL</span>
-                <span className="text-base">{faceitLevel}</span>
+                <span className="text-base font-black">{faceitLevel}</span>
                 {levelSynced && (
                   <span className="text-[10px] text-emerald-400 font-sans font-bold bg-emerald-500/10 px-1.5 py-0.2 rounded border border-emerald-500/20 animate-pulse">
-                    ✓ Atualizado
+                    ✓ Sincronizado
                   </span>
                 )}
               </div>
             </div>
 
-            {/* Auto fetch button & ELO display */}
-            <div className="flex items-center justify-between bg-slate-900/80 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs">
-              <div className="flex items-center gap-1.5 text-slate-300">
-                <span className="text-slate-500 text-[10px] uppercase font-mono">ELO:</span>
-                <span className="font-mono font-bold text-orange-300">{faceitElo || '1200'} pts</span>
-              </div>
-
-              {isSteamUser && (
+            {/* Verified Faceit Status Banner */}
+            {faceitElo && faceitElo !== 1200 ? (
+              <div className="bg-gradient-to-r from-orange-500/15 via-emerald-500/10 to-transparent border border-orange-500/30 rounded-xl p-2.5 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-orange-500/20 text-orange-400 flex items-center justify-center font-black text-xs border border-orange-500/30">
+                    {faceitLevel}
+                  </div>
+                  <div>
+                    <span className="text-[11px] font-bold text-white block">
+                      {faceitNick || nick || 'Conta FACEIT'}
+                    </span>
+                    <span className="text-[10px] text-emerald-400 font-mono flex items-center gap-1">
+                      <CheckCircle2 size={10} /> {faceitElo} ELO detectado automaticamente
+                    </span>
+                  </div>
+                </div>
                 <button
                   type="button"
-                  onClick={handleRefreshFaceit}
+                  onClick={() => handleRefreshFaceit()}
                   disabled={syncingFaceit}
-                  className="flex items-center gap-1 text-[11px] text-orange-400 hover:text-orange-300 transition-colors font-semibold cursor-pointer disabled:opacity-50"
-                  title="Buscar estatísticas atualizadas no FACEIT via Steam ID"
+                  className="px-2 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-orange-400 border border-orange-500/30 text-[11px] font-semibold flex items-center gap-1 transition-all cursor-pointer disabled:opacity-50"
+                  title="Atualizar dados da FACEIT agora"
                 >
                   <RefreshCw size={11} className={syncingFaceit ? 'animate-spin' : ''} />
-                  <span>{syncingFaceit ? 'Consultando...' : 'Re-sincronizar'}</span>
+                  <span>{syncingFaceit ? 'Buscando...' : 'Re-sincronizar'}</span>
                 </button>
-              )}
-            </div>
+              </div>
+            ) : (
+              /* Search / Pull by Faceit Nickname input */
+              <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-2.5 space-y-2">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="text-slate-400">Puxar nível da sua conta FACEIT:</span>
+                  <span className="font-mono text-orange-400 font-bold">{faceitElo || '1200'} ELO</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="text"
+                    placeholder="Seu nick na FACEIT (ex: Lxn1899)"
+                    value={faceitNick}
+                    onChange={(e) => setFaceitNick(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleRefreshFaceit(faceitNick);
+                      }
+                    }}
+                    className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white placeholder-slate-500 font-mono outline-none focus:border-orange-400"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleRefreshFaceit(faceitNick)}
+                    disabled={syncingFaceit}
+                    className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 shrink-0 shadow-md shadow-orange-500/20"
+                  >
+                    <RefreshCw size={11} className={syncingFaceit ? 'animate-spin' : ''} />
+                    <span>{syncingFaceit ? 'Buscando...' : 'Puxar Automático'}</span>
+                  </button>
+                </div>
+                {faceitSyncError && (
+                  <p className="text-[10px] text-red-400 font-medium">{faceitSyncError}</p>
+                )}
+              </div>
+            )}
 
             {/* Quick 1-10 selector buttons */}
-            <div className="grid grid-cols-5 sm:grid-cols-10 gap-1 pt-1">
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => (
-                <button
-                  key={num}
-                  type="button"
-                  disabled={!isSteamUser}
-                  onClick={() => handleFaceitLevelChange(num)}
-                  className={`py-1.5 rounded-lg font-mono font-bold text-xs transition-all cursor-pointer ${
-                    faceitLevel === num
-                      ? num === 10
-                        ? 'bg-red-600 text-white shadow-md shadow-red-600/40 border border-red-400'
-                        : 'bg-orange-500 text-slate-950 font-black shadow-md border border-orange-300'
-                      : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
-                  }`}
-                >
-                  {num}
-                </button>
-              ))}
+            <div className="space-y-1 pt-1">
+              <div className="flex items-center justify-between text-[10px] text-slate-500">
+                <span>Ajuste manual (opcional):</span>
+                <span>Nível {faceitLevel} selecionado</span>
+              </div>
+              <div className="grid grid-cols-5 sm:grid-cols-10 gap-1">
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => (
+                  <button
+                    key={num}
+                    type="button"
+                    disabled={!isSteamUser}
+                    onClick={() => handleFaceitLevelChange(num)}
+                    className={`py-1.5 rounded-lg font-mono font-bold text-xs transition-all cursor-pointer ${
+                      faceitLevel === num
+                        ? num === 10
+                          ? 'bg-red-600 text-white shadow-md shadow-red-600/40 border border-red-400 scale-105'
+                          : 'bg-orange-500 text-slate-950 font-black shadow-md border border-orange-300 scale-105'
+                        : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                    }`}
+                  >
+                    {num}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         ) : (
