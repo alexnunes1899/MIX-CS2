@@ -11,6 +11,7 @@ export default function LandingPage({
   onOpenQuickMapRoll,
   onOpenRoomsHub,
   onRequireSteamLogin,
+  onOpenProfile,
   myProfile,
   soundEnabled,
 }) {
@@ -106,13 +107,20 @@ export default function LandingPage({
           {/* Steam & Direct Action */}
           <div className="flex items-center gap-2.5">
             {isSteamLogged ? (
-              <div className="flex items-center gap-2 bg-slate-900 border border-emerald-500/30 rounded-xl px-2.5 py-1.5 shadow-sm">
+              <button
+                type="button"
+                onClick={() => onOpenProfile && onOpenProfile()}
+                title="Abrir meu perfil e estatísticas Steam"
+                className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 border border-emerald-500/40 hover:border-emerald-400 rounded-xl px-2.5 py-1.5 shadow-sm transition-all cursor-pointer group"
+              >
                 <PlayerAvatar avatar={myProfile.avatar} nick={myProfile.nick} size="sm" />
-                <span className="text-xs font-bold text-white hidden sm:inline">{myProfile.nick}</span>
-                <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1.5 py-0.2 rounded">
-                  Online
+                <span className="text-xs font-bold text-white hidden sm:inline group-hover:text-amber-400 transition-colors">
+                  {myProfile.nick}
                 </span>
-              </div>
+                <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1.5 py-0.5 rounded group-hover:bg-emerald-500/25">
+                  Stats
+                </span>
+              </button>
             ) : (
               <a
                 href="/api/auth/steam?room=MIX-PRO"

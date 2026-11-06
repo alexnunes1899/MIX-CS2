@@ -3,8 +3,9 @@ import GCBadge from './GCBadge';
 import FaceitBadge from './FaceitBadge';
 import PlayerAvatar from './PlayerAvatar';
 import SteamIcon from './SteamIcon';
-import { Shield, Flame, Shuffle, UserPlus, CheckCircle2, LogOut, RefreshCw, Zap, Lock } from 'lucide-react';
+import { Shield, Flame, Shuffle, UserPlus, CheckCircle2, LogOut, RefreshCw, Zap, Lock, ArrowRightLeft, Trophy, Sparkles, Copy, Check } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
+import { getPlayerStats } from '../utils/playerStats';
 
 const AVATARS = ['🎯', '👑', '💀', '⚡', '🛡️', '💣', '🔥', '🦅', '🚀', '🧠'];
 
@@ -13,6 +14,9 @@ export default function PlayerForm({
   currentProfile,
   roomId = 'MIX-PRO',
   rankingSystem = 'gc', // 'gc' | 'faceit'
+  onLogout,
+  onSwitchAccount,
+  onOpenProfileModal,
   soundEnabled,
   disabled,
 }) {
@@ -25,6 +29,9 @@ export default function PlayerForm({
   const [isSaved, setIsSaved] = useState(false);
   const [levelSynced, setLevelSynced] = useState(false);
   const [syncingFaceit, setSyncingFaceit] = useState(false);
+  const [copiedSteamId, setCopiedSteamId] = useState(false);
+
+  const playerStats = getPlayerStats(currentProfile?.steamId);
 
   useEffect(() => {
     if (currentProfile?.nick) setNick(currentProfile.nick);
@@ -166,17 +173,31 @@ export default function PlayerForm({
 
   const handleSteamLogout = () => {
     if (soundEnabled) playClickSound();
-    const cleanProfile = {
-      id: `player-${Date.now()}`,
-      nick: '',
-      level: 12,
-      faceitLevel: 5,
-      faceitElo: 1200,
-      side: 'ANY',
-      avatar: '🎯',
-      steamId: null,
-    };
-    onSave(cleanProfile);
+    if (onLogout) {
+      onLogout();
+    } else {
+      const cleanProfile = {
+        id: `player-${Date.now()}`,
+        nick: '',
+        level: 12,
+        faceitLevel: 5,
+        faceitElo: 1200,
+        side: 'ANY',
+        avatar: '🎯',
+        steamId: null,
+      };
+      onSave(cleanProfile);
+    }
+  };
+
+  const handleSwitchAccount = () => {
+    if (soundEnabled) playClickSound();
+    if (onSwitchAccount) {
+      onSwitchAccount();
+    } else {
+      handleSteamLogout();
+      window.location.href = `/api/auth/steam?room=${encodeURIComponent(roomId)}`;
+    }
   };
 
   return (
@@ -229,33 +250,105 @@ export default function PlayerForm({
           </button>
         </div>
       ) : (
-        <div className="bg-slate-950/85 border border-emerald-500/30 rounded-xl p-3 flex items-center justify-between shadow-inner">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="relative shrink-0">
-              <PlayerAvatar avatar={avatar} nick={nick} size="md" />
-              <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-slate-950 border border-slate-800 flex items-center justify-center">
-                <SteamIcon className="w-2.5 h-2.5 text-[#66c0f4]" />
-              </span>
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-xs font-bold text-white truncate max-w-[130px] sm:max-w-[160px]">{nick}</span>
-                <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.2 rounded font-mono">
-                  Steam Conectada ✓
+        <div className="bg-slate-950/90 border border-slate-800 rounded-2xl p-4 shadow-inner space-y-3">
+          {/* Passport Header with Steam Verified Badge & Switch Account */}
+          <div className="flex items-center justify-between pb-3 border-b border-slate-800/80">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="relative shrink-0">
+                <PlayerAvatar avatar={avatar} nick={nick} size="md" />
+                <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-slate-950 border border-slate-800 flex items-center justify-center">
+                  <SteamIcon className="w-2.5 h-2.5 text-[#66c0f4]" />
                 </span>
               </div>
-              <span className="text-[10px] text-slate-500 font-mono block truncate">ID: {currentProfile.steamId}</span>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-xs font-bold text-white truncate max-w-[110px] sm:max-w-[140px]">{nick}</span>
+                  <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.2 rounded font-mono">
+                    Steam ✓
+                  </span>
+                </div>
+                <div className="flex items-center gap-1 mt-0.5">
+                  <span className="text-[10px] text-slate-500 font-mono truncate max-w-[105px]">ID: {currentProfile.steamId}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (soundEnabled) playClickSound();
+                      navigator.clipboard.writeText(currentProfile.steamId);
+                      setCopiedSteamId(true);
+                      setTimeout(() => setCopiedSteamId(false), 2000);
+                    }}
+                    className="text-slate-500 hover:text-amber-400 p-0.5"
+                    title="Copiar SteamID64"
+                  >
+                    {copiedSteamId ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Account Switch & Logout Controls */}
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={handleSwitchAccount}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-sky-400 hover:text-sky-300 border border-slate-700/80 hover:border-sky-500/40 text-[10px] font-bold transition-all cursor-pointer active:scale-95"
+                title="Entrar com outra conta da Steam"
+              >
+                <ArrowRightLeft size={11} />
+                <span className="hidden sm:inline">Trocar Conta</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSteamLogout}
+                className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-slate-900 border border-transparent hover:border-rose-500/30 transition-all cursor-pointer"
+                title="Desconectar da Steam"
+              >
+                <LogOut size={13} />
+              </button>
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={handleSteamLogout}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-900 border border-transparent hover:border-rose-500/30 transition-all cursor-pointer shrink-0 ml-2"
-            title="Desconectar Steam"
-          >
-            <LogOut size={14} />
-          </button>
+          {/* Embedded Player Statistics in Profile */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              <span className="flex items-center gap-1">
+                <Trophy size={11} className="text-amber-400" /> Estatísticas no Mix
+              </span>
+              {onOpenProfileModal && (
+                <button
+                  type="button"
+                  onClick={onOpenProfileModal}
+                  className="text-amber-400 hover:underline cursor-pointer font-semibold"
+                >
+                  Ver Detalhes ➔
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-3 gap-1.5 text-center">
+              <div className="bg-slate-900/90 border border-slate-800/80 rounded-xl p-1.5">
+                <span className="text-[9px] uppercase font-mono text-slate-500 block">Partidas</span>
+                <span className="text-xs font-black font-mono text-white">{playerStats.matchesPlayed}</span>
+              </div>
+              <div className="bg-slate-900/90 border border-slate-800/80 rounded-xl p-1.5">
+                <span className="text-[9px] uppercase font-mono text-slate-500 block">Vitórias</span>
+                <span className="text-xs font-black font-mono text-emerald-400">{playerStats.wins}V</span>
+              </div>
+              <div className="bg-slate-900/90 border border-slate-800/80 rounded-xl p-1.5">
+                <span className="text-[9px] uppercase font-mono text-slate-500 block">Win Rate</span>
+                <span className="text-xs font-black font-mono text-amber-400">{playerStats.winRate}%</span>
+              </div>
+            </div>
+
+            {/* Win rate progress bar */}
+            <div className="w-full bg-slate-900 rounded-full h-1.5 overflow-hidden border border-slate-800">
+              <div
+                className="bg-gradient-to-r from-emerald-500 to-teal-400 h-full rounded-full transition-all duration-500"
+                style={{ width: `${playerStats.winRate}%` }}
+              />
+            </div>
+          </div>
         </div>
       )}
 

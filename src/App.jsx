@@ -16,6 +16,8 @@ import DraftRoulette from './components/DraftRoulette';
 import CaptainsDraftView from './components/CaptainsDraftView';
 import LandingPage from './components/LandingPage';
 import SteamLoginGateModal from './components/SteamLoginGateModal';
+import PlayerProfileModal from './components/PlayerProfileModal';
+import { recordMatchResult } from './utils/playerStats';
 import { ACTIVE_DUTY_MAPS } from './data/maps';
 import { balanceTeams, shuffleTeams } from './utils/balance';
 import { MOCK_PLAYERS } from './data/mockPlayers';
@@ -46,6 +48,7 @@ export default function App() {
   const [pendingDrawMode, setPendingDrawMode] = useState('balanced');
   const [steamGateModalOpen, setSteamGateModalOpen] = useState(false);
   const [steamGateActionText, setSteamGateActionText] = useState('criar ou entrar no mix');
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
 
   // User's own saved profile (stored in localStorage)
   const [myProfile, setMyProfile] = useState(() => {
@@ -283,11 +286,25 @@ export default function App() {
 
   // Save match score
   const handleSaveScore = (scoreA, scoreB) => {
+    const numA = Number(scoreA) || 0;
+    const numB = Number(scoreB) || 0;
+
+    // Record stats for player if authenticated with Steam
+    if (myProfile?.steamId) {
+      const inTeamA = room.teamA?.some((p) => p.id === myProfile.id || p.steamId === myProfile.steamId);
+      const inTeamB = room.teamB?.some((p) => p.id === myProfile.id || p.steamId === myProfile.steamId);
+      if (inTeamA || inTeamB) {
+        const didWin = inTeamA ? numA > numB : numB > numA;
+        const playerSide = inTeamA
+          ? (room.startingSideTeamB === 'CT' ? 'TR' : 'CT')
+          : (room.startingSideTeamB || 'CT');
+        recordMatchResult(myProfile.steamId, didWin, playerSide);
+      }
+    }
+
     if (socket.connected) {
       socket.emit('save_score', { roomId, scoreA, scoreB });
     } else {
-      const numA = Number(scoreA) || 0;
-      const numB = Number(scoreB) || 0;
       setRoom((prev) => ({
         ...prev,
         history: [
@@ -351,6 +368,48 @@ export default function App() {
         players: prev.players.filter((p) => p.id !== playerId),
       }));
     }
+  };
+
+  // Steam Logout
+  const handleLogoutSteam = () => {
+    if (myProfile?.id) {
+      handleRemovePlayer(myProfile.id);
+    }
+    try {
+      localStorage.removeItem('cs2_mix_profile');
+    } catch (e) {}
+
+    const freshProfile = {
+      id: `player-${Math.random().toString(36).substring(2, 9)}`,
+      nick: '',
+      level: 14,
+      faceitLevel: 5,
+      faceitElo: 1200,
+      side: 'ANY',
+      avatar: '🎯',
+      steamId: null,
+    };
+    setMyProfile(freshProfile);
+    setProfileModalOpen(false);
+
+    // Return to landing view
+    setView('landing');
+    const u = new URL(window.location);
+    u.searchParams.delete('room');
+    window.history.pushState({}, '', u);
+  };
+
+  // Steam Switch Account (logout and immediate redirect to Steam Auth)
+  const handleSwitchSteamAccount = () => {
+    if (myProfile?.id) {
+      handleRemovePlayer(myProfile.id);
+    }
+    try {
+      localStorage.removeItem('cs2_mix_profile');
+    } catch (e) {}
+
+    const targetRoom = roomId || 'MIX-PRO';
+    window.location.href = `/api/auth/steam?room=${encodeURIComponent(targetRoom)}`;
   };
 
   // Fill mock bots for instant testing
@@ -620,6 +679,7 @@ export default function App() {
           onOpenQuickMapRoll={() => setQuickMapRollOpen(true)}
           onOpenRoomsHub={() => setRoomsHubOpen(true)}
           onRequireSteamLogin={handleRequireSteamLogin}
+          onOpenProfile={() => setProfileModalOpen(true)}
           myProfile={myProfile}
           soundEnabled={soundEnabled}
         />
@@ -656,6 +716,16 @@ export default function App() {
           actionText={steamGateActionText}
           soundEnabled={soundEnabled}
         />
+
+        <PlayerProfileModal
+          isOpen={profileModalOpen}
+          onClose={() => setProfileModalOpen(false)}
+          profile={myProfile}
+          rankingSystem={room.rankingSystem || 'gc'}
+          onLogout={handleLogoutSteam}
+          onSwitchAccount={handleSwitchSteamAccount}
+          soundEnabled={soundEnabled}
+        />
       </>
     );
   }
@@ -668,6 +738,8 @@ export default function App() {
         phase={room.phase}
         rankingSystem={room.rankingSystem || 'gc'}
         serverIp={room.serverIp || ''}
+        myProfile={myProfile}
+        onOpenProfile={() => setProfileModalOpen(true)}
         soundEnabled={soundEnabled}
         setSoundEnabled={setSoundEnabled}
         onOpenRoomsHub={() => setRoomsHubOpen(true)}
@@ -692,6 +764,9 @@ export default function App() {
                 onSave={handleSaveProfile}
                 roomId={roomId}
                 rankingSystem={room.rankingSystem || 'gc'}
+                onLogout={handleLogoutSteam}
+                onSwitchAccount={handleSwitchSteamAccount}
+                onOpenProfileModal={() => setProfileModalOpen(true)}
                 soundEnabled={soundEnabled}
                 disabled={room.players.length >= 10 && !room.players.some((p) => p.id === myProfile.id)}
               />
@@ -841,6 +916,16 @@ export default function App() {
         onSendMessage={handleSendMessage}
         myProfile={myProfile}
         rankingSystem={room.rankingSystem || 'gc'}
+        soundEnabled={soundEnabled}
+      />
+
+      <PlayerProfileModal
+        isOpen={profileModalOpen}
+        onClose={() => setProfileModalOpen(false)}
+        profile={myProfile}
+        rankingSystem={room.rankingSystem || 'gc'}
+        onLogout={handleLogoutSteam}
+        onSwitchAccount={handleSwitchSteamAccount}
         soundEnabled={soundEnabled}
       />
 

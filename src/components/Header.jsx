@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Share2, Check, Users, Swords, MapPin, Trophy, Volume2, VolumeX, Layers, History, Dices, Zap, Home, Server, Play, Copy } from 'lucide-react';
+import { Share2, Check, Users, Swords, MapPin, Trophy, Volume2, VolumeX, Layers, History, Dices, Zap, Home, Server, Play, Copy, User } from 'lucide-react';
+import PlayerAvatar from './PlayerAvatar';
 import { playClickSound } from '../utils/audio';
 import { parseServerDetails } from '../utils/serverParser';
 
@@ -9,6 +10,8 @@ export default function Header({
   phase,
   rankingSystem = 'gc',
   serverIp = '',
+  myProfile,
+  onOpenProfile,
   soundEnabled,
   setSoundEnabled,
   onOpenRoomsHub,
@@ -170,6 +173,24 @@ export default function Header({
               <Layers size={14} className="text-slate-400" />
               <span>Salas</span>
             </button>
+
+            {/* Profile & Stats Button in Header */}
+            {myProfile?.steamId && (
+              <button
+                onClick={() => {
+                  if (soundEnabled) playClickSound();
+                  if (onOpenProfile) onOpenProfile();
+                }}
+                className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-white border border-emerald-500/30 hover:border-emerald-500/60 text-xs font-semibold transition-all cursor-pointer shadow-sm group"
+                title="Ver meu perfil, estatísticas e gerenciar conta Steam"
+              >
+                <PlayerAvatar avatar={myProfile.avatar} nick={myProfile.nick} size="sm" />
+                <span className="truncate max-w-[85px] hidden md:inline font-bold">{myProfile.nick}</span>
+                <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1.5 py-0.2 rounded font-mono">
+                  Stats
+                </span>
+              </button>
+            )}
 
             {/* Quick Server Action in Header if Configured */}
             {parsedServer.isValid && (
