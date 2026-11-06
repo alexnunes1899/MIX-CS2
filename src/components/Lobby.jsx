@@ -1,12 +1,15 @@
 import React from 'react';
 import GCBadge from './GCBadge';
+import FaceitBadge from './FaceitBadge';
 import PlayerAvatar from './PlayerAvatar';
-import { Users, Trash2, Bot, Scale, Shuffle, Shield, Flame, CheckCircle2, Crown, Check, AlertCircle, Zap, Dices } from 'lucide-react';
+import { Users, Trash2, Bot, Scale, Shuffle, Shield, Flame, CheckCircle2, Crown, Check, AlertCircle, Zap, Dices, ArrowLeftRight } from 'lucide-react';
 import { playClickSound, playReadySound } from '../utils/audio';
 
 export default function Lobby({
   players = [],
   myProfile,
+  rankingSystem = 'gc',
+  onChangeRankingSystem,
   onToggleReady,
   onRemovePlayer,
   onFillMockBots,
@@ -19,8 +22,18 @@ export default function Lobby({
 }) {
   const maxSlots = 10;
   const emptySlots = Math.max(0, maxSlots - players.length);
+  const isFaceit = rankingSystem === 'faceit';
+
+  // Gamers Club stats
   const totalLevel = players.reduce((acc, p) => acc + (Number(p.level) || 1), 0);
   const avgLevel = players.length > 0 ? (totalLevel / players.length).toFixed(1) : 0;
+
+  // FACEIT stats
+  const totalFaceit = players.reduce((acc, p) => acc + (Number(p.faceitLevel) || (p.level <= 10 ? p.level : Math.round(p.level / 2.1)) || 5), 0);
+  const avgFaceit = players.length > 0 ? (totalFaceit / players.length).toFixed(1) : 0;
+  const playersWithElo = players.filter((p) => p.faceitElo);
+  const avgElo = playersWithElo.length > 0 ? Math.round(playersWithElo.reduce((acc, p) => acc + Number(p.faceitElo), 0) / playersWithElo.length) : null;
+
   const readyCount = players.filter((p) => p.ready).length;
 
   const myPlayer = players.find((p) => p.id === myProfile?.id || (p.nick && p.nick === myProfile?.nick));
@@ -83,11 +96,12 @@ export default function Lobby({
       {/* Top Banner & Quick Controls */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 backdrop-blur flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <h2 className="text-lg font-bold font-heading text-white flex items-center gap-2">
               <Users size={20} className="text-amber-400" />
               Lobby de Jogadores ({players.length}/{maxSlots})
             </h2>
+
             <span
               className={`px-2.5 py-0.5 rounded-full text-xs font-semibold flex items-center gap-1 ${
                 readyCount === maxSlots && players.length === maxSlots
@@ -97,9 +111,39 @@ export default function Lobby({
             >
               <CheckCircle2 size={12} /> {readyCount}/{players.length} Prontos
             </span>
+
+            {/* Ranking System Switcher Pill */}
+            {onChangeRankingSystem && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (soundEnabled) playClickSound();
+                  onChangeRankingSystem(isFaceit ? 'gc' : 'faceit');
+                }}
+                className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold font-mono uppercase tracking-wider flex items-center gap-1 border transition-all cursor-pointer ${
+                  isFaceit
+                    ? 'bg-orange-500/15 border-orange-500/40 text-orange-400 hover:bg-orange-500/25'
+                    : 'bg-amber-500/15 border-amber-500/40 text-amber-400 hover:bg-amber-500/25'
+                }`}
+                title="Clique para alternar entre o ranking Gamers Club e FACEIT"
+              >
+                <span>{isFaceit ? '⚡ Modo: FACEIT' : '🛡️ Modo: GC'}</span>
+                <ArrowLeftRight size={10} />
+              </button>
+            )}
           </div>
+
           <p className="text-xs text-slate-400 mt-1">
-            Média do Lobby: <strong className="text-amber-400 font-mono">Lvl {avgLevel}</strong> • Soma: <strong className="text-slate-200 font-mono">{totalLevel} pts</strong>
+            {isFaceit ? (
+              <>
+                Média FACEIT: <strong className="text-orange-400 font-mono">Lvl {avgFaceit}</strong>
+                {avgElo ? <> • Média ELO: <strong className="text-slate-200 font-mono">{avgElo} pts</strong></> : null}
+              </>
+            ) : (
+              <>
+                Média GC: <strong className="text-amber-400 font-mono">Lvl {avgLevel}</strong> • Soma: <strong className="text-slate-200 font-mono">{totalLevel} pts</strong>
+              </>
+            )}
           </p>
         </div>
 
@@ -149,138 +193,138 @@ export default function Lobby({
 
       {/* Players Grid (10 Slots) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-        {players.map((p) => (
-          <div
-            key={p.id}
-            className={`group relative border rounded-xl p-3.5 transition-all shadow-md flex flex-col justify-between ${
-              p.ready
-                ? 'bg-slate-900/95 border-emerald-500/40 shadow-emerald-500/5'
-                : 'bg-slate-900/80 border-slate-800'
-            }`}
-          >
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex items-center gap-2.5">
-                <PlayerAvatar avatar={p.avatar} nick={p.nick} size="md" />
-                <div>
-                  <div className="flex items-center gap-1">
-                    <h3 className="font-bold text-sm text-white truncate max-w-[105px]" title={p.nick}>
-                      {p.nick}
-                    </h3>
-                    {p.ready && (
-                      <span className="text-emerald-400 font-bold" title="Jogador pronto">
-                        ✓
-                      </span>
-                    )}
-                  </div>
+        {players.map((p) => {
+          const pFaceitLevel = p.faceitLevel || (p.level <= 10 ? p.level : Math.round(p.level / 2.1)) || 5;
 
-                  <div className="flex items-center gap-1 mt-0.5">
-                    {p.side === 'CT' && (
-                      <span className="flex items-center gap-0.5 text-[10px] text-sky-400 font-semibold bg-sky-500/10 px-1.5 py-0.2 rounded border border-sky-500/20">
-                        <Shield size={10} /> CT
-                      </span>
-                    )}
-                    {p.side === 'TR' && (
-                      <span className="flex items-center gap-0.5 text-[10px] text-amber-400 font-semibold bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20">
-                        <Flame size={10} /> TR
-                      </span>
-                    )}
-                    {p.side === 'ANY' && (
-                      <span className="text-[10px] text-slate-400 font-medium bg-slate-800 px-1.5 py-0.2 rounded">
-                        Flex
-                      </span>
-                    )}
+          return (
+            <div
+              key={p.id}
+              className={`group relative border rounded-xl p-3.5 transition-all shadow-md flex flex-col justify-between ${
+                p.ready
+                  ? 'bg-slate-900/95 border-emerald-500/40 shadow-emerald-500/5'
+                  : 'bg-slate-900/80 border-slate-800'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2.5">
+                  <PlayerAvatar avatar={p.avatar} nick={p.nick} size="md" />
+                  <div>
+                    <div className="flex items-center gap-1">
+                      <h3 className="font-bold text-sm text-white truncate max-w-[105px]" title={p.nick}>
+                        {p.nick}
+                      </h3>
+                      {p.ready && (
+                        <span className="text-emerald-400 font-bold" title="Jogador pronto">
+                          ✓
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1 mt-0.5">
+                      {p.side === 'CT' && (
+                        <span className="flex items-center gap-0.5 text-[10px] text-sky-400 font-semibold bg-sky-500/10 px-1.5 py-0.2 rounded border border-sky-500/20">
+                          <Shield size={10} /> CT
+                        </span>
+                      )}
+                      {p.side === 'TR' && (
+                        <span className="flex items-center gap-0.5 text-[10px] text-amber-400 font-semibold bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20">
+                          <Flame size={10} /> TR
+                        </span>
+                      )}
+                      {p.side === 'ANY' && (
+                        <span className="text-[10px] text-slate-400 font-medium bg-slate-800 px-1.5 py-0.2 rounded">
+                          Flex
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
+
+                {isFaceit ? (
+                  <FaceitBadge level={pFaceitLevel} elo={p.faceitElo} size="md" />
+                ) : (
+                  <GCBadge level={p.level} size="md" />
+                )}
               </div>
 
-              <GCBadge level={p.level} size="md" />
+              <div className="mt-3 pt-2 border-t border-slate-800/60 flex items-center justify-between text-[11px] text-slate-500">
+                <span className={`font-mono text-[10px] ${p.ready ? 'text-emerald-400 font-bold' : 'text-slate-500'}`}>
+                  {p.ready ? 'PRONTO' : 'AGUARDANDO'}
+                </span>
+                <button
+                  onClick={() => {
+                    if (soundEnabled) playClickSound();
+                    onRemovePlayer(p.id);
+                  }}
+                  className="text-slate-500 hover:text-rose-400 transition-colors p-1 cursor-pointer"
+                  title="Remover jogador"
+                >
+                  <Trash2 size={13} />
+                </button>
+              </div>
             </div>
-
-            <div className="mt-3 pt-2 border-t border-slate-800/60 flex items-center justify-between text-[11px] text-slate-500">
-              <span className={`font-mono text-[10px] ${p.ready ? 'text-emerald-400 font-bold' : 'text-slate-500'}`}>
-                {p.ready ? 'PRONTO' : 'AGUARDANDO'}
-              </span>
-              <button
-                onClick={() => {
-                  if (soundEnabled) playClickSound();
-                  onRemovePlayer(p.id);
-                }}
-                className="text-slate-500 hover:text-rose-400 transition-colors p-1"
-                title="Remover jogador"
-              >
-                <Trash2 size={13} />
-              </button>
-            </div>
-          </div>
-        ))}
+          );
+        })}
 
         {/* Empty Slot Placeholders */}
         {Array.from({ length: emptySlots }).map((_, i) => (
           <div
             key={`empty-${i}`}
-            className="border-2 border-dashed border-slate-800/80 rounded-xl p-4 flex flex-col items-center justify-center text-center text-slate-600 min-h-[105px] bg-slate-950/30"
+            className="border-2 border-dashed border-slate-800/80 rounded-xl p-3.5 flex flex-col items-center justify-center text-center min-h-[105px] text-slate-600 bg-slate-950/20"
           >
-            <span className="text-xs font-mono text-slate-600">
-              Slot #{players.length + i + 1}
-            </span>
-            <span className="text-xs text-slate-500 mt-1">Vazio...</span>
+            <span className="text-xs font-mono font-semibold">Slot #{players.length + i + 1}</span>
+            <span className="text-[10px] text-slate-500 mt-0.5">Aguardando entrada</span>
           </div>
         ))}
       </div>
 
       {/* Draw Action Controls */}
-      <div className="bg-gradient-to-r from-amber-500/10 via-slate-900 to-amber-500/10 border border-amber-500/20 rounded-2xl p-5 text-center space-y-4">
-        <div>
-          <h3 className="text-base font-bold font-heading text-white">
-            Formação dos Times para o Mix
-          </h3>
-          <p className="text-xs text-slate-400 max-w-lg mx-auto mt-1">
-            Sorteie com inteligência matemática para somas de nível Gamers Club idênticas, ou monte com escolhas de capitães ao vivo!
-          </p>
+      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 backdrop-blur flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+            <Scale size={20} />
+          </div>
+          <div>
+            <h3 className="font-bold text-sm text-white">Formação de Equipes</h3>
+            <p className="text-xs text-slate-400">
+              {players.length < 2
+                ? 'Necessário no mínimo 2 jogadores para iniciar'
+                : `Pronto para sortear equipes usando ranking ${isFaceit ? 'FACEIT' : 'Gamers Club'}`}
+            </p>
+          </div>
         </div>
 
-        {players.length < 2 && (
-          <div className="flex items-center justify-center gap-2 text-xs text-amber-400/90 bg-amber-500/10 border border-amber-500/20 rounded-xl py-2 px-4 max-w-md mx-auto">
-            <AlertCircle size={15} />
-            <span>Adicione pelo menos 2 jogadores para iniciar o sorteio (ou use os atalhos no topo).</span>
-          </div>
-        )}
-
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-1">
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          {/* Balanced Draw */}
           <button
-            onClick={() => {
-              if (soundEnabled) playClickSound();
-              onDrawTeams('balanced');
-            }}
+            onClick={() => onDrawTeams('balanced')}
             disabled={players.length < 2}
-            className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-sm tracking-wide shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs uppercase tracking-wider transition-all shadow-lg shadow-amber-500/25 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
+            title="Calcular os times com o menor desbalanceamento de nível possível"
           >
-            <Scale size={18} />
-            <span>Balanceamento Inteligente (GC Level)</span>
+            <Scale size={16} />
+            <span>Sorteio Equilibrado ({isFaceit ? 'FACEIT' : 'GC'})</span>
           </button>
 
+          {/* Captains 1v1 Draft */}
           <button
-            onClick={() => {
-              if (soundEnabled) playClickSound();
-              onStartCaptainDraft();
-            }}
-            disabled={players.length < 2}
-            className="w-full sm:w-auto px-5 py-3.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/40 font-semibold text-sm flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            onClick={onStartCaptainDraft}
+            disabled={players.length < 4}
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 hover:border-amber-400 text-xs font-bold transition-all shadow-md cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
+            title="Capitães escolhem os jogadores alternadamente no estilo 1v1 Draft"
           >
-            <Crown size={17} className="text-amber-400" />
-            <span>👑 Modo Capitães (Draft 1 a 1)</span>
+            <Crown size={15} className="text-amber-400" />
+            <span>Draft 1v1</span>
           </button>
 
+          {/* Random Shuffle */}
           <button
-            onClick={() => {
-              if (soundEnabled) playClickSound();
-              onDrawTeams('random');
-            }}
+            onClick={() => onDrawTeams('random')}
             disabled={players.length < 2}
-            className="w-full sm:w-auto px-5 py-3.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700/80 font-semibold text-sm flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            className="p-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-bold transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            title="Sorteio 100% Aleatório (Sem levar em consideração o nível)"
           >
             <Shuffle size={16} />
-            <span>Aleatório</span>
           </button>
         </div>
       </div>

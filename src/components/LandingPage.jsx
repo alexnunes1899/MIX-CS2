@@ -10,6 +10,7 @@ export default function LandingPage({
   onOpenQuickVeto,
   onOpenQuickMapRoll,
   onOpenRoomsHub,
+  onRequireSteamLogin,
   myProfile,
   soundEnabled,
 }) {
@@ -23,14 +24,35 @@ export default function LandingPage({
       .catch(() => {});
   }, []);
 
+  const isSteamLogged = Boolean(myProfile?.steamId);
+
   const handleJoinByCode = (e) => {
     e.preventDefault();
     const code = roomCodeInput.trim().toUpperCase() || 'MIX-PRO';
+    if (!isSteamLogged) {
+      if (onRequireSteamLogin) {
+        onRequireSteamLogin('criar ou entrar em uma sala de mix');
+      } else {
+        window.location.href = `/api/auth/steam?room=${encodeURIComponent(code)}`;
+      }
+      return;
+    }
     if (soundEnabled) playClickSound();
     onEnterRoom(code);
   };
 
-  const isSteamLogged = Boolean(myProfile?.steamId);
+  const handleOpenMix = (code = 'MIX-PRO') => {
+    if (!isSteamLogged) {
+      if (onRequireSteamLogin) {
+        onRequireSteamLogin('entrar no mix');
+      } else {
+        window.location.href = `/api/auth/steam?room=${encodeURIComponent(code)}`;
+      }
+      return;
+    }
+    if (soundEnabled) playClickSound();
+    onEnterRoom(code);
+  };
 
   return (
     <div className="min-h-screen bg-[#070a12] text-slate-100 flex flex-col font-sans selection:bg-amber-500/30 selection:text-amber-300">
@@ -102,10 +124,7 @@ export default function LandingPage({
             )}
 
             <button
-              onClick={() => {
-                if (soundEnabled) playClickSound();
-                onEnterRoom('MIX-PRO');
-              }}
+              onClick={() => handleOpenMix('MIX-PRO')}
               className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs uppercase tracking-wider transition-all shadow-lg shadow-amber-500/25 cursor-pointer flex items-center gap-1.5 active:scale-95"
             >
               <Play size={13} fill="currentColor" />
@@ -138,7 +157,7 @@ export default function LandingPage({
           </h1>
 
           <p className="text-sm sm:text-base text-slate-300 max-w-2xl mx-auto leading-relaxed font-normal">
-            Crie salas de mix com link direto, monte equipes 5v5 perfeitamente equilibradas pelo nível da <strong>Gamers Club (1 a 21)</strong> ou pule direto para o <strong>Pick & Ban oficial</strong> de mapas da Valve.
+            Crie salas de mix com link direto, escolha entre o ranking manual da <strong>Gamers Club (1 a 21)</strong> ou automático da <strong>FACEIT (1 a 10 / ELO)</strong> via Steam, e dispute o <strong>Pick & Ban oficial</strong> de mapas da Valve.
           </p>
 
           {/* Quick Room Code Box (Tactical Glassmorphism) */}
@@ -328,10 +347,7 @@ export default function LandingPage({
           </p>
           <div className="pt-2">
             <button
-              onClick={() => {
-                if (soundEnabled) playClickSound();
-                onEnterRoom('MIX-PRO');
-              }}
+              onClick={() => handleOpenMix('MIX-PRO')}
               className="px-8 py-4 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 font-black text-sm uppercase tracking-wider transition-all shadow-xl shadow-amber-500/30 cursor-pointer inline-flex items-center gap-2 active:scale-95"
             >
               <Play size={16} fill="currentColor" />

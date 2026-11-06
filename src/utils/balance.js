@@ -1,8 +1,21 @@
 /**
- * Balances players into two teams of equal size based on Gamers Club levels.
- * Evaluates all combinations of size N/2 and picks the one with the smallest level difference.
+ * Helper to compute player weight based on selected ranking system
  */
-export function balanceTeams(players) {
+export function getPlayerScore(p, rankingSystem = 'gc') {
+  if (!p) return 10;
+  if (rankingSystem === 'faceit') {
+    if (p.faceitElo) return Number(p.faceitElo);
+    if (p.faceitLevel) return Number(p.faceitLevel) * 200;
+    return (Number(p.level) || 5) * 100;
+  }
+  return Number(p.level) || 12;
+}
+
+/**
+ * Balances players into two teams of equal size based on Gamers Club (1-21) or FACEIT (1-10/ELO).
+ * Evaluates all combinations of size N/2 and picks the one with the smallest difference.
+ */
+export function balanceTeams(players, rankingSystem = 'gc') {
   if (!players || players.length < 2) {
     return { teamA: [], teamB: [], metrics: null };
   }
@@ -34,14 +47,12 @@ export function balanceTeams(players) {
   let minDiff = Infinity;
   let bestScore = -Infinity;
 
-  const totalSum = players.reduce((acc, p) => acc + (Number(p.level) || 1), 0);
-
   for (const comboA of allCombinations) {
     const idsA = new Set(comboA.map((p) => p.id));
     const comboB = players.filter((p) => !idsA.has(p.id));
 
-    const sumA = comboA.reduce((acc, p) => acc + (Number(p.level) || 1), 0);
-    const sumB = comboB.reduce((acc, p) => acc + (Number(p.level) || 1), 0);
+    const sumA = comboA.reduce((acc, p) => acc + getPlayerScore(p, rankingSystem), 0);
+    const sumB = comboB.reduce((acc, p) => acc + getPlayerScore(p, rankingSystem), 0);
     const diff = Math.abs(sumA - sumB);
 
     // Side preference score: Team A gets +1 if CT preference, Team B gets +1 if TR preference
@@ -84,6 +95,7 @@ export function balanceTeams(players) {
       avgB,
       diff: bestSplit.diff,
       balancePercentage,
+      rankingSystem,
     },
   };
 }
@@ -91,17 +103,17 @@ export function balanceTeams(players) {
 /**
  * Pure random shuffle
  */
-export function shuffleTeams(players) {
+export function shuffleTeams(players, rankingSystem = 'gc') {
   const shuffled = [...players].sort(() => Math.random() - 0.5);
   const half = Math.floor(shuffled.length / 2);
   const teamA = shuffled.slice(0, half);
   const teamB = shuffled.slice(half);
 
-  const sumA = teamA.reduce((acc, p) => acc + (Number(p.level) || 1), 0);
-  const sumB = teamB.reduce((acc, p) => acc + (Number(p.level) || 1), 0);
+  const sumA = teamA.reduce((acc, p) => acc + getPlayerScore(p, rankingSystem), 0);
+  const sumB = teamB.reduce((acc, p) => acc + getPlayerScore(p, rankingSystem), 0);
   const diff = Math.abs(sumA - sumB);
-  const avgA = (sumA / (teamA.length || 1)).toFixed(1);
-  const avgB = (sumB / (teamB.length || 1)).toFixed(1);
+  const avgA = (sumA / teamA.length).toFixed(1);
+  const avgB = (sumB / teamB.length).toFixed(1);
   const maxPossible = Math.max(sumA, sumB) || 1;
   const balancePercentage = Math.max(0, Math.min(100, Math.round(100 - (diff / maxPossible) * 100)));
 
@@ -115,6 +127,7 @@ export function shuffleTeams(players) {
       avgB,
       diff,
       balancePercentage,
+      rankingSystem,
     },
   };
 }

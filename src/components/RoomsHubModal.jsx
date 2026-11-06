@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Layers, Plus, Users, ArrowRight, X, Sparkles, Hash } from 'lucide-react';
+import { Layers, Plus, Users, ArrowRight, X, Sparkles, Hash, Lock, Shield, Zap } from 'lucide-react';
+import SteamIcon from './SteamIcon';
 import { playClickSound } from '../utils/audio';
 
 export default function RoomsHubModal({
@@ -8,10 +9,13 @@ export default function RoomsHubModal({
   currentRoomId,
   onSelectRoom,
   soundEnabled,
+  isSteamLogged = false,
+  onRequireSteamLogin,
 }) {
   const [rooms, setRooms] = useState([]);
   const [newRoomName, setNewRoomName] = useState('');
   const [newRoomCode, setNewRoomCode] = useState('');
+  const [rankingSystem, setRankingSystem] = useState('gc'); // 'gc' | 'faceit'
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -40,10 +44,20 @@ export default function RoomsHubModal({
   const handleCreate = (e) => {
     e.preventDefault();
     if (!newRoomCode.trim()) return;
+
+    if (!isSteamLogged) {
+      if (onRequireSteamLogin) {
+        onRequireSteamLogin('criar uma nova sala de mix');
+      } else {
+        window.location.href = `/api/auth/steam?room=${encodeURIComponent(newRoomCode.trim().toUpperCase())}`;
+      }
+      return;
+    }
+
     if (soundEnabled) playClickSound();
 
     const code = newRoomCode.trim().toUpperCase().replace(/\s+/g, '-');
-    onSelectRoom(code, newRoomName.trim() || `Mix ${code}`);
+    onSelectRoom(code, newRoomName.trim() || `Mix ${code}`, rankingSystem);
     onClose();
   };
 
@@ -66,7 +80,7 @@ export default function RoomsHubModal({
         {/* Close Button */}
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 p-2 rounded-xl bg-slate-800 text-slate-400 hover:text-white transition-colors"
+          className="absolute top-4 right-4 p-2 rounded-xl bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
         >
           <X size={18} />
         </button>
@@ -83,9 +97,16 @@ export default function RoomsHubModal({
         </div>
 
         {/* Create New Room Form */}
-        <form onSubmit={handleCreate} className="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-4 mb-5 space-y-3">
-          <div className="flex items-center gap-1.5 text-xs font-bold text-amber-400 uppercase tracking-wider">
-            <Plus size={14} /> Criar Novo Mix
+        <form onSubmit={handleCreate} className="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-4 mb-5 space-y-3.5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-amber-400 uppercase tracking-wider">
+              <Plus size={14} /> Criar Novo Mix
+            </div>
+            {!isSteamLogged && (
+              <span className="text-[10px] text-amber-300 font-bold bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full flex items-center gap-1">
+                <Lock size={10} /> Requer Steam
+              </span>
+            )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -118,13 +139,82 @@ export default function RoomsHubModal({
             </div>
           </div>
 
-          <button
-            type="submit"
-            className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 shadow-md cursor-pointer"
-          >
-            <Sparkles size={14} />
-            <span>Criar Sala e Entrar</span>
-          </button>
+          {/* Ranking System Selector: GC (Manual) vs FACEIT (Auto) */}
+          <div>
+            <label className="text-[10px] text-slate-400 font-semibold block mb-1.5 uppercase">
+              Sistema de Nível das Equipes
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setRankingSystem('gc')}
+                className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                  rankingSystem === 'gc'
+                    ? 'bg-amber-500/15 border-amber-500 text-white shadow-sm ring-1 ring-amber-500/30'
+                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-0.5">
+                  <span className="font-bold text-xs text-amber-400 flex items-center gap-1">
+                    <Shield size={12} /> Gamers Club
+                  </span>
+                  <span className="text-[9px] font-mono font-bold bg-amber-500/20 text-amber-300 px-1.5 py-0.2 rounded">
+                    1 a 21
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-400 leading-tight">
+                  Inserido manualmente pelo jogador via barra
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setRankingSystem('faceit')}
+                className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                  rankingSystem === 'faceit'
+                    ? 'bg-orange-500/15 border-orange-500 text-white shadow-sm ring-1 ring-orange-500/30'
+                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-0.5">
+                  <span className="font-bold text-xs text-orange-400 flex items-center gap-1">
+                    <Zap size={12} /> FACEIT
+                  </span>
+                  <span className="text-[9px] font-mono font-bold bg-orange-500/20 text-orange-300 px-1.5 py-0.2 rounded">
+                    Auto 1-10
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-400 leading-tight">
+                  Puxa nível e ELO automaticamente via Steam
+                </p>
+              </button>
+            </div>
+          </div>
+
+          {!isSteamLogged ? (
+            <button
+              type="button"
+              onClick={() => {
+                if (onRequireSteamLogin) {
+                  onRequireSteamLogin('criar uma sala');
+                } else {
+                  window.location.href = `/api/auth/steam?room=${encodeURIComponent(newRoomCode || 'MIX-PRO')}`;
+                }
+              }}
+              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-[#171a21] via-[#1b2838] to-[#2a475e] hover:from-[#1b2838] text-white font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 border border-[#66c0f4]/40 shadow-md cursor-pointer"
+            >
+              <SteamIcon className="w-4 h-4 text-[#66c0f4]" />
+              <span>Login Steam Necessário para Criar</span>
+            </button>
+          ) : (
+            <button
+              type="submit"
+              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 shadow-md cursor-pointer active:scale-95"
+            >
+              <Sparkles size={14} />
+              <span>Criar Sala e Entrar</span>
+            </button>
+          )}
         </form>
 
         {/* Existing Rooms List */}
@@ -149,6 +239,7 @@ export default function RoomsHubModal({
             ) : (
               rooms.map((r) => {
                 const isCurrent = r.id === currentRoomId;
+                const isFaceit = r.rankingSystem === 'faceit';
                 return (
                   <div
                     key={r.id}
@@ -160,7 +251,7 @@ export default function RoomsHubModal({
                     onClick={() => {
                       if (!isCurrent) {
                         if (soundEnabled) playClickSound();
-                        onSelectRoom(r.id, r.name);
+                        onSelectRoom(r.id, r.name, r.rankingSystem);
                         onClose();
                       }
                     }}
@@ -171,6 +262,15 @@ export default function RoomsHubModal({
                         <span className="font-mono text-[10px] text-amber-400 bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20">
                           #{r.id}
                         </span>
+                        {isFaceit ? (
+                          <span className="text-[9px] font-bold text-orange-400 bg-orange-500/15 border border-orange-500/30 px-1.5 py-0.2 rounded font-mono">
+                            ⚡ FACEIT
+                          </span>
+                        ) : (
+                          <span className="text-[9px] font-bold text-amber-400 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.2 rounded font-mono">
+                            🛡️ GC
+                          </span>
+                        )}
                       </div>
                       <span className="text-[11px] text-slate-400">
                         {getPhaseLabel(r.phase)}

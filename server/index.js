@@ -92,28 +92,29 @@ const DEFAULT_MAPS = [
 ];
 
 const MOCK_BOTS = [
-  { id: 'bot-1', nick: 'FalleN', level: 21, side: 'CT', ready: true, avatar: '👑' },
-  { id: 'bot-2', nick: 'coldzera', level: 20, side: 'TR', ready: true, avatar: '🎯' },
-  { id: 'bot-3', nick: 'fer', level: 19, side: 'TR', ready: true, avatar: '⚡' },
-  { id: 'bot-4', nick: 'fnx', level: 18, side: 'ANY', ready: true, avatar: '🔥' },
-  { id: 'bot-5', nick: 'TACO', level: 17, side: 'CT', ready: true, avatar: '🛡️' },
-  { id: 'bot-6', nick: 'kNgV-', level: 20, side: 'TR', ready: true, avatar: '💀' },
-  { id: 'bot-7', nick: 'felps', level: 19, side: 'TR', ready: true, avatar: '🚀' },
-  { id: 'bot-8', nick: 'boltz', level: 18, side: 'CT', ready: true, avatar: '💣' },
-  { id: 'bot-9', nick: 'yel', level: 17, side: 'CT', ready: true, avatar: '🦅' },
-  { id: 'bot-10', nick: 'bit', level: 16, side: 'CT', ready: true, avatar: '🧠' },
+  { id: 'bot-1', nick: 'FalleN', level: 21, faceitLevel: 10, faceitElo: 2840, side: 'CT', ready: true, avatar: '👑' },
+  { id: 'bot-2', nick: 'coldzera', level: 20, faceitLevel: 10, faceitElo: 2750, side: 'TR', ready: true, avatar: '🎯' },
+  { id: 'bot-3', nick: 'fer', level: 19, faceitLevel: 10, faceitElo: 2620, side: 'TR', ready: true, avatar: '⚡' },
+  { id: 'bot-4', nick: 'fnx', level: 18, faceitLevel: 9, faceitElo: 2280, side: 'ANY', ready: true, avatar: '🔥' },
+  { id: 'bot-5', nick: 'TACO', level: 17, faceitLevel: 9, faceitElo: 2150, side: 'CT', ready: true, avatar: '🛡️' },
+  { id: 'bot-6', nick: 'kNgV-', level: 20, faceitLevel: 10, faceitElo: 2710, side: 'TR', ready: true, avatar: '💀' },
+  { id: 'bot-7', nick: 'felps', level: 19, faceitLevel: 10, faceitElo: 2590, side: 'TR', ready: true, avatar: '🚀' },
+  { id: 'bot-8', nick: 'boltz', level: 18, faceitLevel: 9, faceitElo: 2310, side: 'CT', ready: true, avatar: '💣' },
+  { id: 'bot-9', nick: 'yel', level: 17, faceitLevel: 8, faceitElo: 1980, side: 'CT', ready: true, avatar: '🦅' },
+  { id: 'bot-10', nick: 'bit', level: 16, faceitLevel: 8, faceitElo: 1920, side: 'CT', ready: true, avatar: '🧠' },
 ];
 
 // In-memory rooms
 const rooms = new Map();
 
-function getOrCreateRoom(roomId, customName = '') {
+function getOrCreateRoom(roomId, customName = '', rankingSystem = 'gc') {
   const id = roomId.trim().toUpperCase() || 'MIX-1';
   if (!rooms.has(id)) {
     rooms.set(id, {
       id,
       name: customName || `Mix ${id}`,
       createdAt: Date.now(),
+      rankingSystem: rankingSystem === 'faceit' ? 'faceit' : 'gc', // 'gc' | 'faceit'
       phase: 'lobby', // 'lobby' | 'teams' | 'captains_draft' | 'coin_flip' | 'veto' | 'side_pick' | 'finished'
       players: [],
       teamA: [],
@@ -145,14 +146,24 @@ function broadcastRoomsList() {
       name: r.name,
       playerCount: r.players.length,
       phase: r.phase,
+      rankingSystem: r.rankingSystem || 'gc',
       createdAt: r.createdAt,
     });
   });
   io.emit('rooms_list', list);
 }
 
+function getPlayerWeight(p, rankingSystem = 'gc') {
+  if (rankingSystem === 'faceit') {
+    if (p.faceitElo) return Number(p.faceitElo);
+    if (p.faceitLevel) return Number(p.faceitLevel) * 200;
+    return (Number(p.level) || 5) * 100;
+  }
+  return Number(p.level) || 12;
+}
+
 // Balance helper in node server
-function calculateBalance(players) {
+function calculateBalance(players, rankingSystem = 'gc') {
   if (players.length < 2) return { teamA: players, teamB: [], metrics: null };
   const half = Math.floor(players.length / 2);
 
@@ -182,8 +193,8 @@ function calculateBalance(players) {
     const idsA = new Set(comboA.map((p) => p.id));
     const comboB = players.filter((p) => !idsA.has(p.id));
 
-    const sumA = comboA.reduce((acc, p) => acc + (Number(p.level) || 1), 0);
-    const sumB = comboB.reduce((acc, p) => acc + (Number(p.level) || 1), 0);
+    const sumA = comboA.reduce((acc, p) => acc + getPlayerWeight(p, rankingSystem), 0);
+    const sumB = comboB.reduce((acc, p) => acc + getPlayerWeight(p, rankingSystem), 0);
     const diff = Math.abs(sumA - sumB);
 
     let sideScore = 0;
@@ -213,6 +224,7 @@ function calculateBalance(players) {
       avgB,
       diff: bestSplit.diff,
       balancePercentage,
+      rankingSystem,
     },
   };
 }
@@ -224,7 +236,7 @@ io.on('connection', (socket) => {
   });
 
   // Join Room
-  socket.on('join_room', ({ roomId, player, roomName }) => {
+  socket.on('join_room', ({ roomId, player, roomName, rankingSystem }) => {
     const cleanRoomId = (roomId || 'MIX-1').trim().toUpperCase();
     if (socket.roomId && socket.roomId !== cleanRoomId) {
       socket.leave(socket.roomId);
@@ -232,16 +244,26 @@ io.on('connection', (socket) => {
     socket.join(cleanRoomId);
     socket.roomId = cleanRoomId;
 
-    const room = getOrCreateRoom(cleanRoomId, roomName);
+    const room = getOrCreateRoom(cleanRoomId, roomName, rankingSystem);
+    if (rankingSystem && room.players.length === 0) {
+      room.rankingSystem = rankingSystem === 'faceit' ? 'faceit' : 'gc';
+    }
 
     if (player && player.nick) {
       socket.playerId = player.id || socket.id;
       const existingIdx = room.players.findIndex((p) => p.id === socket.playerId || (p.nick === player.nick && !p.id.startsWith('bot-')));
       
+      const parsedLevel = Math.max(1, Math.min(21, Number(player.level) || 10));
+      const parsedFaceitLvl = player.faceitLevel
+        ? Math.max(1, Math.min(10, Number(player.faceitLevel)))
+        : (parsedLevel <= 10 ? parsedLevel : Math.round(parsedLevel / 2.1));
+
       const playerData = {
         id: socket.playerId,
         nick: player.nick.trim(),
-        level: Math.max(1, Math.min(21, Number(player.level) || 10)),
+        level: parsedLevel,
+        faceitLevel: parsedFaceitLvl,
+        faceitElo: player.faceitElo ? Number(player.faceitElo) : null,
         side: player.side || 'ANY',
         avatar: player.avatar || '🎯',
         steamId: player.steamId || null,
@@ -261,6 +283,15 @@ io.on('connection', (socket) => {
     }
 
     io.to(cleanRoomId).emit('room_state', room);
+    broadcastRoomsList();
+  });
+
+  // Toggle Ranking System (GC vs FACEIT)
+  socket.on('change_ranking_system', ({ roomId, rankingSystem }) => {
+    const room = rooms.get(roomId);
+    if (!room) return;
+    room.rankingSystem = rankingSystem === 'faceit' ? 'faceit' : 'gc';
+    io.to(roomId).emit('room_state', room);
     broadcastRoomsList();
   });
 
@@ -352,8 +383,10 @@ io.on('connection', (socket) => {
     const room = rooms.get(roomId);
     if (!room || room.players.length < 2) return;
 
+    const rankingSys = room.rankingSystem || 'gc';
+
     if (mode === 'balanced') {
-      const { teamA, teamB, metrics } = calculateBalance(room.players);
+      const { teamA, teamB, metrics } = calculateBalance(room.players, rankingSys);
       room.teamA = teamA;
       room.teamB = teamB;
       room.metrics = metrics;
@@ -362,8 +395,8 @@ io.on('connection', (socket) => {
       const half = Math.floor(shuffled.length / 2);
       room.teamA = shuffled.slice(0, half);
       room.teamB = shuffled.slice(half);
-      const sumA = room.teamA.reduce((acc, p) => acc + p.level, 0);
-      const sumB = room.teamB.reduce((acc, p) => acc + p.level, 0);
+      const sumA = room.teamA.reduce((acc, p) => acc + getPlayerWeight(p, rankingSys), 0);
+      const sumB = room.teamB.reduce((acc, p) => acc + getPlayerWeight(p, rankingSys), 0);
       const diff = Math.abs(sumA - sumB);
       room.metrics = {
         sumA,
@@ -372,6 +405,7 @@ io.on('connection', (socket) => {
         avgB: (sumB / room.teamB.length).toFixed(1),
         diff,
         balancePercentage: Math.max(0, Math.min(100, Math.round(100 - (diff / Math.max(sumA, sumB || 1)) * 100))),
+        rankingSystem: rankingSys,
       };
     }
 
@@ -724,10 +758,80 @@ app.get('/api/auth/steam/return', async (req, res) => {
       console.error('Error fetching steam XML profile:', e);
     }
 
-    res.redirect(`/?room=${encodeURIComponent(room)}&steam_auth=1&steamId=${steamId}&nick=${encodeURIComponent(nick)}&avatar=${encodeURIComponent(avatar)}`);
+    // Attempt automatic FACEIT stats lookup via Steam ID
+    let faceitLevel = 5;
+    let faceitElo = 1200;
+    let faceitFound = 0;
+    const faceitApiKey = process.env.FACEIT_API_KEY;
+
+    if (faceitApiKey) {
+      try {
+        const fRes = await fetch(`https://open.faceit.com/data/v4/players?game=cs2&game_player_id=${steamId}`, {
+          headers: { Authorization: `Bearer ${faceitApiKey}` },
+        });
+        if (fRes.ok) {
+          const fData = await fRes.json();
+          const cs2 = fData.games?.cs2;
+          if (cs2) {
+            faceitLevel = cs2.skill_level || 5;
+            faceitElo = cs2.faceit_elo || 1200;
+            faceitFound = 1;
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching FACEIT data:', err);
+      }
+    }
+
+    res.redirect(
+      `/?room=${encodeURIComponent(room)}&steam_auth=1&steamId=${steamId}&nick=${encodeURIComponent(nick)}&avatar=${encodeURIComponent(avatar)}&faceitLevel=${faceitLevel}&faceitElo=${faceitElo}&faceitFound=${faceitFound}`
+    );
   } catch (err) {
     console.error('Steam Auth Error:', err);
     res.redirect(`/?room=${encodeURIComponent(room)}&steam_error=server_error`);
+  }
+});
+
+// Dedicated FACEIT lookup API by Steam ID
+app.get('/api/faceit/:steamId', async (req, res) => {
+  const { steamId } = req.params;
+  const faceitApiKey = process.env.FACEIT_API_KEY;
+
+  if (!faceitApiKey) {
+    return res.json({
+      success: true,
+      found: false,
+      level: 5,
+      elo: 1200,
+      message: 'Configure FACEIT_API_KEY nas variáveis de ambiente para sincronização oficial.',
+    });
+  }
+
+  try {
+    const fRes = await fetch(`https://open.faceit.com/data/v4/players?game=cs2&game_player_id=${steamId}`, {
+      headers: { Authorization: `Bearer ${faceitApiKey}` },
+    });
+    if (fRes.ok) {
+      const fData = await fRes.json();
+      const cs2 = fData.games?.cs2;
+      return res.json({
+        success: true,
+        found: Boolean(cs2),
+        nickname: fData.nickname,
+        level: cs2?.skill_level || 5,
+        elo: cs2?.faceit_elo || 1200,
+      });
+    }
+
+    return res.json({
+      success: true,
+      found: false,
+      level: 5,
+      elo: 1200,
+      message: 'Conta FACEIT não vinculada ou sem partidas de CS2',
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
   }
 });
 

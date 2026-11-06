@@ -15,6 +15,7 @@ import CoinFlipModal from './components/CoinFlipModal';
 import DraftRoulette from './components/DraftRoulette';
 import CaptainsDraftView from './components/CaptainsDraftView';
 import LandingPage from './components/LandingPage';
+import SteamLoginGateModal from './components/SteamLoginGateModal';
 import { ACTIVE_DUTY_MAPS } from './data/maps';
 import { balanceTeams, shuffleTeams } from './utils/balance';
 import { MOCK_PLAYERS } from './data/mockPlayers';
@@ -43,6 +44,8 @@ export default function App() {
   const [quickMapRollOpen, setQuickMapRollOpen] = useState(false);
   const [rouletteActive, setRouletteActive] = useState(false);
   const [pendingDrawMode, setPendingDrawMode] = useState('balanced');
+  const [steamGateModalOpen, setSteamGateModalOpen] = useState(false);
+  const [steamGateActionText, setSteamGateActionText] = useState('criar ou entrar no mix');
 
   // User's own saved profile (stored in localStorage)
   const [myProfile, setMyProfile] = useState(() => {
@@ -56,15 +59,25 @@ export default function App() {
       id: `player-${Math.random().toString(36).substring(2, 9)}`,
       nick: '',
       level: 14,
+      faceitLevel: 5,
+      faceitElo: 1200,
       side: 'ANY',
       avatar: '🎯',
     };
   });
 
+  const isSteamLogged = Boolean(myProfile?.steamId);
+
+  const handleRequireSteamLogin = (actionText = 'acessar as salas de mix') => {
+    setSteamGateActionText(actionText);
+    setSteamGateModalOpen(true);
+  };
+
   // Room state synchronized with server or local fallback
   const [room, setRoom] = useState({
     id: roomId,
     name: `Mix ${roomId}`,
+    rankingSystem: 'gc', // 'gc' | 'faceit'
     phase: 'lobby',
     players: [],
     teamA: [],
@@ -93,6 +106,8 @@ export default function App() {
       const steamId = params.get('steamId');
       const steamNick = params.get('nick');
       const steamAvatar = params.get('avatar');
+      const faceitLevel = params.get('faceitLevel');
+      const faceitElo = params.get('faceitElo');
 
       if (steamNick) {
         setMyProfile((prev) => {
@@ -101,6 +116,8 @@ export default function App() {
             nick: steamNick,
             avatar: steamAvatar || prev.avatar,
             steamId: steamId || null,
+            faceitLevel: faceitLevel ? Number(faceitLevel) : prev.faceitLevel || 5,
+            faceitElo: faceitElo && faceitElo !== 'null' ? Number(faceitElo) : prev.faceitElo || 1200,
           };
           try {
             localStorage.setItem('cs2_mix_profile', JSON.stringify(updated));
@@ -114,6 +131,9 @@ export default function App() {
       cleanUrl.searchParams.delete('steamId');
       cleanUrl.searchParams.delete('nick');
       cleanUrl.searchParams.delete('avatar');
+      cleanUrl.searchParams.delete('faceitLevel');
+      cleanUrl.searchParams.delete('faceitElo');
+      cleanUrl.searchParams.delete('faceitFound');
       window.history.replaceState({}, '', cleanUrl.toString());
     }
   }, []);
@@ -148,7 +168,7 @@ export default function App() {
   }, [roomId, myProfile]);
 
   // Switch Room (Multi-room hub support)
-  const handleSelectRoom = (newRoomCode, customName) => {
+  const handleSelectRoom = (newRoomCode, customName, rankingSystem = 'gc') => {
     const clean = newRoomCode.trim().toUpperCase();
     setRoomId(clean);
     setView('mix');
@@ -159,12 +179,26 @@ export default function App() {
     socket.emit('join_room', {
       roomId: clean,
       roomName: customName,
+      rankingSystem,
       player: myProfile.nick ? myProfile : null,
     });
   };
 
   const handleEnterRoom = (code = 'MIX-PRO') => {
+    if (!isSteamLogged) {
+      handleRequireSteamLogin('entrar no mix');
+      return;
+    }
     handleSelectRoom(code);
+  };
+
+  // Change room ranking system (GC vs FACEIT)
+  const handleChangeRankingSystem = (newSystem) => {
+    if (socket.connected) {
+      socket.emit('change_ranking_system', { roomId, rankingSystem: newSystem });
+    } else {
+      setRoom((prev) => ({ ...prev, rankingSystem: newSystem }));
+    }
   };
 
   // Save profile changes (with optimistic local update for zero-latency slider sync)
@@ -359,7 +393,9 @@ export default function App() {
     if (socket.connected) {
       socket.emit('draw_teams', { roomId, mode: pendingDrawMode });
     } else {
-      const result = pendingDrawMode === 'balanced' ? balanceTeams(room.players) : shuffleTeams(room.players);
+      const result = pendingDrawMode === 'balanced'
+        ? balanceTeams(room.players, room.rankingSystem || 'gc')
+        : shuffleTeams(room.players, room.rankingSystem || 'gc');
       setRoom((prev) => ({
         ...prev,
         phase: 'teams',
@@ -582,6 +618,7 @@ export default function App() {
           onOpenQuickVeto={() => setQuickVetoOpen(true)}
           onOpenQuickMapRoll={() => setQuickMapRollOpen(true)}
           onOpenRoomsHub={() => setRoomsHubOpen(true)}
+          onRequireSteamLogin={handleRequireSteamLogin}
           myProfile={myProfile}
           soundEnabled={soundEnabled}
         />
@@ -593,6 +630,8 @@ export default function App() {
           currentRoomId={roomId}
           onSelectRoom={handleSelectRoom}
           soundEnabled={soundEnabled}
+          isSteamLogged={isSteamLogged}
+          onRequireSteamLogin={handleRequireSteamLogin}
         />
 
         <QuickVetoModal
@@ -606,6 +645,14 @@ export default function App() {
           isOpen={quickMapRollOpen}
           onClose={() => setQuickMapRollOpen(false)}
           onApplyMap={handleApplyQuickMap}
+          soundEnabled={soundEnabled}
+        />
+
+        <SteamLoginGateModal
+          isOpen={steamGateModalOpen}
+          onClose={() => setSteamGateModalOpen(false)}
+          roomId={roomId}
+          actionText={steamGateActionText}
           soundEnabled={soundEnabled}
         />
       </>
@@ -641,6 +688,7 @@ export default function App() {
                 currentProfile={myProfile}
                 onSave={handleSaveProfile}
                 roomId={roomId}
+                rankingSystem={room.rankingSystem || 'gc'}
                 soundEnabled={soundEnabled}
                 disabled={room.players.length >= 10 && !room.players.some((p) => p.id === myProfile.id)}
               />
@@ -650,6 +698,8 @@ export default function App() {
               <Lobby
                 players={room.players}
                 myProfile={myProfile}
+                rankingSystem={room.rankingSystem || 'gc'}
+                onChangeRankingSystem={handleChangeRankingSystem}
                 onToggleReady={handleToggleReady}
                 onRemovePlayer={handleRemovePlayer}
                 onFillMockBots={handleFillMockBots}
@@ -680,6 +730,7 @@ export default function App() {
             teamA={room.teamA}
             teamB={room.teamB}
             metrics={room.metrics}
+            rankingSystem={room.rankingSystem || 'gc'}
             onSwapTeams={handleSwapTeams}
             onReDraw={() => handleTriggerDraw('balanced')}
             onStartCoinFlip={handleStartCoinFlip}
@@ -719,6 +770,25 @@ export default function App() {
         currentRoomId={roomId}
         onSelectRoom={handleSelectRoom}
         soundEnabled={soundEnabled}
+        isSteamLogged={isSteamLogged}
+        onRequireSteamLogin={handleRequireSteamLogin}
+      />
+
+      <SteamLoginGateModal
+        isOpen={steamGateModalOpen || (view === 'mix' && !isSteamLogged)}
+        roomId={roomId}
+        actionText={steamGateActionText}
+        soundEnabled={soundEnabled}
+        onClose={
+          view === 'mix' && !isSteamLogged
+            ? () => {
+                setView('landing');
+                const u = new URL(window.location);
+                u.searchParams.delete('room');
+                window.history.pushState({}, '', u);
+              }
+            : () => setSteamGateModalOpen(false)
+        }
       />
 
       <MatchHistoryModal

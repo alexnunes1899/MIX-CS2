@@ -1,5 +1,6 @@
 import React from 'react';
 import GCBadge from './GCBadge';
+import FaceitBadge from './FaceitBadge';
 import PlayerAvatar from './PlayerAvatar';
 import { Crown, Shield, Flame, UserCheck, ChevronLeft } from 'lucide-react';
 import { playClickSound, playPickSound } from '../utils/audio';
@@ -10,9 +11,10 @@ export default function CaptainsDraftView({
   onCancel,
   soundEnabled,
 }) {
-  const { captainA, captainB, captainTurn = 'captainA', teamA = [], teamB = [], unassignedPlayers = [] } = room;
+  const { captainA, captainB, captainTurn = 'captainA', teamA = [], teamB = [], unassignedPlayers = [], rankingSystem = 'gc' } = room;
   const isTurnA = captainTurn === 'captainA';
   const currentCaptain = isTurnA ? captainA : captainB;
+  const isFaceit = rankingSystem === 'faceit';
 
   const handlePick = (playerId) => {
     if (soundEnabled) playPickSound();
@@ -74,7 +76,11 @@ export default function CaptainsDraftView({
               </div>
 
               <div className="flex items-center gap-2">
-                <GCBadge level={p.level} size="md" />
+                {isFaceit ? (
+                  <FaceitBadge level={p.faceitLevel || (p.level <= 10 ? p.level : Math.round(p.level / 2.1)) || 5} elo={p.faceitElo} size="md" />
+                ) : (
+                  <GCBadge level={p.level} size="md" />
+                )}
                 <button className="text-xs font-bold text-amber-400 bg-amber-500/10 px-2 py-1 rounded group-hover:bg-amber-500 group-hover:text-slate-950 transition-colors">
                   Escolher
                 </button>
@@ -107,7 +113,11 @@ export default function CaptainsDraftView({
                     {p.nick} {i === 0 && <span className="text-[10px] text-amber-400 font-mono font-bold">(Capitão)</span>}
                   </span>
                 </div>
-                <GCBadge level={p.level} size="sm" />
+                {isFaceit ? (
+                  <FaceitBadge level={p.faceitLevel || (p.level <= 10 ? p.level : Math.round(p.level / 2.1)) || 5} elo={p.faceitElo} size="sm" />
+                ) : (
+                  <GCBadge level={p.level} size="sm" />
+                )}
               </div>
             ))}
           </div>
@@ -134,7 +144,11 @@ export default function CaptainsDraftView({
                     {p.nick} {i === 0 && <span className="text-[10px] text-amber-400 font-mono font-bold">(Capitão)</span>}
                   </span>
                 </div>
-                <GCBadge level={p.level} size="sm" />
+                {isFaceit ? (
+                  <FaceitBadge level={p.faceitLevel || (p.level <= 10 ? p.level : Math.round(p.level / 2.1)) || 5} elo={p.faceitElo} size="sm" />
+                ) : (
+                  <GCBadge level={p.level} size="sm" />
+                )}
               </div>
             ))}
           </div>
