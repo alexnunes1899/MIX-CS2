@@ -4,6 +4,9 @@
   "description": "Lobby de Mix CS2 com balanceamento por Level da Gamers Club e Pick/Ban de mapas em tempo real",
   "main": "server/index.js",
   "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "dev": "concurrently -n \"SERVER,CLIENT\" -c \"blue,green\" \"node server/index.js --dev\" \"vite\"",
     "build": "vite build",

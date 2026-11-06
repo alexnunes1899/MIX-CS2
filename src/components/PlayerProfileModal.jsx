@@ -107,8 +107,9 @@ export default function PlayerProfileModal({
           </div>
 
           <button
+            type="button"
             onClick={handleClose}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer font-bold text-xs border border-slate-700 shadow-sm"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer font-bold text-xs border border-slate-700 shadow-sm z-30 active:scale-95"
             title="Fechar Perfil (ou aperte Esc)"
           >
             <X size={15} />
