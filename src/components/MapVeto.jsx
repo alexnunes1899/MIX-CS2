@@ -230,22 +230,25 @@ export default function MapVeto({
 
           <div className="flex flex-wrap gap-2">
             {bannedMaps.map((b, idx) => {
-              const m = maps.find((x) => x.id === b.mapId);
+              const m = maps.find((x) => x.id === b.mapId) || CS2_MAPS.find((x) => x.id === b.mapId);
               return (
                 <div
                   key={b.mapId}
-                  className="flex items-center gap-1.5 text-xs bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1 text-slate-300"
+                  className="flex items-center gap-2 text-xs bg-slate-950/90 border border-slate-800 rounded-xl px-3 py-1.5 text-slate-300 shadow-sm"
                 >
-                  <span className="font-mono text-slate-500">#{idx + 1}</span>
+                  <span className="font-mono text-[10px] text-slate-500 font-bold">#{idx + 1}</span>
+                  {m?.logo && (
+                    <img src={m.logo} alt={m.name} className="w-4 h-4 object-contain filter grayscale" />
+                  )}
                   <span
-                    className={`font-bold ${
+                    className={`font-bold font-mono text-[11px] ${
                       b.bannedBy === 'teamA' ? 'text-sky-400' : 'text-amber-400'
                     }`}
                   >
                     {b.bannedBy === 'teamA' ? 'Time A' : 'Time B'}
                   </span>
-                  <span className="text-slate-500">baniu</span>
-                  <span className="text-rose-400 font-semibold line-through">
+                  <span className="text-slate-500 text-[10px]">baniu</span>
+                  <span className="text-rose-400 font-bold line-through font-mono">
                     {m?.name || b.mapId}
                   </span>
                 </div>

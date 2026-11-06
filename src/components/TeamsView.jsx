@@ -122,8 +122,25 @@ export default function TeamsView({
                   <div className="flex items-center gap-2.5">
                     <PlayerAvatar avatar={p.avatar} nick={p.nick} size="md" />
                     <div>
-                      <span className="font-bold text-sm text-white block">{p.nick}</span>
-                      <span className="text-[10px] text-slate-400 font-mono">#{i + 1}</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-sm text-white">{p.nick}</span>
+                        {p.side === 'CT' && (
+                          <span className="text-[9px] font-bold text-sky-400 bg-sky-500/10 px-1.5 py-0.2 rounded border border-sky-500/20">
+                            CT
+                          </span>
+                        )}
+                        {p.side === 'TR' && (
+                          <span className="text-[9px] font-bold text-amber-400 bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20">
+                            TR
+                          </span>
+                        )}
+                        {p.side === 'ANY' && (
+                          <span className="text-[9px] font-bold text-purple-400 bg-purple-500/10 px-1.5 py-0.2 rounded border border-purple-500/20">
+                            Flex
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-slate-400 font-mono">Jogador #{i + 1}</span>
                     </div>
                   </div>
                   {isFaceit ? (
@@ -169,8 +186,25 @@ export default function TeamsView({
                   <div className="flex items-center gap-2.5">
                     <PlayerAvatar avatar={p.avatar} nick={p.nick} size="md" />
                     <div>
-                      <span className="font-bold text-sm text-white block">{p.nick}</span>
-                      <span className="text-[10px] text-slate-400 font-mono">#{i + 1}</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-sm text-white">{p.nick}</span>
+                        {p.side === 'CT' && (
+                          <span className="text-[9px] font-bold text-sky-400 bg-sky-500/10 px-1.5 py-0.2 rounded border border-sky-500/20">
+                            CT
+                          </span>
+                        )}
+                        {p.side === 'TR' && (
+                          <span className="text-[9px] font-bold text-amber-400 bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20">
+                            TR
+                          </span>
+                        )}
+                        {p.side === 'ANY' && (
+                          <span className="text-[9px] font-bold text-purple-400 bg-purple-500/10 px-1.5 py-0.2 rounded border border-purple-500/20">
+                            Flex
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-slate-400 font-mono">Jogador #{i + 1}</span>
                     </div>
                   </div>
                   {isFaceit ? (

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import GCBadge from './GCBadge';
-import { MessageSquare, Send, X, Smile, Sparkles } from 'lucide-react';
+import FaceitBadge from './FaceitBadge';
+import { MessageSquare, Send, X, Smile, Sparkles, User } from 'lucide-react';
 import { playChatPop, playClickSound } from '../utils/audio';
 
 const QUICK_CALLOUTS = ['Bora Mirage!', 'Rush B não para!', 'NT!', 'GG WP!', 'Pede pause', 'EZ d+'];
@@ -9,6 +10,7 @@ export default function ChatDrawer({
   chat = [],
   onSendMessage,
   myProfile,
+  rankingSystem = 'gc',
   soundEnabled,
 }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -42,6 +44,8 @@ export default function ChatDrawer({
       sender: {
         nick: myProfile?.nick || 'Anônimo',
         level: myProfile?.level || 10,
+        faceitLevel: myProfile?.faceitLevel || 5,
+        faceitElo: myProfile?.faceitElo || null,
         avatar: myProfile?.avatar || '🎯',
       },
       text: inputText.trim(),
@@ -55,6 +59,8 @@ export default function ChatDrawer({
       sender: {
         nick: myProfile?.nick || 'Anônimo',
         level: myProfile?.level || 10,
+        faceitLevel: myProfile?.faceitLevel || 5,
+        faceitElo: myProfile?.faceitElo || null,
         avatar: myProfile?.avatar || '🎯',
       },
       text: phrase,
@@ -67,12 +73,12 @@ export default function ChatDrawer({
       {!isOpen && (
         <button
           onClick={handleOpen}
-          className="fixed bottom-5 right-5 z-40 flex items-center gap-2 px-4 py-3 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs uppercase tracking-wider shadow-2xl shadow-amber-500/30 transition-all cursor-pointer group"
+          className="fixed bottom-5 right-5 z-40 flex items-center gap-2 px-4 py-3 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs uppercase tracking-wider shadow-2xl shadow-amber-500/30 transition-all cursor-pointer group active:scale-95"
         >
           <MessageSquare size={17} className="transition-transform group-hover:scale-110" />
           <span>Chat do Mix</span>
           {unreadCount > 0 && (
-            <span className="w-5 h-5 rounded-full bg-rose-600 text-white text-[11px] font-black flex items-center justify-center animate-bounce">
+            <span className="w-5 h-5 rounded-full bg-rose-600 text-white text-[10px] font-black flex items-center justify-center animate-bounce shadow-md">
               {unreadCount}
             </span>
           )}
@@ -81,7 +87,7 @@ export default function ChatDrawer({
 
       {/* Chat Window */}
       {isOpen && (
-        <div className="fixed bottom-5 right-5 z-50 w-full max-w-sm sm:max-w-md bg-slate-900 border-2 border-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col h-[460px] animate-slideUp backdrop-blur">
+        <div className="fixed bottom-5 right-5 z-50 w-[calc(100vw-2.5rem)] max-w-sm sm:max-w-md bg-slate-900 border-2 border-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col h-[480px] animate-slideUp backdrop-blur">
           {/* Header */}
           <div className="bg-slate-950 px-4 py-3 border-b border-slate-800 flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -90,52 +96,88 @@ export default function ChatDrawer({
             </div>
             <button
               onClick={() => setIsOpen(false)}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
             >
               <X size={16} />
             </button>
           </div>
 
           {/* Quick Banter / Phrases Bar */}
-          <div className="bg-slate-950/60 px-3 py-1.5 border-b border-slate-800/80 flex gap-1.5 overflow-x-auto scrollbar-none text-[11px]">
+          <div className="bg-slate-950/60 px-3 py-2 border-b border-slate-800/80 flex gap-1.5 overflow-x-auto scrollbar-none text-[11px]">
             {QUICK_CALLOUTS.map((phrase) => (
               <button
                 key={phrase}
                 type="button"
                 onClick={() => sendQuick(phrase)}
-                className="whitespace-nowrap px-2 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 font-medium transition-colors text-[10px]"
+                className="whitespace-nowrap px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-amber-300 border border-slate-700/50 font-medium transition-all text-[10px] cursor-pointer active:scale-95 shrink-0"
               >
                 {phrase}
               </button>
             ))}
           </div>
 
-          {/* Messages list */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {/* Messages list with Refined Speech Balloons */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-3.5">
             {chat.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-center text-slate-500 text-xs">
-                <Smile size={24} className="mb-2 text-slate-600" />
-                <p>Nenhuma mensagem ainda.</p>
-                <p className="text-[11px] text-slate-600">Mande um salve para os companheiros de time!</p>
+              <div className="h-full flex flex-col items-center justify-center text-center text-slate-500 text-xs py-8">
+                <Smile size={28} className="mb-2 text-slate-600 animate-bounce" />
+                <p className="font-semibold text-slate-400">Nenhuma mensagem ainda.</p>
+                <p className="text-[11px] text-slate-600 mt-0.5">Mande um salve para os companheiros de time!</p>
               </div>
             ) : (
-              chat.map((m) => (
-                <div key={m.id} className="flex items-start gap-2 text-xs">
-                  <span className="text-base select-none">{m.sender?.avatar || '🎯'}</span>
-                  <div className="flex-1 bg-slate-950/70 border border-slate-800/70 rounded-2xl p-2.5">
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-bold text-white text-[11px]">{m.sender?.nick}</span>
-                        <GCBadge level={m.sender?.level || 1} size="sm" />
-                      </div>
-                      <span className="text-[9px] text-slate-500 font-mono">
-                        {new Date(m.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+              chat.map((m) => {
+                const isMe = m.sender?.nick && myProfile?.nick && m.sender.nick.toLowerCase() === myProfile.nick.toLowerCase();
+                const isFaceit = rankingSystem === 'faceit';
+
+                return (
+                  <div
+                    key={m.id}
+                    className={`flex items-end gap-2 text-xs ${isMe ? 'justify-end' : 'justify-start'}`}
+                  >
+                    {!isMe && (
+                      <span className="text-sm select-none shrink-0 mb-1" title={m.sender?.nick}>
+                        {m.sender?.avatar || '🎯'}
                       </span>
+                    )}
+
+                    {/* Speech Balloon */}
+                    <div
+                      className={`max-w-[82%] p-3 shadow-md transition-all ${
+                        isMe
+                          ? 'bg-gradient-to-br from-amber-500/20 via-amber-600/15 to-amber-500/10 border border-amber-500/40 text-amber-50 rounded-2xl rounded-tr-xs'
+                          : 'bg-slate-950/85 border border-slate-800 text-slate-200 rounded-2xl rounded-tl-xs'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-3 mb-1.5 pb-1 border-b border-white/[0.06]">
+                        <div className="flex items-center gap-1.5">
+                          <span className={`font-bold text-[11px] ${isMe ? 'text-amber-300' : 'text-white'}`}>
+                            {isMe ? 'Você' : m.sender?.nick}
+                          </span>
+                          {isFaceit ? (
+                            <FaceitBadge
+                              level={m.sender?.faceitLevel || (m.sender?.level <= 10 ? m.sender?.level : Math.round(m.sender?.level / 2.1)) || 5}
+                              elo={m.sender?.faceitElo}
+                              size="sm"
+                            />
+                          ) : (
+                            <GCBadge level={m.sender?.level || 1} size="sm" />
+                          )}
+                        </div>
+                        <span className="text-[9px] text-slate-500 font-mono shrink-0">
+                          {new Date(m.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      <p className="text-xs break-words leading-relaxed font-normal">{m.text}</p>
                     </div>
-                    <p className="text-slate-200 text-xs break-words">{m.text}</p>
+
+                    {isMe && (
+                      <span className="text-sm select-none shrink-0 mb-1" title="Você">
+                        {myProfile?.avatar || '🎯'}
+                      </span>
+                    )}
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
             <div ref={chatEndRef} />
           </div>
@@ -148,12 +190,12 @@ export default function ChatDrawer({
               onChange={(e) => setInputText(e.target.value)}
               placeholder="Digite no chat..."
               maxLength={150}
-              className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 outline-none focus:border-amber-400"
+              className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 outline-none focus:border-amber-400 font-medium"
             />
             <button
               type="submit"
               disabled={!inputText.trim()}
-              className="p-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="p-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 transition-all disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer active:scale-95"
             >
               <Send size={15} />
             </button>

@@ -68,7 +68,7 @@ export default function QuickMapRollModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm animate-fadeIn">
-      <div className="relative w-full max-w-lg bg-slate-900 border-2 border-amber-500/60 rounded-3xl p-6 text-center shadow-2xl overflow-hidden">
+      <div className="relative w-full max-w-lg max-h-[92vh] overflow-y-auto bg-slate-900 border-2 border-amber-500/60 rounded-3xl p-6 text-center shadow-2xl">
         {/* Glow */}
         <div className="absolute top-0 right-0 w-44 h-44 bg-amber-500/15 rounded-full blur-3xl pointer-events-none" />
 

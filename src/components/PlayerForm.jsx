@@ -229,25 +229,29 @@ export default function PlayerForm({
           </button>
         </div>
       ) : (
-        <div className="bg-slate-950/80 border border-emerald-500/30 rounded-xl p-2.5 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <PlayerAvatar avatar={avatar} nick={nick} size="sm" />
-            <div>
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs font-bold text-white truncate max-w-[140px]">{nick}</span>
-                <span className="text-[10px] text-emerald-400 font-semibold bg-emerald-500/10 px-1.5 py-0.2 rounded border border-emerald-500/20 flex items-center gap-1">
-                  <SteamIcon className="w-3 h-3 text-[#66c0f4]" />
-                  Steam ✓
+        <div className="bg-slate-950/85 border border-emerald-500/30 rounded-xl p-3 flex items-center justify-between shadow-inner">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="relative shrink-0">
+              <PlayerAvatar avatar={avatar} nick={nick} size="md" />
+              <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-slate-950 border border-slate-800 flex items-center justify-center">
+                <SteamIcon className="w-2.5 h-2.5 text-[#66c0f4]" />
+              </span>
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-xs font-bold text-white truncate max-w-[130px] sm:max-w-[160px]">{nick}</span>
+                <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.2 rounded font-mono">
+                  Steam Conectada ✓
                 </span>
               </div>
-              <span className="text-[10px] text-slate-500 font-mono">ID: {currentProfile.steamId}</span>
+              <span className="text-[10px] text-slate-500 font-mono block truncate">ID: {currentProfile.steamId}</span>
             </div>
           </div>
 
           <button
             type="button"
             onClick={handleSteamLogout}
-            className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-slate-900 transition-colors cursor-pointer"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-900 border border-transparent hover:border-rose-500/30 transition-all cursor-pointer shrink-0 ml-2"
             title="Desconectar Steam"
           >
             <LogOut size={14} />
@@ -427,40 +431,34 @@ export default function PlayerForm({
               </button>
             </div>
 
-            {/* Quick Level Preset Buttons */}
-            <div className="flex justify-between text-[10px] text-slate-500 font-mono pt-0.5 px-1">
-              <button
-                type="button"
-                disabled={!isSteamUser}
-                onClick={() => handleGCLevelChange(1)}
-                className="hover:text-amber-400 transition-colors cursor-pointer"
-              >
-                Lvl 1 (Bronze)
-              </button>
-              <button
-                type="button"
-                disabled={!isSteamUser}
-                onClick={() => handleGCLevelChange(10)}
-                className="hover:text-amber-400 transition-colors cursor-pointer"
-              >
-                Lvl 10 (Ouro)
-              </button>
-              <button
-                type="button"
-                disabled={!isSteamUser}
-                onClick={() => handleGCLevelChange(20)}
-                className="hover:text-amber-400 transition-colors cursor-pointer"
-              >
-                Lvl 20 (Elite)
-              </button>
-              <button
-                type="button"
-                disabled={!isSteamUser}
-                onClick={() => handleGCLevelChange(21)}
-                className="text-amber-400 font-bold hover:text-amber-300 transition-colors cursor-pointer"
-              >
-                Lvl 21 (Pro)
-              </button>
+            {/* Quick Level Preset Buttons (Sleek Pills) */}
+            <div className="grid grid-cols-4 gap-1.5 pt-1">
+              {[
+                { lvl: 1, label: 'Lvl 1 (Bronze)' },
+                { lvl: 10, label: 'Lvl 10 (Ouro)' },
+                { lvl: 20, label: 'Lvl 20 (Elite)' },
+                { lvl: 21, label: 'Lvl 21 (Pro)' },
+              ].map((preset) => {
+                const isCurrent = level === preset.lvl;
+                return (
+                  <button
+                    key={preset.lvl}
+                    type="button"
+                    disabled={!isSteamUser}
+                    onClick={() => {
+                      if (soundEnabled) playClickSound();
+                      handleGCLevelChange(preset.lvl);
+                    }}
+                    className={`py-1 px-1.5 rounded-lg text-[10px] font-mono font-bold transition-all cursor-pointer text-center truncate active:scale-95 disabled:opacity-50 ${
+                      isCurrent
+                        ? 'bg-amber-500 text-slate-950 shadow-sm border border-amber-300 font-black'
+                        : 'bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800'
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}

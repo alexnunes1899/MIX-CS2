@@ -22,10 +22,10 @@ export default function FaceitBadge({ level = 5, elo, size = 'md', showLabel = f
   const tier = FACEIT_TIERS[lvl] || FACEIT_TIERS[5];
 
   const sizeClasses = {
-    sm: 'w-6 h-6 text-[11px]',
-    md: 'w-8 h-8 text-xs',
-    lg: 'w-10 h-10 text-sm font-black',
-  }[size] || 'w-8 h-8 text-xs';
+    sm: 'w-6 h-6 text-[11px] rounded-md shrink-0',
+    md: 'w-8 h-8 text-xs font-black rounded-lg shrink-0',
+    lg: 'w-11 h-11 text-base font-black rounded-xl shrink-0',
+  }[size] || 'w-8 h-8 text-xs font-black rounded-lg shrink-0';
 
   return (
     <div className="inline-flex items-center gap-1.5">

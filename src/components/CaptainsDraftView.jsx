@@ -106,11 +106,11 @@ export default function CaptainsDraftView({
 
           <div className="divide-y divide-slate-800/60 mt-2">
             {teamA.map((p, i) => (
-              <div key={p.id} className="py-2 flex items-center justify-between">
+              <div key={p.id} className="py-2.5 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <PlayerAvatar avatar={p.avatar} nick={p.nick} size="sm" />
                   <span className="text-sm font-semibold text-white">
-                    {p.nick} {i === 0 && <span className="text-[10px] text-amber-400 font-mono font-bold">(Capitão)</span>}
+                    {p.nick} {i === 0 && <span className="text-[10px] text-amber-400 font-mono font-bold bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20 ml-1">Capitão</span>}
                   </span>
                 </div>
                 {isFaceit ? (
@@ -118,6 +118,12 @@ export default function CaptainsDraftView({
                 ) : (
                   <GCBadge level={p.level} size="sm" />
                 )}
+              </div>
+            ))}
+            {Array.from({ length: Math.max(0, 5 - teamA.length) }).map((_, idx) => (
+              <div key={`empty-a-${idx}`} className="py-2.5 flex items-center justify-between text-slate-600 text-xs font-mono">
+                <span className="text-slate-500">Slot #{teamA.length + idx + 1}</span>
+                <span className="text-[10px] text-slate-600 italic">Aguardando escolha</span>
               </div>
             ))}
           </div>
@@ -137,11 +143,11 @@ export default function CaptainsDraftView({
 
           <div className="divide-y divide-slate-800/60 mt-2">
             {teamB.map((p, i) => (
-              <div key={p.id} className="py-2 flex items-center justify-between">
+              <div key={p.id} className="py-2.5 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <PlayerAvatar avatar={p.avatar} nick={p.nick} size="sm" />
                   <span className="text-sm font-semibold text-white">
-                    {p.nick} {i === 0 && <span className="text-[10px] text-amber-400 font-mono font-bold">(Capitão)</span>}
+                    {p.nick} {i === 0 && <span className="text-[10px] text-amber-400 font-mono font-bold bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20 ml-1">Capitão</span>}
                   </span>
                 </div>
                 {isFaceit ? (
@@ -149,6 +155,12 @@ export default function CaptainsDraftView({
                 ) : (
                   <GCBadge level={p.level} size="sm" />
                 )}
+              </div>
+            ))}
+            {Array.from({ length: Math.max(0, 5 - teamB.length) }).map((_, idx) => (
+              <div key={`empty-b-${idx}`} className="py-2.5 flex items-center justify-between text-slate-600 text-xs font-mono">
+                <span className="text-slate-500">Slot #{teamB.length + idx + 1}</span>
+                <span className="text-[10px] text-slate-600 italic">Aguardando escolha</span>
               </div>
             ))}
           </div>

@@ -136,18 +136,29 @@ export default function Lobby({
             )}
           </div>
 
-          <p className="text-xs text-slate-400 mt-1">
+          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
             {isFaceit ? (
               <>
-                Média FACEIT: <strong className="text-orange-400 font-mono">Lvl {avgFaceit}</strong>
-                {avgElo ? <> • Média ELO: <strong className="text-slate-200 font-mono">{avgElo} pts</strong></> : null}
+                <span className="text-[11px] bg-slate-950/80 border border-orange-500/30 px-2.5 py-0.5 rounded-lg text-slate-300 font-mono">
+                  Média FACEIT: <strong className="text-orange-400">Lvl {avgFaceit}</strong>
+                </span>
+                {avgElo && (
+                  <span className="text-[11px] bg-slate-950/80 border border-slate-800 px-2.5 py-0.5 rounded-lg text-slate-300 font-mono">
+                    Média ELO: <strong className="text-amber-300">{avgElo} pts</strong>
+                  </span>
+                )}
               </>
             ) : (
               <>
-                Média GC: <strong className="text-amber-400 font-mono">Lvl {avgLevel}</strong> • Soma: <strong className="text-slate-200 font-mono">{totalLevel} pts</strong>
+                <span className="text-[11px] bg-slate-950/80 border border-amber-500/30 px-2.5 py-0.5 rounded-lg text-slate-300 font-mono">
+                  Média GC: <strong className="text-amber-400">Lvl {avgLevel}</strong>
+                </span>
+                <span className="text-[11px] bg-slate-950/80 border border-slate-800 px-2.5 py-0.5 rounded-lg text-slate-300 font-mono">
+                  Soma Total: <strong className="text-slate-200">{totalLevel} pts</strong>
+                </span>
               </>
             )}
-          </p>
+          </div>
         </div>
 
         {/* Action Buttons & My Ready Toggle */}
@@ -213,22 +224,22 @@ export default function Lobby({
           return (
             <div
               key={p.id}
-              className={`group relative border rounded-xl p-3.5 transition-all shadow-md flex flex-col justify-between ${
+              className={`group relative border rounded-xl p-3.5 transition-all shadow-md flex flex-col justify-between hover:border-slate-700 ${
                 p.ready
-                  ? 'bg-slate-900/95 border-emerald-500/40 shadow-emerald-500/5'
+                  ? 'bg-slate-900/95 border-emerald-500/40 shadow-emerald-500/5 ring-1 ring-emerald-500/20'
                   : 'bg-slate-900/80 border-slate-800'
               }`}
             >
               <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2.5 min-w-0">
                   <PlayerAvatar avatar={p.avatar} nick={p.nick} size="md" />
-                  <div>
-                    <div className="flex items-center gap-1">
-                      <h3 className="font-bold text-sm text-white truncate max-w-[105px]" title={p.nick}>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <h3 className="font-bold text-sm text-white truncate max-w-[105px] sm:max-w-[85px] lg:max-w-[95px] xl:max-w-[115px]" title={p.nick}>
                         {p.nick}
                       </h3>
                       {p.ready && (
-                        <span className="text-emerald-400 font-bold" title="Jogador pronto">
+                        <span className="text-emerald-400 font-bold shrink-0 text-xs" title="Jogador pronto">
                           ✓
                         </span>
                       )}
@@ -236,17 +247,17 @@ export default function Lobby({
 
                     <div className="flex items-center gap-1 mt-0.5">
                       {p.side === 'CT' && (
-                        <span className="flex items-center gap-0.5 text-[10px] text-sky-400 font-semibold bg-sky-500/10 px-1.5 py-0.2 rounded border border-sky-500/20">
-                          <Shield size={10} /> CT
+                        <span className="flex items-center gap-0.5 text-[9px] font-bold text-sky-400 bg-sky-500/10 px-1.5 py-0.2 rounded border border-sky-500/20">
+                          <Shield size={9} /> CT
                         </span>
                       )}
                       {p.side === 'TR' && (
-                        <span className="flex items-center gap-0.5 text-[10px] text-amber-400 font-semibold bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20">
-                          <Flame size={10} /> TR
+                        <span className="flex items-center gap-0.5 text-[9px] font-bold text-amber-400 bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20">
+                          <Flame size={9} /> TR
                         </span>
                       )}
                       {p.side === 'ANY' && (
-                        <span className="text-[10px] text-slate-400 font-medium bg-slate-800 px-1.5 py-0.2 rounded">
+                        <span className="text-[9px] font-bold text-purple-400 bg-purple-500/10 px-1.5 py-0.2 rounded border border-purple-500/20">
                           Flex
                         </span>
                       )}
@@ -254,23 +265,32 @@ export default function Lobby({
                   </div>
                 </div>
 
-                {isFaceit ? (
-                  <FaceitBadge level={pFaceitLevel} elo={p.faceitElo} size="md" />
-                ) : (
-                  <GCBadge level={p.level} size="md" />
-                )}
+                <div className="shrink-0">
+                  {isFaceit ? (
+                    <FaceitBadge level={pFaceitLevel} elo={p.faceitElo} size="md" />
+                  ) : (
+                    <GCBadge level={p.level} size="md" />
+                  )}
+                </div>
               </div>
 
               <div className="mt-3 pt-2 border-t border-slate-800/60 flex items-center justify-between text-[11px] text-slate-500">
-                <span className={`font-mono text-[10px] ${p.ready ? 'text-emerald-400 font-bold' : 'text-slate-500'}`}>
-                  {p.ready ? 'PRONTO' : 'AGUARDANDO'}
+                <span className={`font-mono text-[10px] tracking-wider uppercase ${p.ready ? 'text-emerald-400 font-bold flex items-center gap-1' : 'text-slate-500 font-medium'}`}>
+                  {p.ready ? (
+                    <>
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                      PRONTO
+                    </>
+                  ) : (
+                    'AGUARDANDO'
+                  )}
                 </span>
                 <button
                   onClick={() => {
                     if (soundEnabled) playClickSound();
                     onRemovePlayer(p.id);
                   }}
-                  className="text-slate-500 hover:text-rose-400 transition-colors p-1 cursor-pointer"
+                  className="text-slate-500 hover:text-rose-400 hover:bg-slate-800 p-1 rounded-md transition-colors cursor-pointer"
                   title="Remover jogador"
                 >
                   <Trash2 size={13} />
@@ -284,10 +304,13 @@ export default function Lobby({
         {Array.from({ length: emptySlots }).map((_, i) => (
           <div
             key={`empty-${i}`}
-            className="border-2 border-dashed border-slate-800/80 rounded-xl p-3.5 flex flex-col items-center justify-center text-center min-h-[105px] text-slate-600 bg-slate-950/20"
+            className="border-2 border-dashed border-slate-800/70 hover:border-slate-700/80 rounded-xl p-3.5 flex flex-col items-center justify-center text-center min-h-[110px] text-slate-600 bg-slate-950/25 transition-all select-none"
           >
-            <span className="text-xs font-mono font-semibold">Slot #{players.length + i + 1}</span>
-            <span className="text-[10px] text-slate-500 mt-0.5">Aguardando entrada</span>
+            <div className="w-7 h-7 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-600 mb-1">
+              <Users size={13} />
+            </div>
+            <span className="text-[11px] font-mono font-bold text-slate-400">Slot #{players.length + i + 1}</span>
+            <span className="text-[10px] text-slate-600 mt-0.5">Aguardando jogador</span>
           </div>
         ))}
       </div>

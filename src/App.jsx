@@ -830,6 +830,7 @@ export default function App() {
       {rouletteActive && (
         <DraftRoulette
           players={room.players}
+          rankingSystem={room.rankingSystem || 'gc'}
           onComplete={handleRouletteComplete}
           soundEnabled={soundEnabled}
         />
@@ -839,6 +840,7 @@ export default function App() {
         chat={room.chat}
         onSendMessage={handleSendMessage}
         myProfile={myProfile}
+        rankingSystem={room.rankingSystem || 'gc'}
         soundEnabled={soundEnabled}
       />
 

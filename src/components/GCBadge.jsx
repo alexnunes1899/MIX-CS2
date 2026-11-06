@@ -6,10 +6,10 @@ export default function GCBadge({ level, size = 'md', showTier = false, classNam
   const tier = getGCTier(lvl);
 
   const sizeClasses = {
-    sm: 'w-6 h-6 text-[11px] rounded-md',
-    md: 'w-8 h-8 text-xs font-black rounded-lg',
-    lg: 'w-11 h-11 text-base font-black rounded-xl',
-    xl: 'w-14 h-14 text-xl font-black rounded-2xl',
+    sm: 'w-6 h-6 text-[11px] rounded-md shrink-0',
+    md: 'w-8 h-8 text-xs font-black rounded-lg shrink-0',
+    lg: 'w-11 h-11 text-base font-black rounded-xl shrink-0',
+    xl: 'w-14 h-14 text-xl font-black rounded-2xl shrink-0',
   };
 
   const isHighLevel = lvl >= 20;

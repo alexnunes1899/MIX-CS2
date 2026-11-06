@@ -22,7 +22,7 @@ export default function QuickVetoModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
-      <div className="relative w-full max-w-md bg-slate-900 border-2 border-amber-500/60 rounded-3xl p-6 shadow-2xl overflow-hidden">
+      <div className="relative w-full max-w-md max-h-[92vh] overflow-y-auto bg-slate-900 border-2 border-amber-500/60 rounded-3xl p-6 shadow-2xl">
         {/* Glow */}
         <div className="absolute top-0 right-0 w-36 h-36 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
 

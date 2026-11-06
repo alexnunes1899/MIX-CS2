@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import GCBadge from './GCBadge';
+import FaceitBadge from './FaceitBadge';
 import PlayerAvatar from './PlayerAvatar';
 import { CS2_MAPS } from '../data/maps';
 import { Trophy, Share2, Terminal, RotateCcw, Shield, Flame, Check, History } from 'lucide-react';
@@ -17,7 +18,8 @@ export default function FinalSummary({
   const [copiedDiscord, setCopiedDiscord] = useState(false);
   const [copiedRcon, setCopiedRcon] = useState(false);
 
-  const { finalMap, teamA = [], teamB = [], metrics, startingSideTeamB, name: roomName = 'MIX', serverIp = '' } = room;
+  const { finalMap, teamA = [], teamB = [], metrics, startingSideTeamB, name: roomName = 'MIX', serverIp = '', rankingSystem = 'gc' } = room;
+  const isFaceit = rankingSystem === 'faceit';
   const fullMap = CS2_MAPS.find((m) => m.id === finalMap?.id) || finalMap;
 
   const sideTeamB = startingSideTeamB || 'CT';
@@ -138,21 +140,28 @@ export default function FinalSummary({
             </div>
 
             <div className="text-right font-mono text-xs">
-              <div className="text-slate-500">MÉDIA GC</div>
-              <div className="text-amber-400 font-bold">Lvl {metrics?.avgA}</div>
+              <div className="text-slate-500">{isFaceit ? 'MÉDIA FACEIT' : 'MÉDIA GC'}</div>
+              <div className="text-amber-400 font-bold">Lvl {metrics?.avgA ?? '-'}</div>
             </div>
           </div>
 
           <div className="divide-y divide-slate-800/60 mt-3">
-            {teamA.map((p) => (
-              <div key={p.id} className="py-2 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <PlayerAvatar avatar={p.avatar} nick={p.nick} size="sm" />
-                  <span className="font-bold text-sm text-white">{p.nick}</span>
+            {teamA.map((p) => {
+              const pFaceitLevel = p.faceitLevel || (p.level <= 10 ? p.level : Math.round(p.level / 2.1)) || 5;
+              return (
+                <div key={p.id} className="py-2.5 flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <PlayerAvatar avatar={p.avatar} nick={p.nick} size="sm" />
+                    <span className="font-bold text-sm text-white">{p.nick}</span>
+                  </div>
+                  {isFaceit ? (
+                    <FaceitBadge level={pFaceitLevel} elo={p.faceitElo} size="sm" />
+                  ) : (
+                    <GCBadge level={p.level} size="sm" showTier />
+                  )}
                 </div>
-                <GCBadge level={p.level} size="sm" showTier />
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -184,21 +193,28 @@ export default function FinalSummary({
             </div>
 
             <div className="text-right font-mono text-xs">
-              <div className="text-slate-500">MÉDIA GC</div>
-              <div className="text-amber-400 font-bold">Lvl {metrics?.avgB}</div>
+              <div className="text-slate-500">{isFaceit ? 'MÉDIA FACEIT' : 'MÉDIA GC'}</div>
+              <div className="text-amber-400 font-bold">Lvl {metrics?.avgB ?? '-'}</div>
             </div>
           </div>
 
           <div className="divide-y divide-slate-800/60 mt-3">
-            {teamB.map((p) => (
-              <div key={p.id} className="py-2 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <PlayerAvatar avatar={p.avatar} nick={p.nick} size="sm" />
-                  <span className="font-bold text-sm text-white">{p.nick}</span>
+            {teamB.map((p) => {
+              const pFaceitLevel = p.faceitLevel || (p.level <= 10 ? p.level : Math.round(p.level / 2.1)) || 5;
+              return (
+                <div key={p.id} className="py-2.5 flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <PlayerAvatar avatar={p.avatar} nick={p.nick} size="sm" />
+                    <span className="font-bold text-sm text-white">{p.nick}</span>
+                  </div>
+                  {isFaceit ? (
+                    <FaceitBadge level={pFaceitLevel} elo={p.faceitElo} size="sm" />
+                  ) : (
+                    <GCBadge level={p.level} size="sm" showTier />
+                  )}
                 </div>
-                <GCBadge level={p.level} size="sm" showTier />
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 

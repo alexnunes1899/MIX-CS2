@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import GCBadge from './GCBadge';
+import FaceitBadge from './FaceitBadge';
 import { Sparkles, Trophy } from 'lucide-react';
 import { playRouletteTick, playFanfare } from '../utils/audio';
 
 export default function DraftRoulette({
   players,
+  rankingSystem = 'gc',
   onComplete,
   soundEnabled,
 }) {
@@ -55,7 +57,11 @@ export default function DraftRoulette({
               <span className="text-5xl block mb-2 select-none">{activePlayer?.avatar || '🎯'}</span>
               <h3 className="font-bold text-lg text-white truncate">{activePlayer?.nick || 'CS2 Player'}</h3>
               <div className="mt-2 flex justify-center">
-                <GCBadge level={activePlayer?.level || 1} size="md" showTier />
+                {rankingSystem === 'faceit' ? (
+                  <FaceitBadge level={activePlayer?.faceitLevel || (activePlayer?.level <= 10 ? activePlayer?.level : Math.round(activePlayer?.level / 2.1)) || 5} elo={activePlayer?.faceitElo} size="md" />
+                ) : (
+                  <GCBadge level={activePlayer?.level || 1} size="md" showTier />
+                )}
               </div>
             </div>
           </div>
