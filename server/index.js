@@ -188,12 +188,17 @@ io.on('connection', (socket) => {
         level: Math.max(1, Math.min(21, Number(player.level) || 10)),
         side: player.side || 'ANY',
         avatar: player.avatar || '🎯',
+        steamId: player.steamId || null,
         ready: player.ready !== undefined ? player.ready : false,
         socketId: socket.id,
       };
 
       if (existingIdx >= 0) {
-        room.players[existingIdx] = { ...room.players[existingIdx], ...playerData };
+        room.players[existingIdx] = {
+          ...room.players[existingIdx],
+          ...playerData,
+          ready: player.ready !== undefined ? player.ready : room.players[existingIdx].ready,
+        };
       } else if (room.players.length < 10) {
         room.players.push(playerData);
       }

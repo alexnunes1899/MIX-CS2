@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Play, Sparkles, Swords, Dices, Shield, Flame, Users, Layers, Zap, Trophy, ArrowRight, ExternalLink, Hash, CheckCircle2, Monitor } from 'lucide-react';
 import { ACTIVE_DUTY_MAPS } from '../data/maps';
 import PlayerAvatar from './PlayerAvatar';
+import SteamIcon from './SteamIcon';
 import { playClickSound } from '../utils/audio';
 
 export default function LandingPage({
@@ -93,11 +94,9 @@ export default function LandingPage({
             ) : (
               <a
                 href="/api/auth/steam?room=MIX-PRO"
-                className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl bg-gradient-to-r from-[#171a21] to-[#1b2838] hover:from-[#1b2838] hover:to-[#2a475e] border border-[#66c0f4]/30 text-white text-xs font-bold transition-all shadow-md group cursor-pointer"
+                className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl bg-gradient-to-r from-[#171a21] to-[#1b2838] hover:from-[#1b2838] hover:to-[#2a475e] border border-[#66c0f4]/40 hover:border-[#66c0f4] text-white text-xs font-bold transition-all shadow-md group cursor-pointer"
               >
-                <svg className="w-3.5 h-3.5 fill-current text-[#66c0f4] group-hover:scale-110 transition-transform" viewBox="0 0 24 24">
-                  <path d="M12 2a10 10 0 0 1 10 10 10 10 0 0 1-10 10A10 10 0 0 1 2 12 10 10 0 0 1 12 2m4.8 5.6a2.4 2.4 0 0 0-2.4 2.4c0 .4.1.8.3 1.1l-3 4.3a2.4 2.4 0 0 0-1.7-.2l-2.4-1a2.4 2.4 0 0 0-4.6 1.8 2.4 2.4 0 0 0 3.3 1.3l2.3 1a2.4 2.4 0 0 0 4 .3l3.2-2.2c.5.2 1.1.3 1.7.3a2.4 2.4 0 0 0 2.4-2.4 2.4 2.4 0 0 0-2.4-2.4z"/>
-                </svg>
+                <SteamIcon className="w-4 h-4 text-[#66c0f4] group-hover:scale-110 transition-transform" />
                 <span>Login Steam</span>
               </a>
             )}

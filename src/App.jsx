@@ -167,7 +167,7 @@ export default function App() {
     handleSelectRoom(code);
   };
 
-  // Save profile changes
+  // Save profile changes (with optimistic local update for zero-latency slider sync)
   const handleSaveProfile = (newProfile) => {
     setMyProfile(newProfile);
     try {
@@ -175,6 +175,21 @@ export default function App() {
     } catch (e) {
       // ignore
     }
+
+    // Immediate optimistic local update for instant UI response
+    setRoom((prev) => {
+      const existingIdx = prev.players.findIndex((p) => p.id === newProfile.id || p.nick === newProfile.nick);
+      if (existingIdx >= 0) {
+        const updatedPlayers = [...prev.players];
+        updatedPlayers[existingIdx] = {
+          ...updatedPlayers[existingIdx],
+          ...newProfile,
+          ready: newProfile.ready !== undefined ? newProfile.ready : updatedPlayers[existingIdx].ready,
+        };
+        return { ...prev, players: updatedPlayers };
+      }
+      return prev;
+    });
 
     if (socket.connected) {
       socket.emit('join_room', {
