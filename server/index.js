@@ -4,6 +4,7 @@ import { Server } from 'socket.io';
 import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { fetchLiveOfficialRotation, getCurrentRotationState, ALL_MAPS_CATALOGUE } from './mapSync.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -24,72 +25,15 @@ const isDev = process.argv.includes('--dev');
 const portArg = process.argv.find((arg) => arg.startsWith('--port='));
 const PORT = process.env.PORT || (portArg ? Number(portArg.split('=')[1]) : (isDev ? 3001 : 3000));
 
-// Default CS2 Active Duty Pool (Oficial Valve 2026: Mirage, Inferno, Nuke, Dust II, Ancient, Anubis, Train)
-const DEFAULT_MAPS = [
-  {
-    id: 'de_mirage',
-    name: 'Mirage',
-    file: 'de_mirage',
-    location: 'Marrocos',
-    color: '#f59e0b',
-    image: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_mirage_1_png.png',
-    logo: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/de_mirage.png',
-  },
-  {
-    id: 'de_inferno',
-    name: 'Inferno',
-    file: 'de_inferno',
-    location: 'Itália',
-    color: '#ea580c',
-    image: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_inferno_1_png.png',
-    logo: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/de_inferno.png',
-  },
-  {
-    id: 'de_nuke',
-    name: 'Nuke',
-    file: 'de_nuke',
-    location: 'EUA',
-    color: '#0ea5e9',
-    image: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_nuke_1_png.png',
-    logo: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/de_nuke.png',
-  },
-  {
-    id: 'de_dust2',
-    name: 'Dust II',
-    file: 'de_dust2',
-    location: 'Oriente Médio',
-    color: '#eab308',
-    image: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_dust2_1_png.png',
-    logo: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/de_dust2.png',
-  },
-  {
-    id: 'de_ancient',
-    name: 'Ancient',
-    file: 'de_ancient',
-    location: 'América Central',
-    color: '#10b981',
-    image: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_ancient_1_png.png',
-    logo: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/de_ancient.png',
-  },
-  {
-    id: 'de_anubis',
-    name: 'Anubis',
-    file: 'de_anubis',
-    location: 'Egito',
-    color: '#d97706',
-    image: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_anubis_1_png.png',
-    logo: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/de_anubis.png',
-  },
-  {
-    id: 'de_train',
-    name: 'Train',
-    file: 'de_train',
-    location: 'Rússia',
-    color: '#64748b',
-    image: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_train_1_png.png',
-    logo: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/de_train.png',
-  },
-];
+// Live CS2 Active Duty Map Pool Sync (Wikipedia / Valve Esports Records)
+fetchLiveOfficialRotation()
+  .then(() => console.log('[SERVER] Rotação oficial inicializada com sucesso.'))
+  .catch((err) => console.warn('[SERVER] Erro na rotação oficial inicial:', err.message));
+
+// Periodic rotation re-check every 12 hours
+setInterval(() => {
+  fetchLiveOfficialRotation().catch(() => {});
+}, 12 * 60 * 60 * 1000);
 
 const MOCK_BOTS = [
   { id: 'bot-1', nick: 'FalleN', level: 21, faceitLevel: 10, faceitElo: 2840, side: 'CT', ready: true, avatar: '👑' },
@@ -161,7 +105,7 @@ function getOrCreateRoom(roomId, customName = '', rankingSystem = 'gc', serverIp
       teamA: [],
       teamB: [],
       metrics: null,
-      maps: [...DEFAULT_MAPS],
+      maps: [...getCurrentRotationState().activeDutyMaps],
       bannedMaps: [],
       currentTurn: 'teamA',
       finalMap: null,
@@ -732,6 +676,24 @@ io.on('connection', (socket) => {
     broadcastRoomsList();
   });
 
+  // Sync Official Rotation on demand
+  socket.on('sync_official_rotation', async () => {
+    try {
+      const updatedState = await fetchLiveOfficialRotation();
+      io.emit('active_rotation_updated', updatedState);
+
+      // Update maps in rooms that are still in lobby
+      rooms.forEach((r) => {
+        if (r.phase === 'lobby') {
+          r.maps = [...updatedState.activeDutyMaps];
+          io.to(r.id).emit('room_state', r);
+        }
+      });
+    } catch (err) {
+      console.warn('[SOCKET] Erro ao sincronizar rotação oficial:', err.message);
+    }
+  });
+
   socket.on('disconnect', () => {
     // Keep slots
   });
@@ -789,13 +751,42 @@ app.delete('/api/rooms/:roomId', (req, res) => {
 });
 
 // Official CS2 Active Duty Map Rotation API
+app.get('/api/maps/rotation', (req, res) => {
+  res.json(getCurrentRotationState());
+});
+
 app.get('/api/maps/active-duty', (req, res) => {
+  const state = getCurrentRotationState();
   res.json({
     pool: 'Valve Official Active Duty',
-    count: DEFAULT_MAPS.length,
-    description: 'Rotação Oficial Competitiva Mundial CS2 (Mirage, Inferno, Nuke, Dust II, Ancient, Anubis, Train)',
-    maps: DEFAULT_MAPS,
+    count: state.activeDutyMaps.length,
+    description: 'Rotação Oficial Competitiva Mundial CS2',
+    source: state.source,
+    sourceUrl: state.sourceUrl,
+    lastSync: state.lastSync,
+    maps: state.activeDutyMaps,
+    extraMaps: state.extraMaps,
   });
+});
+
+// Live Sync from reliable web source (Wikipedia / Valve Esports Records)
+app.post('/api/maps/sync-rotation', async (req, res) => {
+  try {
+    const updatedState = await fetchLiveOfficialRotation();
+    io.emit('active_rotation_updated', updatedState);
+
+    // Update rooms in lobby
+    rooms.forEach((r) => {
+      if (r.phase === 'lobby') {
+        r.maps = [...updatedState.activeDutyMaps];
+        io.to(r.id).emit('room_state', r);
+      }
+    });
+
+    res.json({ success: true, ...updatedState });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Steam OpenID Authentication Routes

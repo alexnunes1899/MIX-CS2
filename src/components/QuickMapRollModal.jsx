@@ -1,19 +1,41 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import confetti from 'canvas-confetti';
-import { Dices, X, Sparkles, Copy, Check, Shield, Flame, SlidersHorizontal, ChevronDown, Trophy, Layers, RotateCcw } from 'lucide-react';
+import { Dices, X, Sparkles, Copy, Check, Shield, Flame, SlidersHorizontal, ChevronDown, Trophy, Layers, RotateCcw, RefreshCw, Globe } from 'lucide-react';
 import { CS2_MAPS, OFFICIAL_ACTIVE_DUTY, EXTRA_CS2_MAPS } from '../data/maps';
 import { playRouletteTick, playFanfare, playClickSound } from '../utils/audio';
-
-const OFFICIAL_IDS = OFFICIAL_ACTIVE_DUTY.map((m) => m.id);
-const OFFICIAL_PLUS_TRAIN_IDS = [...OFFICIAL_IDS, 'de_train'];
-const ALL_MAP_IDS = CS2_MAPS.map((m) => m.id);
 
 export default function QuickMapRollModal({
   isOpen,
   onClose,
   onApplyMap,
   soundEnabled,
+  officialRotation,
+  syncingRotation,
+  onSyncOfficialRotation,
 }) {
+  const officialMaps = officialRotation?.activeDutyMaps && officialRotation.activeDutyMaps.length > 0
+    ? officialRotation.activeDutyMaps
+    : OFFICIAL_ACTIVE_DUTY;
+
+  const extraMaps = officialRotation?.extraMaps && officialRotation.extraMaps.length > 0
+    ? officialRotation.extraMaps
+    : EXTRA_CS2_MAPS;
+
+  const allMaps = useMemo(() => {
+    return [...officialMaps, ...extraMaps];
+  }, [officialMaps, extraMaps]);
+
+  const officialIds = useMemo(() => officialMaps.map((m) => m.id), [officialMaps]);
+
+  const officialPlusTrainIds = useMemo(() => {
+    const hasTrain = allMaps.some((m) => m.id === 'de_train');
+    return hasTrain && !officialIds.includes('de_train')
+      ? [...officialIds, 'de_train']
+      : officialIds;
+  }, [allMaps, officialIds]);
+
+  const allMapIds = useMemo(() => allMaps.map((m) => m.id), [allMaps]);
+
   // Map Pool Configuration State (persisted in localStorage)
   const [preset, setPreset] = useState(() => {
     try {
@@ -31,8 +53,15 @@ export default function QuickMapRollModal({
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch (e) {}
-    return OFFICIAL_IDS;
+    return OFFICIAL_ACTIVE_DUTY.map((m) => m.id);
   });
+
+  // Whenever official rotation updates, if preset is 'official', refresh selected IDs
+  useEffect(() => {
+    if (preset === 'official' && officialIds.length > 0) {
+      setSelectedMapIds(officialIds);
+    }
+  }, [officialIds, preset]);
 
   const [showCustomList, setShowCustomList] = useState(false);
   const [spinning, setSpinning] = useState(false);
@@ -43,9 +72,9 @@ export default function QuickMapRollModal({
 
   // Active pool of maps based on current selection
   const activePool = useMemo(() => {
-    const list = CS2_MAPS.filter((m) => selectedMapIds.includes(m.id));
-    return list.length > 0 ? list : OFFICIAL_ACTIVE_DUTY;
-  }, [selectedMapIds]);
+    const list = allMaps.filter((m) => selectedMapIds.includes(m.id));
+    return list.length > 0 ? list : officialMaps;
+  }, [allMaps, selectedMapIds, officialMaps]);
 
   // Sync to localStorage
   const updateSelectedMaps = (newIds, newPreset = 'custom') => {
@@ -60,11 +89,11 @@ export default function QuickMapRollModal({
   const handleSelectPreset = (mode) => {
     if (soundEnabled) playClickSound();
     if (mode === 'official') {
-      updateSelectedMaps(OFFICIAL_IDS, 'official');
+      updateSelectedMaps(officialIds, 'official');
     } else if (mode === 'official_train') {
-      updateSelectedMaps(OFFICIAL_PLUS_TRAIN_IDS, 'official_train');
+      updateSelectedMaps(officialPlusTrainIds, 'official_train');
     } else if (mode === 'all') {
-      updateSelectedMaps(ALL_MAP_IDS, 'all');
+      updateSelectedMaps(allMapIds, 'all');
     }
   };
 
@@ -83,11 +112,11 @@ export default function QuickMapRollModal({
 
     // Check if matches a preset
     let detectedPreset = 'custom';
-    if (next.length === OFFICIAL_IDS.length && OFFICIAL_IDS.every((id) => next.includes(id))) {
+    if (next.length === officialIds.length && officialIds.every((id) => next.includes(id))) {
       detectedPreset = 'official';
-    } else if (next.length === OFFICIAL_PLUS_TRAIN_IDS.length && OFFICIAL_PLUS_TRAIN_IDS.every((id) => next.includes(id))) {
+    } else if (next.length === officialPlusTrainIds.length && officialPlusTrainIds.every((id) => next.includes(id))) {
       detectedPreset = 'official_train';
-    } else if (next.length === ALL_MAP_IDS.length) {
+    } else if (next.length === allMapIds.length) {
       detectedPreset = 'all';
     }
 
@@ -191,9 +220,26 @@ GL HF! 🔥`;
               <SlidersHorizontal size={13} className="text-amber-400" />
               <span>Configuração do Pool de Mapas</span>
             </span>
-            <span className="text-[10px] font-mono font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full">
-              {activePool.length} {activePool.length === 1 ? 'mapa ativo' : 'mapas ativos'}
-            </span>
+            <div className="flex items-center gap-2">
+              {onSyncOfficialRotation && (
+                <button
+                  type="button"
+                  disabled={syncingRotation}
+                  onClick={() => {
+                    if (soundEnabled) playClickSound();
+                    onSyncOfficialRotation();
+                  }}
+                  className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 hover:bg-amber-500/20 text-[10px] font-semibold transition-all cursor-pointer disabled:opacity-50"
+                  title={`Fonte verificada: ${officialRotation?.source || 'Wikipedia / Valve Records'}`}
+                >
+                  <RefreshCw size={10} className={syncingRotation ? 'animate-spin text-amber-400' : 'text-amber-400'} />
+                  <span>{syncingRotation ? 'Sincronizando...' : 'Atualizar Oficial'}</span>
+                </button>
+              )}
+              <span className="text-[10px] font-mono font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full">
+                {activePool.length} {activePool.length === 1 ? 'mapa ativo' : 'mapas ativos'}
+              </span>
+            </div>
           </div>
 
           {/* Quick Presets Grid */}
@@ -209,7 +255,7 @@ GL HF! 🔥`;
             >
               <div className="flex items-center gap-1 font-bold text-xs font-heading">
                 <Trophy size={12} className={preset === 'official' ? 'text-amber-400' : 'text-slate-500'} />
-                <span>Oficial (7)</span>
+                <span>Oficial ({officialIds.length})</span>
               </div>
               <span className="text-[10px] text-slate-400 block mt-0.5 leading-tight">
                 Active Duty Puro
@@ -227,7 +273,7 @@ GL HF! 🔥`;
             >
               <div className="flex items-center gap-1 font-bold text-xs font-heading">
                 <Sparkles size={12} className={preset === 'official_train' ? 'text-amber-400' : 'text-slate-500'} />
-                <span>+ Train (8)</span>
+                <span>+ Train ({officialPlusTrainIds.length})</span>
               </div>
               <span className="text-[10px] text-slate-400 block mt-0.5 leading-tight">
                 Oficial + Train
@@ -245,7 +291,7 @@ GL HF! 🔥`;
             >
               <div className="flex items-center gap-1 font-bold text-xs font-heading">
                 <Layers size={12} className={preset === 'all' ? 'text-sky-400' : 'text-slate-500'} />
-                <span>Todos (12)</span>
+                <span>Todos ({allMapIds.length})</span>
               </div>
               <span className="text-[10px] text-slate-400 block mt-0.5 leading-tight">
                 Overpass, Office...
@@ -286,7 +332,7 @@ GL HF! 🔥`;
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-44 overflow-y-auto pr-1 custom-scrollbar">
-                {CS2_MAPS.map((map) => {
+                {allMaps.map((map) => {
                   const isSelected = selectedMapIds.includes(map.id);
                   return (
                     <button

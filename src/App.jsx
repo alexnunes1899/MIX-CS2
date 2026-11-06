@@ -18,7 +18,7 @@ import LandingPage from './components/LandingPage';
 import SteamLoginGateModal from './components/SteamLoginGateModal';
 import PlayerProfileModal from './components/PlayerProfileModal';
 import { recordMatchResult } from './utils/playerStats';
-import { ACTIVE_DUTY_MAPS } from './data/maps';
+import { ACTIVE_DUTY_MAPS, OFFICIAL_ACTIVE_DUTY, EXTRA_CS2_MAPS } from './data/maps';
 import { balanceTeams, shuffleTeams } from './utils/balance';
 import { MOCK_PLAYERS } from './data/mockPlayers';
 
@@ -50,6 +50,15 @@ export default function App() {
   const [steamGateActionText, setSteamGateActionText] = useState('criar ou entrar no mix');
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [roomNotice, setRoomNotice] = useState(null);
+
+  // Official Active Duty Live Rotation State (sourced from Wikipedia / Valve records)
+  const [officialRotation, setOfficialRotation] = useState(() => ({
+    source: 'Wikipedia / Valve Esports Records',
+    lastSync: Date.now(),
+    activeDutyMaps: OFFICIAL_ACTIVE_DUTY,
+    extraMaps: EXTRA_CS2_MAPS,
+  }));
+  const [syncingRotation, setSyncingRotation] = useState(false);
 
   // User's own saved profile (stored in localStorage)
   const [myProfile, setMyProfile] = useState(() => {
@@ -150,6 +159,18 @@ export default function App() {
     }
   }, []);
 
+  // Fetch Official Rotation on Mount
+  useEffect(() => {
+    fetch('/api/maps/rotation')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && Array.isArray(data.activeDutyMaps) && data.activeDutyMaps.length > 0) {
+          setOfficialRotation(data);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   // Setup Socket listener
   useEffect(() => {
     socket.on('connect', () => {
@@ -162,6 +183,12 @@ export default function App() {
     socket.on('room_state', (updatedRoom) => {
       if (updatedRoom && updatedRoom.id === roomId) {
         setRoom(updatedRoom);
+      }
+    });
+
+    socket.on('active_rotation_updated', (updatedRotation) => {
+      if (updatedRotation && Array.isArray(updatedRotation.activeDutyMaps)) {
+        setOfficialRotation(updatedRotation);
       }
     });
 
@@ -189,6 +216,7 @@ export default function App() {
     return () => {
       socket.off('connect');
       socket.off('room_state');
+      socket.off('active_rotation_updated');
       socket.off('chat_message');
       socket.off('room_deleted');
     };
@@ -248,6 +276,31 @@ export default function App() {
       const u = new URL(window.location);
       u.searchParams.delete('room');
       window.history.pushState({}, '', u);
+    }
+  };
+
+  // Live Sync Official Rotation from verified source
+  const handleSyncOfficialRotation = async () => {
+    if (syncingRotation) return;
+    setSyncingRotation(true);
+    try {
+      if (socket.connected) {
+        socket.emit('sync_official_rotation');
+      }
+      const res = await fetch('/api/maps/sync-rotation', { method: 'POST' });
+      const data = await res.json();
+      if (data && Array.isArray(data.activeDutyMaps)) {
+        setOfficialRotation(data);
+        setRoomNotice({
+          title: 'Rotação Oficial Sincronizada',
+          message: `Pool verificado via ${data.source || 'Wikipedia / Valve Records'}: ${data.activeDutyMaps.length} mapas competitivos ativos mundialmente.`,
+          type: 'info',
+        });
+      }
+    } catch (err) {
+      console.warn('Erro ao sincronizar rotação:', err);
+    } finally {
+      setTimeout(() => setSyncingRotation(false), 500);
     }
   };
 
@@ -728,6 +781,9 @@ export default function App() {
           onOpenProfile={() => setProfileModalOpen(true)}
           myProfile={myProfile}
           soundEnabled={soundEnabled}
+          officialRotation={officialRotation}
+          syncingRotation={syncingRotation}
+          onSyncOfficialRotation={handleSyncOfficialRotation}
         />
 
         {/* Room Notification Toast Banner */}
@@ -782,6 +838,9 @@ export default function App() {
           onClose={() => setQuickMapRollOpen(false)}
           onApplyMap={handleApplyQuickMap}
           soundEnabled={soundEnabled}
+          officialRotation={officialRotation}
+          syncingRotation={syncingRotation}
+          onSyncOfficialRotation={handleSyncOfficialRotation}
         />
 
         <SteamLoginGateModal
@@ -970,6 +1029,9 @@ export default function App() {
         onClose={() => setQuickMapRollOpen(false)}
         onApplyMap={handleApplyQuickMap}
         soundEnabled={soundEnabled}
+        officialRotation={officialRotation}
+        syncingRotation={syncingRotation}
+        onSyncOfficialRotation={handleSyncOfficialRotation}
       />
 
       <CoinFlipModal

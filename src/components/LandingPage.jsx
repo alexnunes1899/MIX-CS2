@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Sparkles, Swords, Dices, Shield, Flame, Users, Layers, Zap, Trophy, ArrowRight, ExternalLink, Hash, CheckCircle2, Monitor } from 'lucide-react';
+import { Play, Sparkles, Swords, Dices, Shield, Flame, Users, Layers, Zap, Trophy, ArrowRight, ExternalLink, Hash, CheckCircle2, Monitor, RefreshCw, Globe } from 'lucide-react';
 import { ACTIVE_DUTY_MAPS, EXTRA_CS2_MAPS } from '../data/maps';
 import PlayerAvatar from './PlayerAvatar';
 import SteamIcon from './SteamIcon';
@@ -14,10 +14,23 @@ export default function LandingPage({
   onOpenProfile,
   myProfile,
   soundEnabled,
+  officialRotation,
+  syncingRotation,
+  onSyncOfficialRotation,
 }) {
   const [roomCodeInput, setRoomCodeInput] = useState('');
   const [activeRooms, setActiveRooms] = useState([]);
   const [mapTab, setMapTab] = useState('active');
+
+  const activeDutyMaps = officialRotation?.activeDutyMaps && officialRotation.activeDutyMaps.length > 0
+    ? officialRotation.activeDutyMaps
+    : ACTIVE_DUTY_MAPS;
+
+  const extraMaps = officialRotation?.extraMaps && officialRotation.extraMaps.length > 0
+    ? officialRotation.extraMaps
+    : EXTRA_CS2_MAPS;
+
+  const currentDisplayMaps = mapTab === 'active' ? activeDutyMaps : extraMaps;
 
   useEffect(() => {
     fetch('/api/rooms')
@@ -253,8 +266,35 @@ export default function LandingPage({
             Capturas reais em alta definição direto dos arquivos do jogo CS2 acompanhadas das insígnias oficiais de cada mapa da Valve.
           </p>
 
+          {/* Live Sync Information Badge & Manual Refresh Button */}
+          <div className="pt-2 flex flex-wrap items-center justify-center gap-2">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-900/90 border border-slate-800 text-[11px] text-slate-300">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span>Fonte Confiável:</span>
+              <strong className="text-amber-300 font-medium">
+                {officialRotation?.source || 'Wikipedia / Valve Esports Records'}
+              </strong>
+            </div>
+
+            {onSyncOfficialRotation && (
+              <button
+                type="button"
+                disabled={syncingRotation}
+                onClick={() => {
+                  if (soundEnabled) playClickSound();
+                  onSyncOfficialRotation();
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 text-[11px] font-bold transition-all cursor-pointer disabled:opacity-50 shadow-sm"
+                title="Buscar e sincronizar rotação oficial mundial em tempo real"
+              >
+                <RefreshCw size={12} className={syncingRotation ? 'animate-spin text-amber-400' : 'text-amber-400'} />
+                <span>{syncingRotation ? 'Sincronizando...' : 'Sincronizar Rotação Oficial'}</span>
+              </button>
+            )}
+          </div>
+
           {/* Interactive Map Filter Tabs */}
-          <div className="pt-4 flex items-center justify-center gap-2">
+          <div className="pt-2 flex items-center justify-center gap-2">
             <button
               onClick={() => {
                 if (soundEnabled) playClickSound();
@@ -267,7 +307,7 @@ export default function LandingPage({
               }`}
             >
               <Trophy size={13} />
-              <span>Rotação Oficial ({ACTIVE_DUTY_MAPS.length} Mapas)</span>
+              <span>Rotação Oficial ({activeDutyMaps.length} Mapas)</span>
             </button>
 
             <button
@@ -282,13 +322,13 @@ export default function LandingPage({
               }`}
             >
               <Sparkles size={13} />
-              <span>Mapas Extras / CS2 (Train, Overpass, Office...)</span>
+              <span>Mapas Extras / CS2 ({extraMaps.length} Mapas)</span>
             </button>
           </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-          {(mapTab === 'active' ? ACTIVE_DUTY_MAPS : EXTRA_CS2_MAPS).map((map) => (
+          {currentDisplayMaps.map((map) => (
             <div
               key={map.id}
               className="relative overflow-hidden rounded-2xl border-2 border-white/[0.08] hover:border-amber-400/80 bg-slate-950 shadow-2xl min-h-[240px] flex flex-col justify-between p-4 group transition-all duration-300 hover:-translate-y-1"
