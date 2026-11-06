@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Play, Sparkles, Swords, Dices, Shield, Flame, Users, Layers, Zap, Trophy, ArrowRight, ExternalLink, Hash, CheckCircle2, Monitor } from 'lucide-react';
-import { ACTIVE_DUTY_MAPS } from '../data/maps';
+import { ACTIVE_DUTY_MAPS, EXTRA_CS2_MAPS } from '../data/maps';
 import PlayerAvatar from './PlayerAvatar';
 import SteamIcon from './SteamIcon';
 import { playClickSound } from '../utils/audio';
@@ -17,6 +17,7 @@ export default function LandingPage({
 }) {
   const [roomCodeInput, setRoomCodeInput] = useState('');
   const [activeRooms, setActiveRooms] = useState([]);
+  const [mapTab, setMapTab] = useState('active');
 
   useEffect(() => {
     fetch('/api/rooms')
@@ -42,10 +43,10 @@ export default function LandingPage({
     onEnterRoom(code);
   };
 
-  const handleOpenMix = (code = 'MIX-PRO') => {
+  const handleCreateMix = (code = 'MIX-PRO') => {
     if (!isSteamLogged) {
       if (onRequireSteamLogin) {
-        onRequireSteamLogin('entrar no mix');
+        onRequireSteamLogin('criar ou entrar em um mix');
       } else {
         window.location.href = `/api/auth/steam?room=${encodeURIComponent(code)}`;
       }
@@ -54,6 +55,7 @@ export default function LandingPage({
     if (soundEnabled) playClickSound();
     onEnterRoom(code);
   };
+  const handleOpenMix = handleCreateMix;
 
   return (
     <div className="min-h-screen bg-[#070a12] text-slate-100 flex flex-col font-sans selection:bg-amber-500/30 selection:text-amber-300">
@@ -132,11 +134,11 @@ export default function LandingPage({
             )}
 
             <button
-              onClick={() => handleOpenMix('MIX-PRO')}
+              onClick={() => handleCreateMix('MIX-PRO')}
               className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs uppercase tracking-wider transition-all shadow-lg shadow-amber-500/25 cursor-pointer flex items-center gap-1.5 active:scale-95"
             >
               <Play size={13} fill="currentColor" />
-              <span>Abrir Mix</span>
+              <span>Criar Mix</span>
             </button>
           </div>
         </div>
@@ -238,11 +240,11 @@ export default function LandingPage({
         </div>
       </div>
 
-      {/* Official Map Pool Section */}
+      {/* Official & Extra Map Pool Section */}
       <section id="mapas" className="max-w-7xl mx-auto px-4 py-20 w-full">
-        <div className="text-center max-w-2xl mx-auto mb-12 space-y-2.5">
+        <div className="text-center max-w-2xl mx-auto mb-10 space-y-2.5">
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30 text-xs font-bold uppercase tracking-wider">
-            Pool Competitivo Oficial
+            Pool Oficial & Reserva CS2
           </div>
           <h2 className="text-3xl sm:text-4xl font-black font-heading text-white tracking-wide">
             Fotos & Logos Reais do Counter-Strike 2
@@ -250,10 +252,43 @@ export default function LandingPage({
           <p className="text-xs sm:text-sm text-slate-400">
             Capturas reais em alta definição direto dos arquivos do jogo CS2 acompanhadas das insígnias oficiais de cada mapa da Valve.
           </p>
+
+          {/* Interactive Map Filter Tabs */}
+          <div className="pt-4 flex items-center justify-center gap-2">
+            <button
+              onClick={() => {
+                if (soundEnabled) playClickSound();
+                setMapTab('active');
+              }}
+              className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider border transition-all cursor-pointer flex items-center gap-1.5 ${
+                mapTab === 'active'
+                  ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-lg shadow-amber-500/25'
+                  : 'bg-slate-900/90 text-slate-400 border-slate-800 hover:text-white hover:border-slate-700'
+              }`}
+            >
+              <Trophy size={13} />
+              <span>Rotação Oficial ({ACTIVE_DUTY_MAPS.length} Mapas)</span>
+            </button>
+
+            <button
+              onClick={() => {
+                if (soundEnabled) playClickSound();
+                setMapTab('extra');
+              }}
+              className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider border transition-all cursor-pointer flex items-center gap-1.5 ${
+                mapTab === 'extra'
+                  ? 'bg-sky-500 text-slate-950 border-sky-400 shadow-lg shadow-sky-500/25'
+                  : 'bg-slate-900/90 text-slate-400 border-slate-800 hover:text-white hover:border-slate-700'
+              }`}
+            >
+              <Sparkles size={13} />
+              <span>Mapas Extras / CS2 (Train, Overpass, Office...)</span>
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-          {ACTIVE_DUTY_MAPS.map((map) => (
+          {(mapTab === 'active' ? ACTIVE_DUTY_MAPS : EXTRA_CS2_MAPS).map((map) => (
             <div
               key={map.id}
               className="relative overflow-hidden rounded-2xl border-2 border-white/[0.08] hover:border-amber-400/80 bg-slate-950 shadow-2xl min-h-[240px] flex flex-col justify-between p-4 group transition-all duration-300 hover:-translate-y-1"
@@ -267,9 +302,13 @@ export default function LandingPage({
 
               {/* Header */}
               <div className="relative z-10 flex items-start justify-between">
-                <span className="text-[10px] font-mono uppercase bg-slate-900/90 text-amber-300 border border-amber-500/40 px-2.5 py-0.5 rounded-full shadow flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                  Active Duty
+                <span className={`text-[10px] font-mono uppercase px-2.5 py-0.5 rounded-full shadow flex items-center gap-1 border ${
+                  map.activeDuty
+                    ? 'bg-slate-900/90 text-amber-300 border-amber-500/40'
+                    : 'bg-slate-900/90 text-sky-300 border-sky-500/40'
+                }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${map.activeDuty ? 'bg-amber-400' : 'bg-sky-400'}`} />
+                  {map.activeDuty ? 'Active Duty' : map.category === 'hostage' ? 'Reféns' : 'Reserva CS2'}
                 </span>
                 <span className="text-xs font-mono font-bold text-slate-200 bg-slate-950/90 px-2 py-0.5 rounded border border-slate-800">
                   {map.file}
@@ -355,11 +394,11 @@ export default function LandingPage({
           </p>
           <div className="pt-2">
             <button
-              onClick={() => handleOpenMix('MIX-PRO')}
+              onClick={() => handleCreateMix('MIX-PRO')}
               className="px-8 py-4 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 font-black text-sm uppercase tracking-wider transition-all shadow-xl shadow-amber-500/30 cursor-pointer inline-flex items-center gap-2 active:scale-95"
             >
               <Play size={16} fill="currentColor" />
-              <span>Entrar no Mix Agora ➔</span>
+              <span>Criar Mix Agora ➔</span>
             </button>
           </div>
         </div>

@@ -543,13 +543,13 @@ io.on('connection', (socket) => {
   });
 
   // Quick Random Map Draw
-  socket.on('quick_random_map', ({ roomId }) => {
+  socket.on('quick_random_map', ({ roomId, map, startingSide }) => {
     const room = rooms.get(roomId);
     if (!room) return;
 
-    const randomMap = room.maps[Math.floor(Math.random() * room.maps.length)];
-    room.finalMap = randomMap;
-    room.startingSideTeamB = Math.random() < 0.5 ? 'CT' : 'TR';
+    const chosenMap = map || room.maps[Math.floor(Math.random() * room.maps.length)];
+    room.finalMap = chosenMap;
+    room.startingSideTeamB = startingSide || (Math.random() < 0.5 ? 'CT' : 'TR');
     room.phase = 'finished';
 
     if (room.teamA.length === 0) {

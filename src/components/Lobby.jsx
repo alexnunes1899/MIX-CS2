@@ -89,7 +89,7 @@ export default function Lobby({
               <h4 className="font-bold text-xs uppercase tracking-wider text-white group-hover:text-amber-300 transition-colors">
                 Sorteio Rápido de Mapa
               </h4>
-              <p className="text-[11px] text-slate-400">Girar roleta entre os mapas da Valve</p>
+              <p className="text-[11px] text-slate-400">Roleta oficial ou com Train e extras</p>
             </div>
           </div>
           <span className="text-xs font-bold text-amber-400 group-hover:translate-x-1 transition-transform">➔</span>

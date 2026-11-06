@@ -354,7 +354,7 @@ export default function App() {
       teamB: prev.teamB.length > 0 ? prev.teamB : [{ id: 't2', nick: 'Time B', level: 15, avatar: '⚔️' }],
     }));
     if (socket.connected) {
-      socket.emit('quick_random_map', { roomId });
+      socket.emit('quick_random_map', { roomId, map, startingSide });
     }
   };
 
