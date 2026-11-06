@@ -179,7 +179,7 @@ function cleanupInactiveRooms() {
 // Periodic cleanup every 60 seconds
 setInterval(cleanupInactiveRooms, 60 * 1000);
 
-function getOrCreateRoom(roomId, customName = '', rankingSystem = 'gc', serverIp = '', password = '', isPrivate = false) {
+function getOrCreateRoom(roomId, customName = '', rankingSystem = 'gc', serverIp = '', password = '', isPrivate = false, creatorId = null, creatorSteamId = null) {
   const id = roomId.trim().toUpperCase() || 'MIX-1';
   if (!rooms.has(id)) {
     const now = Date.now();
@@ -188,6 +188,9 @@ function getOrCreateRoom(roomId, customName = '', rankingSystem = 'gc', serverIp
       name: customName || `Mix ${id}`,
       createdAt: now,
       lastActivity: now,
+      creatorId: creatorId || null,
+      creatorSteamId: creatorSteamId || null,
+      adminId: creatorId || null,
       rankingSystem: rankingSystem === 'faceit' ? 'faceit' : 'gc', // 'gc' | 'faceit'
       phase: 'lobby', // 'lobby' | 'teams' | 'captains_draft' | 'coin_flip' | 'veto' | 'side_pick' | 'finished'
       players: [],
@@ -218,11 +221,57 @@ function getOrCreateRoom(roomId, customName = '', rankingSystem = 'gc', serverIp
   return room;
 }
 
+function getRoomAdminId(room) {
+  if (!room) return null;
+  if (room.creatorSteamId) {
+    const creatorBySteam = room.players.find((p) => p.steamId === room.creatorSteamId);
+    if (creatorBySteam) return creatorBySteam.id;
+  }
+  if (room.creatorId) {
+    const creatorById = room.players.find((p) => p.id === room.creatorId);
+    if (creatorById) return creatorById.id;
+  }
+  if (room.adminId) {
+    const adminPlayer = room.players.find((p) => p.id === room.adminId);
+    if (adminPlayer) return adminPlayer.id;
+  }
+  return room.players.length > 0 ? room.players[0].id : null;
+}
+
+function isRoomAdmin(room, socket) {
+  if (!room || !socket) return false;
+  const currentAdminId = getRoomAdminId(room);
+  return Boolean(currentAdminId && (socket.playerId === currentAdminId || socket.id === currentAdminId));
+}
+
+function calculateMetricsForTeams(teamA = [], teamB = [], rankingSystem = 'gc') {
+  const sumA = teamA.reduce((acc, p) => acc + getPlayerWeight(p, rankingSystem), 0);
+  const sumB = teamB.reduce((acc, p) => acc + getPlayerWeight(p, rankingSystem), 0);
+  const diff = Math.abs(sumA - sumB);
+  const avgA = teamA.length > 0 ? (sumA / teamA.length).toFixed(1) : '0';
+  const avgB = teamB.length > 0 ? (sumB / teamB.length).toFixed(1) : '0';
+  const maxPossible = Math.max(sumA, sumB) || 1;
+  const balancePercentage = Math.max(0, Math.min(100, Math.round(100 - (diff / maxPossible) * 100)));
+
+  return {
+    sumA,
+    sumB,
+    avgA,
+    avgB,
+    diff,
+    balancePercentage,
+    rankingSystem,
+  };
+}
+
 function getSafeRoomState(room) {
   if (!room) return null;
   const { password, rconPassword, ...safe } = room;
   return {
     ...safe,
+    adminId: getRoomAdminId(room),
+    creatorSteamId: room.creatorSteamId || null,
+    creatorId: room.creatorId || null,
     hasPassword: Boolean(password && password.trim()),
     isPrivate: Boolean(room.isPrivate),
   };
@@ -417,6 +466,17 @@ io.on('connection', (socket) => {
         room.players.push(playerData);
       }
 
+      // Assign creator/admin if not established yet
+      if (!room.creatorId) {
+        room.creatorId = socket.playerId;
+        room.adminId = socket.playerId;
+        if (player.steamId) {
+          room.creatorSteamId = player.steamId;
+        }
+      } else if (player.steamId && room.creatorSteamId && player.steamId === room.creatorSteamId) {
+        room.adminId = socket.playerId;
+      }
+
       // If player has Steam ID and default faceit level, attempt automatic FACEIT lookup in background
       if (player.steamId && (!player.faceitElo || player.faceitLevel === 5)) {
         fetchFaceitPlayer({ steamId: player.steamId, nickname: cleanNick }).then((faceitData) => {
@@ -540,6 +600,145 @@ io.on('connection', (socket) => {
     room.players = room.players.filter((p) => p.id !== playerId);
     emitRoomState(roomId, room);
     broadcastRoomsList();
+  });
+
+  // Admin Kick Player (Excluir jogador pelo criador/admin)
+  socket.on('kick_player', ({ roomId, targetPlayerId }) => {
+    const room = getRoomAndTouch(roomId);
+    if (!room) return;
+    if (!isRoomAdmin(room, socket)) {
+      socket.emit('admin_error', { message: 'Apenas o administrador da sala pode remover jogadores.' });
+      return;
+    }
+
+    const currentAdminId = getRoomAdminId(room);
+    if (targetPlayerId === currentAdminId) {
+      socket.emit('admin_error', { message: 'O administrador não pode remover a si mesmo.' });
+      return;
+    }
+
+    const target = room.players.find((p) => p.id === targetPlayerId);
+    if (!target) return;
+
+    room.players = room.players.filter((p) => p.id !== targetPlayerId);
+    room.teamA = room.teamA.filter((p) => p.id !== targetPlayerId);
+    room.teamB = room.teamB.filter((p) => p.id !== targetPlayerId);
+    if (room.unassignedPlayers) {
+      room.unassignedPlayers = room.unassignedPlayers.filter((p) => p.id !== targetPlayerId);
+    }
+
+    if (room.metrics && (room.phase === 'teams' || room.phase === 'veto')) {
+      room.metrics = calculateMetricsForTeams(room.teamA, room.teamB, room.rankingSystem);
+    }
+
+    // Direct notification & socket removal for the kicked player
+    if (target.socketId) {
+      const targetSock = io.sockets.sockets.get(target.socketId);
+      if (targetSock) {
+        targetSock.emit('kicked_from_room', {
+          roomId: room.id,
+          reason: 'Você foi removido da sala pelo administrador.',
+        });
+        targetSock.leave(room.id);
+        targetSock.roomId = null;
+      }
+    }
+
+    // Chat broadcast
+    const chatMsg = {
+      id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      sender: { nick: 'Sistema', avatar: '👑', level: 20, faceitLevel: 10 },
+      text: `🚫 ${target.nick} foi removido da sala pelo administrador.`,
+      timestamp: Date.now(),
+    };
+    room.chat.push(chatMsg);
+    if (room.chat.length > 50) room.chat.shift();
+    io.to(room.id).emit('chat_message', chatMsg);
+
+    emitRoomState(room.id, room);
+    broadcastRoomsList();
+  });
+
+  // Admin Move Player Team (Mudar jogador de lugar)
+  socket.on('move_player_team', ({ roomId, playerId, targetTeam }) => {
+    const room = getRoomAndTouch(roomId);
+    if (!room) return;
+    if (!isRoomAdmin(room, socket)) {
+      socket.emit('admin_error', { message: 'Apenas o administrador da sala pode mudar jogadores de lugar.' });
+      return;
+    }
+
+    const player = room.players.find((p) => p.id === playerId);
+    if (!player) return;
+
+    room.teamA = room.teamA.filter((p) => p.id !== playerId);
+    room.teamB = room.teamB.filter((p) => p.id !== playerId);
+
+    if (targetTeam === 'teamA') {
+      room.teamA.push(player);
+    } else {
+      room.teamB.push(player);
+    }
+
+    room.metrics = calculateMetricsForTeams(room.teamA, room.teamB, room.rankingSystem);
+
+    const targetLabel = targetTeam === 'teamA' ? 'Time A (Lado 1)' : 'Time B (Lado 2)';
+    const chatMsg = {
+      id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      sender: { nick: 'Sistema', avatar: '👑', level: 20, faceitLevel: 10 },
+      text: `🔄 ${player.nick} foi movido para o ${targetLabel} pelo administrador.`,
+      timestamp: Date.now(),
+    };
+    room.chat.push(chatMsg);
+    if (room.chat.length > 50) room.chat.shift();
+    io.to(room.id).emit('chat_message', chatMsg);
+
+    emitRoomState(room.id, room);
+  });
+
+  // Admin Swap Two Players (Trocar dois jogadores de lugar)
+  socket.on('swap_players', ({ roomId, playerAId, playerBId }) => {
+    const room = getRoomAndTouch(roomId);
+    if (!room) return;
+    if (!isRoomAdmin(room, socket)) {
+      socket.emit('admin_error', { message: 'Apenas o administrador pode trocar jogadores de lugar.' });
+      return;
+    }
+
+    const idxA = room.teamA.findIndex((p) => p.id === playerAId);
+    const idxB = room.teamB.findIndex((p) => p.id === playerBId);
+    if (idxA >= 0 && idxB >= 0) {
+      const pA = room.teamA[idxA];
+      const pB = room.teamB[idxB];
+      room.teamA[idxA] = pB;
+      room.teamB[idxB] = pA;
+      room.metrics = calculateMetricsForTeams(room.teamA, room.teamB, room.rankingSystem);
+
+      const chatMsg = {
+        id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        sender: { nick: 'Sistema', avatar: '👑', level: 20, faceitLevel: 10 },
+        text: `🔀 ${pA.nick} e ${pB.nick} foram trocados de equipe pelo administrador.`,
+        timestamp: Date.now(),
+      };
+      room.chat.push(chatMsg);
+      if (room.chat.length > 50) room.chat.shift();
+      io.to(room.id).emit('chat_message', chatMsg);
+
+      emitRoomState(room.id, room);
+    }
+  });
+
+  // Admin Change Player Side in Lobby
+  socket.on('admin_change_player_side', ({ roomId, targetPlayerId, side }) => {
+    const room = getRoomAndTouch(roomId);
+    if (!room) return;
+    if (!isRoomAdmin(room, socket)) return;
+
+    const p = room.players.find((it) => it.id === targetPlayerId);
+    if (p) {
+      p.side = ['CT', 'TR', 'ANY'].includes(side) ? side : 'ANY';
+      emitRoomState(room.id, room);
+    }
   });
 
   // Fill Mock Bots for fast testing

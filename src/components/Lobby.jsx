@@ -27,6 +27,10 @@ export default function Lobby({
   liveMatch = null,
   onOpenGsiSetup,
   soundEnabled,
+  isAdmin = false,
+  adminId = null,
+  onKickPlayer,
+  onAdminChangeSide,
 }) {
   const maxSlots = 10;
   const emptySlots = Math.max(0, maxSlots - players.length);
@@ -244,10 +248,15 @@ export default function Lobby({
                 <div className="flex items-center gap-2.5 min-w-0">
                   <PlayerAvatar avatar={p.avatar} nick={p.nick} size="md" />
                   <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <h3 className="font-bold text-sm text-white truncate max-w-[105px] sm:max-w-[85px] lg:max-w-[95px] xl:max-w-[115px]" title={p.nick}>
                         {p.nick}
                       </h3>
+                      {p.id === adminId && (
+                        <span className="text-[9px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.2 rounded-full flex items-center gap-1 font-mono shadow-sm" title="Criador / Administrador da Sala">
+                          <Crown size={9} className="fill-amber-400 text-amber-400" /> Admin
+                        </span>
+                      )}
                       {p.ready && (
                         <span className="text-emerald-400 font-bold shrink-0 text-xs" title="Jogador pronto">
                           ✓
@@ -256,21 +265,34 @@ export default function Lobby({
                     </div>
 
                     <div className="flex items-center gap-1 mt-0.5">
-                      {p.side === 'CT' && (
-                        <span className="flex items-center gap-0.5 text-[9px] font-bold text-sky-400 bg-sky-500/10 px-1.5 py-0.2 rounded border border-sky-500/20">
-                          <Shield size={9} /> CT
-                        </span>
-                      )}
-                      {p.side === 'TR' && (
-                        <span className="flex items-center gap-0.5 text-[9px] font-bold text-amber-400 bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20">
-                          <Flame size={9} /> TR
-                        </span>
-                      )}
-                      {p.side === 'ANY' && (
-                        <span className="text-[9px] font-bold text-purple-400 bg-purple-500/10 px-1.5 py-0.2 rounded border border-purple-500/20">
-                          Flex
-                        </span>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (isAdmin && onAdminChangeSide) {
+                            const next = p.side === 'CT' ? 'TR' : p.side === 'TR' ? 'ANY' : 'CT';
+                            if (soundEnabled) playClickSound();
+                            onAdminChangeSide(p.id, next);
+                          }
+                        }}
+                        className={`transition-all ${isAdmin ? 'cursor-pointer hover:scale-105 active:scale-95' : 'cursor-default'}`}
+                        title={isAdmin ? 'Admin: Clique para mudar o lado do jogador (CT / TR / Flex)' : ''}
+                      >
+                        {p.side === 'CT' && (
+                          <span className="flex items-center gap-0.5 text-[9px] font-bold text-sky-400 bg-sky-500/10 px-1.5 py-0.2 rounded border border-sky-500/20">
+                            <Shield size={9} /> CT
+                          </span>
+                        )}
+                        {p.side === 'TR' && (
+                          <span className="flex items-center gap-0.5 text-[9px] font-bold text-amber-400 bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20">
+                            <Flame size={9} /> TR
+                          </span>
+                        )}
+                        {p.side === 'ANY' && (
+                          <span className="text-[9px] font-bold text-purple-400 bg-purple-500/10 px-1.5 py-0.2 rounded border border-purple-500/20">
+                            Flex
+                          </span>
+                        )}
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -295,16 +317,27 @@ export default function Lobby({
                     'AGUARDANDO'
                   )}
                 </span>
-                <button
-                  onClick={() => {
-                    if (soundEnabled) playClickSound();
-                    onRemovePlayer(p.id);
-                  }}
-                  className="text-slate-500 hover:text-rose-400 hover:bg-slate-800 p-1 rounded-md transition-colors cursor-pointer"
-                  title="Remover jogador"
-                >
-                  <Trash2 size={13} />
-                </button>
+
+                {(isAdmin || p.id === myProfile?.id) && (
+                  <button
+                    onClick={() => {
+                      if (soundEnabled) playClickSound();
+                      if (isAdmin && p.id !== myProfile?.id && onKickPlayer) {
+                        onKickPlayer(p.id);
+                      } else {
+                        onRemovePlayer(p.id);
+                      }
+                    }}
+                    className={`p-1 rounded-md transition-colors cursor-pointer ${
+                      isAdmin && p.id !== myProfile?.id
+                        ? 'text-rose-400 hover:text-rose-200 hover:bg-rose-500/20 border border-rose-500/20'
+                        : 'text-slate-500 hover:text-rose-400 hover:bg-slate-800'
+                    }`}
+                    title={isAdmin && p.id !== myProfile?.id ? 'Expulsar jogador da sala (Admin)' : 'Sair da sala'}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                )}
               </div>
             </div>
           );

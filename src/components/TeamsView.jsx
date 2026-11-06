@@ -3,7 +3,7 @@ import GCBadge from './GCBadge';
 import FaceitBadge from './FaceitBadge';
 import PlayerAvatar from './PlayerAvatar';
 import ServerConnectBar from './ServerConnectBar';
-import { Shield, Flame, ArrowLeftRight, RotateCcw, MapPin, Scale, ChevronLeft, CheckCircle2, Coins, Zap } from 'lucide-react';
+import { Shield, Flame, ArrowLeftRight, RotateCcw, MapPin, Scale, ChevronLeft, CheckCircle2, Coins, Zap, Crown, ArrowLeft, ArrowRight, Trash2 } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
 
 export default function TeamsView({
@@ -24,11 +24,35 @@ export default function TeamsView({
   liveMatch = null,
   onOpenGsiSetup,
   soundEnabled,
+  isAdmin = false,
+  adminId = null,
+  myProfile,
+  onMovePlayerTeam,
+  onKickPlayer,
 }) {
   const isFaceit = rankingSystem === 'faceit' || metrics?.rankingSystem === 'faceit';
 
   return (
     <div className="space-y-6">
+      {/* Admin Notice Banner */}
+      {isAdmin && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-3.5 flex items-center justify-between gap-3 text-xs shadow-sm">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30 shrink-0">
+              <Crown size={16} />
+            </div>
+            <div>
+              <span className="font-bold text-amber-300 block font-heading uppercase text-[11px] tracking-wide">
+                Painel do Administrador da Sala
+              </span>
+              <p className="text-slate-300 text-[11px] leading-relaxed">
+                Você pode <strong>mudar jogadores de equipe</strong> (Time A ➔ Time B) ou <strong>remover pessoas</strong> da partida usando os controles nas linhas dos jogadores.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Balance Metrics Banner */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 backdrop-blur">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -128,12 +152,17 @@ export default function TeamsView({
 
             <div className="divide-y divide-slate-800/60 mt-2">
               {teamA.map((p, i) => (
-                <div key={p.id} className="py-2.5 flex items-center justify-between">
+                <div key={p.id} className="py-2.5 flex items-center justify-between gap-2 flex-wrap">
                   <div className="flex items-center gap-2.5">
                     <PlayerAvatar avatar={p.avatar} nick={p.nick} size="md" />
                     <div>
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="font-bold text-sm text-white">{p.nick}</span>
+                        {p.id === adminId && (
+                          <span className="text-[9px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.2 rounded-full flex items-center gap-1 font-mono shadow-sm">
+                            <Crown size={9} className="fill-amber-400 text-amber-400" /> Admin
+                          </span>
+                        )}
                         {p.side === 'CT' && (
                           <span className="text-[9px] font-bold text-sky-400 bg-sky-500/10 px-1.5 py-0.2 rounded border border-sky-500/20">
                             CT
@@ -153,11 +182,45 @@ export default function TeamsView({
                       <span className="text-[10px] text-slate-400 font-mono">Jogador #{i + 1}</span>
                     </div>
                   </div>
-                  {isFaceit ? (
-                    <FaceitBadge level={p.faceitLevel || (p.level <= 10 ? p.level : Math.round(p.level / 2.1)) || 5} elo={p.faceitElo} size="md" />
-                  ) : (
-                    <GCBadge level={p.level} size="md" showTier />
-                  )}
+
+                  <div className="flex items-center gap-2">
+                    {/* Admin Move & Kick Controls */}
+                    {isAdmin && (
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (soundEnabled) playClickSound();
+                            onMovePlayerTeam(p.id, 'teamB');
+                          }}
+                          className="px-2 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 hover:text-amber-200 text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-all active:scale-95 shadow-sm"
+                          title="Mover este jogador para o Time B"
+                        >
+                          <span>Mover Time B</span>
+                          <ArrowRight size={11} />
+                        </button>
+                        {p.id !== myProfile?.id && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (soundEnabled) playClickSound();
+                              onKickPlayer(p.id);
+                            }}
+                            className="p-1 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/15 transition-colors cursor-pointer"
+                            title="Remover jogador da partida"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {isFaceit ? (
+                      <FaceitBadge level={p.faceitLevel || (p.level <= 10 ? p.level : Math.round(p.level / 2.1)) || 5} elo={p.faceitElo} size="md" />
+                    ) : (
+                      <GCBadge level={p.level} size="md" showTier />
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -192,12 +255,17 @@ export default function TeamsView({
 
             <div className="divide-y divide-slate-800/60 mt-2">
               {teamB.map((p, i) => (
-                <div key={p.id} className="py-2.5 flex items-center justify-between">
+                <div key={p.id} className="py-2.5 flex items-center justify-between gap-2 flex-wrap">
                   <div className="flex items-center gap-2.5">
                     <PlayerAvatar avatar={p.avatar} nick={p.nick} size="md" />
                     <div>
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="font-bold text-sm text-white">{p.nick}</span>
+                        {p.id === adminId && (
+                          <span className="text-[9px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.2 rounded-full flex items-center gap-1 font-mono shadow-sm">
+                            <Crown size={9} className="fill-amber-400 text-amber-400" /> Admin
+                          </span>
+                        )}
                         {p.side === 'CT' && (
                           <span className="text-[9px] font-bold text-sky-400 bg-sky-500/10 px-1.5 py-0.2 rounded border border-sky-500/20">
                             CT
@@ -217,11 +285,45 @@ export default function TeamsView({
                       <span className="text-[10px] text-slate-400 font-mono">Jogador #{i + 1}</span>
                     </div>
                   </div>
-                  {isFaceit ? (
-                    <FaceitBadge level={p.faceitLevel || (p.level <= 10 ? p.level : Math.round(p.level / 2.1)) || 5} elo={p.faceitElo} size="md" />
-                  ) : (
-                    <GCBadge level={p.level} size="md" showTier />
-                  )}
+
+                  <div className="flex items-center gap-2">
+                    {/* Admin Move & Kick Controls */}
+                    {isAdmin && (
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (soundEnabled) playClickSound();
+                            onMovePlayerTeam(p.id, 'teamA');
+                          }}
+                          className="px-2 py-1 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/30 text-sky-300 hover:text-sky-200 text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-all active:scale-95 shadow-sm"
+                          title="Mover este jogador para o Time A"
+                        >
+                          <ArrowLeft size={11} />
+                          <span>Mover Time A</span>
+                        </button>
+                        {p.id !== myProfile?.id && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (soundEnabled) playClickSound();
+                              onKickPlayer(p.id);
+                            }}
+                            className="p-1 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/15 transition-colors cursor-pointer"
+                            title="Remover jogador da partida"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {isFaceit ? (
+                      <FaceitBadge level={p.faceitLevel || (p.level <= 10 ? p.level : Math.round(p.level / 2.1)) || 5} elo={p.faceitElo} size="md" />
+                    ) : (
+                      <GCBadge level={p.level} size="md" showTier />
+                    )}
+                  </div>
                 </div>
               ))}
             </div>

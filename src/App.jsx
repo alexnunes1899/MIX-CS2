@@ -132,6 +132,15 @@ export default function App() {
     unassignedPlayers: [],
   });
 
+  const isAdmin = Boolean(
+    myProfile && (
+      (room.adminId && room.adminId === myProfile.id) ||
+      (room.creatorSteamId && myProfile.steamId && room.creatorSteamId === myProfile.steamId) ||
+      (room.creatorId && room.creatorId === myProfile.id) ||
+      (room.players.length > 0 && room.players[0].id === myProfile.id)
+    )
+  );
+
   // Check for Steam Auth return on load
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -265,6 +274,27 @@ export default function App() {
       }
     });
 
+    socket.on('kicked_from_room', ({ roomId: kickedRoomId, reason }) => {
+      setRoomNotice({
+        title: 'Removido da Sala',
+        message: reason || 'Você foi removido da sala pelo administrador.',
+        type: 'warning',
+      });
+      setView('landing');
+      const u = new URL(window.location);
+      u.searchParams.delete('room');
+      u.searchParams.delete('pwd');
+      window.history.pushState({}, '', u);
+    });
+
+    socket.on('admin_error', ({ message }) => {
+      setRoomNotice({
+        title: 'Aviso de Administrador',
+        message: message || 'Ação restrita ao administrador da sala.',
+        type: 'warning',
+      });
+    });
+
     return () => {
       socket.off('connect');
       socket.off('room_state');
@@ -272,6 +302,8 @@ export default function App() {
       socket.off('gsi_update');
       socket.off('chat_message');
       socket.off('room_auth_error');
+      socket.off('kicked_from_room');
+      socket.off('admin_error');
       socket.off('room_deleted');
     };
   }, [roomId, myProfile, roomPassword]);
@@ -314,6 +346,40 @@ export default function App() {
     setPasswordError(null);
     setPasswordModalOpen(false);
     handleSelectRoom(targetId, targetName, undefined, undefined, enteredPassword);
+  };
+
+  const handleKickPlayer = (targetPlayerId) => {
+    if (socket.connected) {
+      socket.emit('kick_player', { roomId, targetPlayerId });
+    }
+  };
+
+  const handleMovePlayerTeam = (playerId, targetTeam) => {
+    if (socket.connected) {
+      socket.emit('move_player_team', { roomId, playerId, targetTeam });
+    } else {
+      setRoom((prev) => {
+        const player = prev.players.find((p) => p.id === playerId);
+        if (!player) return prev;
+        const teamA = prev.teamA.filter((p) => p.id !== playerId);
+        const teamB = prev.teamB.filter((p) => p.id !== playerId);
+        if (targetTeam === 'teamA') teamA.push(player);
+        else teamB.push(player);
+        return { ...prev, teamA, teamB };
+      });
+    }
+  };
+
+  const handleSwapPlayers = (playerAId, playerBId) => {
+    if (socket.connected) {
+      socket.emit('swap_players', { roomId, playerAId, playerBId });
+    }
+  };
+
+  const handleAdminChangePlayerSide = (targetPlayerId, side) => {
+    if (socket.connected) {
+      socket.emit('admin_change_player_side', { roomId, targetPlayerId, side });
+    }
   };
 
   const handleEnterRoom = (code = 'MIX-PRO') => {
@@ -1054,6 +1120,10 @@ export default function App() {
                 liveMatch={room.liveMatch}
                 onOpenGsiSetup={() => setGsiModalOpen(true)}
                 soundEnabled={soundEnabled}
+                isAdmin={isAdmin}
+                adminId={room.adminId}
+                onKickPlayer={handleKickPlayer}
+                onAdminChangeSide={handleAdminChangePlayerSide}
               />
             </div>
           </div>
@@ -1089,6 +1159,11 @@ export default function App() {
             liveMatch={room.liveMatch}
             onOpenGsiSetup={() => setGsiModalOpen(true)}
             soundEnabled={soundEnabled}
+            isAdmin={isAdmin}
+            adminId={room.adminId}
+            myProfile={myProfile}
+            onMovePlayerTeam={handleMovePlayerTeam}
+            onKickPlayer={handleKickPlayer}
           />
         )}
 
