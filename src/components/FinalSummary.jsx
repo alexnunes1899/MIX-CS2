@@ -63,9 +63,18 @@ export default function FinalSummary({
             <Trophy size={14} /> Mix Pronto para Iniciar!
           </div>
 
-          <h2 className="text-4xl sm:text-6xl font-black font-heading text-white tracking-wider">
-            {fullMap?.name?.toUpperCase() || 'MAPA DEFINIDO'}
-          </h2>
+          <div className="flex items-center justify-center gap-4 my-2">
+            {fullMap?.logo && (
+              <img
+                src={fullMap.logo}
+                alt={fullMap.name}
+                className="w-16 h-16 sm:w-20 sm:h-20 object-contain drop-shadow-[0_8px_16px_rgba(0,0,0,0.8)] animate-pulse"
+              />
+            )}
+            <h2 className="text-4xl sm:text-6xl font-black font-heading text-white tracking-wider">
+              {fullMap?.name?.toUpperCase() || 'MAPA DEFINIDO'}
+            </h2>
+          </div>
 
           <p className="text-sm text-slate-300">
             Arquivo de Mapa: <strong className="text-amber-400 font-mono">{fullMap?.file}</strong> • Local: <strong className="text-slate-200">{fullMap?.location || 'CS2'}</strong>

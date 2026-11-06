@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Share2, Check, Users, Swords, MapPin, Trophy, Volume2, VolumeX, Layers, History, Dices, Zap } from 'lucide-react';
+import { Share2, Check, Users, Swords, MapPin, Trophy, Volume2, VolumeX, Layers, History, Dices, Zap, Home } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
 
 export default function Header({
@@ -12,6 +12,7 @@ export default function Header({
   onOpenHistory,
   onOpenQuickVeto,
   onOpenQuickMapRoll,
+  onGoHome,
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -118,6 +119,18 @@ export default function Header({
 
           {/* Room Controls & Actions */}
           <div className="flex items-center flex-wrap gap-2">
+            <button
+              onClick={() => {
+                if (soundEnabled) playClickSound();
+                onGoHome();
+              }}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/60 text-xs font-semibold transition-all cursor-pointer"
+              title="Voltar para a Página Inicial"
+            >
+              <Home size={14} className="text-amber-400" />
+              <span className="hidden sm:inline">Início</span>
+            </button>
+
             {/* Quick Tools */}
             <button
               onClick={onOpenQuickMapRoll}

@@ -14,6 +14,7 @@ import ChatDrawer from './components/ChatDrawer';
 import CoinFlipModal from './components/CoinFlipModal';
 import DraftRoulette from './components/DraftRoulette';
 import CaptainsDraftView from './components/CaptainsDraftView';
+import LandingPage from './components/LandingPage';
 import { ACTIVE_DUTY_MAPS } from './data/maps';
 import { balanceTeams, shuffleTeams } from './utils/balance';
 import { MOCK_PLAYERS } from './data/mockPlayers';
@@ -28,6 +29,11 @@ export default function App() {
   const [roomId, setRoomId] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get('room') || 'MIX-PRO';
+  });
+
+  const [view, setView] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('room') ? 'mix' : 'landing';
   });
 
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -145,6 +151,7 @@ export default function App() {
   const handleSelectRoom = (newRoomCode, customName) => {
     const clean = newRoomCode.trim().toUpperCase();
     setRoomId(clean);
+    setView('mix');
     const url = new URL(window.location);
     url.searchParams.set('room', clean);
     window.history.pushState({}, '', url);
@@ -154,6 +161,10 @@ export default function App() {
       roomName: customName,
       player: myProfile.nick ? myProfile : null,
     });
+  };
+
+  const handleEnterRoom = (code = 'MIX-PRO') => {
+    handleSelectRoom(code);
   };
 
   // Save profile changes
@@ -247,6 +258,7 @@ export default function App() {
 
   // Direct Veto Start (Teams already made)
   const handleStartQuickVeto = (teamAName, teamBName) => {
+    setView('mix');
     if (socket.connected) {
       socket.emit('quick_start_veto', { roomId, teamAName, teamBName });
     } else {
@@ -265,6 +277,7 @@ export default function App() {
 
   // Direct Quick Map Roll
   const handleApplyQuickMap = (map, startingSide) => {
+    setView('mix');
     setRoom((prev) => ({
       ...prev,
       phase: 'finished',
@@ -546,6 +559,44 @@ export default function App() {
     }
   };
 
+  if (view === 'landing') {
+    return (
+      <>
+        <LandingPage
+          onEnterRoom={handleEnterRoom}
+          onOpenQuickVeto={() => setQuickVetoOpen(true)}
+          onOpenQuickMapRoll={() => setQuickMapRollOpen(true)}
+          onOpenRoomsHub={() => setRoomsHubOpen(true)}
+          myProfile={myProfile}
+          soundEnabled={soundEnabled}
+        />
+
+        {/* MODALS AVAILABLE ON LANDING */}
+        <RoomsHubModal
+          isOpen={roomsHubOpen}
+          onClose={() => setRoomsHubOpen(false)}
+          currentRoomId={roomId}
+          onSelectRoom={handleSelectRoom}
+          soundEnabled={soundEnabled}
+        />
+
+        <QuickVetoModal
+          isOpen={quickVetoOpen}
+          onClose={() => setQuickVetoOpen(false)}
+          onStartQuickVeto={handleStartQuickVeto}
+          soundEnabled={soundEnabled}
+        />
+
+        <QuickMapRollModal
+          isOpen={quickMapRollOpen}
+          onClose={() => setQuickMapRollOpen(false)}
+          onApplyMap={handleApplyQuickMap}
+          soundEnabled={soundEnabled}
+        />
+      </>
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-[#090d16] text-slate-100 font-sans">
       <Header
@@ -558,6 +609,12 @@ export default function App() {
         onOpenHistory={() => setHistoryOpen(true)}
         onOpenQuickVeto={() => setQuickVetoOpen(true)}
         onOpenQuickMapRoll={() => setQuickMapRollOpen(true)}
+        onGoHome={() => {
+          setView('landing');
+          const u = new URL(window.location);
+          u.searchParams.delete('room');
+          window.history.pushState({}, '', u);
+        }}
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-6">

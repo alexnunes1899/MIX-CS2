@@ -162,15 +162,24 @@ export default function MapVeto({
 
               {/* Card Header */}
               <div className="relative z-10 p-4 flex items-start justify-between">
-                <div>
-                  <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 block">
-                    {fullMapData.location || 'Competitivo'}
-                  </span>
-                  <h3 className="text-2xl font-black font-heading text-white tracking-wide">
-                    {map.name}
-                  </h3>
+                <div className="flex items-center gap-3">
+                  {fullMapData.logo && (
+                    <img
+                      src={fullMapData.logo}
+                      alt={map.name}
+                      className="w-10 h-10 object-contain drop-shadow-[0_4px_8px_rgba(0,0,0,0.8)] filter brightness-110"
+                    />
+                  )}
+                  <div>
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-slate-300 block">
+                      {fullMapData.location || 'Competitivo'}
+                    </span>
+                    <h3 className="text-2xl font-black font-heading text-white tracking-wide drop-shadow-md">
+                      {map.name}
+                    </h3>
+                  </div>
                 </div>
-                <span className="text-xs font-mono font-bold text-amber-400/90 bg-slate-900/80 px-2 py-0.5 rounded border border-slate-700/60">
+                <span className="text-xs font-mono font-bold text-amber-400/90 bg-slate-900/90 px-2 py-0.5 rounded border border-slate-700/60 shadow">
                   {map.file}
                 </span>
               </div>

@@ -112,7 +112,14 @@ export default function QuickMapRollModal({
             </span>
           </div>
 
-          <div className="relative z-10 text-center py-2">
+          <div className="relative z-10 text-center py-2 flex flex-col items-center justify-center">
+            {displayMap?.logo && (
+              <img
+                src={displayMap.logo}
+                alt={displayMap.name}
+                className="w-14 h-14 object-contain mb-1 drop-shadow-[0_4px_12px_rgba(0,0,0,0.9)]"
+              />
+            )}
             <h3 className="text-4xl font-black font-heading text-white tracking-wider">
               {displayMap?.name.toUpperCase()}
             </h3>
