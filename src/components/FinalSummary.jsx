@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import GCBadge from './GCBadge';
+import PlayerAvatar from './PlayerAvatar';
 import { CS2_MAPS } from '../data/maps';
 import { Trophy, Share2, Terminal, RotateCcw, Shield, Flame, Check, History } from 'lucide-react';
 import { formatDiscordSummary, formatServerCommand } from '../utils/exportText';
@@ -137,7 +138,7 @@ export default function FinalSummary({
             {teamA.map((p) => (
               <div key={p.id} className="py-2 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="text-lg select-none">{p.avatar || '🎯'}</span>
+                  <PlayerAvatar avatar={p.avatar} nick={p.nick} size="sm" />
                   <span className="font-bold text-sm text-white">{p.nick}</span>
                 </div>
                 <GCBadge level={p.level} size="sm" showTier />
@@ -183,7 +184,7 @@ export default function FinalSummary({
             {teamB.map((p) => (
               <div key={p.id} className="py-2 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="text-lg select-none">{p.avatar || '🎯'}</span>
+                  <PlayerAvatar avatar={p.avatar} nick={p.nick} size="sm" />
                   <span className="font-bold text-sm text-white">{p.nick}</span>
                 </div>
                 <GCBadge level={p.level} size="sm" showTier />

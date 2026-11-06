@@ -586,6 +586,80 @@ app.get('/api/rooms', (req, res) => {
   res.json(list);
 });
 
+// Steam OpenID Authentication Routes
+app.get('/api/auth/steam', (req, res) => {
+  const room = req.query.room || 'MIX-PRO';
+  const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+  const host = req.get('host');
+  const returnTo = `${protocol}://${host}/api/auth/steam/return?room=${encodeURIComponent(room)}`;
+  const realm = `${protocol}://${host}/`;
+
+  const params = new URLSearchParams({
+    'openid.ns': 'http://specs.openid.net/auth/2.0',
+    'openid.mode': 'checkid_setup',
+    'openid.return_to': returnTo,
+    'openid.realm': realm,
+    'openid.identity': 'http://specs.openid.net/auth/2.0/identifier_select',
+    'openid.claimed_id': 'http://specs.openid.net/auth/2.0/identifier_select',
+  });
+
+  res.redirect(`https://steamcommunity.com/openid/login?${params.toString()}`);
+});
+
+app.get('/api/auth/steam/return', async (req, res) => {
+  const room = req.query.room || 'MIX-PRO';
+  try {
+    const claimedId = req.query['openid.claimed_id'];
+    const steamIdMatch = claimedId && claimedId.match(/^https?:\/\/steamcommunity\.com\/openid\/id\/(\d+)$/);
+
+    if (!steamIdMatch) {
+      return res.redirect(`/?room=${encodeURIComponent(room)}&steam_error=invalid_id`);
+    }
+
+    const steamId = steamIdMatch[1];
+
+    // Validate authentication with Steam
+    const validateParams = new URLSearchParams();
+    for (const [key, val] of Object.entries(req.query)) {
+      validateParams.append(key, val);
+    }
+    validateParams.set('openid.mode', 'check_authentication');
+
+    const authRes = await fetch('https://steamcommunity.com/openid/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: validateParams.toString(),
+    });
+
+    const authText = await authRes.text();
+    if (!authText.includes('is_valid:true')) {
+      return res.redirect(`/?room=${encodeURIComponent(room)}&steam_error=auth_failed`);
+    }
+
+    // Fetch user profile from public Steam XML feed (No API Key required)
+    let nick = `Player_${steamId.slice(-4)}`;
+    let avatar = '';
+
+    try {
+      const profileRes = await fetch(`https://steamcommunity.com/profiles/${steamId}/?xml=1`);
+      if (profileRes.ok) {
+        const xml = await profileRes.text();
+        const nickMatch = xml.match(/<steamID><!\[CDATA\[(.*?)\]\]><\/steamID>/) || xml.match(/<steamID>(.*?)<\/steamID>/);
+        const avatarMatch = xml.match(/<avatarFull><!\[CDATA\[(.*?)\]\]><\/avatarFull>/) || xml.match(/<avatarFull>(.*?)<\/avatarFull>/);
+        if (nickMatch) nick = nickMatch[1];
+        if (avatarMatch) avatar = avatarMatch[1];
+      }
+    } catch (e) {
+      console.error('Error fetching steam XML profile:', e);
+    }
+
+    res.redirect(`/?room=${encodeURIComponent(room)}&steam_auth=1&steamId=${steamId}&nick=${encodeURIComponent(nick)}&avatar=${encodeURIComponent(avatar)}`);
+  } catch (err) {
+    console.error('Steam Auth Error:', err);
+    res.redirect(`/?room=${encodeURIComponent(room)}&steam_error=server_error`);
+  }
+});
+
 app.use((req, res) => {
   res.sendFile(path.join(distPath, 'index.html'), (err) => {
     if (err) {

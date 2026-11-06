@@ -1,5 +1,6 @@
 import React from 'react';
 import GCBadge from './GCBadge';
+import PlayerAvatar from './PlayerAvatar';
 import { Shield, Flame, ArrowLeftRight, RotateCcw, MapPin, Scale, ChevronLeft, CheckCircle2, Coins } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
 
@@ -94,7 +95,7 @@ export default function TeamsView({
               {teamA.map((p, i) => (
                 <div key={p.id} className="py-2.5 flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
-                    <span className="text-xl select-none">{p.avatar || '🎯'}</span>
+                    <PlayerAvatar avatar={p.avatar} nick={p.nick} size="md" />
                     <div>
                       <span className="font-bold text-sm text-white block">{p.nick}</span>
                       <span className="text-[10px] text-slate-400 font-mono">#{i + 1}</span>
@@ -137,7 +138,7 @@ export default function TeamsView({
               {teamB.map((p, i) => (
                 <div key={p.id} className="py-2.5 flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
-                    <span className="text-xl select-none">{p.avatar || '🎯'}</span>
+                    <PlayerAvatar avatar={p.avatar} nick={p.nick} size="md" />
                     <div>
                       <span className="font-bold text-sm text-white block">{p.nick}</span>
                       <span className="text-[10px] text-slate-400 font-mono">#{i + 1}</span>

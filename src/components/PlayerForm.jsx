@@ -1,16 +1,32 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import GCBadge from './GCBadge';
-import { Shield, Flame, Shuffle, UserPlus, CheckCircle2 } from 'lucide-react';
+import PlayerAvatar from './PlayerAvatar';
+import { Shield, Flame, Shuffle, UserPlus, CheckCircle2, LogOut } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
 
 const AVATARS = ['🎯', '👑', '💀', '⚡', '🛡️', '💣', '🔥', '🦅', '🚀', '🧠'];
 
-export default function PlayerForm({ onSave, currentProfile, soundEnabled, disabled }) {
+export default function PlayerForm({
+  onSave,
+  currentProfile,
+  roomId = 'MIX-PRO',
+  soundEnabled,
+  disabled,
+}) {
   const [nick, setNick] = useState(currentProfile?.nick || '');
   const [level, setLevel] = useState(currentProfile?.level || 12);
   const [side, setSide] = useState(currentProfile?.side || 'ANY');
   const [avatar, setAvatar] = useState(currentProfile?.avatar || '🎯');
   const [isSaved, setIsSaved] = useState(false);
+
+  useEffect(() => {
+    if (currentProfile?.nick) setNick(currentProfile.nick);
+    if (currentProfile?.level) setLevel(currentProfile.level);
+    if (currentProfile?.side) setSide(currentProfile.side);
+    if (currentProfile?.avatar) setAvatar(currentProfile.avatar);
+  }, [currentProfile]);
+
+  const isSteamUser = Boolean(currentProfile?.steamId);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -23,6 +39,7 @@ export default function PlayerForm({ onSave, currentProfile, soundEnabled, disab
       level: Number(level),
       side,
       avatar,
+      steamId: currentProfile?.steamId || null,
       ready: true,
     });
 
@@ -30,21 +47,80 @@ export default function PlayerForm({ onSave, currentProfile, soundEnabled, disab
     setTimeout(() => setIsSaved(false), 2500);
   };
 
+  const handleSteamLogin = () => {
+    if (soundEnabled) playClickSound();
+    window.location.href = `/api/auth/steam?room=${encodeURIComponent(roomId)}`;
+  };
+
+  const handleSteamLogout = () => {
+    if (soundEnabled) playClickSound();
+    const cleanProfile = {
+      id: `player-${Date.now()}`,
+      nick: '',
+      level: 12,
+      side: 'ANY',
+      avatar: '🎯',
+      steamId: null,
+    };
+    onSave(cleanProfile);
+  };
+
   return (
-    <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl relative overflow-hidden backdrop-blur">
+    <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl relative overflow-hidden backdrop-blur space-y-4">
       <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full blur-2xl pointer-events-none" />
 
-      <div className="flex items-center justify-between mb-4 border-b border-slate-800/80 pb-3">
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
         <div>
           <h2 className="text-base font-bold font-heading text-white flex items-center gap-2">
             <UserPlus size={18} className="text-amber-400" />
             Seu Perfil no Mix
           </h2>
-          <p className="text-xs text-slate-400">Entre na partida com seu nick e seu level da Gamers Club</p>
+          <p className="text-xs text-slate-400">Entre na sala com seu nick e seu level da GC</p>
         </div>
         <GCBadge level={level} size="lg" showTier />
       </div>
 
+      {/* Steam Login Button or Steam Connected Badge */}
+      {!isSteamUser ? (
+        <button
+          type="button"
+          onClick={handleSteamLogin}
+          className="w-full py-2.5 px-3.5 rounded-xl bg-gradient-to-r from-[#171a21] via-[#1b2838] to-[#2a475e] hover:from-[#1b2838] hover:to-[#171a21] text-white border border-[#66c0f4]/30 shadow-lg text-xs font-bold transition-all flex items-center justify-center gap-2.5 group cursor-pointer"
+        >
+          {/* Steam Logo SVG */}
+          <svg className="w-4 h-4 fill-current text-[#66c0f4] group-hover:scale-110 transition-transform" viewBox="0 0 24 24">
+            <path d="M12 2a10 10 0 0 1 10 10 10 10 0 0 1-10 10A10 10 0 0 1 2 12 10 10 0 0 1 12 2m4.8 5.6a2.4 2.4 0 0 0-2.4 2.4c0 .4.1.8.3 1.1l-3 4.3a2.4 2.4 0 0 0-1.7-.2l-2.4-1a2.4 2.4 0 0 0-4.6 1.8 2.4 2.4 0 0 0 3.3 1.3l2.3 1a2.4 2.4 0 0 0 4 .3l3.2-2.2c.5.2 1.1.3 1.7.3a2.4 2.4 0 0 0 2.4-2.4 2.4 2.4 0 0 0-2.4-2.4z"/>
+          </svg>
+          <span>Entrar com a Steam (Puxar Nick e Foto)</span>
+        </button>
+      ) : (
+        <div className="bg-slate-950/80 border border-emerald-500/30 rounded-xl p-2.5 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <PlayerAvatar avatar={avatar} nick={nick} size="sm" />
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-bold text-white">{nick}</span>
+                <span className="text-[10px] text-emerald-400 font-semibold bg-emerald-500/10 px-1.5 py-0.2 rounded border border-emerald-500/20">
+                  Steam Conectada ✓
+                </span>
+              </div>
+              <span className="text-[10px] text-slate-500 font-mono">ID: {currentProfile.steamId}</span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleSteamLogout}
+            className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-slate-900 transition-colors"
+            title="Desconectar Steam"
+          >
+            <LogOut size={14} />
+          </button>
+        </div>
+      )}
+
+      {/* Form Details */}
       <form onSubmit={handleSubmit} className="space-y-4">
         {/* Nickname & Avatar */}
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
@@ -67,7 +143,11 @@ export default function PlayerForm({ onSave, currentProfile, soundEnabled, disab
             <label className="block text-xs font-semibold text-slate-300 mb-1.5 uppercase tracking-wider">
               Ícone
             </label>
-            <div className="flex gap-1 overflow-x-auto py-1 scrollbar-none">
+            {isSteamUser && avatar.startsWith('http') ? (
+              <div className="flex items-center justify-center p-1 bg-slate-950 border border-slate-800 rounded-xl h-[42px]">
+                <PlayerAvatar avatar={avatar} nick={nick} size="md" />
+              </div>
+            ) : (
               <select
                 value={avatar}
                 onChange={(e) => setAvatar(e.target.value)}
@@ -79,7 +159,7 @@ export default function PlayerForm({ onSave, currentProfile, soundEnabled, disab
                   </option>
                 ))}
               </select>
-            </div>
+            )}
           </div>
         </div>
 
@@ -206,7 +286,7 @@ export default function PlayerForm({ onSave, currentProfile, soundEnabled, disab
           ) : (
             <>
               <UserPlus size={16} />
-              <span>{currentProfile ? 'Atualizar meus Dados' : 'Entrar no Mix'}</span>
+              <span>{currentProfile?.nick ? 'Atualizar meus Dados' : 'Entrar no Mix'}</span>
             </>
           )}
         </button>

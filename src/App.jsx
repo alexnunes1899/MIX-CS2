@@ -79,6 +79,39 @@ export default function App() {
     unassignedPlayers: [],
   });
 
+  // Check for Steam Auth return on load
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const steamAuth = params.get('steam_auth');
+    if (steamAuth === '1') {
+      const steamId = params.get('steamId');
+      const steamNick = params.get('nick');
+      const steamAvatar = params.get('avatar');
+
+      if (steamNick) {
+        setMyProfile((prev) => {
+          const updated = {
+            ...prev,
+            nick: steamNick,
+            avatar: steamAvatar || prev.avatar,
+            steamId: steamId || null,
+          };
+          try {
+            localStorage.setItem('cs2_mix_profile', JSON.stringify(updated));
+          } catch (e) {}
+          return updated;
+        });
+      }
+
+      const cleanUrl = new URL(window.location);
+      cleanUrl.searchParams.delete('steam_auth');
+      cleanUrl.searchParams.delete('steamId');
+      cleanUrl.searchParams.delete('nick');
+      cleanUrl.searchParams.delete('avatar');
+      window.history.replaceState({}, '', cleanUrl.toString());
+    }
+  }, []);
+
   // Setup Socket listener
   useEffect(() => {
     socket.on('connect', () => {
@@ -535,6 +568,7 @@ export default function App() {
               <PlayerForm
                 currentProfile={myProfile}
                 onSave={handleSaveProfile}
+                roomId={roomId}
                 soundEnabled={soundEnabled}
                 disabled={room.players.length >= 10 && !room.players.some((p) => p.id === myProfile.id)}
               />

@@ -1,5 +1,6 @@
 import React from 'react';
 import GCBadge from './GCBadge';
+import PlayerAvatar from './PlayerAvatar';
 import { Users, Trash2, Bot, Scale, Shuffle, Shield, Flame, CheckCircle2, Crown, Check, AlertCircle, Zap, Dices } from 'lucide-react';
 import { playClickSound, playReadySound } from '../utils/audio';
 
@@ -159,9 +160,7 @@ export default function Lobby({
           >
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-center gap-2.5">
-                <span className="text-2xl select-none" role="img" aria-label="avatar">
-                  {p.avatar || '🎯'}
-                </span>
+                <PlayerAvatar avatar={p.avatar} nick={p.nick} size="md" />
                 <div>
                   <div className="flex items-center gap-1">
                     <h3 className="font-bold text-sm text-white truncate max-w-[105px]" title={p.nick}>

@@ -1,5 +1,6 @@
 import React from 'react';
 import GCBadge from './GCBadge';
+import PlayerAvatar from './PlayerAvatar';
 import { Crown, Shield, Flame, UserCheck, ChevronLeft } from 'lucide-react';
 import { playClickSound, playPickSound } from '../utils/audio';
 
@@ -61,9 +62,7 @@ export default function CaptainsDraftView({
               className="bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-amber-400/80 rounded-xl p-3.5 flex items-center justify-between cursor-pointer transition-all shadow-md group"
             >
               <div className="flex items-center gap-2.5">
-                <span className="text-2xl select-none group-hover:scale-110 transition-transform">
-                  {p.avatar || '🎯'}
-                </span>
+                <PlayerAvatar avatar={p.avatar} nick={p.nick} size="md" />
                 <div>
                   <h4 className="font-bold text-sm text-white group-hover:text-amber-400 transition-colors">
                     {p.nick}
@@ -103,7 +102,7 @@ export default function CaptainsDraftView({
             {teamA.map((p, i) => (
               <div key={p.id} className="py-2 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="text-base">{p.avatar || '🎯'}</span>
+                  <PlayerAvatar avatar={p.avatar} nick={p.nick} size="sm" />
                   <span className="text-sm font-semibold text-white">
                     {p.nick} {i === 0 && <span className="text-[10px] text-amber-400 font-mono font-bold">(Capitão)</span>}
                   </span>
@@ -130,7 +129,7 @@ export default function CaptainsDraftView({
             {teamB.map((p, i) => (
               <div key={p.id} className="py-2 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="text-base">{p.avatar || '🎯'}</span>
+                  <PlayerAvatar avatar={p.avatar} nick={p.nick} size="sm" />
                   <span className="text-sm font-semibold text-white">
                     {p.nick} {i === 0 && <span className="text-[10px] text-amber-400 font-mono font-bold">(Capitão)</span>}
                   </span>
