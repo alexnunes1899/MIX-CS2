@@ -54,6 +54,10 @@ export default function MapVeto({
               : 'bg-amber-950/40 border-amber-500/60 shadow-amber-500/10'
           }`}
         >
+          <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/30 text-[10px] font-mono font-bold uppercase tracking-wider mb-2">
+            <span>Rotação Oficial CS2 • Active Duty Mundial Valve</span>
+          </div>
+
           <div className="flex items-center justify-center gap-2 mb-1">
             {turnIsTeamA ? (
               <Shield size={22} className="text-sky-400 animate-pulse" />

@@ -24,15 +24,71 @@ const isDev = process.argv.includes('--dev');
 const portArg = process.argv.find((arg) => arg.startsWith('--port='));
 const PORT = process.env.PORT || (portArg ? Number(portArg.split('=')[1]) : (isDev ? 3001 : 3000));
 
-// Default CS2 Active Duty Pool (Oficial Valve)
+// Default CS2 Active Duty Pool (Oficial Valve 2026: Mirage, Inferno, Nuke, Dust II, Ancient, Anubis, Train)
 const DEFAULT_MAPS = [
-  { id: 'de_mirage', name: 'Mirage', file: 'de_mirage', location: 'Marrocos', color: '#f59e0b' },
-  { id: 'de_inferno', name: 'Inferno', file: 'de_inferno', location: 'Itália', color: '#ea580c' },
-  { id: 'de_nuke', name: 'Nuke', file: 'de_nuke', location: 'EUA', color: '#0ea5e9' },
-  { id: 'de_dust2', name: 'Dust II', file: 'de_dust2', location: 'Oriente Médio', color: '#eab308' },
-  { id: 'de_ancient', name: 'Ancient', file: 'de_ancient', location: 'América Central', color: '#10b981' },
-  { id: 'de_anubis', name: 'Anubis', file: 'de_anubis', location: 'Egito', color: '#d97706' },
-  { id: 'de_train', name: 'Train', file: 'de_train', location: 'Rússia', color: '#64748b' },
+  {
+    id: 'de_mirage',
+    name: 'Mirage',
+    file: 'de_mirage',
+    location: 'Marrocos',
+    color: '#f59e0b',
+    image: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_mirage_1_png.png',
+    logo: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/de_mirage.png',
+  },
+  {
+    id: 'de_inferno',
+    name: 'Inferno',
+    file: 'de_inferno',
+    location: 'Itália',
+    color: '#ea580c',
+    image: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_inferno_1_png.png',
+    logo: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/de_inferno.png',
+  },
+  {
+    id: 'de_nuke',
+    name: 'Nuke',
+    file: 'de_nuke',
+    location: 'EUA',
+    color: '#0ea5e9',
+    image: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_nuke_1_png.png',
+    logo: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/de_nuke.png',
+  },
+  {
+    id: 'de_dust2',
+    name: 'Dust II',
+    file: 'de_dust2',
+    location: 'Oriente Médio',
+    color: '#eab308',
+    image: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_dust2_1_png.png',
+    logo: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/de_dust2.png',
+  },
+  {
+    id: 'de_ancient',
+    name: 'Ancient',
+    file: 'de_ancient',
+    location: 'América Central',
+    color: '#10b981',
+    image: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_ancient_1_png.png',
+    logo: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/de_ancient.png',
+  },
+  {
+    id: 'de_anubis',
+    name: 'Anubis',
+    file: 'de_anubis',
+    location: 'Egito',
+    color: '#d97706',
+    image: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_anubis_1_png.png',
+    logo: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/de_anubis.png',
+  },
+  {
+    id: 'de_train',
+    name: 'Train',
+    file: 'de_train',
+    location: 'Rússia',
+    color: '#64748b',
+    image: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_train_1_png.png',
+    logo: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/de_train.png',
+  },
 ];
 
 const MOCK_BOTS = [
@@ -589,6 +645,16 @@ app.get('/api/rooms', (req, res) => {
     });
   });
   res.json(list);
+});
+
+// Official CS2 Active Duty Map Rotation API
+app.get('/api/maps/active-duty', (req, res) => {
+  res.json({
+    pool: 'Valve Official Active Duty',
+    count: DEFAULT_MAPS.length,
+    description: 'Rotação Oficial Competitiva Mundial CS2 (Mirage, Inferno, Nuke, Dust II, Ancient, Anubis, Train)',
+    maps: DEFAULT_MAPS,
+  });
 });
 
 // Steam OpenID Authentication Routes
