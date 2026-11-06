@@ -1163,7 +1163,7 @@ app.get('/api/auth/steam/return', async (req, res) => {
         });
         if (fRes.ok) {
           const fData = await fRes.json();
-          const cs2 = fData.games?.cs2;
+          const cs2 = fData.games?.cs2 || fData.games?.csgo;
           if (cs2) {
             faceitLevel = cs2.skill_level || 5;
             faceitElo = cs2.faceit_elo || 1200;

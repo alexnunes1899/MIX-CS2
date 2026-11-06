@@ -133,16 +133,18 @@ export default function App() {
       const steamAvatar = params.get('avatar');
       const faceitLevel = params.get('faceitLevel');
       const faceitElo = params.get('faceitElo');
+      const faceitFound = params.get('faceitFound');
 
       if (steamNick) {
         setMyProfile((prev) => {
+          const hasFoundFaceit = faceitFound === '1' && faceitLevel;
           const updated = {
             ...prev,
             nick: steamNick,
             avatar: steamAvatar || prev.avatar,
             steamId: steamId || null,
-            faceitLevel: faceitLevel ? Number(faceitLevel) : prev.faceitLevel || 5,
-            faceitElo: faceitElo && faceitElo !== 'null' ? Number(faceitElo) : prev.faceitElo || 1200,
+            faceitLevel: hasFoundFaceit ? Number(faceitLevel) : (prev.faceitLevel || 5),
+            faceitElo: hasFoundFaceit && faceitElo && faceitElo !== 'null' ? Number(faceitElo) : (prev.faceitElo || 1200),
           };
           try {
             localStorage.setItem('cs2_mix_profile', JSON.stringify(updated));
@@ -898,6 +900,7 @@ export default function App() {
           onLogout={handleLogoutSteam}
           onSwitchAccount={handleSwitchSteamAccount}
           soundEnabled={soundEnabled}
+          onSaveProfile={handleSaveProfile}
         />
       </>
     );
@@ -1118,6 +1121,7 @@ export default function App() {
         onLogout={handleLogoutSteam}
         onSwitchAccount={handleSwitchSteamAccount}
         soundEnabled={soundEnabled}
+        onSaveProfile={handleSaveProfile}
       />
 
       <GsiSetupModal

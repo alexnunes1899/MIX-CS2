@@ -16,10 +16,13 @@ export default function PlayerProfileModal({
   onLogout,
   onSwitchAccount,
   soundEnabled,
+  onSaveProfile,
 }) {
   const [copiedId, setCopiedId] = useState(false);
   const [steamStats, setSteamStats] = useState(null);
   const [loadingSteam, setLoadingSteam] = useState(false);
+  const [faceitSaved, setFaceitSaved] = useState(false);
+  const [tempElo, setTempElo] = useState(null);
 
   const { nick = 'Jogador', steamId, avatar = '🎯', level = 12, faceitLevel = 5, faceitElo = 1200, side = 'ANY' } = profile || {};
   const isSteamUser = Boolean(steamId);
@@ -63,6 +66,45 @@ export default function PlayerProfileModal({
     navigator.clipboard.writeText(steamId);
     setCopiedId(true);
     setTimeout(() => setCopiedId(false), 2000);
+  };
+
+  const handleUpdateFaceitLevel = (newLevel) => {
+    const lvl = Math.min(10, Math.max(1, Number(newLevel)));
+    const defaultElos = {
+      1: 650, 2: 875, 3: 1025, 4: 1175, 5: 1325,
+      6: 1475, 7: 1625, 8: 1775, 9: 1925, 10: 2200,
+    };
+    const newElo = defaultElos[lvl] || 1200;
+    const updated = {
+      ...profile,
+      faceitLevel: lvl,
+      faceitElo: newElo,
+    };
+    if (soundEnabled) playClickSound();
+    setFaceitSaved(true);
+    setTimeout(() => setFaceitSaved(false), 1500);
+    if (onSaveProfile) onSaveProfile(updated);
+  };
+
+  const handleUpdateFaceitElo = (newElo) => {
+    const eloNum = Number(newElo) || 1200;
+    const updated = {
+      ...profile,
+      faceitElo: eloNum,
+    };
+    if (soundEnabled) playClickSound();
+    setFaceitSaved(true);
+    setTimeout(() => setFaceitSaved(false), 1500);
+    if (onSaveProfile) onSaveProfile(updated);
+  };
+
+  const handleUpdateGCLevel = (newVal) => {
+    const lvl = Math.min(21, Math.max(1, Number(newVal)));
+    const updated = {
+      ...profile,
+      level: lvl,
+    };
+    if (onSaveProfile) onSaveProfile(updated);
   };
 
   const handleSwitch = () => {
@@ -216,6 +258,95 @@ export default function PlayerProfileModal({
                   </span>
                 </div>
                 <FaceitBadge level={faceitLevel} elo={faceitElo} size="lg" />
+              </div>
+            </div>
+
+            {/* Quick Level Adjusters */}
+            <div className="bg-slate-950/90 border border-slate-800 rounded-2xl p-4 space-y-3.5 shadow-inner">
+              {/* FACEIT Level Selector */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-orange-400 flex items-center gap-1.5 font-heading">
+                    <Zap size={13} className="text-orange-400" /> Selecione seu Nível FACEIT (1 a 10)
+                  </span>
+                  {faceitSaved ? (
+                    <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20 animate-pulse">
+                      ✓ Nível Salvo!
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-slate-500 font-mono">
+                      Clique no seu nível
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-5 sm:grid-cols-10 gap-1.5">
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => {
+                    const isSelected = faceitLevel === num;
+                    return (
+                      <button
+                        key={num}
+                        type="button"
+                        onClick={() => handleUpdateFaceitLevel(num)}
+                        className={`h-9 rounded-xl font-mono font-black text-xs transition-all cursor-pointer flex items-center justify-center active:scale-95 ${
+                          isSelected
+                            ? 'bg-gradient-to-t from-orange-600 via-orange-500 to-amber-400 text-white shadow-lg shadow-orange-500/40 ring-2 ring-orange-300 scale-105'
+                            : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 hover:border-orange-500/30'
+                        }`}
+                      >
+                        {num}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* ELO Input Row */}
+                <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-slate-900">
+                  <span className="text-slate-400 font-mono text-xs">Pontos de ELO no FACEIT:</span>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="number"
+                      min={100}
+                      max={4500}
+                      value={tempElo !== null ? tempElo : (faceitElo || 1200)}
+                      onChange={(e) => setTempElo(e.target.value)}
+                      onBlur={() => {
+                        if (tempElo) {
+                          handleUpdateFaceitElo(tempElo);
+                          setTempElo(null);
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && tempElo) {
+                          handleUpdateFaceitElo(tempElo);
+                          setTempElo(null);
+                        }
+                      }}
+                      className="w-24 bg-slate-900 border border-orange-500/40 focus:border-orange-400 rounded-lg px-2.5 py-1 text-center font-mono font-bold text-orange-300 text-xs outline-none"
+                    />
+                    <span className="text-slate-500 font-mono text-[10px]">pts</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Gamers Club Level Selector */}
+              <div className="pt-2.5 border-t border-slate-900">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5 font-heading">
+                    <Shield size={13} className="text-amber-400" /> Nível Gamers Club (1 a 21)
+                  </span>
+                  <span className="text-xs font-mono font-bold text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-lg border border-amber-500/20">
+                    Nível {level}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min={1}
+                  max={21}
+                  value={level}
+                  onChange={(e) => handleUpdateGCLevel(e.target.value)}
+                  className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-400"
+                />
               </div>
             </div>
           </div>
