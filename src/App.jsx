@@ -142,15 +142,9 @@ export default function App() {
   }));
   const [syncingRotation, setSyncingRotation] = useState(false);
 
-  // User's own saved profile (stored in localStorage)
+  // User's own saved profile (stored in localStorage or immediate Steam redirect params)
   const [myProfile, setMyProfile] = useState(() => {
-    try {
-      const saved = localStorage.getItem('cs2_mix_profile');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      // ignore
-    }
-    return {
+    let base = {
       id: `player-${Math.random().toString(36).substring(2, 9)}`,
       nick: '',
       level: 14,
@@ -159,6 +153,38 @@ export default function App() {
       side: 'ANY',
       avatar: '🎯',
     };
+    try {
+      const saved = localStorage.getItem('cs2_mix_profile');
+      if (saved) base = { ...base, ...JSON.parse(saved) };
+    } catch (e) {}
+
+    // Check if returning from Steam Auth redirect immediately on first render
+    if (typeof window !== 'undefined') {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('steam_auth') === '1' && params.get('nick')) {
+          const steamId = params.get('steamId');
+          const steamNick = params.get('nick');
+          const steamAvatar = params.get('avatar');
+          const faceitLevel = params.get('faceitLevel');
+          const faceitElo = params.get('faceitElo');
+          const faceitFound = params.get('faceitFound') === '1';
+
+          base = {
+            ...base,
+            nick: steamNick,
+            avatar: steamAvatar || base.avatar,
+            steamId: steamId || null,
+            faceitLevel: faceitFound && faceitLevel ? Number(faceitLevel) : (base.faceitLevel || 5),
+            faceitElo: faceitFound && faceitElo && faceitElo !== 'null' ? Number(faceitElo) : (base.faceitElo || 1200),
+          };
+          try {
+            localStorage.setItem('cs2_mix_profile', JSON.stringify(base));
+          } catch (e) {}
+        }
+      } catch (e) {}
+    }
+    return base;
   });
 
   const isSteamLogged = Boolean(myProfile?.steamId);

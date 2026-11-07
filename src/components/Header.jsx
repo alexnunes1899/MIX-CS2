@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Share2, Check, Users, Swords, MapPin, Trophy, Volume2, VolumeX, Layers, History, Dices, Zap, Home, Server, Play, Copy, User, Trash2, Lock, KeyRound, Eye, EyeOff } from 'lucide-react';
+import { Share2, Check, Users, Swords, MapPin, Trophy, Volume2, VolumeX, Layers, History, Dices, Zap, Home, Server, Play, Copy, User, Trash2, Lock, KeyRound, Eye, EyeOff, Globe } from 'lucide-react';
 import PlayerAvatar from './PlayerAvatar';
 import DeleteRoomModal from './DeleteRoomModal';
 import { playClickSound } from '../utils/audio';
