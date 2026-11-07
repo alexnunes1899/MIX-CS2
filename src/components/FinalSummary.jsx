@@ -311,6 +311,7 @@ export default function FinalSummary({
         liveMatch={liveMatch}
         onOpenGsiSetup={onOpenGsiSetup}
         soundEnabled={soundEnabled}
+        finalMap={room.finalMap?.id || 'de_mirage'}
       />
 
       {/* RCON 1-Click Server Administration Hub */}

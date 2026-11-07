@@ -1681,6 +1681,16 @@ app.get('/api/gsi/status/:roomId', (req, res) => {
   res.json(state);
 });
 
+// Detect Host Public IP for Local Server Hosting
+app.get('/api/my-ip', (req, res) => {
+  const forwarded = req.headers['x-forwarded-for'];
+  let ip = forwarded ? forwarded.split(',')[0].trim() : req.socket.remoteAddress || '';
+  if (ip.startsWith('::ffff:')) {
+    ip = ip.replace('::ffff:', '');
+  }
+  res.json({ ip });
+});
+
 // 2. Valve Source RCON Remote Management (FireGames / Dedicated Server) - Protected by rate limit & sanitization
 app.post('/api/rcon/test', sensitiveLimiter, async (req, res) => {
   const { host, port, password } = req.body;

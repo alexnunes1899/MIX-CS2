@@ -399,6 +399,7 @@ export default function Lobby({
         onUpdateServerIp={onUpdateServerIp}
         rconPassword={rconPassword}
         onUpdateRconPassword={onUpdateRconPassword}
+        roomId={roomId}
         liveMatch={liveMatch}
         onOpenGsiSetup={onOpenGsiSetup}
         soundEnabled={soundEnabled}

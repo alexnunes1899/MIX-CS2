@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Server, Copy, Check, Edit2, Play, Trash2, Key, Radio, Terminal, RefreshCw, Zap, ShieldCheck } from 'lucide-react';
+import { Server, Copy, Check, Edit2, Play, Trash2, Key, Radio, Terminal, RefreshCw, Zap, ShieldCheck, Laptop } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
 import { parseServerDetails } from '../utils/serverParser';
+import LocalHostModal from './LocalHostModal';
 
 export default function ServerConnectBar({
   serverIp,
@@ -12,12 +13,14 @@ export default function ServerConnectBar({
   liveMatch = null,
   onOpenGsiSetup,
   soundEnabled,
-  title = 'Servidor do Mix (FireGames / Dedicado)',
-  description = 'Conecte-se diretamente ou envie comandos de administração via RCON',
+  title = 'Servidor do Mix (FireGames / Dedicado / Host)',
+  description = 'Conecte-se diretamente, crie um host local no seu PC ou envie comandos RCON',
+  finalMap = 'de_mirage',
 }) {
   const [editing, setEditing] = useState(false);
   const [ipInput, setIpInput] = useState(serverIp || '');
   const [copied, setCopied] = useState(false);
+  const [localHostOpen, setLocalHostOpen] = useState(false);
 
   // RCON Drawer state
   const [showRcon, setShowRcon] = useState(false);
@@ -297,6 +300,20 @@ export default function ServerConnectBar({
                 <span>RCON</span>
               </button>
 
+              {/* Local Host Guide Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (soundEnabled) playClickSound();
+                  setLocalHostOpen(true);
+                }}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-750 border border-slate-700 text-slate-300 text-xs font-bold transition-all cursor-pointer"
+                title="Instruções e comandos de Host Local (Jogar no meu PC)"
+              >
+                <Laptop size={13} className="text-amber-400" />
+                <span>Host PC</span>
+              </button>
+
               {/* GSI Setup Button */}
               {onOpenGsiSetup && (
                 <button
@@ -314,7 +331,21 @@ export default function ServerConnectBar({
               )}
             </div>
           ) : (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Host on My PC Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (soundEnabled) playClickSound();
+                  setLocalHostOpen(true);
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 hover:border-amber-400 text-amber-300 text-xs font-bold transition-all cursor-pointer shadow-sm active:scale-95"
+                title="Criar servidor no seu próprio PC de graça (Radmin VPN ou IP Público)"
+              >
+                <Laptop size={14} className="text-amber-400" />
+                <span>Host no Meu PC</span>
+              </button>
+
               <button
                 onClick={handleStartEditing}
                 className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 border border-amber-500/30 hover:border-amber-400 text-xs font-bold transition-all shadow-sm cursor-pointer active:scale-95"
@@ -407,6 +438,17 @@ export default function ServerConnectBar({
           </div>
         </div>
       )}
+
+      {/* Local Host Guide & Setup Modal */}
+      <LocalHostModal
+        isOpen={localHostOpen}
+        onClose={() => setLocalHostOpen(false)}
+        roomId={roomId}
+        currentServerIp={serverIp}
+        finalMap={finalMap}
+        onUpdateServerIp={onUpdateServerIp}
+        soundEnabled={soundEnabled}
+      />
     </div>
   );
 }
