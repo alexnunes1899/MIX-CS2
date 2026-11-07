@@ -56,7 +56,11 @@ export default function App() {
 
   const [view, setView] = useState(() => {
     const params = new URLSearchParams(window.location.search);
-    return params.get('room') ? 'mix' : 'landing';
+    // Ao fazer login (steam_auth=1) ou quando não há parâmetro room, SEMPRE abre a tela inicial
+    if (params.get('steam_auth') === '1' || !params.get('room')) {
+      return 'landing';
+    }
+    return 'mix';
   });
 
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -266,6 +270,7 @@ export default function App() {
     const params = new URLSearchParams(window.location.search);
     const steamAuth = params.get('steam_auth');
     if (steamAuth === '1') {
+      setView('landing'); // Garante que a tela inicial continue ativa ao logar
       const steamId = params.get('steamId');
       const steamNick = params.get('nick');
       const steamAvatar = params.get('avatar');
@@ -293,13 +298,14 @@ export default function App() {
 
       const cleanUrl = new URL(window.location);
       cleanUrl.searchParams.delete('steam_auth');
+      cleanUrl.searchParams.delete('room'); // Remove qualquer room residual pós-login
       cleanUrl.searchParams.delete('steamId');
       cleanUrl.searchParams.delete('nick');
       cleanUrl.searchParams.delete('avatar');
       cleanUrl.searchParams.delete('faceitLevel');
       cleanUrl.searchParams.delete('faceitElo');
       cleanUrl.searchParams.delete('faceitFound');
-      window.history.replaceState({}, '', cleanUrl.toString());
+      window.history.replaceState({}, '', cleanUrl.pathname || '/');
     }
   }, []);
 
@@ -324,8 +330,8 @@ export default function App() {
               localStorage.setItem('cs2_mix_profile', JSON.stringify(updated));
             } catch (e) {}
 
-            // Immediately emit to room so lobby & teams update
-            if (socket.connected && prev.nick) {
+            // Immediately emit to room so lobby & teams update (apenas se estiver dentro de uma sala de mix)
+            if (socket.connected && prev.nick && view === 'mix') {
               socket.emit('join_room', {
                 roomId,
                 player: updated,
@@ -354,12 +360,17 @@ export default function App() {
   // Setup Socket listener
   useEffect(() => {
     socket.on('connect', () => {
-      socket.emit('join_room', {
-        roomId,
-        player: myProfile.nick ? myProfile : null,
-        password: roomPassword || undefined,
-        inviteKey: inviteKey || undefined,
-      });
+      // Ingressa na sala via socket apenas se o usuário estiver ativamente na visão de mix (não na tela inicial)
+      const params = new URLSearchParams(window.location.search);
+      const isLanding = params.get('steam_auth') === '1' || !params.get('room') || view === 'landing';
+      if (!isLanding && roomId) {
+        socket.emit('join_room', {
+          roomId,
+          player: myProfile.nick ? myProfile : null,
+          password: roomPassword || undefined,
+          inviteKey: inviteKey || undefined,
+        });
+      }
     });
 
     socket.on('room_state', (updatedRoom) => {
@@ -941,8 +952,7 @@ export default function App() {
       localStorage.removeItem('cs2_mix_profile');
     } catch (e) {}
 
-    const targetRoom = roomId || 'MIX-PRO';
-    window.location.href = `/api/auth/steam?room=${encodeURIComponent(targetRoom)}`;
+    window.location.href = '/api/auth/steam';
   };
 
   // Fill mock bots for instant testing

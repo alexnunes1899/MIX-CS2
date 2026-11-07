@@ -52,7 +52,7 @@ export default function LandingPage({
       if (onRequireSteamLogin) {
         onRequireSteamLogin('criar ou entrar em uma sala de mix');
       } else {
-        window.location.href = `/api/auth/steam?room=${encodeURIComponent(code)}`;
+        window.location.href = '/api/auth/steam';
       }
       return;
     }
@@ -65,7 +65,7 @@ export default function LandingPage({
       if (onRequireSteamLogin) {
         onRequireSteamLogin('criar ou entrar em um mix');
       } else {
-        window.location.href = `/api/auth/steam?room=${encodeURIComponent(code)}`;
+        window.location.href = '/api/auth/steam';
       }
       return;
     }
@@ -156,7 +156,7 @@ export default function LandingPage({
               </button>
             ) : (
               <a
-                href="/api/auth/steam?room=MIX-PRO"
+                href="/api/auth/steam"
                 className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl bg-gradient-to-r from-[#171a21] to-[#1b2838] hover:from-[#1b2838] hover:to-[#2a475e] border border-[#66c0f4]/40 hover:border-[#66c0f4] text-white text-xs font-bold transition-all shadow-md group cursor-pointer"
               >
                 <SteamIcon className="w-4 h-4 text-[#66c0f4] group-hover:scale-110 transition-transform" />

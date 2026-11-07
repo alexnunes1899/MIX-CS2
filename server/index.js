@@ -1640,10 +1640,9 @@ app.get('/api/steam/player-stats/:steamId', async (req, res) => {
 
 // Steam OpenID Authentication Routes
 app.get('/api/auth/steam', (req, res) => {
-  const room = req.query.room || 'MIX-PRO';
   const protocol = req.headers['x-forwarded-proto'] || req.protocol;
   const host = req.get('host');
-  const returnTo = `${protocol}://${host}/api/auth/steam/return?room=${encodeURIComponent(room)}`;
+  const returnTo = `${protocol}://${host}/api/auth/steam/return`;
   const realm = `${protocol}://${host}/`;
 
   const params = new URLSearchParams({
@@ -1659,13 +1658,12 @@ app.get('/api/auth/steam', (req, res) => {
 });
 
 app.get('/api/auth/steam/return', async (req, res) => {
-  const room = req.query.room || 'MIX-PRO';
   try {
     const claimedId = req.query['openid.claimed_id'];
     const steamIdMatch = claimedId && claimedId.match(/^https?:\/\/steamcommunity\.com\/openid\/id\/(\d+)$/);
 
     if (!steamIdMatch) {
-      return res.redirect(`/?room=${encodeURIComponent(room)}&steam_error=invalid_id`);
+      return res.redirect(`/?steam_error=invalid_id`);
     }
 
     const steamId = steamIdMatch[1];
@@ -1685,7 +1683,7 @@ app.get('/api/auth/steam/return', async (req, res) => {
 
     const authText = await authRes.text();
     if (!authText.includes('is_valid:true')) {
-      return res.redirect(`/?room=${encodeURIComponent(room)}&steam_error=auth_failed`);
+      return res.redirect(`/?steam_error=auth_failed`);
     }
 
     // Fetch user profile from public Steam XML feed (No API Key required)
@@ -1716,12 +1714,14 @@ app.get('/api/auth/steam/return', async (req, res) => {
       faceitFound = 1;
     }
 
+    // Redireciona sempre para a tela inicial (Landing), garantindo que ao fazer o login
+    // a pessoa veja a tela inicial e não caia diretamente dentro de uma sala de mix criada.
     res.redirect(
-      `/?room=${encodeURIComponent(room)}&steam_auth=1&steamId=${steamId}&nick=${encodeURIComponent(nick)}&avatar=${encodeURIComponent(avatar)}&faceitLevel=${faceitLevel}&faceitElo=${faceitElo}&faceitFound=${faceitFound}`
+      `/?steam_auth=1&steamId=${steamId}&nick=${encodeURIComponent(nick)}&avatar=${encodeURIComponent(avatar)}&faceitLevel=${faceitLevel}&faceitElo=${faceitElo}&faceitFound=${faceitFound}`
     );
   } catch (err) {
     console.error('Steam Auth Error:', err);
-    res.redirect(`/?room=${encodeURIComponent(room)}&steam_error=server_error`);
+    res.redirect(`/?steam_error=server_error`);
   }
 });
 

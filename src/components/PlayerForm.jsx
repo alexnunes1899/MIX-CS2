@@ -204,7 +204,7 @@ export default function PlayerForm({
 
   const handleSteamLogin = () => {
     if (soundEnabled) playClickSound();
-    window.location.href = `/api/auth/steam?room=${encodeURIComponent(roomId)}`;
+    window.location.href = '/api/auth/steam';
   };
 
   const handleSteamLogout = () => {
@@ -232,7 +232,7 @@ export default function PlayerForm({
       onSwitchAccount();
     } else {
       handleSteamLogout();
-      window.location.href = `/api/auth/steam?room=${encodeURIComponent(roomId)}`;
+      window.location.href = '/api/auth/steam';
     }
   };
 

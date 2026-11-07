@@ -87,7 +87,7 @@ export default function RoomsHubModal({
       if (onRequireSteamLogin) {
         onRequireSteamLogin('criar uma nova sala de mix');
       } else {
-        window.location.href = `/api/auth/steam?room=${encodeURIComponent(newRoomCode.trim().toUpperCase())}`;
+        window.location.href = '/api/auth/steam';
       }
       return;
     }
@@ -395,7 +395,7 @@ export default function RoomsHubModal({
                 if (onRequireSteamLogin) {
                   onRequireSteamLogin('criar uma sala');
                 } else {
-                  window.location.href = `/api/auth/steam?room=${encodeURIComponent(newRoomCode || 'MIX-PRO')}`;
+                  window.location.href = '/api/auth/steam';
                 }
               }}
               className="w-full py-2.5 rounded-xl bg-gradient-to-r from-[#171a21] via-[#1b2838] to-[#2a475e] hover:from-[#1b2838] text-white font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 border border-[#66c0f4]/40 shadow-md cursor-pointer"

@@ -26,7 +26,7 @@ export default function SteamLoginGateModal({
 
   const handleLogin = () => {
     if (soundEnabled) playClickSound();
-    window.location.href = `/api/auth/steam?room=${encodeURIComponent(roomId)}`;
+    window.location.href = '/api/auth/steam';
   };
 
   const handleCloseClick = () => {
