@@ -1418,8 +1418,8 @@ app.use(express.static(distPath, {
   }
 }));
 
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', time: new Date().toISOString(), activeRooms: rooms.size });
+app.get(['/health', '/api/health'], (req, res) => {
+  res.status(200).json({ status: 'ok', time: new Date().toISOString(), activeRooms: rooms.size });
 });
 
 // Get active rooms (runs inactivity cleanup first)
@@ -1959,3 +1959,16 @@ app.use((req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`🎮 [CS2 MIX HUB] Servidor rodando na porta ${PORT} em 0.0.0.0`);
 });
+
+// Graceful shutdown for Railway & container orchestrators
+const shutdown = (signal) => {
+  console.log(`🛑 [CS2 MIX HUB] Recebido ${signal}, encerrando servidor graciosamente...`);
+  server.close(() => {
+    console.log('✓ Servidor encerrado com sucesso.');
+    process.exit(0);
+  });
+  setTimeout(() => process.exit(0), 4000);
+};
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
