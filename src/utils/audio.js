@@ -76,6 +76,8 @@ export function playCoinSound() {
   osc.stop(ctx.currentTime + 0.3);
 }
 
+export const playCoinFlipSound = playCoinSound;
+
 export function playRouletteTick() {
   const ctx = getAudioContext();
   if (!ctx) return;

@@ -30,6 +30,7 @@ import { playClickSound } from './utils/audio';
 import { recordMatchResult } from './utils/playerStats';
 import { ACTIVE_DUTY_MAPS, OFFICIAL_ACTIVE_DUTY, EXTRA_CS2_MAPS } from './data/maps';
 import { balanceTeams, shuffleTeams, calculateMetricsForTeams } from './utils/balance';
+import { getVetoSchedule } from './utils/proVeto';
 import { MOCK_PLAYERS } from './data/mockPlayers';
 
 const socket = io('/', {
@@ -288,6 +289,15 @@ export default function App() {
     metrics: null,
     maps: [...ACTIVE_DUTY_MAPS],
     bannedMaps: [],
+    pickedMaps: [],
+    vetoLog: [],
+    drawnSeries: [],
+    matchFormat: 'MD1',
+    vetoFirstTeam: 'teamA',
+    bo1Order: 'ABABAB',
+    pendingSidePick: null,
+    teamAName: null,
+    teamBName: null,
     currentTurn: 'teamA',
     finalMap: null,
     startingSideTeamB: null,
@@ -967,31 +977,52 @@ export default function App() {
     }
   };
 
-  // Direct Veto Start (Teams already made)
-  const handleStartQuickVeto = (teamAName, teamBName) => {
+  // Direct Veto Start (Teams already made — Pro MD1 / MD3 / MD5)
+  const handleStartQuickVeto = (teamAName, teamBName, options = {}) => {
+    const { matchFormat = 'MD3', firstTeam = 'teamA', bo1Order = 'ABABAB' } = options;
     const targetRoomId = roomId || `VETO-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
     if (!roomId) setRoomId(targetRoomId);
     setView('mix');
+
+    const cleanA = (teamAName || 'Time A').trim();
+    const cleanB = (teamBName || 'Time B').trim();
+
+    setRoom((prev) => ({
+      ...prev,
+      id: targetRoomId,
+      phase: 'veto',
+      matchFormat,
+      vetoFirstTeam: firstTeam,
+      bo1Order,
+      teamAName: cleanA,
+      teamBName: cleanB,
+      bannedMaps: [],
+      pickedMaps: [],
+      vetoLog: [],
+      drawnSeries: [],
+      pendingSidePick: null,
+      currentTurn: firstTeam,
+      finalMap: null,
+      startingSideTeamB: null,
+      teamA: [{ id: 't1', nick: cleanA, level: 15, avatar: '🛡️' }],
+      teamB: [{ id: 't2', nick: cleanB, level: 15, avatar: '⚔️' }],
+    }));
+
     if (socket.connected) {
       socket.emit('join_room', {
         roomId: targetRoomId,
-        roomName: `${teamAName || 'Time A'} vs ${teamBName || 'Time B'}`,
+        roomName: `${cleanA} vs ${cleanB}`,
         player: myProfile?.nick ? myProfile : null,
         createIfMissing: true,
       });
-      socket.emit('quick_start_veto', { roomId: targetRoomId, teamAName, teamBName });
-    } else {
-      setRoom((prev) => ({
-        ...prev,
-        id: targetRoomId,
-        phase: 'veto',
-        bannedMaps: [],
-        currentTurn: 'teamA',
-        finalMap: null,
-        startingSideTeamB: null,
-        teamA: [{ id: 't1', nick: teamAName || 'Time A', level: 15, avatar: '🛡️' }],
-        teamB: [{ id: 't2', nick: teamBName || 'Time B', level: 15, avatar: '⚔️' }],
-      }));
+      socket.emit('quick_start_veto', {
+        roomId: targetRoomId,
+        teamAName: cleanA,
+        teamBName: cleanB,
+        matchFormat,
+        firstTeam,
+        bo1Order,
+      });
     }
   };
 
@@ -1288,62 +1319,298 @@ export default function App() {
   };
 
   // Start Veto Phase directly
-  const handleStartVeto = () => {
+  const handleStartVeto = (matchFormat = 'MD1') => {
+    const fmt = typeof matchFormat === 'string' && ['MD1', 'MD3', 'MD5'].includes(matchFormat) ? matchFormat : (room.matchFormat || 'MD1');
     if (socket.connected) {
-      socket.emit('start_veto', { roomId });
+      socket.emit('start_veto', { roomId, matchFormat: fmt });
     } else {
       setRoom((prev) => ({
         ...prev,
         phase: 'veto',
+        matchFormat: fmt,
         bannedMaps: [],
-        currentTurn: 'teamA',
+        pickedMaps: [],
+        vetoLog: [],
+        drawnSeries: [],
+        pendingSidePick: null,
+        currentTurn: prev.vetoFirstTeam || 'teamA',
         finalMap: null,
         startingSideTeamB: null,
       }));
     }
   };
 
-  // Ban Map
+  // Change Veto Format (MD1 / MD3 / MD5)
+  const handleChangeVetoFormat = (newFormat) => {
+    if (socket.connected) {
+      socket.emit('change_veto_format', { roomId, matchFormat: newFormat });
+    } else {
+      setRoom((prev) => ({
+        ...prev,
+        phase: 'veto',
+        matchFormat: newFormat,
+        bannedMaps: [],
+        pickedMaps: [],
+        vetoLog: [],
+        drawnSeries: [],
+        pendingSidePick: null,
+        currentTurn: prev.vetoFirstTeam || 'teamA',
+        finalMap: null,
+        startingSideTeamB: null,
+      }));
+    }
+  };
+
+  // Restart Veto Only
+  const handleRestartVeto = () => {
+    if (socket.connected) {
+      socket.emit('restart_veto', { roomId });
+    } else {
+      setRoom((prev) => ({
+        ...prev,
+        phase: 'veto',
+        bannedMaps: [],
+        pickedMaps: [],
+        vetoLog: [],
+        drawnSeries: [],
+        pendingSidePick: null,
+        currentTurn: prev.vetoFirstTeam || 'teamA',
+        finalMap: null,
+        startingSideTeamB: null,
+      }));
+    }
+  };
+
+  // Ban or Pick Map according to Pro Veto Schedule
   const handleBanMap = (mapId) => {
     if (socket.connected) {
       socket.emit('ban_map', { roomId, mapId });
     } else {
       setRoom((prev) => {
-        if (prev.bannedMaps.some((b) => b.mapId === mapId)) return prev;
+        if (prev.pendingSidePick) return prev;
+        if (prev.bannedMaps.some((b) => b.mapId === mapId) || (prev.pickedMaps || []).some((p) => p.mapId === mapId)) {
+          return prev;
+        }
+        const mapObj = prev.maps.find((m) => m.id === mapId);
+        if (!mapObj) return prev;
+
+        const schedule = getVetoSchedule(prev.matchFormat || 'MD1', prev.vetoFirstTeam || 'teamA', prev.bo1Order || 'ABABAB');
+        const actionIdx = prev.bannedMaps.length + (prev.pickedMaps?.length || 0);
+        const currentStep = schedule[actionIdx];
+        if (!currentStep) return prev;
+
+        if (currentStep.type === 'pick') {
+          const newPick = {
+            mapId,
+            map: mapObj,
+            pickedBy: currentStep.team,
+            sidePickBy: currentStep.sidePickBy,
+            mapNumber: currentStep.mapNumber,
+            step: currentStep.step,
+            sideTeamA: null,
+            sideTeamB: null,
+            knifeRound: false,
+            timestamp: Date.now(),
+          };
+          const newLog = [
+            ...(prev.vetoLog || []),
+            {
+              step: currentStep.step,
+              type: 'pick',
+              team: currentStep.team,
+              mapId,
+              mapName: mapObj.name,
+              mapNumber: currentStep.mapNumber,
+              sideTeamA: null,
+              sideTeamB: null,
+              knifeRound: false,
+            },
+          ];
+          return {
+            ...prev,
+            pickedMaps: [...(prev.pickedMaps || []), newPick],
+            vetoLog: newLog,
+            pendingSidePick: {
+              mapId,
+              mapNumber: currentStep.mapNumber,
+              pickedBy: currentStep.team,
+              sidePickBy: currentStep.sidePickBy,
+              step: currentStep.step,
+            },
+            currentTurn: currentStep.sidePickBy,
+          };
+        }
+
         const newBans = [
           ...prev.bannedMaps,
-          { mapId, bannedBy: prev.currentTurn, timestamp: Date.now() },
+          { mapId, bannedBy: currentStep.team, step: currentStep.step, timestamp: Date.now() },
         ];
-        const remaining = prev.maps.filter((m) => !newBans.some((b) => b.mapId === m.id));
+        const newLog = [
+          ...(prev.vetoLog || []),
+          { step: currentStep.step, type: 'ban', team: currentStep.team, mapId, mapName: mapObj.name },
+        ];
+        const remaining = prev.maps.filter(
+          (m) => !newBans.some((b) => b.mapId === m.id) && !(prev.pickedMaps || []).some((p) => p.mapId === m.id)
+        );
+        const nextStep = schedule[actionIdx + 1];
 
-        if (remaining.length === 1) {
+        if (remaining.length === 1 || !nextStep || nextStep.type === 'decider') {
           return {
             ...prev,
             bannedMaps: newBans,
-            finalMap: remaining[0],
+            vetoLog: newLog,
+            finalMap: remaining[0] || mapObj,
             phase: 'side_pick',
+            currentTurn: nextStep?.sidePickBy || 'teamA',
           };
         }
 
         return {
           ...prev,
           bannedMaps: newBans,
-          currentTurn: prev.currentTurn === 'teamA' ? 'teamB' : 'teamA',
+          vetoLog: newLog,
+          currentTurn: nextStep.team,
         };
       });
     }
   };
 
-  // Side Selection
+  // Side Selection (for picked map in MD3/MD5 or decider map)
   const handleSelectSide = (side) => {
     if (socket.connected) {
       socket.emit('select_side', { roomId, side });
     } else {
-      setRoom((prev) => ({
-        ...prev,
-        startingSideTeamB: side,
-        phase: 'finished',
-      }));
+      setRoom((prev) => {
+        const cleanSide = side === 'TR' ? 'TR' : side === 'KNIFE' ? 'KNIFE' : 'CT';
+        const schedule = getVetoSchedule(prev.matchFormat || 'MD1', prev.vetoFirstTeam || 'teamA', prev.bo1Order || 'ABABAB');
+
+        if (prev.phase === 'veto' && prev.pendingSidePick) {
+          const pending = prev.pendingSidePick;
+          const pickerTeam = pending.sidePickBy || 'teamB';
+          let sideA = 'CT';
+          let sideB = 'TR';
+          if (cleanSide === 'KNIFE') {
+            sideA = 'FACA';
+            sideB = 'FACA';
+          } else if (pickerTeam === 'teamA') {
+            sideA = cleanSide;
+            sideB = cleanSide === 'CT' ? 'TR' : 'CT';
+          } else {
+            sideB = cleanSide;
+            sideA = cleanSide === 'CT' ? 'TR' : 'CT';
+          }
+
+          const updatedPicks = (prev.pickedMaps || []).map((p) =>
+            p.mapId === pending.mapId ? { ...p, sideTeamA: sideA, sideTeamB: sideB, knifeRound: cleanSide === 'KNIFE' } : p
+          );
+          const updatedLog = (prev.vetoLog || []).map((l) =>
+            l.mapId === pending.mapId && l.type === 'pick'
+              ? { ...l, sideTeamA: sideA, sideTeamB: sideB, knifeRound: cleanSide === 'KNIFE' }
+              : l
+          );
+
+          const remaining = prev.maps.filter(
+            (m) => !prev.bannedMaps.some((b) => b.mapId === m.id) && !updatedPicks.some((p) => p.mapId === m.id)
+          );
+          const nextIdx = prev.bannedMaps.length + updatedPicks.length;
+          const nextStep = schedule[nextIdx];
+
+          if (remaining.length === 1 || !nextStep || nextStep.type === 'decider') {
+            return {
+              ...prev,
+              pickedMaps: updatedPicks,
+              vetoLog: updatedLog,
+              pendingSidePick: null,
+              finalMap: remaining[0],
+              phase: 'side_pick',
+              currentTurn: nextStep?.sidePickBy || 'teamA',
+            };
+          }
+
+          return {
+            ...prev,
+            pickedMaps: updatedPicks,
+            vetoLog: updatedLog,
+            pendingSidePick: null,
+            currentTurn: nextStep.team,
+          };
+        }
+
+        const deciderStep = schedule[schedule.length - 1];
+        const pickerTeam = deciderStep?.sidePickBy || 'teamB';
+        let deciderSideA = 'CT';
+        let deciderSideB = 'TR';
+        if (cleanSide === 'KNIFE') {
+          deciderSideA = 'CT';
+          deciderSideB = 'TR';
+        } else if (pickerTeam === 'teamA') {
+          deciderSideA = cleanSide;
+          deciderSideB = cleanSide === 'CT' ? 'TR' : 'CT';
+        } else {
+          deciderSideB = cleanSide;
+          deciderSideA = cleanSide === 'CT' ? 'TR' : 'CT';
+        }
+
+        const deciderMap = prev.finalMap;
+        const updatedLog = [
+          ...(prev.vetoLog || []),
+          {
+            step: schedule.length,
+            type: 'decider',
+            team: 'auto',
+            mapId: deciderMap?.id,
+            mapName: deciderMap?.name || 'Decider',
+            mapNumber: deciderStep?.mapNumber || 1,
+            sideTeamA: cleanSide === 'KNIFE' ? 'FACA' : deciderSideA,
+            sideTeamB: cleanSide === 'KNIFE' ? 'FACA' : deciderSideB,
+            knifeRound: cleanSide === 'KNIFE',
+          },
+        ];
+
+        const picks = prev.pickedMaps || [];
+        if (picks.length > 0) {
+          const labelA = prev.teamAName || prev.teamA?.[0]?.nick || 'Time A';
+          const labelB = prev.teamBName || prev.teamB?.[0]?.nick || 'Time B';
+          const series = picks.map((p) => ({
+            map: p.map,
+            sideTimeA: p.sideTeamA === 'FACA' ? 'CT' : (p.sideTeamA || 'CT'),
+            knifeRound: Boolean(p.knifeRound),
+            pickedBy: p.pickedBy,
+            role: `Mapa ${p.mapNumber} (Pick ${p.pickedBy === 'teamA' ? labelA : labelB})`,
+          }));
+          series.push({
+            map: deciderMap,
+            sideTimeA: deciderSideA,
+            knifeRound: cleanSide === 'KNIFE',
+            pickedBy: 'decider',
+            role: `Mapa ${series.length + 1} (Decider)`,
+          });
+          return {
+            ...prev,
+            vetoLog: updatedLog,
+            drawnSeries: series,
+            finalMap: series[0].map || deciderMap,
+            startingSideTeamB: series[0].sideTimeA === 'CT' ? 'TR' : 'CT',
+            phase: 'finished',
+          };
+        }
+
+        return {
+          ...prev,
+          vetoLog: updatedLog,
+          drawnSeries: [
+            {
+              map: deciderMap,
+              sideTimeA: deciderSideA,
+              knifeRound: cleanSide === 'KNIFE',
+              pickedBy: 'decider',
+              role: 'Mapa da Partida (Decider)',
+            },
+          ],
+          startingSideTeamB: deciderSideB,
+          phase: 'finished',
+        };
+      });
     }
   };
 
@@ -1357,8 +1624,14 @@ export default function App() {
         phase: 'lobby',
         teamA: [],
         teamB: [],
+        teamAName: null,
+        teamBName: null,
         metrics: null,
         bannedMaps: [],
+        pickedMaps: [],
+        vetoLog: [],
+        drawnSeries: [],
+        pendingSidePick: null,
         finalMap: null,
         startingSideTeamB: null,
         currentTurn: 'teamA',
@@ -1745,7 +2018,8 @@ export default function App() {
             room={room}
             onBanMap={handleBanMap}
             onSelectSide={handleSelectSide}
-            onResetMix={handleResetMix}
+            onChangeVetoFormat={handleChangeVetoFormat}
+            onResetMix={handleRestartVeto}
             soundEnabled={soundEnabled}
           />
         )}
@@ -1783,7 +2057,7 @@ export default function App() {
       />
 
       <SteamLoginGateModal
-        isOpen={steamGateModalOpen || (view === 'mix' && !isSteamLogged)}
+        isOpen={steamGateModalOpen || (view === 'mix' && room.phase === 'lobby' && !isSteamLogged)}
         roomId={roomId}
         actionText={steamGateActionText}
         soundEnabled={soundEnabled}

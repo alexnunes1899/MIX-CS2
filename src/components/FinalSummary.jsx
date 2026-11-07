@@ -3,7 +3,7 @@ import GCBadge from './GCBadge';
 import FaceitBadge from './FaceitBadge';
 import PlayerAvatar from './PlayerAvatar';
 import { CS2_MAPS } from '../data/maps';
-import { Trophy, Share2, Terminal, RotateCcw, Shield, Flame, Check, History, Zap, Radio, Sparkles, Bell, Play, Pause, RefreshCw, Send, Image } from 'lucide-react';
+import { Trophy, Share2, Terminal, RotateCcw, Shield, Flame, Check, History, Zap, Radio, Sparkles, Bell, Play, Pause, RefreshCw, Send, Image, Copy, Swords } from 'lucide-react';
 import { formatDiscordSummary, formatServerCommand } from '../utils/exportText';
 import { playClickSound } from '../utils/audio';
 import { getTeamNames } from '../utils/teamNames';
@@ -25,17 +25,46 @@ export default function FinalSummary({
 }) {
   const [copiedDiscord, setCopiedDiscord] = useState(false);
   const [copiedRcon, setCopiedRcon] = useState(false);
+  const [copiedHltv, setCopiedHltv] = useState(false);
   const [discordSending, setDiscordSending] = useState(false);
   const [discordSent, setDiscordSent] = useState(false);
   const [rconExecuting, setRconExecuting] = useState(null);
 
-  const { finalMap, teamA = [], teamB = [], metrics, startingSideTeamB, name: roomName = 'MIX', serverIp = '', rconPassword = '', liveMatch = null, rankingSystem = 'gc', discordWebhook = '' } = room;
+  const { finalMap, teamA = [], teamB = [], metrics, startingSideTeamB, name: roomName = 'MIX', serverIp = '', rconPassword = '', liveMatch = null, rankingSystem = 'gc', discordWebhook = '', vetoLog = [] } = room;
   const { labelA, labelB, upperA, upperB } = getTeamNames(room);
   const isFaceit = rankingSystem === 'faceit';
   const fullMap = CS2_MAPS.find((m) => m.id === finalMap?.id) || finalMap;
 
   const sideTeamB = startingSideTeamB || 'CT';
-  const sideTeamA = sideTeamB === 'CT' ? 'TR' : 'CT';
+  const sideTeamA = sideTeamB === 'KNIFE' ? 'KNIFE' : sideTeamB === 'CT' ? 'TR' : 'CT';
+
+  const handleCopyHltvLog = () => {
+    if (soundEnabled) playClickSound();
+    const lines = [
+      `🏆 Veto Oficial (${room.matchFormat || 'MD1'}) — ${labelA} vs ${labelB}`,
+      ...vetoLog.map((log, i) => {
+        const tName = log.team === 'teamA' ? labelA : labelB;
+        if (log.type === 'ban') return `${i + 1}. ${tName} removeu ${log.mapName}`;
+        if (log.type === 'pick') {
+          const sideTxt = log.sideTeamA
+            ? log.knifeRound
+              ? ' (🔪 Round Faca)'
+              : ` (${labelA}: ${log.sideTeamA} | ${labelB}: ${log.sideTeamB})`
+            : '';
+          return `${i + 1}. ${tName} escolheu ${log.mapName}${sideTxt}`;
+        }
+        const deciderSideTxt = log.sideTeamA
+          ? log.knifeRound
+            ? ' (🔪 Round Faca)'
+            : ` (${labelA}: ${log.sideTeamA} | ${labelB}: ${log.sideTeamB})`
+          : '';
+        return `${i + 1}. ${log.mapName} sobrou como Mapa Decider${deciderSideTxt}`;
+      }),
+    ];
+    navigator.clipboard.writeText(lines.join('\n'));
+    setCopiedHltv(true);
+    setTimeout(() => setCopiedHltv(false), 2000);
+  };
 
   const handleSendDiscord = async () => {
     if (soundEnabled) playClickSound();
@@ -233,8 +262,9 @@ export default function FinalSummary({
           <div className="grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-5 gap-3">
             {room.drawnSeries.map((item, idx) => {
               const mapObj = CS2_MAPS.find((m) => m.id === item.map?.id) || item.map;
-              const sideA = item.sideTimeA || 'CT';
-              const sideB = sideA === 'CT' ? 'TR' : 'CT';
+              const isKnife = Boolean(item.knifeRound) || item.sideTimeA === 'KNIFE' || item.sideTimeA === 'FACA';
+              const sideA = isKnife ? 'KNIFE' : (item.sideTimeA || 'CT');
+              const sideB = isKnife ? 'KNIFE' : sideA === 'CT' ? 'TR' : 'CT';
               const isFirst = idx === 0;
 
               return (
@@ -269,8 +299,112 @@ export default function FinalSummary({
                   </div>
 
                   <div className="relative z-10 pt-2 border-t border-white/10 flex items-center justify-between text-[10px] font-mono font-bold">
-                    <span className="text-sky-400">{labelA}: {sideA}</span>
-                    <span className="text-amber-400">{labelB}: {sideB}</span>
+                    {sideA === 'KNIFE' ? (
+                      <span className="text-purple-300 w-full text-center">🔪 Round Faca</span>
+                    ) : (
+                      <>
+                        <span className="text-sky-400">{labelA}: {sideA}</span>
+                        <span className="text-amber-400">{labelB}: {sideB}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Official HLTV / Major Pick & Ban Log Summary */}
+      {vetoLog && vetoLog.length > 0 && (
+        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-xl">
+          <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-800 flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <Swords size={15} className="text-amber-400" />
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-300">
+                Histórico Oficial do Veto (Padrão HLTV / Major)
+              </h4>
+            </div>
+            <button
+              onClick={handleCopyHltvLog}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-[11px] font-semibold transition-all cursor-pointer"
+            >
+              {copiedHltv ? (
+                <>
+                  <Check size={12} className="text-emerald-400" />
+                  <span className="text-emerald-400">Copiado!</span>
+                </>
+              ) : (
+                <>
+                  <Copy size={12} />
+                  <span>Copiar Log HLTV</span>
+                </>
+              )}
+            </button>
+          </div>
+          <div className="space-y-1.5">
+            {vetoLog.map((log, i) => {
+              const teamDisplay = log.team === 'teamA' ? labelA : labelB;
+              const isPick = log.type === 'pick';
+              const isDecider = log.type === 'decider';
+              return (
+                <div
+                  key={i}
+                  className={`flex items-center justify-between text-xs py-1.5 px-3 rounded-lg border ${
+                    isDecider
+                      ? 'bg-amber-500/10 border-amber-500/30 text-amber-200'
+                      : isPick
+                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'
+                      : 'bg-slate-950/60 border-slate-800/80 text-slate-300'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-800">
+                      #{i + 1}
+                    </span>
+                    {isDecider ? (
+                      <span>
+                        <strong className="text-amber-300">{log.mapName}</strong> sobrou como{' '}
+                        <strong className="text-amber-400 uppercase">Mapa Decider</strong>
+                      </span>
+                    ) : isPick ? (
+                      <span>
+                        <strong className={log.team === 'teamA' ? 'text-sky-400' : 'text-amber-400'}>
+                          {teamDisplay}
+                        </strong>{' '}
+                        escolheu <strong className="text-emerald-300">{log.mapName}</strong>{' '}
+                        <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/15 px-1.5 py-0.5 rounded">
+                          Mapa {log.mapNumber}
+                        </span>
+                      </span>
+                    ) : (
+                      <span>
+                        <strong className={log.team === 'teamA' ? 'text-sky-400' : 'text-amber-400'}>
+                          {teamDisplay}
+                        </strong>{' '}
+                        removeu <strong className="text-rose-400 line-through">{log.mapName}</strong>
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {(isPick || isDecider) && log.sideTeamA && (
+                      <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-200">
+                        {log.knifeRound
+                          ? '🔪 Round Faca'
+                          : `${labelA}: ${log.sideTeamA} | ${labelB}: ${log.sideTeamB}`}
+                      </span>
+                    )}
+                    <span
+                      className={`text-[10px] font-mono uppercase font-bold px-1.5 py-0.5 rounded ${
+                        isDecider
+                          ? 'bg-amber-500/20 text-amber-300'
+                          : isPick
+                          ? 'bg-emerald-500/20 text-emerald-300'
+                          : 'bg-rose-500/20 text-rose-400'
+                      }`}
+                    >
+                      {isDecider ? 'DECIDER' : isPick ? 'PICK' : 'BAN'}
+                    </span>
                   </div>
                 </div>
               );
@@ -434,10 +568,14 @@ export default function FinalSummary({
               </div>
               <div>
                 <h3 className="text-base font-bold font-heading text-white">
-                  {upperA} • Começa de {sideTeamA}
+                  {upperA} • {sideTeamA === 'KNIFE' ? '🔪 Round Faca' : `Começa de ${sideTeamA}`}
                 </h3>
                 <span className="text-xs text-slate-400">
-                  {sideTeamA === 'CT' ? 'Defesa (Contra-Terroristas)' : 'Ataque (Terroristas)'}
+                  {sideTeamA === 'KNIFE'
+                    ? 'Lado inicial será decidido no Round Faca'
+                    : sideTeamA === 'CT'
+                    ? 'Defesa (Contra-Terroristas)'
+                    : 'Ataque (Terroristas)'}
                 </span>
               </div>
             </div>
@@ -487,10 +625,14 @@ export default function FinalSummary({
               </div>
               <div>
                 <h3 className="text-base font-bold font-heading text-white">
-                  {upperB} • Começa de {sideTeamB}
+                  {upperB} • {sideTeamB === 'KNIFE' ? '🔪 Round Faca' : `Começa de ${sideTeamB}`}
                 </h3>
                 <span className="text-xs text-slate-400">
-                  {sideTeamB === 'CT' ? 'Defesa (Contra-Terroristas)' : 'Ataque (Terroristas)'}
+                  {sideTeamB === 'KNIFE'
+                    ? 'Lado inicial será decidido no Round Faca'
+                    : sideTeamB === 'CT'
+                    ? 'Defesa (Contra-Terroristas)'
+                    : 'Ataque (Terroristas)'}
                 </span>
               </div>
             </div>
