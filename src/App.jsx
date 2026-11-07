@@ -21,6 +21,9 @@ import GsiSetupModal from './components/GsiSetupModal';
 import RoomPasswordModal from './components/RoomPasswordModal';
 import FailoverBanner from './components/FailoverBanner';
 import UpdateNotificationBanner from './components/UpdateNotificationBanner';
+import LeaderboardModal from './components/LeaderboardModal';
+import DiscordWebhookModal from './components/DiscordWebhookModal';
+import MatchCardModal from './components/MatchCardModal';
 import { recordMatchResult } from './utils/playerStats';
 import { ACTIVE_DUTY_MAPS, OFFICIAL_ACTIVE_DUTY, EXTRA_CS2_MAPS } from './data/maps';
 import { balanceTeams, shuffleTeams, calculateMetricsForTeams } from './utils/balance';
@@ -81,6 +84,9 @@ export default function App() {
   const [steamGateActionText, setSteamGateActionText] = useState('criar ou entrar no mix');
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [gsiModalOpen, setGsiModalOpen] = useState(false);
+  const [leaderboardOpen, setLeaderboardOpen] = useState(false);
+  const [discordModalOpen, setDiscordModalOpen] = useState(false);
+  const [matchCardOpen, setMatchCardOpen] = useState(false);
   const [roomNotice, setRoomNotice] = useState(null);
   const [serverVersion, setServerVersion] = useState(null);
   const [updateAvailable, setUpdateAvailable] = useState(false);
@@ -747,6 +753,40 @@ export default function App() {
     }
   };
 
+  // Execute generic RCON command from client
+  const handleExecRconCommand = (command, label = 'Comando') => {
+    if (socket.connected) {
+      socket.emit('exec_rcon_command', { roomId, command }, (res) => {
+        if (res?.success) {
+          setRoomNotice({
+            title: `RCON: ${label}`,
+            message: res?.response || 'Comando executado com sucesso no servidor!',
+            type: 'info',
+          });
+        } else {
+          setRoomNotice({
+            title: 'Erro no RCON',
+            message: res?.error || 'Não foi possível executar o comando no servidor.',
+            type: 'warning',
+          });
+        }
+      });
+    }
+  };
+
+  // Update Discord Webhook settings
+  const handleSaveDiscordWebhook = ({ webhookUrl, autoLobby, autoVeto }) => {
+    if (socket.connected) {
+      socket.emit('set_discord_webhook', { roomId, webhookUrl, autoLobby, autoVeto });
+    }
+    setRoom((prev) => ({
+      ...prev,
+      discordWebhook: webhookUrl,
+      discordAutoLobby: autoLobby,
+      discordAutoVeto: autoVeto,
+    }));
+  };
+
   // Save match score
   const handleSaveScore = (scoreA, scoreB) => {
     const numA = Number(scoreA) || 0;
@@ -1145,6 +1185,7 @@ export default function App() {
           onOpenQuickVeto={() => setQuickVetoOpen(true)}
           onOpenQuickMapRoll={() => setQuickMapRollOpen(true)}
           onOpenRoomsHub={() => setRoomsHubOpen(true)}
+          onOpenLeaderboard={() => setLeaderboardOpen(true)}
           onRequireSteamLogin={handleRequireSteamLogin}
           onOpenProfile={() => setProfileModalOpen(true)}
           myProfile={myProfile}
@@ -1269,6 +1310,8 @@ export default function App() {
         onOpenHistory={() => setHistoryOpen(true)}
         onOpenQuickVeto={() => setQuickVetoOpen(true)}
         onOpenQuickMapRoll={() => setQuickMapRollOpen(true)}
+        onOpenLeaderboard={() => setLeaderboardOpen(true)}
+        onOpenDiscordModal={() => setDiscordModalOpen(true)}
         onGoHome={() => {
           setView('landing');
           const u = new URL(window.location);
@@ -1315,6 +1358,7 @@ export default function App() {
                 onStartCaptainDraft={handleStartCaptainDraft}
                 onOpenQuickVeto={() => setQuickVetoOpen(true)}
                 onOpenQuickMapRoll={() => setQuickMapRollOpen(true)}
+                onOpenDiscordModal={() => setDiscordModalOpen(true)}
                 serverIp={room.serverIp || ''}
                 onUpdateServerIp={handleUpdateServerIp}
                 rconPassword={room.rconPassword || ''}
@@ -1395,6 +1439,9 @@ export default function App() {
             onUpdateServerIp={handleUpdateServerIp}
             onUpdateRconPassword={handleUpdateRconPassword}
             onChangeServerMapRcon={handleChangeServerMapRcon}
+            onExecRconCommand={handleExecRconCommand}
+            onOpenMatchCard={() => setMatchCardOpen(true)}
+            onOpenDiscordModal={() => setDiscordModalOpen(true)}
             onOpenGsiSetup={() => setGsiModalOpen(true)}
             onOpenHistory={() => setHistoryOpen(true)}
             soundEnabled={soundEnabled}
@@ -1514,6 +1561,34 @@ export default function App() {
         errorMessage={passwordError}
         errorType={authErrorType}
         onOpenRoomsHub={() => setRoomsHubOpen(true)}
+        soundEnabled={soundEnabled}
+      />
+
+      {/* Community Hall of Fame & Leaderboard */}
+      <LeaderboardModal
+        isOpen={leaderboardOpen}
+        onClose={() => setLeaderboardOpen(false)}
+        socket={socket}
+        soundEnabled={soundEnabled}
+      />
+
+      {/* Discord Webhook Settings Modal */}
+      <DiscordWebhookModal
+        isOpen={discordModalOpen}
+        onClose={() => setDiscordModalOpen(false)}
+        roomId={roomId}
+        currentWebhook={room.discordWebhook || ''}
+        autoLobby={room.discordAutoLobby !== false}
+        autoVeto={room.discordAutoVeto !== false}
+        onSaveWebhook={handleSaveDiscordWebhook}
+        soundEnabled={soundEnabled}
+      />
+
+      {/* Visual Match Card Generator Modal */}
+      <MatchCardModal
+        isOpen={matchCardOpen}
+        onClose={() => setMatchCardOpen(false)}
+        room={room}
         soundEnabled={soundEnabled}
       />
 

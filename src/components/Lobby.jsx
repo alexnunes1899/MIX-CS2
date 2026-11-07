@@ -3,7 +3,7 @@ import GCBadge from './GCBadge';
 import FaceitBadge from './FaceitBadge';
 import PlayerAvatar from './PlayerAvatar';
 import ServerConnectBar from './ServerConnectBar';
-import { Users, Trash2, Bot, Scale, Shuffle, Shield, Flame, CheckCircle2, Crown, Check, AlertCircle, Zap, Dices, ArrowLeftRight, Lock, Globe, Share2, Layers, Copy, KeyRound, Hash, Eye, EyeOff, Sparkles } from 'lucide-react';
+import { Users, Trash2, Bot, Scale, Shuffle, Shield, Flame, CheckCircle2, Crown, Check, AlertCircle, Zap, Dices, ArrowLeftRight, Lock, Globe, Share2, Layers, Copy, KeyRound, Hash, Eye, EyeOff, Sparkles, Bell } from 'lucide-react';
 import { playClickSound, playReadySound } from '../utils/audio';
 
 export default function Lobby({
@@ -19,6 +19,7 @@ export default function Lobby({
   onStartCaptainDraft,
   onOpenQuickVeto,
   onOpenQuickMapRoll,
+  onOpenDiscordModal,
   serverIp = '',
   onUpdateServerIp,
   rconPassword = '',
@@ -142,15 +143,32 @@ export default function Lobby({
             </p>
           </div>
 
-          <button
-            type="button"
-            onClick={handleCopyInviteLink}
-            className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs uppercase tracking-wider shadow-md shadow-amber-500/20 flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95 shrink-0"
-            title={isPrivate ? 'Copiar link de acesso exclusivo para convidados' : 'Copiar link para amigos entrarem'}
-          >
-            {copiedInvite ? <Check size={14} className="text-slate-950" /> : <Share2 size={14} />}
-            <span>{copiedInvite ? 'Link Copiado!' : isPrivate ? 'Copiar Link (Acesso Exclusivo)' : 'Copiar Link da Sala'}</span>
-          </button>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            {onOpenDiscordModal && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (soundEnabled) playClickSound();
+                  onOpenDiscordModal();
+                }}
+                className="px-3 py-2.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95"
+                title="Configurar Notificações no Discord (Avisar quando fechar 10/10)"
+              >
+                <Bell size={14} className="text-indigo-400" />
+                <span className="hidden sm:inline">Discord</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={handleCopyInviteLink}
+              className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs uppercase tracking-wider shadow-md shadow-amber-500/20 flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95 shrink-0"
+              title={isPrivate ? 'Copiar link de acesso exclusivo para convidados' : 'Copiar link para amigos entrarem'}
+            >
+              {copiedInvite ? <Check size={14} className="text-slate-950" /> : <Share2 size={14} />}
+              <span>{copiedInvite ? 'Link Copiado!' : isPrivate ? 'Copiar Link (Acesso Exclusivo)' : 'Copiar Link da Sala'}</span>
+            </button>
+          </div>
         </div>
 
         {/* Room Credentials Bar (Usuário & Senha da Sala) */}

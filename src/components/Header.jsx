@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Share2, Check, Users, Swords, MapPin, Trophy, Volume2, VolumeX, Layers, History, Dices, Zap, Home, Server, Play, Copy, User, Trash2, Lock, KeyRound, Eye, EyeOff, Globe } from 'lucide-react';
+import { Share2, Check, Users, Swords, MapPin, Trophy, Volume2, VolumeX, Layers, History, Dices, Zap, Home, Server, Play, Copy, User, Trash2, Lock, KeyRound, Eye, EyeOff, Globe, Bell } from 'lucide-react';
 import PlayerAvatar from './PlayerAvatar';
 import DeleteRoomModal from './DeleteRoomModal';
 import { playClickSound } from '../utils/audio';
@@ -20,6 +20,8 @@ export default function Header({
   onOpenHistory,
   onOpenQuickVeto,
   onOpenQuickMapRoll,
+  onOpenLeaderboard,
+  onOpenDiscordModal,
   onGoHome,
   roomPassword = '',
   hasPassword = false,
@@ -118,6 +120,26 @@ export default function Header({
             {/* Quick action buttons on mobile */}
             <div className="flex md:hidden items-center gap-1.5">
               <button
+                onClick={() => {
+                  if (soundEnabled) playClickSound();
+                  if (onOpenLeaderboard) onOpenLeaderboard();
+                }}
+                className="p-2 rounded-lg bg-amber-500/15 text-amber-400 hover:text-white border border-amber-500/30"
+                title="Hall da Fama & Ranking"
+              >
+                <Trophy size={17} />
+              </button>
+              <button
+                onClick={() => {
+                  if (soundEnabled) playClickSound();
+                  if (onOpenDiscordModal) onOpenDiscordModal();
+                }}
+                className="p-2 rounded-lg bg-indigo-500/15 text-indigo-400 hover:text-white border border-indigo-500/30"
+                title="Notificações Discord"
+              >
+                <Bell size={17} />
+              </button>
+              <button
                 onClick={onOpenQuickMapRoll}
                 className="p-2 rounded-lg bg-slate-800 text-amber-400 hover:text-white"
                 title="Roleta de Mapa Rápido"
@@ -190,6 +212,32 @@ export default function Header({
             >
               <Home size={14} className="text-amber-400" />
               <span className="hidden sm:inline">Início</span>
+            </button>
+
+            {/* Hall of Fame & Community Leaderboard */}
+            <button
+              onClick={() => {
+                if (soundEnabled) playClickSound();
+                if (onOpenLeaderboard) onOpenLeaderboard();
+              }}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/40 text-xs font-bold transition-all cursor-pointer shadow-sm shadow-amber-500/10"
+              title="Hall da Fama & Ranking Geral de Jogadores"
+            >
+              <Trophy size={14} className="text-amber-400" />
+              <span className="hidden sm:inline">Hall da Fama</span>
+            </button>
+
+            {/* Discord Webhook Notifications */}
+            <button
+              onClick={() => {
+                if (soundEnabled) playClickSound();
+                if (onOpenDiscordModal) onOpenDiscordModal();
+              }}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 border border-indigo-500/40 text-xs font-bold transition-all cursor-pointer shadow-sm shadow-indigo-500/10"
+              title="Configurar Notificações Automáticas no Discord"
+            >
+              <Bell size={14} className="text-indigo-400" />
+              <span className="hidden sm:inline">Discord</span>
             </button>
 
             {/* Quick Tools */}

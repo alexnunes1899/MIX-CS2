@@ -10,6 +10,7 @@ export default function LandingPage({
   onOpenQuickVeto,
   onOpenQuickMapRoll,
   onOpenRoomsHub,
+  onOpenLeaderboard,
   onRequireSteamLogin,
   onOpenProfile,
   myProfile,
@@ -120,6 +121,20 @@ export default function LandingPage({
                 {activeRooms.length}
               </span>
             </button>
+
+            {onOpenLeaderboard && (
+              <button
+                onClick={() => {
+                  if (soundEnabled) playClickSound();
+                  onOpenLeaderboard();
+                }}
+                className="hover:text-amber-300 transition-colors cursor-pointer flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/30 hover:border-amber-400 px-3 py-1.5 rounded-lg text-amber-400"
+                title="Ver Hall da Fama e Ranking da Comunidade"
+              >
+                <Trophy size={13} />
+                <span>Hall da Fama</span>
+              </button>
+            )}
           </div>
 
           {/* Steam & Direct Action */}

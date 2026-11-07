@@ -9,6 +9,8 @@ import { executeRconCommand } from './rcon.js';
 import { handleGsiPayload, getGsiState, generateGsiConfig } from './gsi.js';
 import { getSteamPlayerDetails } from './steamApi.js';
 import { fetchFaceitPlayer } from './faceit.js';
+import { sendDiscordWebhook, isValidDiscordWebhookUrl } from './discordWebhook.js';
+import { getLeaderboard, recordMatch } from './leaderboard.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -221,6 +223,9 @@ function getOrCreateRoom(roomId, customName = '', rankingSystem = 'gc', serverIp
       password: (password || '').trim(),
       isPrivate: Boolean(isPrivate),
       inviteKey: finalInviteKey,
+      discordWebhook: '',
+      discordAutoLobby: true,
+      discordAutoVeto: true,
       liveMatch: null,
       chat: [],
       history: [],
@@ -408,6 +413,49 @@ function calculateBalance(players, rankingSystem = 'gc') {
   };
 }
 
+function dispatchAutoDiscordVeto(room) {
+  if (!room || !room.discordWebhook || !room.discordAutoVeto) return;
+  const sideB = room.startingSideTeamB || 'CT';
+  const sideA = sideB === 'CT' ? 'TR' : 'CT';
+  const creatorNick = room.creatorNick || 'Alex';
+  sendDiscordWebhook({
+    webhookUrl: room.discordWebhook,
+    eventType: 'mix_ready',
+    data: {
+      roomName: room.name || 'MIX',
+      mapName: room.finalMap?.name || 'Mirage',
+      mapFile: room.finalMap?.file || 'de_mirage',
+      mapImage: room.finalMap?.image || '',
+      mapLogo: room.finalMap?.logo || '',
+      matchFormat: room.matchFormat || 'MD1',
+      nameA: `Time ${creatorNick}`,
+      nameB: `Time Oponente`,
+      sideA,
+      sideB,
+      teamA: room.teamA,
+      teamB: room.teamB,
+      metrics: room.metrics,
+      serverIp: room.serverIp,
+      connectCommand: room.serverIp ? (room.serverIp.includes('connect') ? room.serverIp : `connect ${room.serverIp}`) : '',
+    },
+  }).catch((err) => console.warn('[DISCORD] Falha no webhook automático de veto:', err.message));
+}
+
+function dispatchAutoDiscordLobby(room) {
+  if (!room || !room.discordWebhook || !room.discordAutoLobby || room.discordLobbyNotified) return;
+  if (room.players.length === 10) {
+    room.discordLobbyNotified = true;
+    sendDiscordWebhook({
+      webhookUrl: room.discordWebhook,
+      eventType: 'lobby_full',
+      data: {
+        roomName: room.name || 'MIX',
+        playerCount: 10,
+      },
+    }).catch((err) => console.warn('[DISCORD] Falha no webhook de 10/10:', err.message));
+  }
+}
+
 io.on('connection', (socket) => {
   // Emit current server version/timestamp to client so client detects deployments instantly
   socket.emit('server_app_version', { version: BUILD_VERSION });
@@ -564,6 +612,7 @@ io.on('connection', (socket) => {
       }
     }
 
+    dispatchAutoDiscordLobby(room);
     emitRoomState(cleanRoomId, room);
     broadcastRoomsList();
   });
@@ -833,6 +882,7 @@ io.on('connection', (socket) => {
     const room = getRoomAndTouch(roomId);
     if (!room) return;
     room.players = JSON.parse(JSON.stringify(MOCK_BOTS));
+    dispatchAutoDiscordLobby(room);
     emitRoomState(roomId, room);
     broadcastRoomsList();
   });
@@ -1033,6 +1083,7 @@ io.on('connection', (socket) => {
       room.teamB = [{ id: 't2', nick: 'Time B', level: 15, avatar: '⚔️' }];
     }
 
+    dispatchAutoDiscordVeto(room);
     emitRoomState(roomId, room);
   });
 
@@ -1068,6 +1119,7 @@ io.on('connection', (socket) => {
     room.startingSideTeamB = side;
     room.phase = 'finished';
 
+    dispatchAutoDiscordVeto(room);
     emitRoomState(roomId, room);
   });
 
@@ -1090,6 +1142,28 @@ io.on('connection', (socket) => {
     });
 
     if (room.history.length > 20) room.history.pop();
+
+    // Automatically update persistent Hall of Fame / Leaderboard
+    if (numA > numB && room.teamA.length > 0) {
+      const updated = recordMatch({
+        winners: room.teamA,
+        losers: room.teamB,
+        map: room.finalMap?.name || 'Indefinido',
+        scoreWinners: numA,
+        scoreLosers: numB,
+      });
+      io.emit('leaderboard_updated', updated);
+    } else if (numB > numA && room.teamB.length > 0) {
+      const updated = recordMatch({
+        winners: room.teamB,
+        losers: room.teamA,
+        map: room.finalMap?.name || 'Indefinido',
+        scoreWinners: numB,
+        scoreLosers: numA,
+      });
+      io.emit('leaderboard_updated', updated);
+    }
+
     emitRoomState(roomId, room);
   });
 
@@ -1125,6 +1199,7 @@ io.on('connection', (socket) => {
     room.currentTurn = 'teamA';
     room.coin = null;
     room.unassignedPlayers = [];
+    room.discordLobbyNotified = false;
 
     // unready players
     room.players.forEach((p) => { p.ready = false; });
@@ -1240,6 +1315,54 @@ io.on('connection', (socket) => {
     } catch (err) {
       if (typeof callback === 'function') callback({ error: err.message });
     }
+  });
+
+  // Discord Webhook Settings for Room
+  socket.on('set_discord_webhook', ({ roomId, webhookUrl, autoLobby = true, autoVeto = true }) => {
+    const room = getRoomAndTouch(roomId);
+    if (!room) return;
+    room.discordWebhook = (webhookUrl || '').trim();
+    room.discordAutoLobby = Boolean(autoLobby);
+    room.discordAutoVeto = Boolean(autoVeto);
+    emitRoomState(roomId, room);
+  });
+
+  // Trigger Discord Notification
+  socket.on('send_discord_webhook', async ({ roomId, eventType, data }, callback) => {
+    const room = getRoomAndTouch(roomId);
+    const targetUrl = (data?.webhookUrl || room?.discordWebhook || '').trim();
+    if (!targetUrl) {
+      if (typeof callback === 'function') callback({ error: 'Nenhum Webhook do Discord configurado.' });
+      return;
+    }
+
+    try {
+      const res = await sendDiscordWebhook({
+        webhookUrl: targetUrl,
+        eventType: eventType || 'test',
+        data: {
+          ...data,
+          roomName: data?.roomName || room?.name || 'MIX',
+          serverIp: data?.serverIp || room?.serverIp || '',
+        },
+      });
+      if (typeof callback === 'function') callback({ success: true, ...res });
+    } catch (err) {
+      if (typeof callback === 'function') callback({ error: err.message });
+    }
+  });
+
+  // Leaderboard Socket Requests
+  socket.on('get_leaderboard', (callback) => {
+    const data = getLeaderboard();
+    if (typeof callback === 'function') callback(data);
+    else socket.emit('leaderboard_data', data);
+  });
+
+  socket.on('record_leaderboard_match', (matchData, callback) => {
+    const updated = recordMatch(matchData);
+    io.emit('leaderboard_updated', updated);
+    if (typeof callback === 'function') callback({ success: true, leaderboard: updated });
   });
 
   socket.on('disconnect', () => {
@@ -1471,6 +1594,35 @@ app.post('/api/rcon/exec', sensitiveLimiter, async (req, res) => {
   try {
     const result = await executeRconCommand({ host, port, password, command: cleanCmd });
     res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// 3. Hall of Fame & Community Leaderboard API
+app.get('/api/leaderboard', (req, res) => {
+  res.json(getLeaderboard());
+});
+
+app.post('/api/leaderboard/record', sensitiveLimiter, (req, res) => {
+  const { winners, losers, map, scoreWinners, scoreLosers } = req.body;
+  if (!Array.isArray(winners) || !Array.isArray(losers)) {
+    return res.status(400).json({ error: 'Arrays de winners e losers são obrigatórios.' });
+  }
+  const updated = recordMatch({ winners, losers, map, scoreWinners, scoreLosers });
+  io.emit('leaderboard_updated', updated);
+  res.json({ success: true, leaderboard: updated });
+});
+
+// 4. Discord Webhook Dispatcher
+app.post('/api/discord/webhook', sensitiveLimiter, async (req, res) => {
+  const { webhookUrl, eventType, data } = req.body;
+  if (!webhookUrl || !isValidDiscordWebhookUrl(webhookUrl)) {
+    return res.status(400).json({ error: 'URL do Webhook do Discord inválida.' });
+  }
+  try {
+    const result = await sendDiscordWebhook({ webhookUrl, eventType, data });
+    res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

@@ -3,7 +3,7 @@ import GCBadge from './GCBadge';
 import FaceitBadge from './FaceitBadge';
 import PlayerAvatar from './PlayerAvatar';
 import { CS2_MAPS } from '../data/maps';
-import { Trophy, Share2, Terminal, RotateCcw, Shield, Flame, Check, History, Zap, Radio } from 'lucide-react';
+import { Trophy, Share2, Terminal, RotateCcw, Shield, Flame, Check, History, Zap, Radio, Sparkles, Bell, Play, Pause, RefreshCw, Send, Image } from 'lucide-react';
 import { formatDiscordSummary, formatServerCommand } from '../utils/exportText';
 import { playClickSound } from '../utils/audio';
 import { getTeamNames } from '../utils/teamNames';
@@ -15,20 +15,70 @@ export default function FinalSummary({
   onUpdateServerIp,
   onUpdateRconPassword,
   onChangeServerMapRcon,
+  onExecRconCommand,
+  onOpenMatchCard,
+  onOpenDiscordModal,
   onOpenGsiSetup,
   onOpenHistory,
   soundEnabled,
 }) {
   const [copiedDiscord, setCopiedDiscord] = useState(false);
   const [copiedRcon, setCopiedRcon] = useState(false);
+  const [discordSending, setDiscordSending] = useState(false);
+  const [discordSent, setDiscordSent] = useState(false);
+  const [rconExecuting, setRconExecuting] = useState(null);
 
-  const { finalMap, teamA = [], teamB = [], metrics, startingSideTeamB, name: roomName = 'MIX', serverIp = '', rconPassword = '', liveMatch = null, rankingSystem = 'gc' } = room;
+  const { finalMap, teamA = [], teamB = [], metrics, startingSideTeamB, name: roomName = 'MIX', serverIp = '', rconPassword = '', liveMatch = null, rankingSystem = 'gc', discordWebhook = '' } = room;
   const { labelA, labelB, upperA, upperB } = getTeamNames(room);
   const isFaceit = rankingSystem === 'faceit';
   const fullMap = CS2_MAPS.find((m) => m.id === finalMap?.id) || finalMap;
 
   const sideTeamB = startingSideTeamB || 'CT';
   const sideTeamA = sideTeamB === 'CT' ? 'TR' : 'CT';
+
+  const handleSendDiscord = async () => {
+    if (soundEnabled) playClickSound();
+    if (!discordWebhook) {
+      if (onOpenDiscordModal) onOpenDiscordModal();
+      return;
+    }
+    setDiscordSending(true);
+    try {
+      const res = await fetch('/api/discord/webhook', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          webhookUrl: discordWebhook,
+          eventType: 'mix_ready',
+          data: {
+            roomName,
+            mapName: fullMap?.name,
+            mapFile: fullMap?.file,
+            mapImage: fullMap?.image,
+            mapLogo: fullMap?.logo,
+            matchFormat: room.matchFormat || 'MD1',
+            nameA: upperA,
+            nameB: upperB,
+            sideA: sideTeamA,
+            sideB: sideTeamB,
+            teamA,
+            teamB,
+            metrics,
+            serverIp,
+            connectCommand: serverIp ? (serverIp.includes('connect') ? serverIp : `connect ${serverIp}`) : '',
+          },
+        }),
+      });
+      if (res.ok) {
+        setDiscordSent(true);
+        setTimeout(() => setDiscordSent(false), 3000);
+      }
+    } catch (e) {
+      console.warn('Erro ao disparar webhook:', e);
+    } finally {
+      setDiscordSending(false);
+    }
+  };
 
   const handleCopyDiscord = () => {
     if (soundEnabled) playClickSound();
@@ -98,35 +148,67 @@ export default function FinalSummary({
             Arquivo de Mapa: <strong className="text-amber-400 font-mono">{fullMap?.file}</strong> • Local: <strong className="text-slate-200">{fullMap?.location || 'CS2'}</strong>
           </p>
 
-          <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
+          <div className="pt-2 flex flex-wrap items-center justify-center gap-2.5">
+            {/* Generate Visual Match Card (PNG) */}
+            {onOpenMatchCard && (
+              <button
+                onClick={() => {
+                  if (soundEnabled) playClickSound();
+                  onOpenMatchCard();
+                }}
+                className="px-4 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-amber-500/25 active:scale-95"
+                title="Gera e baixa um card visual em alta resolução para WhatsApp ou redes sociais"
+              >
+                <Sparkles size={15} />
+                <span>Gerar Card (PNG)</span>
+              </button>
+            )}
+
+            {/* Post to Discord Webhook */}
+            <button
+              onClick={handleSendDiscord}
+              disabled={discordSending}
+              className={`px-4 py-3 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer shadow-lg active:scale-95 ${
+                discordSent
+                  ? 'bg-emerald-500 text-slate-950'
+                  : 'bg-indigo-600/90 hover:bg-indigo-500 text-white shadow-indigo-500/25'
+              }`}
+              title={discordWebhook ? 'Enviar notificação formatada para o Discord' : 'Configurar Webhook do Discord'}
+            >
+              {discordSent ? <Check size={15} /> : <Bell size={15} />}
+              <span>{discordSending ? 'Enviando...' : discordSent ? 'Enviado ao Discord!' : 'Avisar no Discord'}</span>
+            </button>
+
+            {/* Change Server Map via RCON */}
             {onChangeServerMapRcon && serverIp && (
               <button
                 onClick={() => {
                   if (soundEnabled) playClickSound();
                   onChangeServerMapRcon(fullMap?.file || 'de_mirage');
                 }}
-                className="px-5 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 text-slate-950 font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-emerald-500/25 active:scale-95"
+                className="px-4 py-3 rounded-xl bg-emerald-600/90 hover:bg-emerald-500 text-slate-950 font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-emerald-500/25 active:scale-95"
                 title={`Muda o mapa no servidor FireGames para ${fullMap?.file} automaticamente via RCON`}
               >
                 <Zap size={15} />
-                <span>Mudar Servidor para {fullMap?.name} (RCON)</span>
+                <span>Mudar Servidor ({fullMap?.name})</span>
               </button>
             )}
 
             <button
               onClick={handleCopyDiscord}
-              className="px-5 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs uppercase tracking-wider shadow-lg shadow-amber-500/25 flex items-center gap-2 transition-all cursor-pointer active:scale-95"
+              className="px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer active:scale-95"
             >
-              {copiedDiscord ? <Check size={16} /> : <Share2 size={16} />}
-              <span>{copiedDiscord ? 'Copiado!' : 'Copiar Escalação (Discord)'}</span>
+              {copiedDiscord ? <Check size={15} className="text-emerald-400" /> : <Share2 size={15} />}
+              <span>{copiedDiscord ? 'Copiado!' : 'Copiar Texto'}</span>
             </button>
 
             <button
               onClick={handleCopyRcon}
-              className="px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold text-xs flex items-center gap-2 transition-all cursor-pointer font-mono active:scale-95"
+              className="px-3.5 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-semibold text-xs flex items-center gap-2 transition-all cursor-pointer font-mono active:scale-95"
+              title="Copiar comando de RCON changelevel"
             >
               {copiedRcon ? <Check size={14} className="text-emerald-400" /> : <Terminal size={14} />}
-              <span>{copiedRcon ? 'Copiado!' : 'Copiar RCON'}</span>
+              <span>{copiedRcon ? 'Copiado!' : 'RCON'}</span>
             </button>
           </div>
         </div>
@@ -230,6 +312,102 @@ export default function FinalSummary({
         onOpenGsiSetup={onOpenGsiSetup}
         soundEnabled={soundEnabled}
       />
+
+      {/* RCON 1-Click Server Administration Hub */}
+      {serverIp && (
+        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-xl space-y-2.5">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <Terminal size={15} className="text-amber-400" />
+              <h4 className="text-xs font-bold uppercase tracking-wider text-white">
+                Controle do Servidor CS2 (1-Clique via RCON)
+              </h4>
+            </div>
+            <span className="text-[10px] font-mono text-slate-400">
+              Host: {serverIp.split(';')[0]}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => {
+                if (soundEnabled) playClickSound();
+                if (onChangeServerMapRcon) onChangeServerMapRcon(fullMap?.file || 'de_mirage');
+              }}
+              className="px-3.5 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-300 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+              title="Carrega o mapa decider no servidor"
+            >
+              <Zap size={13} />
+              <span>Mudar Mapa ({fullMap?.name})</span>
+            </button>
+
+            <button
+              onClick={() => {
+                if (soundEnabled) playClickSound();
+                if (onExecRconCommand) onExecRconCommand('exec gamemode_competitive; mp_restartgame 1; say "[CS2 MIX HUB] PARTIDA INICIADA! LIVE LIVE LIVE!"', 'Iniciar LIVE');
+              }}
+              className="px-3.5 py-2 rounded-xl bg-teal-500/15 hover:bg-teal-500/25 border border-teal-500/40 text-teal-300 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+              title="Inicia modo competitivo oficial"
+            >
+              <Play size={13} />
+              <span>Iniciar Partida (LIVE)</span>
+            </button>
+
+            <button
+              onClick={() => {
+                if (soundEnabled) playClickSound();
+                if (onExecRconCommand) onExecRconCommand('mp_warmup_start; mp_warmup_pausetimer 1', 'Aquecimento');
+              }}
+              className="px-3 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+            >
+              <span>Aquecimento</span>
+            </button>
+
+            <button
+              onClick={() => {
+                if (soundEnabled) playClickSound();
+                if (onExecRconCommand) onExecRconCommand('mp_warmup_end', 'Fim do Aquecimento');
+              }}
+              className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+            >
+              <span>Fim Aquecimento</span>
+            </button>
+
+            <button
+              onClick={() => {
+                if (soundEnabled) playClickSound();
+                if (onExecRconCommand) onExecRconCommand('mp_pause_match', 'Pausar Partida');
+              }}
+              className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+            >
+              <Pause size={13} />
+              <span>Pausar</span>
+            </button>
+
+            <button
+              onClick={() => {
+                if (soundEnabled) playClickSound();
+                if (onExecRconCommand) onExecRconCommand('mp_unpause_match', 'Despausar Partida');
+              }}
+              className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+            >
+              <Play size={13} />
+              <span>Despausar</span>
+            </button>
+
+            <button
+              onClick={() => {
+                if (soundEnabled) playClickSound();
+                if (onExecRconCommand) onExecRconCommand('mp_restartgame 1', 'Reiniciar Round');
+              }}
+              className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
+            >
+              <RefreshCw size={13} />
+              <span>Reiniciar 1s</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Starting Teams & Sides */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
