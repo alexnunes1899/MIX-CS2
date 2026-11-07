@@ -1608,6 +1608,7 @@ export default function App() {
             onOpenDiscordModal={() => setDiscordModalOpen(true)}
             onOpenGsiSetup={() => setGsiModalOpen(true)}
             onOpenHistory={() => setHistoryOpen(true)}
+            onOpenServersPage={handleOpenServersPage}
             soundEnabled={soundEnabled}
           />
         )}

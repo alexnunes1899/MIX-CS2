@@ -20,6 +20,7 @@ export default function FinalSummary({
   onOpenDiscordModal,
   onOpenGsiSetup,
   onOpenHistory,
+  onOpenServersPage,
   soundEnabled,
 }) {
   const [copiedDiscord, setCopiedDiscord] = useState(false);
@@ -310,6 +311,7 @@ export default function FinalSummary({
         roomId={room.id}
         liveMatch={liveMatch}
         onOpenGsiSetup={onOpenGsiSetup}
+        onOpenServersPage={onOpenServersPage}
         soundEnabled={soundEnabled}
         finalMap={room.finalMap?.id || 'de_mirage'}
       />

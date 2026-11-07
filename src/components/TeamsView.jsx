@@ -183,6 +183,14 @@ export default function TeamsView({
                             Flex
                           </span>
                         )}
+                        {p.cs2Hours && (
+                          <span
+                            className="text-[9px] font-mono text-amber-400 bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20 font-bold"
+                            title={`${p.cs2Hours.toLocaleString('pt-BR')} horas no CS2`}
+                          >
+                            🕒 {p.cs2Hours.toLocaleString('pt-BR')}h
+                          </span>
+                        )}
                       </div>
                       <span className="text-[10px] text-slate-400 font-mono">Jogador #{i + 1}</span>
                     </div>
@@ -284,6 +292,14 @@ export default function TeamsView({
                         {p.side === 'ANY' && (
                           <span className="text-[9px] font-bold text-purple-400 bg-purple-500/10 px-1.5 py-0.2 rounded border border-purple-500/20">
                             Flex
+                          </span>
+                        )}
+                        {p.cs2Hours && (
+                          <span
+                            className="text-[9px] font-mono text-amber-400 bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20 font-bold"
+                            title={`${p.cs2Hours.toLocaleString('pt-BR')} horas no CS2`}
+                          >
+                            🕒 {p.cs2Hours.toLocaleString('pt-BR')}h
                           </span>
                         )}
                       </div>
