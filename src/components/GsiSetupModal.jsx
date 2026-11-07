@@ -248,6 +248,16 @@ export default function GsiSetupModal({
           </div>
         )}
 
+        {/* DISCORD MONITORING CALLOUT */}
+        <div className="mt-4 p-3 rounded-2xl bg-indigo-500/10 border border-indigo-500/25 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <span className="text-base">📢</span>
+            <p className="text-xs text-indigo-200">
+              <strong>Transmissão no Discord:</strong> O placar, vencedor de cada round (CT/TR), defuse e virada de lado são enviados ao vivo no seu canal do Discord!
+            </p>
+          </div>
+        </div>
+
         {/* ACTION BUTTONS: DOWNLOAD & COPY */}
         <div className="mt-5 flex flex-col sm:flex-row items-center gap-3">
           <button

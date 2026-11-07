@@ -166,6 +166,153 @@ export async function sendDiscordWebhook({ webhookUrl, eventType, data = {} }) {
         },
       ],
     };
+  } else if (eventType === 'gsi_round') {
+    const {
+      roomName = 'MIX',
+      mapName = 'Mirage',
+      roundNumber = 1,
+      scoreCT = 0,
+      scoreTR = 0,
+      winTeam = 'CT',
+      bomb = 'none',
+      roomUrl = '',
+    } = data;
+
+    const isCT = winTeam === 'CT';
+    const embedColor = isCT ? 0x38bdf8 : 0xf97316; // Sky blue for CT, Orange for TR
+
+    let reasonText = `${isCT ? 'Os Contraterroristas' : 'Os Terroristas'} eliminaram toda a equipe adversária.`;
+    if (bomb === 'defused') {
+      reasonText = '🛡️ A C4 foi desarmada com sucesso! Vitória dos Contraterroristas.';
+    } else if (bomb === 'exploded') {
+      reasonText = '🔥 A C4 detonou no bombsite! Vitória dos Terroristas.';
+    }
+
+    const totalRounds = scoreCT + scoreTR;
+    let extraNote = '';
+    if (totalRounds === 12) {
+      extraNote = '\n\n🔄 **Fim da 1ª Metade (12º Round)!** Os times vão inverter os lados.';
+    } else if (scoreCT === 12 && scoreTR === 12) {
+      extraNote = '\n\n⚡ **Empate em 12x12! Partida indo para a Prorrogação (Overtime)!**';
+    } else if (scoreCT === 12 || scoreTR === 12) {
+      extraNote = `\n\n🎯 **Match Point para o ${scoreCT === 12 ? 'Time CT' : 'Time TR'}!**`;
+    }
+
+    payload = {
+      username: 'CS2 Mix Hub • GSI Tracker',
+      avatar_url: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=200&q=80',
+      embeds: [
+        {
+          title: `⚔️ ROUND ${roundNumber} • ${isCT ? '🛡️ CT' : '🔥 TR'} VENCEU!`,
+          description: `${reasonText}${extraNote}`,
+          color: embedColor,
+          fields: [
+            {
+              name: '📊 Placar Atual',
+              value: `🛡️ Time CT **${scoreCT}**  ×  **${scoreTR}** Time TR 🔥`,
+              inline: true,
+            },
+            {
+              name: '🗺️ Mapa',
+              value: `\`${mapName}\``,
+              inline: true,
+            },
+            {
+              name: '📍 Sala',
+              value: roomUrl ? `[${roomName}](${roomUrl})` : `**${roomName}**`,
+              inline: true,
+            },
+          ],
+          footer: {
+            text: `CS2 Mix Hub • GSI Monitoramento ao Vivo • Round ${roundNumber}`,
+          },
+          timestamp: new Date().toISOString(),
+        },
+      ],
+    };
+  } else if (eventType === 'gsi_bomb') {
+    const {
+      roomName = 'MIX',
+      mapName = 'Mirage',
+      roundNumber = 1,
+      scoreCT = 0,
+      scoreTR = 0,
+      bombState = 'planted',
+      roomUrl = '',
+    } = data;
+
+    const isPlanted = bombState === 'planted';
+    payload = {
+      username: 'CS2 Mix Hub • GSI Tracker',
+      avatar_url: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=200&q=80',
+      embeds: [
+        {
+          title: isPlanted ? '💣 C4 PLANTADA NO BOMBSITE!' : '✅ C4 DESARMADA!',
+          description: isPlanted
+            ? `A bomba foi armada no **Round ${roundNumber}**! Os Contraterroristas têm 40 segundos para o defuse.`
+            : `Os Contraterroristas desarmaram a bomba no **Round ${roundNumber}**!`,
+          color: isPlanted ? 0xef4444 : 0x10b981,
+          fields: [
+            {
+              name: '📊 Placar',
+              value: `CT **${scoreCT}** × **${scoreTR}** TR`,
+              inline: true,
+            },
+            {
+              name: '🗺️ Mapa',
+              value: `\`${mapName}\``,
+              inline: true,
+            },
+          ],
+          footer: {
+            text: `CS2 Mix Hub • Alerta de C4 em Tempo Real • ${roomName}`,
+          },
+          timestamp: new Date().toISOString(),
+        },
+      ],
+    };
+  } else if (eventType === 'gsi_gameover') {
+    const {
+      roomName = 'MIX',
+      mapName = 'Mirage',
+      winner = 'Time CT',
+      scoreCT = 13,
+      scoreTR = 0,
+      roomUrl = '',
+    } = data;
+
+    payload = {
+      username: 'CS2 Mix Hub • GSI Tracker',
+      avatar_url: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=200&q=80',
+      embeds: [
+        {
+          title: `🏆 FIM DE PARTIDA: ${winner.toUpperCase()} VENCEU!`,
+          description: `A partida competitiva no mapa **${mapName}** chegou ao fim com vitória do **${winner}**!\n\n**Placar Final:** 🛡️ CT **${scoreCT}**  ×  **${scoreTR}** Time TR 🔥`,
+          color: 0xeab308, // Gold
+          fields: [
+            {
+              name: '🥇 Vencedor',
+              value: `**${winner}**`,
+              inline: true,
+            },
+            {
+              name: '🗺️ Mapa Disputado',
+              value: `\`${mapName}\``,
+              inline: true,
+            },
+            {
+              name: '📈 Estatísticas',
+              value: roomUrl ? `[Ver no Hub e Gerar Card do Jogo](${roomUrl})` : 'Registrado no Hall da Fama',
+              inline: false,
+            },
+          ],
+          footer: {
+            text: `CS2 Mix Hub • Partida Concluída • ${roomName}`,
+          },
+          timestamp: new Date().toISOString(),
+        },
+      ],
+    };
   } else {
     throw new Error(`Tipo de evento de webhook desconhecido: ${eventType}`);
   }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Bell, Send, Check, AlertCircle, ExternalLink, ShieldCheck, Zap } from 'lucide-react';
+import { X, Bell, Send, Check, AlertCircle, ExternalLink, ShieldCheck, Zap, Radio } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
 
 export default function DiscordWebhookModal({
@@ -9,14 +9,23 @@ export default function DiscordWebhookModal({
   currentWebhook = '',
   autoLobby = true,
   autoVeto = true,
+  autoGsiRounds = true,
+  autoGsiBomb = false,
   onSaveWebhook,
   soundEnabled,
 }) {
   const [url, setUrl] = useState(currentWebhook || '');
   const [optLobby, setOptLobby] = useState(autoLobby);
   const [optVeto, setOptVeto] = useState(autoVeto);
+  const [optGsiRounds, setOptGsiRounds] = useState(autoGsiRounds);
+  const [optGsiBomb, setOptGsiBomb] = useState(autoGsiBomb);
   const [testing, setTesting] = useState(false);
   const [statusMsg, setStatusMsg] = useState(null);
+
+  useEffect(() => {
+    setOptGsiRounds(autoGsiRounds);
+    setOptGsiBomb(autoGsiBomb);
+  }, [autoGsiRounds, autoGsiBomb]);
 
   useEffect(() => {
     if (currentWebhook) {
@@ -72,6 +81,8 @@ export default function DiscordWebhookModal({
         webhookUrl: cleanUrl,
         autoLobby: optLobby,
         autoVeto: optVeto,
+        autoGsiRounds: optGsiRounds,
+        autoGsiBomb: optGsiBomb,
       });
     }
 
@@ -155,6 +166,44 @@ export default function DiscordWebhookModal({
               />
               <span>Avisar no canal quando o <strong>veto terminar</strong> com mapa, times e connect</span>
             </label>
+
+            <div className="pt-2 border-t border-slate-800/60">
+              <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1 mb-2">
+                <Radio size={12} className="animate-pulse" /> Valve CS2 Game State Integration (GSI)
+              </span>
+
+              <div className="space-y-2.5">
+                <label className="flex items-start gap-2.5 cursor-pointer text-xs text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={optGsiRounds}
+                    onChange={(e) => setOptGsiRounds(e.target.checked)}
+                    className="w-4 h-4 rounded text-emerald-500 focus:ring-0 bg-slate-900 border-slate-700 mt-0.5"
+                  />
+                  <div>
+                    <span className="block font-bold text-white">Monitoramento de Rounds ao Vivo (GSI)</span>
+                    <span className="text-[11px] text-slate-400 block leading-tight">
+                      Envia o placar no Discord a cada round finalizado, quem venceu (CT ou TR), defuse/eliminação e virada de lado na 1ª metade.
+                    </span>
+                  </div>
+                </label>
+
+                <label className="flex items-start gap-2.5 cursor-pointer text-xs text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={optGsiBomb}
+                    onChange={(e) => setOptGsiBomb(e.target.checked)}
+                    className="w-4 h-4 rounded text-emerald-500 focus:ring-0 bg-slate-900 border-slate-700 mt-0.5"
+                  />
+                  <div>
+                    <span className="block font-bold text-white">Alerta de C4 Armada / Defusada</span>
+                    <span className="text-[11px] text-slate-400 block leading-tight">
+                      Avisa instantaneamente no canal do Discord quando a bomba for plantada ou desarmada.
+                    </span>
+                  </div>
+                </label>
+              </div>
+            </div>
           </div>
 
           {/* Test & Save Buttons */}

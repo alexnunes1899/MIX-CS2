@@ -814,15 +814,24 @@ export default function App() {
   };
 
   // Update Discord Webhook settings
-  const handleSaveDiscordWebhook = ({ webhookUrl, autoLobby, autoVeto }) => {
+  const handleSaveDiscordWebhook = ({ webhookUrl, autoLobby, autoVeto, autoGsiRounds, autoGsiBomb }) => {
     if (socket.connected) {
-      socket.emit('set_discord_webhook', { roomId, webhookUrl, autoLobby, autoVeto });
+      socket.emit('set_discord_webhook', {
+        roomId,
+        webhookUrl,
+        autoLobby,
+        autoVeto,
+        autoGsiRounds,
+        autoGsiBomb,
+      });
     }
     setRoom((prev) => ({
       ...prev,
       discordWebhook: webhookUrl,
       discordAutoLobby: autoLobby,
       discordAutoVeto: autoVeto,
+      discordGsiRounds: autoGsiRounds,
+      discordGsiBomb: autoGsiBomb,
     }));
   };
 
@@ -1618,6 +1627,8 @@ export default function App() {
         currentWebhook={room.discordWebhook || ''}
         autoLobby={room.discordAutoLobby !== false}
         autoVeto={room.discordAutoVeto !== false}
+        autoGsiRounds={room.discordGsiRounds !== false}
+        autoGsiBomb={Boolean(room.discordGsiBomb)}
         onSaveWebhook={handleSaveDiscordWebhook}
         soundEnabled={soundEnabled}
       />

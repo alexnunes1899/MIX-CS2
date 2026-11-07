@@ -226,6 +226,8 @@ function getOrCreateRoom(roomId, customName = '', rankingSystem = 'gc', serverIp
       discordWebhook: '',
       discordAutoLobby: true,
       discordAutoVeto: true,
+      discordGsiRounds: true,
+      discordGsiBomb: false,
       liveMatch: null,
       chat: [],
       history: [],
@@ -1318,12 +1320,14 @@ io.on('connection', (socket) => {
   });
 
   // Discord Webhook Settings for Room
-  socket.on('set_discord_webhook', ({ roomId, webhookUrl, autoLobby = true, autoVeto = true }) => {
+  socket.on('set_discord_webhook', ({ roomId, webhookUrl, autoLobby = true, autoVeto = true, autoGsiRounds = true, autoGsiBomb = false }) => {
     const room = getRoomAndTouch(roomId);
     if (!room) return;
     room.discordWebhook = (webhookUrl || '').trim();
     room.discordAutoLobby = Boolean(autoLobby);
     room.discordAutoVeto = Boolean(autoVeto);
+    room.discordGsiRounds = Boolean(autoGsiRounds);
+    room.discordGsiBomb = Boolean(autoGsiBomb);
     emitRoomState(roomId, room);
   });
 
@@ -1505,6 +1509,105 @@ function parseHostPort(raw) {
 // VALVE OFFICIAL INTEGRATIONS: GSI, RCON & STEAM API
 // ----------------------------------------------------
 
+// GSI Discord Tracker (Evita envio duplicado de mensagens para o mesmo round/bomba)
+const gsiDiscordTracker = new Map();
+
+function processGsiDiscordNotifications(room, liveState, req) {
+  if (!room || !room.discordWebhook || !isValidDiscordWebhookUrl(room.discordWebhook)) return;
+
+  const roomId = room.id;
+  let tracker = gsiDiscordTracker.get(roomId);
+  if (!tracker) {
+    tracker = { lastRound: -1, lastBombState: 'none', gameOverSent: false };
+    gsiDiscordTracker.set(roomId, tracker);
+  }
+
+  // Se a partida estiver no aquecimento ou resetada, reinicia os estados de envio
+  if (liveState.phase === 'warmup' || (liveState.roundNumber === 0 && liveState.roundPhase === 'freezetime')) {
+    tracker.lastRound = -1;
+    tracker.lastBombState = 'none';
+    tracker.gameOverSent = false;
+    return;
+  }
+
+  const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+  const host = req.get('host');
+  const roomUrl = `${protocol}://${host}/?room=${encodeURIComponent(roomId)}`;
+
+  // 1. Notificação de Fim de Round (Monitoramento de Placar e Vencedor)
+  if (
+    room.discordGsiRounds !== false &&
+    liveState.roundPhase === 'over' &&
+    liveState.roundNumber > 0 &&
+    tracker.lastRound !== liveState.roundNumber
+  ) {
+    tracker.lastRound = liveState.roundNumber;
+    tracker.lastBombState = 'none';
+
+    sendDiscordWebhook({
+      webhookUrl: room.discordWebhook,
+      eventType: 'gsi_round',
+      data: {
+        roomName: room.name || roomId,
+        mapName: liveState.mapName || 'CS2 Map',
+        roundNumber: liveState.roundNumber,
+        scoreCT: liveState.scoreCT,
+        scoreTR: liveState.scoreTR,
+        winTeam: liveState.winTeam || (liveState.scoreCT > liveState.scoreTR ? 'CT' : 'T'),
+        bomb: liveState.bomb,
+        roomUrl,
+      },
+    }).catch((err) => console.error('[DISCORD GSI ROUND ERROR]:', err.message));
+  }
+
+  // 2. Alerta de C4 Armada / Defusada
+  if (
+    room.discordGsiBomb &&
+    liveState.roundPhase === 'live' &&
+    liveState.bomb !== tracker.lastBombState &&
+    (liveState.bomb === 'planted' || liveState.bomb === 'defused')
+  ) {
+    tracker.lastBombState = liveState.bomb;
+
+    sendDiscordWebhook({
+      webhookUrl: room.discordWebhook,
+      eventType: 'gsi_bomb',
+      data: {
+        roomName: room.name || roomId,
+        mapName: liveState.mapName || 'CS2 Map',
+        roundNumber: liveState.roundNumber,
+        scoreCT: liveState.scoreCT,
+        scoreTR: liveState.scoreTR,
+        bombState: liveState.bomb,
+        roomUrl,
+      },
+    }).catch((err) => console.error('[DISCORD GSI BOMB ERROR]:', err.message));
+  }
+
+  // 3. Notificação de Fim de Partida
+  if (
+    liveState.isGameOver &&
+    !tracker.gameOverSent &&
+    (liveState.phase === 'gameover' || liveState.scoreCT >= 13 || liveState.scoreTR >= 13)
+  ) {
+    tracker.gameOverSent = true;
+
+    const winner = liveState.scoreCT > liveState.scoreTR ? 'Time CT' : liveState.scoreTR > liveState.scoreCT ? 'Time TR' : 'Empate';
+    sendDiscordWebhook({
+      webhookUrl: room.discordWebhook,
+      eventType: 'gsi_gameover',
+      data: {
+        roomName: room.name || roomId,
+        mapName: liveState.mapName || 'CS2 Map',
+        winner,
+        scoreCT: liveState.scoreCT,
+        scoreTR: liveState.scoreTR,
+        roomUrl,
+      },
+    }).catch((err) => console.error('[DISCORD GSI GAMEOVER ERROR]:', err.message));
+  }
+}
+
 // 1. Valve CS2 Game State Integration (GSI) Webhook
 app.post('/api/gsi/:roomId', (req, res) => {
   const roomId = (req.params.roomId || req.body?.auth?.token || 'MIX-PRO').trim().toUpperCase();
@@ -1516,6 +1619,9 @@ app.post('/api/gsi/:roomId', (req, res) => {
 
     // Broadcast GSI real-time event to everyone in this room
     io.to(roomId).emit('gsi_update', liveState);
+
+    // Dispara notificações automáticas de round, C4 e vitória no Discord
+    processGsiDiscordNotifications(room, liveState, req);
 
     // If game ended, record score automatically in history
     if (liveState.isGameOver && liveState.phase === 'gameover') {
@@ -1550,6 +1656,7 @@ app.post('/api/gsi', (req, res) => {
     rooms.forEach((room) => {
       room.liveMatch = liveState;
       io.to(room.id).emit('gsi_update', liveState);
+      processGsiDiscordNotifications(room, liveState, req);
     });
   }
   res.json({ success: true });
