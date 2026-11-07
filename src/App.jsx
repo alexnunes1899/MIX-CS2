@@ -41,7 +41,8 @@ const socket = io('/', {
 export default function App() {
   const [roomId, setRoomId] = useState(() => {
     const params = new URLSearchParams(window.location.search);
-    return params.get('room') || 'MIX-PRO';
+    if (params.get('steam_auth') === '1') return '';
+    return params.get('room') || '';
   });
 
   const [roomPassword, setRoomPassword] = useState(() => {
@@ -251,6 +252,9 @@ export default function App() {
             faceitLevel: 9,
             cs2Hours: 1850,
           };
+          try {
+            localStorage.setItem('cs2_mix_profile', JSON.stringify(base));
+          } catch (e) {}
         }
       } catch (e) {}
     }
@@ -376,9 +380,9 @@ export default function App() {
               localStorage.setItem('cs2_mix_profile', JSON.stringify(updated));
             } catch (e) {}
 
-            // Immediately emit to room so lobby & teams update (apenas se estiver dentro de uma sala de mix)
-            if (socket.connected && prev.nick && view === 'mix') {
-              socket.emit('join_room', {
+            // Immediately emit to room so lobby & teams update (apenas se estiver ativamente dentro de uma sala de mix)
+            if (socket.connected && prev.nick && view === 'mix' && roomId) {
+              socket.emit('update_player', {
                 roomId,
                 player: updated,
               });
@@ -403,20 +407,52 @@ export default function App() {
       .catch(() => {});
   }, []);
 
+  // Check initial URL room on mount if socket is already connected
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlRoom = params.get('room');
+    const isLanding = params.get('steam_auth') === '1' || !urlRoom || view !== 'mix';
+    if (!isLanding && urlRoom && socket.connected) {
+      socket.emit('join_room', {
+        roomId: urlRoom,
+        player: myProfile.nick ? myProfile : null,
+        password: roomPassword || undefined,
+        inviteKey: inviteKey || undefined,
+        createIfMissing: false,
+      });
+    }
+  }, []);
+
   // Setup Socket listener
   useEffect(() => {
     socket.on('connect', () => {
-      // Ingressa na sala via socket apenas se o usuário estiver ativamente na visão de mix (não na tela inicial)
+      // Ingressa na sala via socket apenas se o usuário estiver ativamente na visão de mix e a sala já existir no servidor
       const params = new URLSearchParams(window.location.search);
-      const isLanding = params.get('steam_auth') === '1' || !params.get('room') || view === 'landing';
+      const isLanding = params.get('steam_auth') === '1' || !params.get('room') || view !== 'mix';
       if (!isLanding && roomId) {
         socket.emit('join_room', {
           roomId,
           player: myProfile.nick ? myProfile : null,
           password: roomPassword || undefined,
           inviteKey: inviteKey || undefined,
+          createIfMissing: false,
         });
       }
+    });
+
+    socket.on('room_not_found', ({ roomId: missingId, message }) => {
+      setRoomNotice({
+        title: 'Sala Encerrada ou Inexistente',
+        message: message || `A sala ${missingId || ''} não está mais ativa. Crie uma nova sala ou escolha uma sala aberta.`,
+        type: 'warning',
+      });
+      setRoomId('');
+      setView('landing');
+      const u = new URL(window.location);
+      u.searchParams.delete('room');
+      u.searchParams.delete('pwd');
+      u.searchParams.delete('key');
+      window.history.replaceState({}, '', u.pathname || '/');
     });
 
     socket.on('room_state', (updatedRoom) => {
@@ -533,6 +569,7 @@ export default function App() {
 
     return () => {
       socket.off('connect');
+      socket.off('room_not_found');
       socket.off('room_state');
       socket.off('active_rotation_updated');
       socket.off('gsi_update');
@@ -544,7 +581,7 @@ export default function App() {
       socket.off('room_deleted');
       socket.off('server_app_version');
     };
-  }, [roomId, myProfile, roomPassword]);
+  }, [roomId, myProfile, roomPassword, view]);
 
   // Switch Room (Multi-room hub support with password, GC privacy & direct link)
   const handleSelectRoom = (newRoomCode, customName, rankingSystem = 'gc', serverIp = '', password = undefined, isPrivate = false, key = undefined) => {
@@ -589,6 +626,7 @@ export default function App() {
       isPrivate: Boolean(isPrivate),
       inviteKey: targetKey || undefined,
       player: myProfile.nick ? myProfile : null,
+      createIfMissing: true,
     });
   };
 
@@ -741,6 +779,11 @@ export default function App() {
       // ignore
     }
 
+    // Only synchronize with a mix room if the user is actively inside a mix room
+    if (view !== 'mix' || !roomId) {
+      return;
+    }
+
     // Immediate optimistic local update for instant UI response
     setRoom((prev) => {
       const existingIdx = prev.players.findIndex((p) => p.id === newProfile.id || p.nick === newProfile.nick);
@@ -760,6 +803,7 @@ export default function App() {
       socket.emit('join_room', {
         roomId,
         player: newProfile,
+        createIfMissing: true,
       });
     } else {
       setRoom((prev) => {
@@ -925,12 +969,21 @@ export default function App() {
 
   // Direct Veto Start (Teams already made)
   const handleStartQuickVeto = (teamAName, teamBName) => {
+    const targetRoomId = roomId || `VETO-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    if (!roomId) setRoomId(targetRoomId);
     setView('mix');
     if (socket.connected) {
-      socket.emit('quick_start_veto', { roomId, teamAName, teamBName });
+      socket.emit('join_room', {
+        roomId: targetRoomId,
+        roomName: `${teamAName || 'Time A'} vs ${teamBName || 'Time B'}`,
+        player: myProfile?.nick ? myProfile : null,
+        createIfMissing: true,
+      });
+      socket.emit('quick_start_veto', { roomId: targetRoomId, teamAName, teamBName });
     } else {
       setRoom((prev) => ({
         ...prev,
+        id: targetRoomId,
         phase: 'veto',
         bannedMaps: [],
         currentTurn: 'teamA',
@@ -944,9 +997,12 @@ export default function App() {
 
   // Direct Quick Map Roll (Supports MD1, MD3, MD5)
   const handleApplyQuickMap = (map, startingSide, matchFormat = 'MD1', drawnSeries = []) => {
+    const targetRoomId = roomId || `MAPA-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    if (!roomId) setRoomId(targetRoomId);
     setView('mix');
     setRoom((prev) => ({
       ...prev,
+      id: targetRoomId,
       phase: 'finished',
       finalMap: map,
       startingSideTeamB: startingSide,
@@ -956,7 +1012,13 @@ export default function App() {
       teamB: prev.teamB.length > 0 ? prev.teamB : [{ id: 't2', nick: 'Time B', level: 15, avatar: '⚔️' }],
     }));
     if (socket.connected) {
-      socket.emit('quick_random_map', { roomId, map, startingSide, matchFormat, drawnSeries });
+      socket.emit('join_room', {
+        roomId: targetRoomId,
+        roomName: `Sorteio ${map?.name || 'CS2'}`,
+        player: myProfile?.nick ? myProfile : null,
+        createIfMissing: true,
+      });
+      socket.emit('quick_random_map', { roomId: targetRoomId, map, startingSide, matchFormat, drawnSeries });
     }
   };
 
@@ -1320,8 +1382,51 @@ export default function App() {
           onUpdateRconPassword={handleUpdateRconPassword}
           onGoHome={handleGoHome}
           onGoToRoom={handleGoToRoom}
+          onOpenQuickVeto={() => setQuickVetoOpen(true)}
+          onOpenQuickMapRoll={() => setQuickMapRollOpen(true)}
+          onOpenRoomsHub={() => setRoomsHubOpen(true)}
+          onOpenLeaderboard={() => setLeaderboardOpen(true)}
+          onOpenDiscordModal={() => setDiscordModalOpen(true)}
+          onOpenProfile={() => setProfileModalOpen(true)}
           soundEnabled={soundEnabled}
           myProfile={myProfile}
+        />
+
+        <RoomsHubModal
+          isOpen={roomsHubOpen}
+          onClose={() => setRoomsHubOpen(false)}
+          currentRoomId={roomId}
+          onSelectRoom={handleSelectRoom}
+          onDeleteRoom={handleDeleteRoom}
+          soundEnabled={soundEnabled}
+          isSteamLogged={isSteamLogged}
+          onRequireSteamLogin={handleRequireSteamLogin}
+          myProfile={myProfile}
+        />
+
+        <QuickVetoModal
+          isOpen={quickVetoOpen}
+          onClose={() => setQuickVetoOpen(false)}
+          onStartQuickVeto={handleStartQuickVeto}
+          soundEnabled={soundEnabled}
+        />
+
+        <QuickMapRollModal
+          isOpen={quickMapRollOpen}
+          onClose={() => setQuickMapRollOpen(false)}
+          onApplyMap={handleApplyQuickMap}
+          soundEnabled={soundEnabled}
+          officialRotation={officialRotation}
+          syncingRotation={syncingRotation}
+          onSyncOfficialRotation={handleSyncOfficialRotation}
+        />
+
+        <SteamLoginGateModal
+          isOpen={steamGateModalOpen}
+          onClose={() => setSteamGateModalOpen(false)}
+          roomId={roomId}
+          actionText={steamGateActionText}
+          soundEnabled={soundEnabled}
         />
 
         <PlayerProfileModal
@@ -1334,6 +1439,26 @@ export default function App() {
           soundEnabled={soundEnabled}
           onSaveProfile={handleSaveProfile}
         />
+
+        <LeaderboardModal
+          isOpen={leaderboardOpen}
+          onClose={() => setLeaderboardOpen(false)}
+          socket={socket}
+          soundEnabled={soundEnabled}
+        />
+
+        <DiscordWebhookModal
+          isOpen={discordModalOpen}
+          onClose={() => setDiscordModalOpen(false)}
+          roomId={roomId}
+          currentWebhook={room.discordWebhook || ''}
+          autoLobby={room.discordAutoLobby !== false}
+          autoVeto={room.discordAutoVeto !== false}
+          autoGsiRounds={room.discordGsiRounds !== false}
+          autoGsiBomb={Boolean(room.discordGsiBomb)}
+          onSaveWebhook={handleSaveDiscordWebhook}
+          soundEnabled={soundEnabled}
+        />
       </>
     );
   }
@@ -1344,11 +1469,13 @@ export default function App() {
         <UpdateNotificationBanner isAvailable={updateAvailable} onUpdate={handleApplyUpdate} />
         <FailoverBanner roomId={roomId} roomPassword={roomPassword} socketConnected={socketConnected} />
         <LandingPage
+          onGoHome={handleGoHome}
           onEnterRoom={handleEnterRoom}
           onOpenQuickVeto={() => setQuickVetoOpen(true)}
           onOpenQuickMapRoll={() => setQuickMapRollOpen(true)}
           onOpenRoomsHub={() => setRoomsHubOpen(true)}
           onOpenLeaderboard={() => setLeaderboardOpen(true)}
+          onOpenDiscordModal={() => setDiscordModalOpen(true)}
           onOpenLocalHost={() => setLocalHostModalOpen(true)}
           onOpenServersPage={handleOpenServersPage}
           onRequireSteamLogin={handleRequireSteamLogin}
@@ -1460,6 +1587,26 @@ export default function App() {
           currentServerIp={room.serverIp || ''}
           finalMap={room.finalMap?.name || 'de_mirage'}
           onUpdateServerIp={handleUpdateServerIp}
+          soundEnabled={soundEnabled}
+        />
+
+        <LeaderboardModal
+          isOpen={leaderboardOpen}
+          onClose={() => setLeaderboardOpen(false)}
+          socket={socket}
+          soundEnabled={soundEnabled}
+        />
+
+        <DiscordWebhookModal
+          isOpen={discordModalOpen}
+          onClose={() => setDiscordModalOpen(false)}
+          roomId={roomId}
+          currentWebhook={room.discordWebhook || ''}
+          autoLobby={room.discordAutoLobby !== false}
+          autoVeto={room.discordAutoVeto !== false}
+          autoGsiRounds={room.discordGsiRounds !== false}
+          autoGsiBomb={Boolean(room.discordGsiBomb)}
+          onSaveWebhook={handleSaveDiscordWebhook}
           soundEnabled={soundEnabled}
         />
       </>

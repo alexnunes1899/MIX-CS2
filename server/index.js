@@ -472,14 +472,22 @@ io.on('connection', (socket) => {
   });
 
   // Join Room
-  socket.on('join_room', async ({ roomId, player, roomName, rankingSystem, serverIp, password, isPrivate, inviteKey }) => {
-    const cleanRoomId = sanitizeInput(roomId || 'MIX-1', 20).toUpperCase();
+  socket.on('join_room', async ({ roomId, player, roomName, rankingSystem, serverIp, password, isPrivate, inviteKey, createIfMissing }) => {
+    const cleanRoomId = sanitizeInput(roomId || '', 20).toUpperCase();
+    if (!cleanRoomId) return;
     const cleanRoomName = sanitizeInput(roomName, 40);
     const cleanPassword = sanitizeInput(password || '', 32);
     const cleanKey = sanitizeInput(inviteKey || '', 32);
 
     // Check if room already exists
     const existingRoom = rooms.get(cleanRoomId);
+    if (!existingRoom && createIfMissing === false) {
+      socket.emit('room_not_found', {
+        roomId: cleanRoomId,
+        message: 'Esta sala não existe mais ou já foi encerrada.',
+      });
+      return;
+    }
     if (existingRoom) {
       // 1. Gamers Club style Private Room check: ONLY enters via direct invite link or matching key
       if (existingRoom.isPrivate) {

@@ -29,13 +29,15 @@ import {
   Sliders,
   Flame,
   Trophy,
+  Dices,
+  Bell,
 } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
 import { parseServerDetails } from '../utils/serverParser';
 import { ACTIVE_DUTY_MAPS } from '../data/maps';
 
 export default function DedicatedServersHub({
-  roomId = 'MIX-PRO',
+  roomId = '',
   currentServerIp = '',
   rconPassword = '',
   finalMap = 'de_mirage',
@@ -43,6 +45,12 @@ export default function DedicatedServersHub({
   onUpdateRconPassword,
   onGoHome,
   onGoToRoom,
+  onOpenQuickVeto,
+  onOpenQuickMapRoll,
+  onOpenRoomsHub,
+  onOpenLeaderboard,
+  onOpenDiscordModal,
+  onOpenProfile,
   soundEnabled,
   myProfile,
 }) {
@@ -359,58 +367,172 @@ pause
   return (
     <div className="min-h-screen bg-[#070a12] text-slate-100 flex flex-col font-sans selection:bg-emerald-500/30 selection:text-emerald-300">
       
-      {/* Top Navbar */}
-      <nav className="border-b border-white/[0.08] bg-[#0c1220]/90 backdrop-blur-xl sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
-          
-          {/* Left: Breadcrumbs & Back */}
-          <div className="flex items-center gap-3">
-            {roomId && onGoToRoom && (
-              <button
-                type="button"
-                onClick={() => onGoToRoom(roomId)}
-                className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95"
-              >
-                <ArrowLeft size={14} />
-                <span>Voltar para o Mix ({roomId})</span>
-              </button>
-            )}
-
-            {onGoHome && (
-              <button
-                type="button"
+      {/* Top Navbar — Menu de Início Sempre Visível */}
+      <header className="border-b border-slate-800 bg-[#0c1220]/95 backdrop-blur-xl sticky top-0 z-40 shadow-xl">
+        <div className="max-w-7xl mx-auto px-3 sm:px-5 py-2.5 sm:py-3 space-y-2.5">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            
+            {/* Left: Logo & Back */}
+            <div className="flex items-center gap-3">
+              <div
+                className="flex items-center gap-2.5 cursor-pointer group"
                 onClick={onGoHome}
-                className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
               >
-                <Home size={14} />
-                <span>Página Inicial</span>
+                <img src="/favicon.png" alt="CS2 Mix" className="w-9 h-9 object-contain drop-shadow-[0_2px_10px_rgba(245,158,11,0.3)] group-hover:scale-105 transition-transform" />
+                <div>
+                  <span className="text-base font-bold font-heading tracking-wider text-white group-hover:text-amber-400 transition-colors">
+                    MIX HUB
+                  </span>
+                </div>
+              </div>
+
+              {roomId && onGoToRoom && (
+                <button
+                  type="button"
+                  onClick={() => onGoToRoom(roomId)}
+                  className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95"
+                >
+                  <ArrowLeft size={14} />
+                  <span>Voltar para o Mix ({roomId})</span>
+                </button>
+              )}
+            </div>
+
+            {/* Center: Title Pill */}
+            <div className="hidden md:flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-xs font-extrabold uppercase tracking-widest text-emerald-400 font-mono">
+                Central Oficial de Servidores CS2
+              </span>
+            </div>
+
+            {/* Right: Active Room Server Badge */}
+            <div className="flex items-center gap-2">
+              {currentServerIp ? (
+                <div className="flex items-center gap-2 bg-slate-950 border border-emerald-500/40 rounded-xl px-3 py-1 text-xs font-mono">
+                  <span className="text-slate-500 text-[10px]">SERVIDOR ATUAL:</span>
+                  <strong className="text-emerald-400">{currentServerIp}</strong>
+                </div>
+              ) : (
+                <div className="text-[11px] font-mono text-slate-500 bg-slate-950 px-2.5 py-1 rounded-xl border border-slate-800">
+                  Nenhum servidor vinculado à sala
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ROW 2: MENU DE INÍCIO — SEMPRE VISÍVEL E CENTRALIZADO */}
+          <div className="pt-1 flex items-center justify-center w-full">
+            <nav className="inline-flex items-center gap-1.5 sm:gap-2.5 p-1.5 bg-[#080d19] border border-slate-700/80 rounded-2xl shadow-2xl overflow-x-auto max-w-full no-scrollbar">
+              
+              {/* Início */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (soundEnabled) playClickSound();
+                  if (onGoHome) onGoHome();
+                }}
+                className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 hover:text-white border border-slate-600/90 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
+                title="Voltar para a Página Inicial"
+              >
+                <Home size={17} className="text-amber-400" />
+                <span>Início</span>
               </button>
-            )}
-          </div>
 
-          {/* Center: Title Pill */}
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="text-xs font-extrabold uppercase tracking-widest text-emerald-400 font-mono">
-              Central Oficial de Servidores CS2
-            </span>
-          </div>
+              {/* Hall da Fama */}
+              {onOpenLeaderboard && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (soundEnabled) playClickSound();
+                    onOpenLeaderboard();
+                  }}
+                  className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 hover:text-amber-200 border border-amber-500/60 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-lg shadow-amber-500/10 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
+                  title="Hall da Fama & Ranking Geral da Comunidade"
+                >
+                  <Trophy size={17} className="text-amber-400" />
+                  <span>Hall da Fama</span>
+                </button>
+              )}
 
-          {/* Right: Active Room Server Badge */}
-          <div className="flex items-center gap-2">
-            {currentServerIp ? (
-              <div className="flex items-center gap-2 bg-slate-950 border border-emerald-500/40 rounded-xl px-3 py-1 text-xs font-mono">
-                <span className="text-slate-500 text-[10px]">SERVIDOR ATUAL:</span>
-                <strong className="text-emerald-400">{currentServerIp}</strong>
-              </div>
-            ) : (
-              <div className="text-[11px] font-mono text-slate-500 bg-slate-950 px-2.5 py-1 rounded-xl border border-slate-800">
-                Nenhum servidor vinculado à sala
-              </div>
-            )}
+              {/* Discord */}
+              {onOpenDiscordModal && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (soundEnabled) playClickSound();
+                    onOpenDiscordModal();
+                  }}
+                  className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 hover:text-indigo-200 border border-indigo-500/60 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-lg shadow-indigo-500/10 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
+                  title="Notificações Automáticas no Discord"
+                >
+                  <Bell size={17} className="text-indigo-400" />
+                  <span>Discord</span>
+                </button>
+              )}
+
+              {/* Roleta de Mapa */}
+              {onOpenQuickMapRoll && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (soundEnabled) playClickSound();
+                    onOpenQuickMapRoll();
+                  }}
+                  className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 hover:text-amber-200 border border-amber-500/60 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
+                  title="Sortear um mapa aleatório rapidamente entre a rotação da Valve"
+                >
+                  <Dices size={17} className="text-amber-400" />
+                  <span>Roleta de Mapa</span>
+                </button>
+              )}
+
+              {/* Veto Rápido */}
+              {onOpenQuickVeto && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (soundEnabled) playClickSound();
+                    onOpenQuickVeto();
+                  }}
+                  className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 hover:text-sky-200 border border-sky-500/60 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
+                  title="Ir direto para o veto de mapas se os times já estiverem formados"
+                >
+                  <Zap size={17} className="text-sky-400" />
+                  <span>Veto Rápido</span>
+                </button>
+              )}
+
+              {/* Servidores & LAN (Ativo) */}
+              <button
+                type="button"
+                onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-gradient-to-r from-emerald-600/40 to-teal-600/40 text-white border border-emerald-400 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-lg shadow-emerald-500/20 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
+              >
+                <Server size={17} className="text-emerald-300" />
+                <span>Servidores & LAN</span>
+              </button>
+
+              {/* Salas */}
+              {onOpenRoomsHub && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (soundEnabled) playClickSound();
+                    onOpenRoomsHub();
+                  }}
+                  className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 hover:text-white border border-slate-600/90 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
+                  title="Ver todas as salas ativas ou criar um novo mix"
+                >
+                  <Layers size={17} className="text-slate-300" />
+                  <span>Salas</span>
+                </button>
+              )}
+
+            </nav>
           </div>
         </div>
-      </nav>
+      </header>
 
       {/* Main Container */}
       <main className="max-w-7xl w-full mx-auto px-4 py-8 flex-1 space-y-8">

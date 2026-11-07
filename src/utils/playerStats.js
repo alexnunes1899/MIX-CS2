@@ -4,50 +4,29 @@
  */
 
 const DEFAULT_STATS = {
-  matchesPlayed: 14,
-  wins: 9,
-  losses: 5,
-  winRate: 64,
+  matchesPlayed: 0,
+  wins: 0,
+  losses: 0,
+  winRate: 0,
   favoriteSide: 'CT',
-  streak: 3,
+  streak: 0,
 };
 
 export function getPlayerStats(steamId) {
   if (!steamId) return DEFAULT_STATS;
   try {
-    const key = `cs2_stats_${steamId}`;
+    const key = `cs2_stats_v2_${steamId}`;
     const raw = localStorage.getItem(key);
     if (raw) {
       const parsed = JSON.parse(raw);
-      const winRate = parsed.matchesPlayed > 0 
-        ? Math.round((parsed.wins / parsed.matchesPlayed) * 100) 
-        : 50;
-      return { ...parsed, winRate };
+      const winRate = parsed.matchesPlayed > 0
+        ? Math.round((parsed.wins / parsed.matchesPlayed) * 100)
+        : 0;
+      return { ...DEFAULT_STATS, ...parsed, winRate };
     }
   } catch (e) {}
 
-  // Deterministic seed based on SteamID so stats persist and feel realistic
-  const seed = steamId ? Number(steamId.slice(-3)) || 17 : 17;
-  const matchesPlayed = Math.max(10, (seed % 35) + 8);
-  const winPercent = 0.52 + ((seed % 20) / 100);
-  const wins = Math.max(5, Math.round(matchesPlayed * winPercent));
-  const losses = matchesPlayed - wins;
-  const winRate = Math.round((wins / matchesPlayed) * 100);
-
-  const initial = {
-    matchesPlayed,
-    wins,
-    losses,
-    winRate,
-    favoriteSide: (seed % 2 === 0) ? 'CT' : 'TR',
-    streak: (seed % 4) + 1,
-  };
-
-  try {
-    localStorage.setItem(`cs2_stats_${steamId}`, JSON.stringify(initial));
-  } catch (e) {}
-
-  return initial;
+  return { ...DEFAULT_STATS };
 }
 
 export function recordMatchResult(steamId, didWin, side) {
@@ -63,7 +42,7 @@ export function recordMatchResult(steamId, didWin, side) {
       favoriteSide: side || current.favoriteSide,
     };
     updated.winRate = Math.round((updated.wins / updated.matchesPlayed) * 100);
-    localStorage.setItem(`cs2_stats_${steamId}`, JSON.stringify(updated));
+    localStorage.setItem(`cs2_stats_v2_${steamId}`, JSON.stringify(updated));
     return updated;
   } catch (e) {
     return null;

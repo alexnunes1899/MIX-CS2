@@ -1,16 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Sparkles, Swords, Dices, Shield, Flame, Users, Layers, Zap, Trophy, ArrowRight, ExternalLink, Hash, CheckCircle2, Monitor, RefreshCw, Globe, Laptop, Server } from 'lucide-react';
+import { Play, Sparkles, Swords, Dices, Shield, Flame, Users, Layers, Zap, Trophy, ArrowRight, ExternalLink, Hash, CheckCircle2, Monitor, RefreshCw, Globe, Laptop, Server, Home, Bell } from 'lucide-react';
 import { ACTIVE_DUTY_MAPS, EXTRA_CS2_MAPS } from '../data/maps';
 import PlayerAvatar from './PlayerAvatar';
 import SteamIcon from './SteamIcon';
 import { playClickSound } from '../utils/audio';
 
 export default function LandingPage({
+  onGoHome,
   onEnterRoom,
   onOpenQuickVeto,
   onOpenQuickMapRoll,
   onOpenRoomsHub,
   onOpenLeaderboard,
+  onOpenDiscordModal,
   onOpenLocalHost,
   onOpenServersPage,
   onRequireSteamLogin,
@@ -79,118 +81,202 @@ export default function LandingPage({
   return (
     <div className="min-h-screen bg-[#070a12] text-slate-100 flex flex-col font-sans selection:bg-amber-500/30 selection:text-amber-300">
       
-      {/* Top Navbar */}
-      <nav className="border-b border-white/[0.08] bg-[#0c1220]/85 backdrop-blur-xl sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 py-3.5 flex items-center justify-between">
+      {/* Top Navbar — Menu de Início Sempre Visível */}
+      <header className="border-b border-slate-800 bg-[#0c1220]/95 backdrop-blur-xl sticky top-0 z-40 shadow-xl">
+        <div className="max-w-7xl mx-auto px-3 sm:px-5 py-2.5 sm:py-3 space-y-2.5">
           
-          {/* Logo with CS2 Icon */}
-          <div className="flex items-center gap-3 cursor-pointer group" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
-            <div className="relative w-10 h-10 flex items-center justify-center group-hover:scale-105 transition-transform">
-              <img src="/favicon.png" alt="CS2 Mix" className="w-10 h-10 object-contain drop-shadow-[0_2px_10px_rgba(245,158,11,0.3)]" />
-              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-[#0c1220] animate-pulse" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-lg font-bold font-heading tracking-wider text-white group-hover:text-amber-400 transition-colors">
-                  MIX HUB
-                </span>
-                <span className="text-amber-400 text-[10px] font-black px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/30 font-mono">
-                  GC EDITION
-                </span>
-              </div>
-              <p className="text-[10px] text-slate-400 font-mono tracking-tight">PLATAFORMA COMPETITIVA 5V5</p>
-            </div>
-          </div>
-
-          {/* Links desktop */}
-          <div className="hidden md:flex items-center gap-6 text-xs font-semibold uppercase tracking-wider text-slate-300">
-            <a href="#mapas" className="hover:text-amber-400 transition-colors flex items-center gap-1.5">
-              <span>Mapas Oficiais</span>
-            </a>
-            <a href="#recursos" className="hover:text-amber-400 transition-colors">
-              <span>Recursos</span>
-            </a>
-            <button
+          {/* ROW 1: Logo, Quick Anchors & Steam / Criar Mix */}
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            {/* Logo with CS2 Icon */}
+            <div
+              className="flex items-center gap-3 cursor-pointer group"
               onClick={() => {
                 if (soundEnabled) playClickSound();
-                onOpenRoomsHub();
+                if (onGoHome) onGoHome();
+                else window.scrollTo({ top: 0, behavior: 'smooth' });
               }}
-              className="hover:text-amber-400 transition-colors cursor-pointer flex items-center gap-1.5 bg-slate-900/80 border border-slate-800 hover:border-amber-500/40 px-3 py-1.5 rounded-lg"
             >
-              <Layers size={13} className="text-amber-400" />
-              <span>Salas Ativas</span>
-              <span className="text-[10px] font-mono font-bold text-amber-400 bg-amber-500/20 px-1.5 py-0.2 rounded">
-                {activeRooms.length}
-              </span>
-            </button>
+              <div className="relative w-10 h-10 flex items-center justify-center group-hover:scale-105 transition-transform">
+                <img src="/favicon.png" alt="CS2 Mix" className="w-10 h-10 object-contain drop-shadow-[0_2px_10px_rgba(245,158,11,0.3)]" />
+                <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-[#0c1220] animate-pulse" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-lg font-bold font-heading tracking-wider text-white group-hover:text-amber-400 transition-colors">
+                    MIX HUB
+                  </span>
+                  <span className="text-amber-400 text-[10px] font-black px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/30 font-mono">
+                    GC EDITION
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-400 font-mono tracking-tight">PLATAFORMA COMPETITIVA 5V5</p>
+              </div>
+            </div>
 
-            {onOpenLeaderboard && (
+            {/* Quick Section Links */}
+            <div className="hidden lg:flex items-center gap-5 text-xs font-semibold uppercase tracking-wider text-slate-300">
+              <a href="#mapas" className="hover:text-amber-400 transition-colors flex items-center gap-1.5">
+                <span>Mapas Oficiais</span>
+              </a>
+              <a href="#recursos" className="hover:text-amber-400 transition-colors">
+                <span>Recursos</span>
+              </a>
+            </div>
+
+            {/* Steam & Direct Action */}
+            <div className="flex items-center gap-2.5">
+              {isSteamLogged ? (
+                <button
+                  type="button"
+                  onClick={() => onOpenProfile && onOpenProfile()}
+                  title="Abrir meu perfil e estatísticas Steam"
+                  className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 border border-emerald-500/40 hover:border-emerald-400 rounded-xl px-2.5 py-1.5 shadow-sm transition-all cursor-pointer group"
+                >
+                  <PlayerAvatar avatar={myProfile.avatar} nick={myProfile.nick} size="sm" />
+                  <span className="text-xs font-bold text-white hidden sm:inline group-hover:text-amber-400 transition-colors">
+                    {myProfile.nick}
+                  </span>
+                  <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1.5 py-0.5 rounded group-hover:bg-emerald-500/25">
+                    Stats
+                  </span>
+                </button>
+              ) : (
+                <a
+                  href="/api/auth/steam"
+                  className="flex items-center gap-2 px-3 py-2 rounded-xl bg-gradient-to-r from-[#171a21] to-[#1b2838] hover:from-[#1b2838] hover:to-[#2a475e] border border-[#66c0f4]/40 hover:border-[#66c0f4] text-white text-xs font-bold transition-all shadow-md group cursor-pointer"
+                >
+                  <SteamIcon className="w-4 h-4 text-[#66c0f4] group-hover:scale-110 transition-transform" />
+                  <span>Login Steam</span>
+                </a>
+              )}
+
               <button
                 onClick={() => {
                   if (soundEnabled) playClickSound();
-                  onOpenLeaderboard();
+                  onOpenRoomsHub();
                 }}
-                className="hover:text-amber-300 transition-colors cursor-pointer flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/30 hover:border-amber-400 px-3 py-1.5 rounded-lg text-amber-400"
-                title="Ver Hall da Fama e Ranking da Comunidade"
+                className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs uppercase tracking-wider transition-all shadow-lg shadow-amber-500/25 cursor-pointer flex items-center gap-1.5 active:scale-95"
               >
-                <Trophy size={13} />
+                <Play size={13} fill="currentColor" />
+                <span>Criar Mix</span>
+              </button>
+            </div>
+          </div>
+
+          {/* ROW 2: MENU DE INÍCIO — SEMPRE VISÍVEL E CENTRALIZADO */}
+          <div className="pt-1 flex items-center justify-center w-full">
+            <nav className="inline-flex items-center gap-1.5 sm:gap-2.5 p-1.5 bg-[#080d19] border border-slate-700/80 rounded-2xl shadow-2xl overflow-x-auto max-w-full no-scrollbar">
+              
+              {/* Início (Ativo) */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (soundEnabled) playClickSound();
+                  if (onGoHome) onGoHome();
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/60 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
+                title="Página Inicial"
+              >
+                <Home size={17} className="text-amber-400" />
+                <span>Início</span>
+              </button>
+
+              {/* Hall da Fama */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (soundEnabled) playClickSound();
+                  if (onOpenLeaderboard) onOpenLeaderboard();
+                }}
+                className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 hover:text-amber-200 border border-amber-500/60 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-lg shadow-amber-500/10 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
+                title="Hall da Fama & Ranking Geral da Comunidade"
+              >
+                <Trophy size={17} className="text-amber-400" />
                 <span>Hall da Fama</span>
               </button>
-            )}
 
-            {(onOpenServersPage || onOpenLocalHost) && (
+              {/* Discord */}
+              {onOpenDiscordModal && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (soundEnabled) playClickSound();
+                    onOpenDiscordModal();
+                  }}
+                  className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 hover:text-indigo-200 border border-indigo-500/60 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-lg shadow-indigo-500/10 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
+                  title="Notificações Automáticas no Discord"
+                >
+                  <Bell size={17} className="text-indigo-400" />
+                  <span>Discord</span>
+                </button>
+              )}
+
+              {/* Roleta de Mapa */}
               <button
+                type="button"
+                onClick={() => {
+                  if (soundEnabled) playClickSound();
+                  if (onOpenQuickMapRoll) onOpenQuickMapRoll();
+                }}
+                className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 hover:text-amber-200 border border-amber-500/60 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
+                title="Sortear um mapa aleatório rapidamente entre a rotação da Valve"
+              >
+                <Dices size={17} className="text-amber-400" />
+                <span>Roleta de Mapa</span>
+              </button>
+
+              {/* Veto Rápido */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (soundEnabled) playClickSound();
+                  if (onOpenQuickVeto) onOpenQuickVeto();
+                }}
+                className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 hover:text-sky-200 border border-sky-500/60 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
+                title="Ir direto para o veto de mapas se os times já estiverem formados"
+              >
+                <Zap size={17} className="text-sky-400" />
+                <span>Veto Rápido</span>
+              </button>
+
+              {/* Servidores & LAN */}
+              <button
+                type="button"
                 onClick={() => {
                   if (soundEnabled) playClickSound();
                   if (onOpenServersPage) onOpenServersPage();
                   else if (onOpenLocalHost) onOpenLocalHost();
                 }}
-                className="hover:text-emerald-300 transition-colors cursor-pointer flex items-center gap-1.5 bg-emerald-500/15 border border-emerald-500/40 hover:border-emerald-400 px-3 py-1.5 rounded-lg text-emerald-400 font-bold"
-                title="Central Completa de Servidores: Dedicado Online, LAN Party, Radmin VPN e Testador de Portas"
+                className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-gradient-to-r from-emerald-600/30 to-teal-600/30 hover:from-emerald-600/40 hover:to-teal-600/40 text-emerald-300 hover:text-white border border-emerald-500/60 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-lg shadow-emerald-500/10 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
+                title="Central Completa de Servidores: Dedicado Online, LAN Party 0ms, Radmin VPN, Teste de Portas 27015 e Gerador de Scripts .bat"
               >
-                <Server size={13} />
+                <Server size={17} className="text-emerald-400" />
                 <span>Servidores & LAN</span>
               </button>
-            )}
-          </div>
 
-          {/* Steam & Direct Action */}
-          <div className="flex items-center gap-2.5">
-            {isSteamLogged ? (
+              {/* Salas */}
               <button
                 type="button"
-                onClick={() => onOpenProfile && onOpenProfile()}
-                title="Abrir meu perfil e estatísticas Steam"
-                className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 border border-emerald-500/40 hover:border-emerald-400 rounded-xl px-2.5 py-1.5 shadow-sm transition-all cursor-pointer group"
+                onClick={() => {
+                  if (soundEnabled) playClickSound();
+                  if (onOpenRoomsHub) onOpenRoomsHub();
+                }}
+                className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 hover:text-white border border-slate-600/90 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
+                title="Ver todas as salas ativas ou criar um novo mix"
               >
-                <PlayerAvatar avatar={myProfile.avatar} nick={myProfile.nick} size="sm" />
-                <span className="text-xs font-bold text-white hidden sm:inline group-hover:text-amber-400 transition-colors">
-                  {myProfile.nick}
-                </span>
-                <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1.5 py-0.5 rounded group-hover:bg-emerald-500/25">
-                  Stats
+                <Layers size={17} className="text-slate-300" />
+                <span>Salas</span>
+                <span className="text-[10px] font-mono font-bold text-amber-400 bg-amber-500/20 px-1.5 py-0.2 rounded">
+                  {activeRooms.length}
                 </span>
               </button>
-            ) : (
-              <a
-                href="/api/auth/steam"
-                className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl bg-gradient-to-r from-[#171a21] to-[#1b2838] hover:from-[#1b2838] hover:to-[#2a475e] border border-[#66c0f4]/40 hover:border-[#66c0f4] text-white text-xs font-bold transition-all shadow-md group cursor-pointer"
-              >
-                <SteamIcon className="w-4 h-4 text-[#66c0f4] group-hover:scale-110 transition-transform" />
-                <span>Login Steam</span>
-              </a>
-            )}
 
-            <button
-              onClick={() => onOpenRoomsHub()}
-              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs uppercase tracking-wider transition-all shadow-lg shadow-amber-500/25 cursor-pointer flex items-center gap-1.5 active:scale-95"
-            >
-              <Play size={13} fill="currentColor" />
-              <span>Criar Mix</span>
-            </button>
+            </nav>
           </div>
+
         </div>
-      </nav>
+      </header>
 
       {/* Hero Section */}
       <section className="relative overflow-hidden pt-16 pb-20 px-4 text-center">
