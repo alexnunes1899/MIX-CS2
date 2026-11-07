@@ -26,6 +26,7 @@ import DiscordWebhookModal from './components/DiscordWebhookModal';
 import MatchCardModal from './components/MatchCardModal';
 import LocalHostModal from './components/LocalHostModal';
 import DedicatedServersHub from './components/DedicatedServersHub';
+import { playClickSound } from './utils/audio';
 import { recordMatchResult } from './utils/playerStats';
 import { ACTIVE_DUTY_MAPS, OFFICIAL_ACTIVE_DUTY, EXTRA_CS2_MAPS } from './data/maps';
 import { balanceTeams, shuffleTeams, calculateMetricsForTeams } from './utils/balance';
