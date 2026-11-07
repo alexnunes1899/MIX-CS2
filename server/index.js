@@ -1691,6 +1691,25 @@ app.get('/api/my-ip', (req, res) => {
   res.json({ ip });
 });
 
+// Detect Local Network (LAN) IPs for House LAN Parties
+app.get('/api/lan-ip', async (req, res) => {
+  try {
+    const os = await import('os');
+    const nets = os.networkInterfaces();
+    const ips = [];
+    for (const name of Object.keys(nets)) {
+      for (const net of nets[name]) {
+        if (net.family === 'IPv4' && !net.internal) {
+          ips.push({ name, address: net.address });
+        }
+      }
+    }
+    return res.json({ ips });
+  } catch (e) {
+    return res.json({ ips: [] });
+  }
+});
+
 // 2. Valve Source RCON Remote Management (FireGames / Dedicated Server) - Protected by rate limit & sanitization
 app.post('/api/rcon/test', sensitiveLimiter, async (req, res) => {
   const { host, port, password } = req.body;
