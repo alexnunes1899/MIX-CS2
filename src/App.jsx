@@ -129,7 +129,7 @@ export default function App() {
 
     window.addEventListener('focus', handleFocus);
     document.addEventListener('visibilitychange', handleVisibility);
-    const interval = setInterval(checkVersion, 25000);
+    const interval = setInterval(checkVersion, 10000); // Checa a cada 10 segundos
 
     return () => {
       isMounted = false;
@@ -137,6 +137,23 @@ export default function App() {
       document.removeEventListener('visibilitychange', handleVisibility);
       clearInterval(interval);
     };
+  }, []);
+
+  // Garante que o F5 sempre faça um recarregamento 100% limpo sem cache residual
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'F5') {
+        try {
+          if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then((regs) => {
+              for (const r of regs) r.unregister();
+            });
+          }
+        } catch (err) {}
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   // Official Active Duty Live Rotation State (sourced from Wikipedia / Valve records)
@@ -366,6 +383,17 @@ export default function App() {
         if (prev.chat.some((m) => m.id === msg.id)) return prev;
         return { ...prev, chat: [...prev.chat, msg] };
       });
+    });
+
+    socket.on('server_app_version', ({ version }) => {
+      if (version) {
+        setServerVersion((prev) => {
+          if (prev && prev !== version) {
+            setUpdateAvailable(true);
+          }
+          return version;
+        });
+      }
     });
 
     socket.on('room_authenticated', ({ roomId: authRoomId, password: authPassword, inviteKey: authKey, isPrivate: authIsPrivate }) => {
