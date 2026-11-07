@@ -12,6 +12,7 @@ export default function LandingPage({
   onOpenRoomsHub,
   onOpenLeaderboard,
   onOpenLocalHost,
+  onOpenServersPage,
   onRequireSteamLogin,
   onOpenProfile,
   myProfile,
@@ -137,17 +138,18 @@ export default function LandingPage({
               </button>
             )}
 
-            {onOpenLocalHost && (
+            {(onOpenServersPage || onOpenLocalHost) && (
               <button
                 onClick={() => {
                   if (soundEnabled) playClickSound();
-                  onOpenLocalHost();
+                  if (onOpenServersPage) onOpenServersPage();
+                  else if (onOpenLocalHost) onOpenLocalHost();
                 }}
                 className="hover:text-emerald-300 transition-colors cursor-pointer flex items-center gap-1.5 bg-emerald-500/15 border border-emerald-500/40 hover:border-emerald-400 px-3 py-1.5 rounded-lg text-emerald-400 font-bold"
-                title="Configurar servidor local no seu PC (LAN ou Radmin VPN)"
+                title="Central Completa de Servidores: Dedicado Online, LAN Party, Radmin VPN e Testador de Portas"
               >
-                <Laptop size={13} />
-                <span>Host Local & LAN</span>
+                <Server size={13} />
+                <span>Servidores & LAN</span>
               </button>
             )}
           </div>
@@ -261,16 +263,17 @@ export default function LandingPage({
               <span>🎲 Roleta de Mapa Aleatório</span>
             </button>
 
-            {onOpenLocalHost && (
+            {(onOpenServersPage || onOpenLocalHost) && (
               <button
                 onClick={() => {
                   if (soundEnabled) playClickSound();
-                  onOpenLocalHost();
+                  if (onOpenServersPage) onOpenServersPage();
+                  else if (onOpenLocalHost) onOpenLocalHost();
                 }}
                 className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-emerald-300 border border-emerald-500/40 hover:border-emerald-400 text-xs font-bold transition-all shadow-md cursor-pointer group"
               >
-                <Laptop size={15} className="text-emerald-400 group-hover:scale-110 transition-transform" />
-                <span>💻 Host Local & LAN (Criar Servidor)</span>
+                <Server size={15} className="text-emerald-400 group-hover:scale-110 transition-transform" />
+                <span>🖥️ Central de Servidores (Online & LAN)</span>
               </button>
             )}
           </div>
@@ -470,24 +473,25 @@ export default function LandingPage({
           <div
             onClick={() => {
               if (soundEnabled) playClickSound();
-              if (onOpenLocalHost) onOpenLocalHost();
+              if (onOpenServersPage) onOpenServersPage();
+              else if (onOpenLocalHost) onOpenLocalHost();
             }}
             className="glass-panel glass-panel-hover rounded-2xl p-6 space-y-3 border-emerald-500/30 hover:border-emerald-500/70 cursor-pointer group transition-all"
           >
             <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30 group-hover:scale-110 transition-transform">
-              <Laptop size={24} />
+              <Server size={24} />
             </div>
             <div className="flex items-center gap-2">
-              <h3 className="font-bold text-base font-heading text-white tracking-wide">Servidor Local & LAN</h3>
+              <h3 className="font-bold text-base font-heading text-white tracking-wide">Central de Servidores CS2</h3>
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-mono">
-                0ms Ping
+                Online & LAN
               </span>
             </div>
             <p className="text-xs text-slate-400 leading-relaxed font-normal">
-              Jogue na sua casa em rede local com sv_lan 1 ou via Radmin VPN sem abrir portas. Copie o comando connect com 1 clique!
+              Página dedicada com guias passo a passo, scripts .bat automáticos de 1 clique, medição de ping, teste de portas 27015 e controle RCON.
             </p>
             <div className="pt-1 flex items-center gap-1.5 text-xs font-bold text-emerald-400 group-hover:text-emerald-300">
-              <span>Abrir Assistente de Host</span>
+              <span>Abrir Central de Servidores</span>
               <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
             </div>
           </div>

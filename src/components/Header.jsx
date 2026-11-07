@@ -23,6 +23,7 @@ export default function Header({
   onOpenLeaderboard,
   onOpenDiscordModal,
   onOpenLocalHost,
+  onOpenServersPage,
   onGoHome,
   roomPassword = '',
   hasPassword = false,
@@ -284,17 +285,18 @@ export default function Header({
               <span>Veto Rápido</span>
             </button>
 
-            {/* Host Local & Servidor LAN */}
+            {/* Central Completa de Servidores (Dedicado, LAN, Radmin, Testador de Portas) */}
             <button
               onClick={() => {
                 if (soundEnabled) playClickSound();
-                if (onOpenLocalHost) onOpenLocalHost();
+                if (onOpenServersPage) onOpenServersPage();
+                else if (onOpenLocalHost) onOpenLocalHost();
               }}
-              className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 hover:text-emerald-200 border border-emerald-500/60 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-lg shadow-emerald-500/10 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
-              title="Configurar Servidor Local no seu PC (Radmin VPN ou LAN na mesma casa)"
+              className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-gradient-to-r from-emerald-600/30 to-teal-600/30 hover:from-emerald-600/40 hover:to-teal-600/40 text-emerald-300 hover:text-white border border-emerald-500/60 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-lg shadow-emerald-500/10 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
+              title="Central Completa de Servidores: Dedicado Online, LAN Party 0ms, Radmin VPN, Teste de Portas 27015 e Gerador de Scripts .bat"
             >
-              <Laptop size={17} className="text-emerald-400" />
-              <span>Host Local & LAN</span>
+              <Server size={17} className="text-emerald-400" />
+              <span>Servidores & LAN</span>
             </button>
 
             {/* Salas */}

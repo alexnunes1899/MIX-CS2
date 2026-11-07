@@ -28,6 +28,7 @@ export default function Lobby({
   roomName = '',
   liveMatch = null,
   onOpenGsiSetup,
+  onOpenServersPage,
   soundEnabled,
   isAdmin = false,
   adminId = null,
@@ -402,6 +403,7 @@ export default function Lobby({
         roomId={roomId}
         liveMatch={liveMatch}
         onOpenGsiSetup={onOpenGsiSetup}
+        onOpenServersPage={onOpenServersPage}
         soundEnabled={soundEnabled}
         isAdmin={isAdmin}
       />

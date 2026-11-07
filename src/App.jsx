@@ -25,6 +25,7 @@ import LeaderboardModal from './components/LeaderboardModal';
 import DiscordWebhookModal from './components/DiscordWebhookModal';
 import MatchCardModal from './components/MatchCardModal';
 import LocalHostModal from './components/LocalHostModal';
+import DedicatedServersHub from './components/DedicatedServersHub';
 import { recordMatchResult } from './utils/playerStats';
 import { ACTIVE_DUTY_MAPS, OFFICIAL_ACTIVE_DUTY, EXTRA_CS2_MAPS } from './data/maps';
 import { balanceTeams, shuffleTeams, calculateMetricsForTeams } from './utils/balance';
@@ -57,6 +58,9 @@ export default function App() {
 
   const [view, setView] = useState(() => {
     const params = new URLSearchParams(window.location.search);
+    if (params.get('view') === 'servers') {
+      return 'servers';
+    }
     // Ao fazer login (steam_auth=1) ou quando não há parâmetro room, SEMPRE abre a tela inicial
     if (params.get('steam_auth') === '1' || !params.get('room')) {
       return 'landing';
@@ -78,6 +82,23 @@ export default function App() {
       socket.off('disconnect', handleDisconnect);
       socket.off('connect_error', handleDisconnect);
     };
+  }, []);
+
+  // Sync browser navigation (Back / Forward buttons)
+  useEffect(() => {
+    const handlePopState = () => {
+      const p = new URLSearchParams(window.location.search);
+      if (p.get('view') === 'servers') {
+        setView('servers');
+      } else if (p.get('room')) {
+        setRoomId(p.get('room'));
+        setView('mix');
+      } else {
+        setView('landing');
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
   }, []);
   const [roomsHubOpen, setRoomsHubOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -970,7 +991,41 @@ export default function App() {
     setView('landing');
     const u = new URL(window.location);
     u.searchParams.delete('room');
+    u.searchParams.delete('view');
     window.history.pushState({}, '', u);
+  };
+
+  const handleOpenServersPage = () => {
+    if (soundEnabled) playClickSound();
+    setView('servers');
+    const u = new URL(window.location);
+    u.searchParams.set('view', 'servers');
+    window.history.pushState({}, '', u);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleGoHome = () => {
+    if (soundEnabled) playClickSound();
+    setView('landing');
+    const u = new URL(window.location);
+    u.searchParams.delete('view');
+    u.searchParams.delete('room');
+    u.searchParams.delete('pwd');
+    u.searchParams.delete('key');
+    window.history.pushState({}, '', u);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleGoToRoom = (targetRoomId) => {
+    if (soundEnabled) playClickSound();
+    const clean = (targetRoomId || roomId || 'MIX-PRO').trim().toUpperCase();
+    setRoomId(clean);
+    setView('mix');
+    const u = new URL(window.location);
+    u.searchParams.delete('view');
+    u.searchParams.set('room', clean);
+    window.history.pushState({}, '', u);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   // Steam Switch Account (logout and immediate redirect to Steam Auth)
@@ -1243,6 +1298,38 @@ export default function App() {
     }
   };
 
+  if (view === 'servers') {
+    return (
+      <>
+        <UpdateNotificationBanner isAvailable={updateAvailable} onUpdate={handleApplyUpdate} />
+        <FailoverBanner roomId={roomId} roomPassword={roomPassword} socketConnected={socketConnected} />
+        <DedicatedServersHub
+          roomId={roomId}
+          currentServerIp={room.serverIp || ''}
+          rconPassword={room.rconPassword || ''}
+          finalMap={room.finalMap?.name || 'de_mirage'}
+          onUpdateServerIp={handleUpdateServerIp}
+          onUpdateRconPassword={handleUpdateRconPassword}
+          onGoHome={handleGoHome}
+          onGoToRoom={handleGoToRoom}
+          soundEnabled={soundEnabled}
+          myProfile={myProfile}
+        />
+
+        <PlayerProfileModal
+          isOpen={profileModalOpen}
+          onClose={() => setProfileModalOpen(false)}
+          profile={myProfile}
+          rankingSystem={room.rankingSystem || 'gc'}
+          onLogout={handleLogoutSteam}
+          onSwitchAccount={handleSwitchSteamAccount}
+          soundEnabled={soundEnabled}
+          onSaveProfile={handleSaveProfile}
+        />
+      </>
+    );
+  }
+
   if (view === 'landing') {
     return (
       <>
@@ -1255,6 +1342,7 @@ export default function App() {
           onOpenRoomsHub={() => setRoomsHubOpen(true)}
           onOpenLeaderboard={() => setLeaderboardOpen(true)}
           onOpenLocalHost={() => setLocalHostModalOpen(true)}
+          onOpenServersPage={handleOpenServersPage}
           onRequireSteamLogin={handleRequireSteamLogin}
           onOpenProfile={() => setProfileModalOpen(true)}
           myProfile={myProfile}
@@ -1392,14 +1480,8 @@ export default function App() {
         onOpenLeaderboard={() => setLeaderboardOpen(true)}
         onOpenDiscordModal={() => setDiscordModalOpen(true)}
         onOpenLocalHost={() => setLocalHostModalOpen(true)}
-        onGoHome={() => {
-          setView('landing');
-          const u = new URL(window.location);
-          u.searchParams.delete('room');
-          u.searchParams.delete('pwd');
-          u.searchParams.delete('key');
-          window.history.pushState({}, '', u);
-        }}
+        onOpenServersPage={handleOpenServersPage}
+        onGoHome={handleGoHome}
         roomPassword={roomPassword}
         hasPassword={Boolean(room.hasPassword)}
         isPrivate={Boolean(room.isPrivate)}
@@ -1447,6 +1529,7 @@ export default function App() {
                 roomName={room.name}
                 liveMatch={room.liveMatch}
                 onOpenGsiSetup={() => setGsiModalOpen(true)}
+                onOpenServersPage={handleOpenServersPage}
                 soundEnabled={soundEnabled}
                 isAdmin={isAdmin}
                 adminId={room.adminId}
@@ -1491,6 +1574,7 @@ export default function App() {
             roomId={roomId}
             liveMatch={room.liveMatch}
             onOpenGsiSetup={() => setGsiModalOpen(true)}
+            onOpenServersPage={handleOpenServersPage}
             soundEnabled={soundEnabled}
             isAdmin={isAdmin}
             adminId={room.adminId}

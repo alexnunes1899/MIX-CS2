@@ -25,6 +25,7 @@ export default function TeamsView({
   roomId = 'MIX-PRO',
   liveMatch = null,
   onOpenGsiSetup,
+  onOpenServersPage,
   soundEnabled,
   isAdmin = false,
   adminId = null,
@@ -120,6 +121,7 @@ export default function TeamsView({
           roomId={roomId}
           liveMatch={liveMatch}
           onOpenGsiSetup={onOpenGsiSetup}
+          onOpenServersPage={onOpenServersPage}
           soundEnabled={soundEnabled}
         />
       )}

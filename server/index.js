@@ -11,6 +11,7 @@ import { getSteamPlayerDetails } from './steamApi.js';
 import { fetchFaceitPlayer } from './faceit.js';
 import { sendDiscordWebhook, isValidDiscordWebhookUrl } from './discordWebhook.js';
 import { getLeaderboard, recordMatch } from './leaderboard.js';
+import { pingCs2Server } from './serverQuery.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1746,6 +1747,33 @@ app.post('/api/rcon/exec', sensitiveLimiter, async (req, res) => {
     res.json({ success: true, ...result });
   } catch (err) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+// 2b. Valve CS2 Server Ping & Connectivity Status Tester
+app.post('/api/server/ping', sensitiveLimiter, async (req, res) => {
+  const { host, port } = req.body;
+  try {
+    const result = await pingCs2Server(host, port || 27015);
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ online: false, error: err.message });
+  }
+});
+
+// 2c. Port Reachability Checker (Tests if port 27015 is open on caller's public IP)
+app.get('/api/server/check-port', sensitiveLimiter, async (req, res) => {
+  const forwarded = req.headers['x-forwarded-for'];
+  let ip = forwarded ? forwarded.split(',')[0].trim() : req.socket.remoteAddress || '';
+  if (ip.startsWith('::ffff:')) {
+    ip = ip.replace('::ffff:', '');
+  }
+  const port = parseInt(req.query.port, 10) || 27015;
+  try {
+    const result = await pingCs2Server(ip, port, 2000);
+    res.json({ clientIp: ip, port, reachable: result.online, pingMs: result.pingMs, error: result.error });
+  } catch (err) {
+    res.status(500).json({ clientIp: ip, port, reachable: false, error: err.message });
   }
 });
 

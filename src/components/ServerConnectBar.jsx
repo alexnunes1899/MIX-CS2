@@ -12,6 +12,7 @@ export default function ServerConnectBar({
   roomId,
   liveMatch = null,
   onOpenGsiSetup,
+  onOpenServersPage,
   soundEnabled,
   title = 'Servidor do Mix (FireGames / Dedicado / Host)',
   description = 'Conecte-se diretamente, crie um host local no seu PC ou envie comandos RCON',
@@ -300,18 +301,19 @@ export default function ServerConnectBar({
                 <span>RCON</span>
               </button>
 
-              {/* Local Host Guide Button */}
+              {/* Central de Servidores / Host Guide */}
               <button
                 type="button"
                 onClick={() => {
                   if (soundEnabled) playClickSound();
-                  setLocalHostOpen(true);
+                  if (onOpenServersPage) onOpenServersPage();
+                  else setLocalHostOpen(true);
                 }}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-750 border border-slate-700 text-slate-300 text-xs font-bold transition-all cursor-pointer"
-                title="Instruções e comandos de Host Local (Jogar no meu PC)"
+                title="Central Completa de Servidores (Dedicado Online, LAN Party, Radmin VPN e Testador de Portas)"
               >
-                <Laptop size={13} className="text-amber-400" />
-                <span>Host PC</span>
+                <Server size={13} className="text-amber-400" />
+                <span>Central Servidores</span>
               </button>
 
               {/* GSI Setup Button */}
@@ -332,18 +334,19 @@ export default function ServerConnectBar({
             </div>
           ) : (
             <div className="flex items-center gap-2 flex-wrap">
-              {/* Host on My PC Button */}
+              {/* Central de Servidores / Host on My PC Button */}
               <button
                 type="button"
                 onClick={() => {
                   if (soundEnabled) playClickSound();
-                  setLocalHostOpen(true);
+                  if (onOpenServersPage) onOpenServersPage();
+                  else setLocalHostOpen(true);
                 }}
                 className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 hover:border-amber-400 text-amber-300 text-xs font-bold transition-all cursor-pointer shadow-sm active:scale-95"
-                title="Criar servidor no seu próprio PC de graça (Radmin VPN ou IP Público)"
+                title="Abrir Central Completa de Servidores (Dedicado, Host PC, LAN Party e Radmin VPN)"
               >
-                <Laptop size={14} className="text-amber-400" />
-                <span>Host no Meu PC</span>
+                <Server size={14} className="text-amber-400" />
+                <span>Central de Servidores</span>
               </button>
 
               <button
