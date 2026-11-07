@@ -464,12 +464,24 @@ export default function Lobby({
                 {isFaceit ? (
                   <div className="flex items-center justify-between bg-slate-950/60 p-1.5 rounded-xl border border-slate-800/80">
                     <FaceitBadge level={p.faceitLevel} elo={p.faceitElo} size="sm" showElo={true} />
-                    <span className="text-[9px] font-mono text-slate-500">Auto Steam</span>
+                    {p.cs2Hours ? (
+                      <span className="text-[9px] font-mono text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 font-bold" title={`${p.cs2Hours.toLocaleString('pt-BR')} horas no CS2`}>
+                        🕒 {p.cs2Hours.toLocaleString('pt-BR')}h
+                      </span>
+                    ) : (
+                      <span className="text-[9px] font-mono text-slate-500">Auto Steam</span>
+                    )}
                   </div>
                 ) : (
                   <div className="flex items-center justify-between bg-slate-950/60 p-1.5 rounded-xl border border-slate-800/80">
                     <GCBadge level={p.level} size="sm" />
-                    <span className="text-[9px] font-mono text-slate-500">Gamers Club</span>
+                    {p.cs2Hours ? (
+                      <span className="text-[9px] font-mono text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 font-bold" title={`${p.cs2Hours.toLocaleString('pt-BR')} horas no CS2`}>
+                        🕒 {p.cs2Hours.toLocaleString('pt-BR')}h
+                      </span>
+                    ) : (
+                      <span className="text-[9px] font-mono text-slate-500">Gamers Club</span>
+                    )}
                   </div>
                 )}
 

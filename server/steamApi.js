@@ -42,16 +42,18 @@ export async function getSteamPlayerDetails(steamId) {
       }
 
       // Get CS2 Playtime (AppID 730)
-      const gamesRes = await fetch(
-        `https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/?key=${apiKey}&steamid=${steamId}&include_appinfo=1&appids_filter[0]=730`
-      );
-      if (gamesRes.ok) {
-        const gamesData = await gamesRes.json();
-        const cs2Game = gamesData.response?.games?.find((g) => g.appid === 730);
-        if (cs2Game && typeof cs2Game.playtime_forever === 'number') {
-          result.cs2Hours = Math.round(cs2Game.playtime_forever / 60);
+      try {
+        const gamesRes = await fetch(
+          `https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/?key=${apiKey}&steamid=${steamId}&include_appinfo=1&include_played_free_games=1`
+        );
+        if (gamesRes.ok) {
+          const gamesData = await gamesRes.json();
+          const cs2Game = gamesData.response?.games?.find((g) => g.appid === 730 || g.appid === '730');
+          if (cs2Game && typeof cs2Game.playtime_forever === 'number') {
+            result.cs2Hours = Math.round(cs2Game.playtime_forever / 60);
+          }
         }
-      }
+      } catch (e) {}
 
       // Get Account Creation Date & Country
       const summaryRes = await fetch(
@@ -101,16 +103,51 @@ export async function getSteamPlayerDetails(steamId) {
       }
 
       // Location
-      const locationMatch = xml.match(/<location><!\[CDATA\[(.*?)\]\]><\/location>/);
-      if (locationMatch) {
+      const locationMatch = xml.match(/<location><!\[CDATA\[(.*?)\]\]><\/location>/) || xml.match(/<location>(.*?)<\/location>/);
+      if (locationMatch && locationMatch[1]) {
         result.countryCode = locationMatch[1].slice(-2).toUpperCase();
       }
 
-      // Most played games / CS2 in XML
-      const cs2Match = xml.match(/<game>[\s\S]*?<appID>730<\/appID>[\s\S]*?<hoursOnRecord>(.*?)<\/hoursOnRecord>[\s\S]*?<\/game>/);
+      // Most played games / CS2 in XML (Matches <mostPlayedGame> or <game>)
+      const cs2Match = xml.match(/(?:<mostPlayedGame>|<game>)[\s\S]*?(?:730|Counter-Strike)[\s\S]*?<hoursOnRecord>(.*?)<\/hoursOnRecord>[\s\S]*?(?:<\/mostPlayedGame>|<\/game>)/i);
       if (cs2Match) {
         const hoursStr = cs2Match[1].replace(/,/g, '');
         result.cs2Hours = Math.round(Number(hoursStr)) || null;
+      }
+
+      // Custom Vanity URL
+      const customUrlMatch = xml.match(/<customURL><!\[CDATA\[(.*?)\]\]><\/customURL>/) || xml.match(/<customURL>(.*?)<\/customURL>/);
+      const customUrl = customUrlMatch ? customUrlMatch[1].trim() : null;
+
+      // If hours not found yet, check customURL XML
+      if (!result.cs2Hours && customUrl) {
+        try {
+          const vanityRes = await fetch(`https://steamcommunity.com/id/${customUrl}/?xml=1`);
+          if (vanityRes.ok) {
+            const vXml = await vanityRes.text();
+            const vMatch = vXml.match(/(?:<mostPlayedGame>|<game>)[\s\S]*?(?:730|Counter-Strike)[\s\S]*?<hoursOnRecord>(.*?)<\/hoursOnRecord>[\s\S]*?(?:<\/mostPlayedGame>|<\/game>)/i);
+            if (vMatch) {
+              result.cs2Hours = Math.round(Number(vMatch[1].replace(/,/g, ''))) || null;
+            }
+          }
+        } catch (e) {}
+      }
+
+      // Check stats XML endpoint
+      if (!result.cs2Hours) {
+        try {
+          const statsUrl = customUrl
+            ? `https://steamcommunity.com/id/${customUrl}/stats/CSGO/?xml=1`
+            : `https://steamcommunity.com/profiles/${steamId}/stats/CSGO/?xml=1`;
+          const statsRes = await fetch(statsUrl);
+          if (statsRes.ok) {
+            const statsXml = await statsRes.text();
+            const hMatch = statsXml.match(/<hoursPlayed>(.*?)<\/hoursPlayed>/) || statsXml.match(/<hoursOnRecord>(.*?)<\/hoursOnRecord>/);
+            if (hMatch && Number(hMatch[1]) > 0) {
+              result.cs2Hours = Math.round(Number(hMatch[1].replace(/,/g, ''))) || null;
+            }
+          }
+        } catch (e) {}
       }
     }
   } catch (err) {

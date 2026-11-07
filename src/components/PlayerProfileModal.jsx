@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, ExternalLink, Copy, Check, LogOut, ArrowRightLeft, Shield, Flame, Trophy, Sparkles, User, RefreshCw, Zap, ShieldCheck, Clock, AlertTriangle, ArrowLeft } from 'lucide-react';
+import { X, ExternalLink, Copy, Check, LogOut, ArrowRightLeft, Shield, Flame, Trophy, Sparkles, User, RefreshCw, Zap, ShieldCheck, Clock, AlertTriangle, ArrowLeft, Pencil, HelpCircle, Info } from 'lucide-react';
 import PlayerAvatar from './PlayerAvatar';
 import GCBadge from './GCBadge';
 import FaceitBadge from './FaceitBadge';
@@ -27,11 +27,53 @@ export default function PlayerProfileModal({
   const [faceitSyncMessage, setFaceitSyncMessage] = useState(null);
   const [customFaceitNick, setCustomFaceitNick] = useState('');
   const [showNickInput, setShowNickInput] = useState(false);
+  const [editingHours, setEditingHours] = useState(false);
+  const [hoursInput, setHoursInput] = useState('');
+  const [showHoursHelp, setShowHoursHelp] = useState(false);
+  const [hoursSavedAlert, setHoursSavedAlert] = useState(false);
 
   const { nick = 'Jogador', steamId, avatar = '🎯', level = 12, faceitLevel = 5, faceitElo = 1200, side = 'ANY' } = profile || {};
   const isSteamUser = Boolean(steamId);
   const stats = getPlayerStats(steamId);
   const gcTier = getGCTier(level);
+
+  const effectiveHours = profile?.cs2Hours || steamStats?.cs2Hours || null;
+
+  // Auto-sync Steam hours when detected via API
+  useEffect(() => {
+    if (steamStats?.cs2Hours && (!profile?.cs2Hours || profile.cs2Hours !== steamStats.cs2Hours)) {
+      if (onSaveProfile) {
+        onSaveProfile({
+          ...profile,
+          cs2Hours: steamStats.cs2Hours,
+        });
+      }
+    }
+  }, [steamStats?.cs2Hours]);
+
+  const handleOpenEditHours = () => {
+    if (soundEnabled) playClickSound();
+    setHoursInput(effectiveHours ? String(effectiveHours) : '');
+    setEditingHours(true);
+    setShowHoursHelp(false);
+  };
+
+  const handleSaveHours = (e) => {
+    if (e) e.preventDefault();
+    const parsed = parseInt(hoursInput, 10);
+    if (!isNaN(parsed) && parsed >= 0 && parsed <= 100000) {
+      if (soundEnabled) playClickSound();
+      if (onSaveProfile) {
+        onSaveProfile({
+          ...profile,
+          cs2Hours: parsed,
+        });
+      }
+      setEditingHours(false);
+      setHoursSavedAlert(true);
+      setTimeout(() => setHoursSavedAlert(false), 3000);
+    }
+  };
 
   // Close on Escape Key
   useEffect(() => {
@@ -454,15 +496,52 @@ export default function PlayerProfileModal({
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
                 {/* CS2 Playtime */}
-                <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center justify-center shrink-0">
-                    <Clock size={16} />
+                <div className="bg-slate-950/80 border border-slate-800 hover:border-amber-500/30 rounded-xl p-3 flex flex-col justify-between gap-1.5 transition-all">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <Clock size={14} className="text-amber-400" />
+                      <span className="text-[11px] text-slate-400 font-bold uppercase tracking-wider">Horas no CS2</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={handleOpenEditHours}
+                        className="text-[10px] text-amber-400 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors cursor-pointer"
+                        title="Editar ou definir manualmente suas horas de CS2"
+                      >
+                        <Pencil size={10} />
+                        <span>{effectiveHours ? 'Editar' : 'Definir'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (soundEnabled) playClickSound();
+                          setShowHoursHelp(!showHoursHelp);
+                          setEditingHours(false);
+                        }}
+                        className="text-[10px] text-slate-500 hover:text-sky-400 p-0.5 transition-colors cursor-pointer"
+                        title="Ajuda sobre privacidade da Steam"
+                      >
+                        <HelpCircle size={12} />
+                      </button>
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-[10px] text-slate-400 block">Horas de CS2</span>
-                    <strong className="text-white font-mono text-sm">
-                      {steamStats?.cs2Hours ? `${steamStats.cs2Hours.toLocaleString('pt-BR')} hrs` : 'Disponível'}
+
+                  <div className="flex items-baseline justify-between mt-1">
+                    <strong className="text-white font-mono text-base font-black">
+                      {effectiveHours ? `${effectiveHours.toLocaleString('pt-BR')} hrs` : (
+                        <span className="text-amber-400 text-xs font-semibold">Não sincronizado</span>
+                      )}
                     </strong>
+                    {effectiveHours && (
+                      <span className={`text-[9px] font-mono px-1.5 py-0.2 rounded border ${
+                        steamStats?.cs2Hours
+                          ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
+                          : 'text-amber-400 bg-amber-500/10 border-amber-500/20'
+                      }`}>
+                        {steamStats?.cs2Hours ? 'Steam ✓' : 'Manual'}
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -496,6 +575,89 @@ export default function PlayerProfileModal({
                   </div>
                 </div>
               </div>
+
+              {/* Inline Editing Form for CS2 Hours */}
+              {editingHours && (
+                <form onSubmit={handleSaveHours} className="p-3 bg-slate-950/95 border border-amber-500/50 rounded-xl space-y-2 animate-fadeIn shadow-xl">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-amber-400 font-bold flex items-center gap-1.5 font-heading uppercase tracking-wide">
+                      <Clock size={14} />
+                      Definir Horas de Jogo no CS2
+                    </span>
+                    <button type="button" onClick={() => setEditingHours(false)} className="text-slate-500 hover:text-white cursor-pointer">✕</button>
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    Digite quantas horas você possui registradas no CS2/CS:GO. Elas ficarão salvas no seu perfil do Mix Hub e visíveis para os amigos no Lobby!
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min="0"
+                      max="99999"
+                      value={hoursInput}
+                      onChange={(e) => setHoursInput(e.target.value)}
+                      placeholder="Ex: 1500"
+                      autoFocus
+                      className="flex-1 bg-slate-900 border border-amber-500/50 rounded-lg px-3 py-1.5 text-xs text-white font-mono focus:outline-none focus:ring-1 focus:ring-amber-400"
+                    />
+                    <button
+                      type="submit"
+                      className="px-4 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs uppercase tracking-wider transition-colors cursor-pointer shadow-md shadow-amber-500/20 active:scale-95"
+                    >
+                      Salvar Horas
+                    </button>
+                  </div>
+                  {/* Quick Presets */}
+                  <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                    <span className="text-[10px] text-slate-500 font-mono">Atalhos rápidos:</span>
+                    {[250, 500, 1000, 1500, 2000, 3000, 5000].map((h) => (
+                      <button
+                        key={h}
+                        type="button"
+                        onClick={() => setHoursInput(String(h))}
+                        className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-slate-900 hover:bg-amber-500/20 hover:text-amber-300 text-slate-300 border border-slate-800 transition-colors cursor-pointer"
+                      >
+                        {h}h
+                      </button>
+                    ))}
+                  </div>
+                </form>
+              )}
+
+              {hoursSavedAlert && (
+                <div className="p-2.5 bg-emerald-950/60 border border-emerald-500/40 rounded-xl text-xs text-emerald-400 font-mono flex items-center gap-2 animate-fadeIn">
+                  <Check size={14} />
+                  <span>Horas salvas no seu perfil com sucesso e sincronizadas com o mix!</span>
+                </div>
+              )}
+
+              {/* Help Drawer about Steam Privacy Settings */}
+              {showHoursHelp && (
+                <div className="p-3 bg-slate-950/95 border border-sky-500/40 rounded-xl space-y-2 text-xs text-slate-300 animate-fadeIn shadow-xl">
+                  <div className="flex items-center justify-between text-sky-400 font-bold">
+                    <span className="flex items-center gap-1.5">
+                      <Info size={14} />
+                      Por que minhas horas não apareceram sozinhas?
+                    </span>
+                    <button type="button" onClick={() => setShowHoursHelp(false)} className="text-slate-400 hover:text-white cursor-pointer">✕</button>
+                  </div>
+                  <p className="text-[11px] leading-relaxed text-slate-400">
+                    A Valve possui uma política de privacidade estrita onde todas as contas Steam possuem os <strong>"Detalhes dos Jogos"</strong> configurados como <em>Privado</em> por padrão.
+                  </p>
+                  <div className="bg-slate-900 p-2.5 rounded-lg border border-slate-800 space-y-1.5 text-[11px]">
+                    <strong className="text-white block font-heading">Como deixar público na Steam (100% automático):</strong>
+                    <ol className="list-decimal list-inside space-y-1 text-slate-300">
+                      <li>Abra a Steam &gt; Perfil &gt; <strong>Editar Perfil</strong>.</li>
+                      <li>Acesse a aba <strong>Configurações de privacidade</strong>.</li>
+                      <li>Altere <strong>Detalhes dos jogos</strong> para <span className="text-emerald-400 font-bold">Público</span>.</li>
+                      <li>Desmarque a opção <em>"Manter meu tempo total de jogo privado"</em>.</li>
+                    </ol>
+                  </div>
+                  <p className="text-[11px] text-amber-300 font-medium">
+                    💡 Caso queira manter seu perfil Steam privado, basta clicar no botão <strong>Editar / Definir</strong> acima e colocar suas horas manualmente!
+                  </p>
+                </div>
+              )}
             </div>
           )}
 

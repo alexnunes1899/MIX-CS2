@@ -62,6 +62,7 @@ export default function PlayerForm({
     const nextSide = partial.side !== undefined ? partial.side : side;
     const nextAvatar = partial.avatar !== undefined ? partial.avatar : avatar;
     const nextFaceitNick = partial.faceitNick !== undefined ? partial.faceitNick : faceitNick;
+    const nextCs2Hours = partial.cs2Hours !== undefined ? partial.cs2Hours : currentProfile?.cs2Hours;
 
     try {
       const saved = JSON.parse(localStorage.getItem('cs2_mix_profile') || '{}');
@@ -76,6 +77,7 @@ export default function PlayerForm({
           side: nextSide,
           avatar: nextAvatar,
           faceitNick: nextFaceitNick,
+          cs2Hours: nextCs2Hours,
         })
       );
     } catch (e) {}
@@ -92,6 +94,7 @@ export default function PlayerForm({
         avatar: nextAvatar,
         faceitNick: nextFaceitNick,
         steamId: currentProfile?.steamId || null,
+        cs2Hours: nextCs2Hours,
         ready: currentProfile?.ready !== undefined ? currentProfile.ready : true,
       });
     }
@@ -195,6 +198,7 @@ export default function PlayerForm({
       side,
       avatar,
       steamId: currentProfile?.steamId || null,
+      cs2Hours: currentProfile?.cs2Hours || null,
       ready: true,
     });
 
@@ -302,7 +306,7 @@ export default function PlayerForm({
                     Steam ✓
                   </span>
                 </div>
-                <div className="flex items-center gap-1 mt-0.5">
+                <div className="flex items-center gap-1 mt-0.5 flex-wrap">
                   <span className="text-[10px] text-slate-500 font-mono truncate max-w-[105px]">ID: {currentProfile.steamId}</span>
                   <button
                     type="button"
@@ -317,6 +321,16 @@ export default function PlayerForm({
                   >
                     {copiedSteamId ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
                   </button>
+                  {onOpenProfileModal && (
+                    <button
+                      type="button"
+                      onClick={onOpenProfileModal}
+                      className="ml-1 text-[9px] font-mono px-1.5 py-0.2 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 transition-colors cursor-pointer"
+                      title="Ver ou editar horas de CS2"
+                    >
+                      {currentProfile?.cs2Hours ? `${currentProfile.cs2Hours.toLocaleString('pt-BR')}h` : '+ Horas'}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

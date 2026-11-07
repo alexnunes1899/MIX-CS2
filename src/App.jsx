@@ -87,7 +87,13 @@ export default function App() {
   const [pendingDrawMode, setPendingDrawMode] = useState('balanced');
   const [steamGateModalOpen, setSteamGateModalOpen] = useState(false);
   const [steamGateActionText, setSteamGateActionText] = useState('criar ou entrar no mix');
-  const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [profileModalOpen, setProfileModalOpen] = useState(() => {
+    try {
+      return new URLSearchParams(window.location.search).get('open_profile') === '1';
+    } catch (e) {
+      return false;
+    }
+  });
   const [gsiModalOpen, setGsiModalOpen] = useState(false);
   const [leaderboardOpen, setLeaderboardOpen] = useState(false);
   const [discordModalOpen, setDiscordModalOpen] = useState(false);
@@ -181,6 +187,7 @@ export default function App() {
       faceitElo: 1200,
       side: 'ANY',
       avatar: '🎯',
+      cs2Hours: null,
     };
     try {
       const saved = localStorage.getItem('cs2_mix_profile');
@@ -198,12 +205,14 @@ export default function App() {
           const faceitLevel = params.get('faceitLevel');
           const faceitElo = params.get('faceitElo');
           const faceitFound = params.get('faceitFound') === '1';
+          const steamCs2Hours = params.get('cs2Hours');
 
           base = {
             ...base,
             nick: steamNick,
             avatar: steamAvatar || base.avatar,
             steamId: steamId || null,
+            cs2Hours: steamCs2Hours && !isNaN(Number(steamCs2Hours)) ? Number(steamCs2Hours) : (base.cs2Hours || null),
             faceitLevel: faceitFound && faceitLevel ? Number(faceitLevel) : (base.faceitLevel || 5),
             faceitElo: faceitFound && faceitElo && faceitElo !== 'null' ? Number(faceitElo) : (base.faceitElo || 1200),
           };
@@ -218,6 +227,7 @@ export default function App() {
             steamId: '76561198000000001',
             level: 18,
             faceitLevel: 9,
+            cs2Hours: 1850,
           };
         }
       } catch (e) {}

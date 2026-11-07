@@ -574,6 +574,7 @@ io.on('connection', (socket) => {
         side: validSide,
         avatar: sanitizeInput(player.avatar, 120) || '🎯',
         steamId: player.steamId ? sanitizeInput(player.steamId, 32) : null,
+        cs2Hours: player.cs2Hours ? Number(player.cs2Hours) : null,
         ready: player.ready !== undefined ? Boolean(player.ready) : false,
         socketId: socket.id,
       };
@@ -607,6 +608,19 @@ io.on('connection', (socket) => {
             if (pIdx >= 0) {
               room.players[pIdx].faceitLevel = faceitData.level;
               room.players[pIdx].faceitElo = faceitData.elo;
+              emitRoomState(cleanRoomId, room);
+            }
+          }
+        }).catch(() => {});
+      }
+
+      // If player has Steam ID but no CS2 hours registered, attempt background Steam stats lookup
+      if (player.steamId && !player.cs2Hours) {
+        getSteamPlayerDetails(player.steamId).then((steamDetails) => {
+          if (steamDetails && steamDetails.cs2Hours) {
+            const pIdx = room.players.findIndex((p) => p.id === socket.playerId);
+            if (pIdx >= 0 && !room.players[pIdx].cs2Hours) {
+              room.players[pIdx].cs2Hours = steamDetails.cs2Hours;
               emitRoomState(cleanRoomId, room);
             }
           }
@@ -1850,10 +1864,19 @@ app.get('/api/auth/steam/return', async (req, res) => {
       faceitFound = 1;
     }
 
+    // Attempt automatic Steam CS2 Hours & Stats lookup
+    let cs2Hours = '';
+    try {
+      const steamDetails = await getSteamPlayerDetails(steamId);
+      if (steamDetails && steamDetails.cs2Hours) {
+        cs2Hours = steamDetails.cs2Hours;
+      }
+    } catch (e) {}
+
     // Redireciona sempre para a tela inicial (Landing), garantindo que ao fazer o login
     // a pessoa veja a tela inicial e não caia diretamente dentro de uma sala de mix criada.
     res.redirect(
-      `/?steam_auth=1&steamId=${steamId}&nick=${encodeURIComponent(nick)}&avatar=${encodeURIComponent(avatar)}&faceitLevel=${faceitLevel}&faceitElo=${faceitElo}&faceitFound=${faceitFound}`
+      `/?steam_auth=1&steamId=${steamId}&nick=${encodeURIComponent(nick)}&avatar=${encodeURIComponent(avatar)}&faceitLevel=${faceitLevel}&faceitElo=${faceitElo}&faceitFound=${faceitFound}&cs2Hours=${encodeURIComponent(cs2Hours)}`
     );
   } catch (err) {
     console.error('Steam Auth Error:', err);
