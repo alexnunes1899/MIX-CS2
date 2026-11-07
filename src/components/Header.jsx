@@ -67,7 +67,7 @@ export default function Header({
   };
 
   return (
-    <header className="border-b border-slate-800/80 bg-[#0c1220]/95 backdrop-blur-md sticky top-0 z-40 shadow-xl">
+    <header className="border-b border-slate-800 bg-[#0c1220] sticky top-0 z-40 shadow-xl">
       <div className="max-w-7xl mx-auto px-3 sm:px-5 py-2.5 sm:py-3 space-y-2.5">
         
         {/* ROW 1: Room Identity & Quick Utility Actions */}
@@ -216,7 +216,7 @@ export default function Header({
 
         {/* ROW 2: O MENU PRINCIPAL — CENTRALIZADO, MAIOR E COM DESTAQUE ESPORTS */}
         <div className="pt-1 flex items-center justify-center w-full">
-          <nav className="inline-flex items-center gap-1.5 sm:gap-2.5 p-1.5 bg-slate-950/90 border border-slate-800 rounded-2xl shadow-2xl backdrop-blur-md overflow-x-auto max-w-full no-scrollbar">
+          <nav className="inline-flex items-center gap-1.5 sm:gap-2.5 p-1.5 bg-[#080d19] border border-slate-700/80 rounded-2xl shadow-2xl overflow-x-auto max-w-full no-scrollbar">
             
             {/* Início */}
             <button
@@ -224,7 +224,7 @@ export default function Header({
                 if (soundEnabled) playClickSound();
                 onGoHome();
               }}
-              className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-slate-800/90 hover:bg-slate-750 text-slate-200 hover:text-white border border-slate-700/80 text-xs sm:text-sm font-bold flex items-center gap-2 shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
+              className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 hover:text-white border border-slate-600/90 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
               title="Voltar para a Página Inicial"
             >
               <Home size={17} className="text-amber-400" />
@@ -237,7 +237,7 @@ export default function Header({
                 if (soundEnabled) playClickSound();
                 if (onOpenLeaderboard) onOpenLeaderboard();
               }}
-              className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 hover:text-amber-200 border border-amber-500/40 text-xs sm:text-sm font-bold flex items-center gap-2 shadow-lg shadow-amber-500/10 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
+              className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 hover:text-amber-200 border border-amber-500/60 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-lg shadow-amber-500/10 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
               title="Hall da Fama & Ranking Geral da Comunidade"
             >
               <Trophy size={17} className="text-amber-400" />
@@ -250,7 +250,7 @@ export default function Header({
                 if (soundEnabled) playClickSound();
                 if (onOpenDiscordModal) onOpenDiscordModal();
               }}
-              className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-300 hover:text-indigo-200 border border-indigo-500/40 text-xs sm:text-sm font-bold flex items-center gap-2 shadow-lg shadow-indigo-500/10 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
+              className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 hover:text-indigo-200 border border-indigo-500/60 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-lg shadow-indigo-500/10 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
               title="Notificações Automáticas no Discord"
             >
               <Bell size={17} className="text-indigo-400" />
@@ -263,7 +263,7 @@ export default function Header({
                 if (soundEnabled) playClickSound();
                 onOpenQuickMapRoll();
               }}
-              className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 hover:text-amber-200 border border-amber-500/40 text-xs sm:text-sm font-bold flex items-center gap-2 shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
+              className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 hover:text-amber-200 border border-amber-500/60 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
               title="Sortear um mapa aleatório rapidamente entre a rotação da Valve"
             >
               <Dices size={17} className="text-amber-400" />
@@ -276,7 +276,7 @@ export default function Header({
                 if (soundEnabled) playClickSound();
                 onOpenQuickVeto();
               }}
-              className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 hover:text-sky-200 border border-sky-500/40 text-xs sm:text-sm font-bold flex items-center gap-2 shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
+              className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 hover:text-sky-200 border border-sky-500/60 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
               title="Ir direto para o veto de mapas se os times já estiverem formados"
             >
               <Zap size={17} className="text-sky-400" />
@@ -289,10 +289,10 @@ export default function Header({
                 if (soundEnabled) playClickSound();
                 onOpenRoomsHub();
               }}
-              className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-slate-800/90 hover:bg-slate-750 text-slate-200 hover:text-white border border-slate-700/80 text-xs sm:text-sm font-bold flex items-center gap-2 shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
+              className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 hover:text-white border border-slate-600/90 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
               title="Ver todas as salas ativas ou criar um novo mix"
             >
-              <Layers size={17} className="text-slate-400" />
+              <Layers size={17} className="text-slate-300" />
               <span>Salas</span>
             </button>
 
