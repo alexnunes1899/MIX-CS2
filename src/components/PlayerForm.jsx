@@ -660,10 +660,10 @@ export default function PlayerForm({
             {/* Quick Level Preset Buttons (Sleek Pills) */}
             <div className="grid grid-cols-4 gap-1.5 pt-1">
               {[
-                { lvl: 1, label: 'Lvl 1 (Iniciante)' },
-                { lvl: 11, label: 'Lvl 11 (START)' },
-                { lvl: 16, label: 'Lvl 16 (RISE)' },
-                { lvl: 21, label: 'Lvl 21 (Hall)' },
+                { lvl: 1, label: 'Lvl 1', desc: 'Iniciante' },
+                { lvl: 11, label: 'Lvl 11', desc: 'Start' },
+                { lvl: 16, label: 'Lvl 16', desc: 'Rise' },
+                { lvl: 21, label: 'Lvl 21', desc: 'Hall' },
               ].map((preset) => {
                 const isCurrent = level === preset.lvl;
                 return (
@@ -675,13 +675,15 @@ export default function PlayerForm({
                       if (soundEnabled) playClickSound();
                       handleGCLevelChange(preset.lvl);
                     }}
-                    className={`py-1 px-1.5 rounded-lg text-[10px] font-mono font-bold transition-all cursor-pointer text-center truncate active:scale-95 disabled:opacity-50 ${
+                    className={`py-1.5 px-1 rounded-lg text-center transition-all cursor-pointer active:scale-95 disabled:opacity-50 ${
                       isCurrent
-                        ? 'bg-amber-500 text-slate-950 shadow-sm border border-amber-300 font-black'
+                        ? 'bg-amber-500 text-slate-950 shadow-sm border border-amber-300'
                         : 'bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800'
                     }`}
+                    title={`Nível ${preset.lvl} - ${preset.desc}`}
                   >
-                    {preset.label}
+                    <span className="text-[11px] font-mono font-black block leading-none">{preset.label}</span>
+                    <span className="text-[8px] uppercase tracking-wider block opacity-75 mt-0.5 leading-none">{preset.desc}</span>
                   </button>
                 );
               })}

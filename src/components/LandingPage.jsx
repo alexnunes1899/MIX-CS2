@@ -3,6 +3,7 @@ import { Play, Sparkles, Swords, Dices, Shield, Flame, Users, Layers, Zap, Troph
 import { ACTIVE_DUTY_MAPS, EXTRA_CS2_MAPS } from '../data/maps';
 import PlayerAvatar from './PlayerAvatar';
 import SteamIcon from './SteamIcon';
+import MainNavigationMenu from './MainNavigationMenu';
 import { playClickSound } from '../utils/audio';
 
 export default function LandingPage({
@@ -163,117 +164,22 @@ export default function LandingPage({
             </div>
           </div>
 
-          {/* ROW 2: MENU DE INÍCIO — SEMPRE VISÍVEL E CENTRALIZADO */}
-          <div className="pt-1 flex items-center justify-center w-full">
-            <nav className="inline-flex items-center gap-1.5 sm:gap-2.5 p-1.5 bg-[#080d19] border border-slate-700/80 rounded-2xl shadow-2xl overflow-x-auto max-w-full no-scrollbar">
-              
-              {/* Início (Ativo) */}
-              <button
-                type="button"
-                onClick={() => {
-                  if (soundEnabled) playClickSound();
-                  if (onGoHome) onGoHome();
-                  window.scrollTo({ top: 0, behavior: 'smooth' });
-                }}
-                className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/60 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
-                title="Página Inicial"
-              >
-                <Home size={17} className="text-amber-400" />
-                <span>Início</span>
-              </button>
-
-              {/* Hall da Fama */}
-              <button
-                type="button"
-                onClick={() => {
-                  if (soundEnabled) playClickSound();
-                  if (onOpenLeaderboard) onOpenLeaderboard();
-                }}
-                className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 hover:text-amber-200 border border-amber-500/60 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-lg shadow-amber-500/10 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
-                title="Hall da Fama & Ranking Geral da Comunidade"
-              >
-                <Trophy size={17} className="text-amber-400" />
-                <span>Hall da Fama</span>
-              </button>
-
-              {/* Discord */}
-              {onOpenDiscordModal && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (soundEnabled) playClickSound();
-                    onOpenDiscordModal();
-                  }}
-                  className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 hover:text-indigo-200 border border-indigo-500/60 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-lg shadow-indigo-500/10 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
-                  title="Notificações Automáticas no Discord"
-                >
-                  <Bell size={17} className="text-indigo-400" />
-                  <span>Discord</span>
-                </button>
-              )}
-
-              {/* Roleta de Mapa */}
-              <button
-                type="button"
-                onClick={() => {
-                  if (soundEnabled) playClickSound();
-                  if (onOpenQuickMapRoll) onOpenQuickMapRoll();
-                }}
-                className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 hover:text-amber-200 border border-amber-500/60 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
-                title="Sortear um mapa aleatório rapidamente entre a rotação da Valve"
-              >
-                <Dices size={17} className="text-amber-400" />
-                <span>Roleta de Mapa</span>
-              </button>
-
-              {/* Veto Rápido */}
-              <button
-                type="button"
-                onClick={() => {
-                  if (soundEnabled) playClickSound();
-                  if (onOpenQuickVeto) onOpenQuickVeto();
-                }}
-                className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 hover:text-sky-200 border border-sky-500/60 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
-                title="Ir direto para o veto de mapas se os times já estiverem formados"
-              >
-                <Zap size={17} className="text-sky-400" />
-                <span>Veto Rápido</span>
-              </button>
-
-              {/* Servidores & LAN */}
-              <button
-                type="button"
-                onClick={() => {
-                  if (soundEnabled) playClickSound();
-                  if (onOpenServersPage) onOpenServersPage();
-                  else if (onOpenLocalHost) onOpenLocalHost();
-                }}
-                className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-gradient-to-r from-emerald-600/30 to-teal-600/30 hover:from-emerald-600/40 hover:to-teal-600/40 text-emerald-300 hover:text-white border border-emerald-500/60 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-lg shadow-emerald-500/10 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
-                title="Central Completa de Servidores: Dedicado Online, LAN Party 0ms, Radmin VPN, Teste de Portas 27015 e Gerador de Scripts .bat"
-              >
-                <Server size={17} className="text-emerald-400" />
-                <span>Servidores & LAN</span>
-              </button>
-
-              {/* Salas */}
-              <button
-                type="button"
-                onClick={() => {
-                  if (soundEnabled) playClickSound();
-                  if (onOpenRoomsHub) onOpenRoomsHub();
-                }}
-                className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 hover:text-white border border-slate-600/90 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
-                title="Ver todas as salas ativas ou criar um novo mix"
-              >
-                <Layers size={17} className="text-slate-300" />
-                <span>Salas</span>
-                <span className="text-[10px] font-mono font-bold text-amber-400 bg-amber-500/20 px-1.5 py-0.2 rounded">
-                  {activeRooms.length}
-                </span>
-              </button>
-
-            </nav>
-          </div>
+          {/* ROW 2: MENU DE INÍCIO — CENTRALIZADO E COM DESIGN ESPORTS UNIFICADO */}
+          <MainNavigationMenu
+            activeTab="inicio"
+            onGoHome={() => {
+              if (onGoHome) onGoHome();
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+            onOpenLeaderboard={onOpenLeaderboard}
+            onOpenDiscordModal={onOpenDiscordModal}
+            onOpenQuickMapRoll={onOpenQuickMapRoll}
+            onOpenQuickVeto={onOpenQuickVeto}
+            onOpenServersPage={onOpenServersPage || onOpenLocalHost}
+            onOpenRoomsHub={onOpenRoomsHub}
+            activeRoomsCount={activeRooms.length}
+            soundEnabled={soundEnabled}
+          />
 
         </div>
       </header>
@@ -287,20 +193,20 @@ export default function LandingPage({
         <div className="relative z-10 max-w-4xl mx-auto space-y-6">
           
           {/* Tactical Pill */}
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full glass-panel border border-amber-500/40 text-amber-300 text-xs font-bold uppercase tracking-widest shadow-xl">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>ROTAÇÃO OFICIAL VALVE 2026 • BALANCEADOR GAMERS CLUB</span>
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full glass-panel border border-amber-500/40 text-amber-300 text-[10px] sm:text-xs font-bold uppercase tracking-wider shadow-xl max-w-full">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+            <span className="truncate">ROTAÇÃO OFICIAL VALVE 2026 • BALANCEADOR GAMERS CLUB</span>
           </div>
 
           {/* Main Title */}
-          <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black font-heading text-white tracking-wider leading-[1.05]">
+          <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black font-heading text-white tracking-wider leading-[1.05] text-balance">
             JOGUE MIX COM SEUS AMIGOS <br />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-orange-500 to-yellow-200 drop-shadow-sm">
               COMO UM PROFISSIONAL
             </span>
           </h1>
 
-          <p className="text-sm sm:text-base text-slate-300 max-w-2xl mx-auto leading-relaxed font-normal">
+          <p className="text-sm sm:text-base text-slate-300 max-w-2xl mx-auto leading-relaxed font-normal text-balance">
             Crie salas de mix com link direto, escolha entre o ranking manual da <strong>Gamers Club (1 a 21)</strong> ou automático da <strong>FACEIT (1 a 10 / ELO)</strong> via Steam, e dispute o <strong>Pick & Ban oficial</strong> de mapas da Valve.
           </p>
 
@@ -325,17 +231,22 @@ export default function LandingPage({
             </button>
           </div>
 
-          {/* Fast Action Shortcuts */}
-          <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+          {/* Fast Action Feature Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-3xl mx-auto pt-3 text-left">
             <button
               onClick={() => {
                 if (soundEnabled) playClickSound();
                 onOpenQuickVeto();
               }}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-sky-300 border border-sky-500/30 hover:border-sky-400 text-xs font-bold transition-all shadow-md cursor-pointer group"
+              className="p-3.5 rounded-2xl bg-slate-900/80 hover:bg-slate-800/90 border border-sky-500/30 hover:border-sky-400 transition-all shadow-lg group cursor-pointer hover:-translate-y-0.5 active:scale-95"
             >
-              <Zap size={15} className="text-sky-400 group-hover:scale-110 transition-transform" />
-              <span>⚡ Veto Rápido (Times Prontos)</span>
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-7 h-7 rounded-lg bg-sky-500/15 text-sky-400 flex items-center justify-center border border-sky-500/30 group-hover:scale-110 transition-transform">
+                  <Zap size={14} />
+                </div>
+                <span className="text-xs font-black uppercase text-white group-hover:text-sky-300 transition-colors">Veto Rápido</span>
+              </div>
+              <p className="text-[11px] text-slate-400 leading-snug">Pick & Ban oficial MD1, MD3 ou MD5 com times formados</p>
             </button>
 
             <button
@@ -343,10 +254,15 @@ export default function LandingPage({
                 if (soundEnabled) playClickSound();
                 onOpenQuickMapRoll();
               }}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-amber-300 border border-amber-500/30 hover:border-amber-400 text-xs font-bold transition-all shadow-md cursor-pointer group"
+              className="p-3.5 rounded-2xl bg-slate-900/80 hover:bg-slate-800/90 border border-amber-500/30 hover:border-amber-400 transition-all shadow-lg group cursor-pointer hover:-translate-y-0.5 active:scale-95"
             >
-              <Dices size={15} className="text-amber-400 group-hover:rotate-45 transition-transform" />
-              <span>🎲 Roleta de Mapa Aleatório</span>
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-7 h-7 rounded-lg bg-amber-500/15 text-amber-400 flex items-center justify-center border border-amber-500/30 group-hover:scale-110 transition-transform">
+                  <Dices size={14} />
+                </div>
+                <span className="text-xs font-black uppercase text-white group-hover:text-amber-300 transition-colors">Roleta de Mapa</span>
+              </div>
+              <p className="text-[11px] text-slate-400 leading-snug">Sorteio com animação 3D entre a rotação da Valve</p>
             </button>
 
             {(onOpenServersPage || onOpenLocalHost) && (
@@ -356,10 +272,15 @@ export default function LandingPage({
                   if (onOpenServersPage) onOpenServersPage();
                   else if (onOpenLocalHost) onOpenLocalHost();
                 }}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-emerald-300 border border-emerald-500/40 hover:border-emerald-400 text-xs font-bold transition-all shadow-md cursor-pointer group"
+                className="p-3.5 rounded-2xl bg-slate-900/80 hover:bg-slate-800/90 border border-emerald-500/30 hover:border-emerald-400 transition-all shadow-lg group cursor-pointer hover:-translate-y-0.5 active:scale-95"
               >
-                <Server size={15} className="text-emerald-400 group-hover:scale-110 transition-transform" />
-                <span>🖥️ Central de Servidores (Online & LAN)</span>
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="w-7 h-7 rounded-lg bg-emerald-500/15 text-emerald-400 flex items-center justify-center border border-emerald-500/30 group-hover:scale-110 transition-transform">
+                    <Server size={14} />
+                  </div>
+                  <span className="text-xs font-black uppercase text-white group-hover:text-emerald-300 transition-colors">Servidores & LAN</span>
+                </div>
+                <p className="text-[11px] text-slate-400 leading-snug">Host 0ms no PC, LAN Party, Dedicado e Radmin VPN</p>
               </button>
             )}
           </div>
@@ -394,8 +315,8 @@ export default function LandingPage({
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30 text-xs font-bold uppercase tracking-wider">
             Pool Oficial & Reserva CS2
           </div>
-          <h2 className="text-3xl sm:text-4xl font-black font-heading text-white tracking-wide">
-            Fotos & Logos Reais do Counter-Strike 2
+          <h2 className="text-3xl sm:text-4xl font-black font-heading text-white tracking-wide text-balance">
+            Fotos & Logos Reais do <span className="inline-block whitespace-nowrap">Counter-Strike 2</span>
           </h2>
           <p className="text-xs sm:text-sm text-slate-400">
             Capturas reais em alta definição direto dos arquivos do jogo CS2 acompanhadas das insígnias oficiais de cada mapa da Valve.
@@ -515,12 +436,12 @@ export default function LandingPage({
       <section id="recursos" className="max-w-7xl mx-auto px-4 py-20 w-full border-t border-white/[0.08]">
         <div className="text-center max-w-2xl mx-auto mb-14 space-y-2.5">
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/30 text-xs font-bold uppercase tracking-wider">
-            Arquitetura de Alta Performance
+            Arquitetura Profissional
           </div>
-          <h2 className="text-3xl sm:text-4xl font-black font-heading text-white tracking-wide">
-            Diagramação & Recursos de Alto Nível
+          <h2 className="text-3xl sm:text-4xl font-black font-heading text-white tracking-wide text-balance">
+            Recursos & Arquitetura de Alto Nível
           </h2>
-          <p className="text-xs sm:text-sm text-slate-400">
+          <p className="text-xs sm:text-sm text-slate-400 text-balance">
             Desenvolvido com design responsivo, alta legibilidade e tecnologia em tempo real sem atrasos.
           </p>
         </div>
@@ -530,7 +451,9 @@ export default function LandingPage({
             <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30">
               <Trophy size={24} />
             </div>
-            <h3 className="font-bold text-base font-heading text-white tracking-wide">Equilíbrio Gamers Club (1 a 21)</h3>
+            <h3 className="font-bold text-base font-heading text-white tracking-wide">
+              Equilíbrio <span className="inline-block whitespace-nowrap">Gamers Club</span> (1 a 21)
+            </h3>
             <p className="text-xs text-slate-400 leading-relaxed font-normal">
               O algoritmo avalia matematicamente todas as 126 combinações possíveis de 5v5 para que os dois times tenham médias de nível praticamente idênticas.
             </p>

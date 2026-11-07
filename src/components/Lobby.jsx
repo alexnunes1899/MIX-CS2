@@ -101,7 +101,7 @@ export default function Lobby({
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-24 sm:pb-12">
       {/* Room Security & Privacy Card */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-lg space-y-3 backdrop-blur">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -444,20 +444,20 @@ export default function Lobby({
               {/* Top: Avatar & Player Nick */}
               <div className="flex items-center gap-2.5 mb-3">
                 <PlayerAvatar avatar={p.avatar} size="md" />
-                <div className="overflow-hidden pr-3">
-                  <div className="flex items-center gap-1">
-                    <span className="font-bold text-xs text-white truncate block">
-                      {p.nick}
+                <div className="min-w-0 flex-1 overflow-hidden">
+                  <span className="font-bold text-xs text-white truncate block" title={p.nick}>
+                    {p.nick}
+                  </span>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="text-[10px] text-slate-500 font-mono">
+                      Slot #{idx + 1}
                     </span>
                     {isMe && (
-                      <span className="text-[9px] font-bold text-amber-400 bg-amber-500/20 px-1 rounded shrink-0">
+                      <span className="text-[8px] font-black uppercase tracking-wider text-amber-300 bg-amber-500/25 border border-amber-500/40 px-1 rounded shrink-0">
                         VOCÊ
                       </span>
                     )}
                   </div>
-                  <span className="text-[10px] text-slate-500 font-mono block">
-                    Slot #{idx + 1}
-                  </span>
                 </div>
               </div>
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import MainNavigationMenu from './MainNavigationMenu';
 import {
   Server,
   Laptop,
@@ -421,116 +422,18 @@ pause
             </div>
           </div>
 
-          {/* ROW 2: MENU DE INÍCIO — SEMPRE VISÍVEL E CENTRALIZADO */}
-          <div className="pt-1 flex items-center justify-center w-full">
-            <nav className="inline-flex items-center gap-1.5 sm:gap-2.5 p-1.5 bg-[#080d19] border border-slate-700/80 rounded-2xl shadow-2xl overflow-x-auto max-w-full no-scrollbar">
-              
-              {/* Início */}
-              <button
-                type="button"
-                onClick={() => {
-                  if (soundEnabled) playClickSound();
-                  if (onGoHome) onGoHome();
-                }}
-                className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 hover:text-white border border-slate-600/90 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
-                title="Voltar para a Página Inicial"
-              >
-                <Home size={17} className="text-amber-400" />
-                <span>Início</span>
-              </button>
-
-              {/* Hall da Fama */}
-              {onOpenLeaderboard && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (soundEnabled) playClickSound();
-                    onOpenLeaderboard();
-                  }}
-                  className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 hover:text-amber-200 border border-amber-500/60 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-lg shadow-amber-500/10 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
-                  title="Hall da Fama & Ranking Geral da Comunidade"
-                >
-                  <Trophy size={17} className="text-amber-400" />
-                  <span>Hall da Fama</span>
-                </button>
-              )}
-
-              {/* Discord */}
-              {onOpenDiscordModal && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (soundEnabled) playClickSound();
-                    onOpenDiscordModal();
-                  }}
-                  className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 hover:text-indigo-200 border border-indigo-500/60 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-lg shadow-indigo-500/10 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
-                  title="Notificações Automáticas no Discord"
-                >
-                  <Bell size={17} className="text-indigo-400" />
-                  <span>Discord</span>
-                </button>
-              )}
-
-              {/* Roleta de Mapa */}
-              {onOpenQuickMapRoll && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (soundEnabled) playClickSound();
-                    onOpenQuickMapRoll();
-                  }}
-                  className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 hover:text-amber-200 border border-amber-500/60 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
-                  title="Sortear um mapa aleatório rapidamente entre a rotação da Valve"
-                >
-                  <Dices size={17} className="text-amber-400" />
-                  <span>Roleta de Mapa</span>
-                </button>
-              )}
-
-              {/* Veto Rápido */}
-              {onOpenQuickVeto && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (soundEnabled) playClickSound();
-                    onOpenQuickVeto();
-                  }}
-                  className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 hover:text-sky-200 border border-sky-500/60 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
-                  title="Ir direto para o veto de mapas se os times já estiverem formados"
-                >
-                  <Zap size={17} className="text-sky-400" />
-                  <span>Veto Rápido</span>
-                </button>
-              )}
-
-              {/* Servidores & LAN (Ativo) */}
-              <button
-                type="button"
-                onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-                className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-gradient-to-r from-emerald-600/40 to-teal-600/40 text-white border border-emerald-400 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-lg shadow-emerald-500/20 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
-              >
-                <Server size={17} className="text-emerald-300" />
-                <span>Servidores & LAN</span>
-              </button>
-
-              {/* Salas */}
-              {onOpenRoomsHub && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (soundEnabled) playClickSound();
-                    onOpenRoomsHub();
-                  }}
-                  className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 hover:text-white border border-slate-600/90 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
-                  title="Ver todas as salas ativas ou criar um novo mix"
-                >
-                  <Layers size={17} className="text-slate-300" />
-                  <span>Salas</span>
-                </button>
-              )}
-
-            </nav>
-          </div>
+          {/* ROW 2: MENU DE INÍCIO — CENTRALIZADO E COM DESIGN ESPORTS UNIFICADO */}
+          <MainNavigationMenu
+            activeTab="servers"
+            onGoHome={onGoHome}
+            onOpenLeaderboard={onOpenLeaderboard}
+            onOpenDiscordModal={onOpenDiscordModal}
+            onOpenQuickMapRoll={onOpenQuickMapRoll}
+            onOpenQuickVeto={onOpenQuickVeto}
+            onOpenServersPage={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+            onOpenRoomsHub={onOpenRoomsHub}
+            soundEnabled={soundEnabled}
+          />
         </div>
       </header>
 

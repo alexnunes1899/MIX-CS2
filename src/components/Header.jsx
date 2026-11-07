@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Share2, Check, Users, Swords, MapPin, Trophy, Volume2, VolumeX, Layers, History, Dices, Zap, Home, Server, Laptop, Play, Copy, User, Trash2, Lock, KeyRound, Eye, EyeOff, Globe, Bell } from 'lucide-react';
 import PlayerAvatar from './PlayerAvatar';
 import DeleteRoomModal from './DeleteRoomModal';
+import MainNavigationMenu from './MainNavigationMenu';
 import { playClickSound } from '../utils/audio';
 import { parseServerDetails } from '../utils/serverParser';
 
@@ -216,104 +217,18 @@ export default function Header({
           </div>
         </div>
 
-        {/* ROW 2: O MENU PRINCIPAL — CENTRALIZADO, MAIOR E COM DESTAQUE ESPORTS */}
-        <div className="pt-1 flex items-center justify-center w-full">
-          <nav className="inline-flex items-center gap-1.5 sm:gap-2.5 p-1.5 bg-[#080d19] border border-slate-700/80 rounded-2xl shadow-2xl overflow-x-auto max-w-full no-scrollbar">
-            
-            {/* Início */}
-            <button
-              onClick={() => {
-                if (soundEnabled) playClickSound();
-                onGoHome();
-              }}
-              className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 hover:text-white border border-slate-600/90 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
-              title="Voltar para a Página Inicial"
-            >
-              <Home size={17} className="text-amber-400" />
-              <span>Início</span>
-            </button>
-
-            {/* Hall da Fama */}
-            <button
-              onClick={() => {
-                if (soundEnabled) playClickSound();
-                if (onOpenLeaderboard) onOpenLeaderboard();
-              }}
-              className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 hover:text-amber-200 border border-amber-500/60 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-lg shadow-amber-500/10 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
-              title="Hall da Fama & Ranking Geral da Comunidade"
-            >
-              <Trophy size={17} className="text-amber-400" />
-              <span>Hall da Fama</span>
-            </button>
-
-            {/* Discord */}
-            <button
-              onClick={() => {
-                if (soundEnabled) playClickSound();
-                if (onOpenDiscordModal) onOpenDiscordModal();
-              }}
-              className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 hover:text-indigo-200 border border-indigo-500/60 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-lg shadow-indigo-500/10 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
-              title="Notificações Automáticas no Discord"
-            >
-              <Bell size={17} className="text-indigo-400" />
-              <span>Discord</span>
-            </button>
-
-            {/* Roleta de Mapa */}
-            <button
-              onClick={() => {
-                if (soundEnabled) playClickSound();
-                onOpenQuickMapRoll();
-              }}
-              className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 hover:text-amber-200 border border-amber-500/60 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
-              title="Sortear um mapa aleatório rapidamente entre a rotação da Valve"
-            >
-              <Dices size={17} className="text-amber-400" />
-              <span>Roleta de Mapa</span>
-            </button>
-
-            {/* Veto Rápido */}
-            <button
-              onClick={() => {
-                if (soundEnabled) playClickSound();
-                onOpenQuickVeto();
-              }}
-              className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 hover:text-sky-200 border border-sky-500/60 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
-              title="Ir direto para o veto de mapas se os times já estiverem formados"
-            >
-              <Zap size={17} className="text-sky-400" />
-              <span>Veto Rápido</span>
-            </button>
-
-            {/* Central Completa de Servidores (Dedicado, LAN, Radmin, Testador de Portas) */}
-            <button
-              onClick={() => {
-                if (soundEnabled) playClickSound();
-                if (onOpenServersPage) onOpenServersPage();
-                else if (onOpenLocalHost) onOpenLocalHost();
-              }}
-              className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-gradient-to-r from-emerald-600/30 to-teal-600/30 hover:from-emerald-600/40 hover:to-teal-600/40 text-emerald-300 hover:text-white border border-emerald-500/60 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-lg shadow-emerald-500/10 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
-              title="Central Completa de Servidores: Dedicado Online, LAN Party 0ms, Radmin VPN, Teste de Portas 27015 e Gerador de Scripts .bat"
-            >
-              <Server size={17} className="text-emerald-400" />
-              <span>Servidores & LAN</span>
-            </button>
-
-            {/* Salas */}
-            <button
-              onClick={() => {
-                if (soundEnabled) playClickSound();
-                onOpenRoomsHub();
-              }}
-              className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 hover:text-white border border-slate-600/90 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
-              title="Ver todas as salas ativas ou criar um novo mix"
-            >
-              <Layers size={17} className="text-slate-300" />
-              <span>Salas</span>
-            </button>
-
-          </nav>
-        </div>
+        {/* ROW 2: O MENU PRINCIPAL — CENTRALIZADO E COM DESIGN ESPORTS UNIFICADO */}
+        <MainNavigationMenu
+          activeTab=""
+          onGoHome={onGoHome}
+          onOpenLeaderboard={onOpenLeaderboard}
+          onOpenDiscordModal={onOpenDiscordModal}
+          onOpenQuickMapRoll={onOpenQuickMapRoll}
+          onOpenQuickVeto={onOpenQuickVeto}
+          onOpenServersPage={onOpenServersPage || onOpenLocalHost}
+          onOpenRoomsHub={onOpenRoomsHub}
+          soundEnabled={soundEnabled}
+        />
 
         {/* ROW 3: Compact Phase Stepper */}
         <div className="hidden sm:flex items-center justify-center gap-2 pt-1 border-t border-slate-800/40">

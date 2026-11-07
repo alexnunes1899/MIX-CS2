@@ -132,13 +132,13 @@ export default function RoomsHubModal({
         </button>
 
         {/* Title */}
-        <div className="flex items-center gap-2.5 mb-5">
-          <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30">
+        <div className="flex items-center gap-2.5 mb-5 pr-10">
+          <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30 shrink-0">
             <Layers size={20} />
           </div>
-          <div>
-            <h2 className="text-lg font-bold font-heading text-white">Hub de Salas de Mix (Estilo GC)</h2>
-            <p className="text-xs text-slate-400">Crie mix público para a comunidade ou privado exclusivo via link</p>
+          <div className="min-w-0">
+            <h2 className="text-base sm:text-lg font-bold font-heading text-white truncate">Hub de Salas de Mix (Estilo GC)</h2>
+            <p className="text-[11px] sm:text-xs text-slate-400">Crie mix público para a comunidade ou privado exclusivo via link</p>
           </div>
         </div>
 
@@ -357,7 +357,7 @@ export default function RoomsHubModal({
                   <span className="font-bold text-xs text-orange-400 flex items-center gap-1">
                     <Zap size={12} /> FACEIT
                   </span>
-                  <span className="text-[9px] font-mono font-bold bg-orange-500/20 text-orange-300 px-1.5 py-0.2 rounded">
+                  <span className="text-[9px] font-mono font-bold bg-orange-500/20 text-orange-300 px-1.5 py-0.2 rounded whitespace-nowrap shrink-0">
                     Auto 1-10
                   </span>
                 </div>
