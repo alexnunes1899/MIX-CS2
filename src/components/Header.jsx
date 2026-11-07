@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Share2, Check, Users, Swords, MapPin, Trophy, Volume2, VolumeX, Layers, History, Dices, Zap, Home, Server, Play, Copy, User, Trash2, Lock, KeyRound, Eye, EyeOff, Globe, Bell } from 'lucide-react';
+import { Share2, Check, Users, Swords, MapPin, Trophy, Volume2, VolumeX, Layers, History, Dices, Zap, Home, Server, Laptop, Play, Copy, User, Trash2, Lock, KeyRound, Eye, EyeOff, Globe, Bell } from 'lucide-react';
 import PlayerAvatar from './PlayerAvatar';
 import DeleteRoomModal from './DeleteRoomModal';
 import { playClickSound } from '../utils/audio';
@@ -22,6 +22,7 @@ export default function Header({
   onOpenQuickMapRoll,
   onOpenLeaderboard,
   onOpenDiscordModal,
+  onOpenLocalHost,
   onGoHome,
   roomPassword = '',
   hasPassword = false,
@@ -281,6 +282,19 @@ export default function Header({
             >
               <Zap size={17} className="text-sky-400" />
               <span>Veto Rápido</span>
+            </button>
+
+            {/* Host Local & Servidor LAN */}
+            <button
+              onClick={() => {
+                if (soundEnabled) playClickSound();
+                if (onOpenLocalHost) onOpenLocalHost();
+              }}
+              className="px-3.5 sm:px-5 py-2 sm:py-2.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 hover:text-emerald-200 border border-emerald-500/60 text-xs sm:text-sm font-extrabold tracking-wide flex items-center gap-2 shadow-lg shadow-emerald-500/10 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
+              title="Configurar Servidor Local no seu PC (Radmin VPN ou LAN na mesma casa)"
+            >
+              <Laptop size={17} className="text-emerald-400" />
+              <span>Host Local & LAN</span>
             </button>
 
             {/* Salas */}

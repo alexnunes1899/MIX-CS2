@@ -24,6 +24,7 @@ import UpdateNotificationBanner from './components/UpdateNotificationBanner';
 import LeaderboardModal from './components/LeaderboardModal';
 import DiscordWebhookModal from './components/DiscordWebhookModal';
 import MatchCardModal from './components/MatchCardModal';
+import LocalHostModal from './components/LocalHostModal';
 import { recordMatchResult } from './utils/playerStats';
 import { ACTIVE_DUTY_MAPS, OFFICIAL_ACTIVE_DUTY, EXTRA_CS2_MAPS } from './data/maps';
 import { balanceTeams, shuffleTeams, calculateMetricsForTeams } from './utils/balance';
@@ -91,6 +92,7 @@ export default function App() {
   const [leaderboardOpen, setLeaderboardOpen] = useState(false);
   const [discordModalOpen, setDiscordModalOpen] = useState(false);
   const [matchCardOpen, setMatchCardOpen] = useState(false);
+  const [localHostModalOpen, setLocalHostModalOpen] = useState(false);
   const [roomNotice, setRoomNotice] = useState(null);
   const [serverVersion, setServerVersion] = useState(null);
   const [updateAvailable, setUpdateAvailable] = useState(false);
@@ -208,6 +210,15 @@ export default function App() {
           try {
             localStorage.setItem('cs2_mix_profile', JSON.stringify(base));
           } catch (e) {}
+        }
+        if (params.get('mock_user') === '1') {
+          base = {
+            ...base,
+            nick: 'Capitao',
+            steamId: '76561198000000001',
+            level: 18,
+            faceitLevel: 9,
+          };
         }
       } catch (e) {}
     }
@@ -1233,6 +1244,7 @@ export default function App() {
           onOpenQuickMapRoll={() => setQuickMapRollOpen(true)}
           onOpenRoomsHub={() => setRoomsHubOpen(true)}
           onOpenLeaderboard={() => setLeaderboardOpen(true)}
+          onOpenLocalHost={() => setLocalHostModalOpen(true)}
           onRequireSteamLogin={handleRequireSteamLogin}
           onOpenProfile={() => setProfileModalOpen(true)}
           myProfile={myProfile}
@@ -1334,6 +1346,16 @@ export default function App() {
           onOpenRoomsHub={() => setRoomsHubOpen(true)}
           soundEnabled={soundEnabled}
         />
+
+        <LocalHostModal
+          isOpen={localHostModalOpen}
+          onClose={() => setLocalHostModalOpen(false)}
+          roomId={roomId}
+          currentServerIp={room.serverIp || ''}
+          finalMap={room.finalMap?.name || 'de_mirage'}
+          onUpdateServerIp={handleUpdateServerIp}
+          soundEnabled={soundEnabled}
+        />
       </>
     );
   }
@@ -1359,6 +1381,7 @@ export default function App() {
         onOpenQuickMapRoll={() => setQuickMapRollOpen(true)}
         onOpenLeaderboard={() => setLeaderboardOpen(true)}
         onOpenDiscordModal={() => setDiscordModalOpen(true)}
+        onOpenLocalHost={() => setLocalHostModalOpen(true)}
         onGoHome={() => {
           setView('landing');
           const u = new URL(window.location);
@@ -1638,6 +1661,17 @@ export default function App() {
         isOpen={matchCardOpen}
         onClose={() => setMatchCardOpen(false)}
         room={room}
+        soundEnabled={soundEnabled}
+      />
+
+      {/* Local Host & LAN Assistant Modal */}
+      <LocalHostModal
+        isOpen={localHostModalOpen}
+        onClose={() => setLocalHostModalOpen(false)}
+        roomId={roomId}
+        currentServerIp={room.serverIp || ''}
+        finalMap={room.finalMap?.name || 'de_mirage'}
+        onUpdateServerIp={handleUpdateServerIp}
         soundEnabled={soundEnabled}
       />
 
