@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import GCBadge from './GCBadge';
 import FaceitBadge from './FaceitBadge';
 import { Sparkles, Trophy } from 'lucide-react';
@@ -12,30 +12,43 @@ export default function DraftRoulette({
 }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [progress, setProgress] = useState(0);
+  const onCompleteRef = useRef(onComplete);
+  const soundRef = useRef(soundEnabled);
+  const playersLenRef = useRef(players?.length || 1);
+
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+    soundRef.current = soundEnabled;
+    playersLenRef.current = players?.length || 1;
+  }, [onComplete, soundEnabled, players]);
 
   useEffect(() => {
     let tickCount = 0;
-    const totalTicks = 25;
-    const intervalTime = 90;
+    const totalTicks = 20;
+    const intervalTime = 85;
+    let finishTimeout = null;
 
     const interval = setInterval(() => {
       tickCount++;
-      setCurrentIndex((prev) => (prev + 1) % (players.length || 1));
+      setCurrentIndex((prev) => (prev + 1) % playersLenRef.current);
       setProgress((tickCount / totalTicks) * 100);
 
-      if (soundEnabled) playRouletteTick();
+      if (soundRef.current) playRouletteTick();
 
       if (tickCount >= totalTicks) {
         clearInterval(interval);
-        if (soundEnabled) playFanfare();
-        setTimeout(() => {
-          onComplete();
-        }, 400);
+        if (soundRef.current) playFanfare();
+        finishTimeout = setTimeout(() => {
+          if (onCompleteRef.current) onCompleteRef.current();
+        }, 300);
       }
     }, intervalTime);
 
-    return () => clearInterval(interval);
-  }, [players, soundEnabled, onComplete]);
+    return () => {
+      clearInterval(interval);
+      if (finishTimeout) clearTimeout(finishTimeout);
+    };
+  }, []);
 
   const activePlayer = players[currentIndex] || players[0];
 

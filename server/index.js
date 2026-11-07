@@ -128,16 +128,16 @@ setInterval(() => {
 }, 12 * 60 * 60 * 1000);
 
 const MOCK_BOTS = [
-  { id: 'bot-1', nick: 'FalleN', level: 21, faceitLevel: 10, faceitElo: 2840, side: 'CT', ready: true, avatar: '👑' },
-  { id: 'bot-2', nick: 'coldzera', level: 20, faceitLevel: 10, faceitElo: 2750, side: 'TR', ready: true, avatar: '🎯' },
-  { id: 'bot-3', nick: 'fer', level: 19, faceitLevel: 10, faceitElo: 2620, side: 'TR', ready: true, avatar: '⚡' },
-  { id: 'bot-4', nick: 'fnx', level: 18, faceitLevel: 9, faceitElo: 2280, side: 'ANY', ready: true, avatar: '🔥' },
-  { id: 'bot-5', nick: 'TACO', level: 17, faceitLevel: 9, faceitElo: 2150, side: 'CT', ready: true, avatar: '🛡️' },
-  { id: 'bot-6', nick: 'kNgV-', level: 20, faceitLevel: 10, faceitElo: 2710, side: 'TR', ready: true, avatar: '💀' },
-  { id: 'bot-7', nick: 'felps', level: 19, faceitLevel: 10, faceitElo: 2590, side: 'TR', ready: true, avatar: '🚀' },
-  { id: 'bot-8', nick: 'boltz', level: 18, faceitLevel: 9, faceitElo: 2310, side: 'CT', ready: true, avatar: '💣' },
-  { id: 'bot-9', nick: 'yel', level: 17, faceitLevel: 8, faceitElo: 1980, side: 'CT', ready: true, avatar: '🦅' },
-  { id: 'bot-10', nick: 'bit', level: 16, faceitLevel: 8, faceitElo: 1920, side: 'CT', ready: true, avatar: '🧠' },
+  { id: 'bot-1', nick: 'FalleN', level: 21, faceitLevel: 10, faceitElo: 2840, cs2Hours: 14800, side: 'CT', ready: true, avatar: '👑' },
+  { id: 'bot-2', nick: 'coldzera', level: 20, faceitLevel: 10, faceitElo: 2750, cs2Hours: 13500, side: 'TR', ready: true, avatar: '🎯' },
+  { id: 'bot-3', nick: 'fer', level: 19, faceitLevel: 10, faceitElo: 2620, cs2Hours: 12900, side: 'TR', ready: true, avatar: '⚡' },
+  { id: 'bot-4', nick: 'fnx', level: 18, faceitLevel: 9, faceitElo: 2280, cs2Hours: 11400, side: 'ANY', ready: true, avatar: '🔥' },
+  { id: 'bot-5', nick: 'TACO', level: 17, faceitLevel: 9, faceitElo: 2150, cs2Hours: 12100, side: 'CT', ready: true, avatar: '🛡️' },
+  { id: 'bot-6', nick: 'kNgV-', level: 20, faceitLevel: 10, faceitElo: 2710, cs2Hours: 10800, side: 'TR', ready: true, avatar: '💀' },
+  { id: 'bot-7', nick: 'felps', level: 19, faceitLevel: 10, faceitElo: 2590, cs2Hours: 10200, side: 'TR', ready: true, avatar: '🚀' },
+  { id: 'bot-8', nick: 'boltz', level: 18, faceitLevel: 9, faceitElo: 2310, cs2Hours: 11900, side: 'CT', ready: true, avatar: '💣' },
+  { id: 'bot-9', nick: 'yel', level: 17, faceitLevel: 8, faceitElo: 1980, cs2Hours: 9600, side: 'CT', ready: true, avatar: '🦅' },
+  { id: 'bot-10', nick: 'bit', level: 16, faceitLevel: 8, faceitElo: 1920, cs2Hours: 13800, side: 'CT', ready: true, avatar: '🧠' },
 ];
 
 // In-memory rooms
@@ -264,7 +264,10 @@ function getRoomAdminId(room) {
 function isRoomAdmin(room, socket) {
   if (!room || !socket) return false;
   const currentAdminId = getRoomAdminId(room);
-  return Boolean(currentAdminId && (socket.playerId === currentAdminId || socket.id === currentAdminId));
+  return Boolean(
+    (currentAdminId && (socket.playerId === currentAdminId || socket.id === currentAdminId)) ||
+    (room.creatorId && (socket.playerId === room.creatorId || socket.id === room.creatorId))
+  );
 }
 
 function calculateMetricsForTeams(teamA = [], teamB = [], rankingSystem = 'gc') {
@@ -894,11 +897,16 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Fill Mock Bots for fast testing
+  // Fill Mock Bots for fast testing (preserves any connected real players)
   socket.on('fill_mock_bots', ({ roomId }) => {
     const room = getRoomAndTouch(roomId);
     if (!room) return;
-    room.players = JSON.parse(JSON.stringify(MOCK_BOTS));
+    const realPlayers = room.players
+      .filter((p) => !String(p.id).startsWith('bot-'))
+      .map((p) => ({ ...p, ready: true }));
+    const neededBots = Math.max(0, 10 - realPlayers.length);
+    const botsToAdd = JSON.parse(JSON.stringify(MOCK_BOTS.slice(0, neededBots)));
+    room.players = [...realPlayers, ...botsToAdd];
     dispatchAutoDiscordLobby(room);
     emitRoomState(roomId, room);
     broadcastRoomsList();

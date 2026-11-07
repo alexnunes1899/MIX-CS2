@@ -368,7 +368,7 @@ pause
             {roomId && onGoToRoom && (
               <button
                 type="button"
-                onClick={onGoToRoom}
+                onClick={() => onGoToRoom(roomId)}
                 className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95"
               >
                 <ArrowLeft size={14} />
@@ -442,7 +442,7 @@ pause
             {onGoToRoom && (
               <button
                 type="button"
-                onClick={onGoToRoom}
+                onClick={() => onGoToRoom(roomId)}
                 className="px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs uppercase tracking-wider transition-colors cursor-pointer"
               >
                 Ir para o Mix

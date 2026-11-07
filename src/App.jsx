@@ -320,6 +320,7 @@ export default function App() {
       const faceitLevel = params.get('faceitLevel');
       const faceitElo = params.get('faceitElo');
       const faceitFound = params.get('faceitFound');
+      const steamCs2Hours = params.get('cs2Hours');
 
       if (steamNick) {
         setMyProfile((prev) => {
@@ -329,6 +330,7 @@ export default function App() {
             nick: steamNick,
             avatar: steamAvatar || prev.avatar,
             steamId: steamId || null,
+            cs2Hours: steamCs2Hours && !isNaN(Number(steamCs2Hours)) ? Number(steamCs2Hours) : (prev.cs2Hours || null),
             faceitLevel: hasFoundFaceit ? Number(faceitLevel) : (prev.faceitLevel || 5),
             faceitElo: hasFoundFaceit && faceitElo && faceitElo !== 'null' ? Number(faceitElo) : (prev.faceitElo || 1200),
           };
@@ -348,6 +350,7 @@ export default function App() {
       cleanUrl.searchParams.delete('faceitLevel');
       cleanUrl.searchParams.delete('faceitElo');
       cleanUrl.searchParams.delete('faceitFound');
+      cleanUrl.searchParams.delete('cs2Hours');
       window.history.replaceState({}, '', cleanUrl.pathname || '/');
     }
   }, []);
@@ -545,7 +548,8 @@ export default function App() {
 
   // Switch Room (Multi-room hub support with password, GC privacy & direct link)
   const handleSelectRoom = (newRoomCode, customName, rankingSystem = 'gc', serverIp = '', password = undefined, isPrivate = false, key = undefined) => {
-    const clean = newRoomCode.trim().toUpperCase();
+    const safeCode = typeof newRoomCode === 'string' && newRoomCode.trim() ? newRoomCode : (roomId || 'MIX-PRO');
+    const clean = safeCode.trim().toUpperCase();
     setRoomId(clean);
     setView('mix');
 
@@ -667,7 +671,8 @@ export default function App() {
       handleRequireSteamLogin('entrar no mix');
       return;
     }
-    handleSelectRoom(code);
+    const safeCode = typeof code === 'string' && code.trim() ? code : (roomId || 'MIX-PRO');
+    handleSelectRoom(safeCode);
   };
 
   // Change room ranking system (GC vs FACEIT)
@@ -681,7 +686,8 @@ export default function App() {
 
   // Delete Room
   const handleDeleteRoom = (targetRoomId) => {
-    const cleanId = (targetRoomId || roomId).trim().toUpperCase();
+    const safeTarget = typeof targetRoomId === 'string' && targetRoomId.trim() ? targetRoomId : (roomId || 'MIX-PRO');
+    const cleanId = safeTarget.trim().toUpperCase();
     if (socket.connected) {
       socket.emit('delete_room', { roomId: cleanId });
     } else {
@@ -1010,6 +1016,7 @@ export default function App() {
     setView('landing');
     const u = new URL(window.location);
     u.searchParams.delete('view');
+    u.searchParams.delete('tab');
     u.searchParams.delete('room');
     u.searchParams.delete('pwd');
     u.searchParams.delete('key');
@@ -1019,13 +1026,13 @@ export default function App() {
 
   const handleGoToRoom = (targetRoomId) => {
     if (soundEnabled) playClickSound();
-    const clean = (targetRoomId || roomId || 'MIX-PRO').trim().toUpperCase();
-    setRoomId(clean);
-    setView('mix');
+    const safeTarget = typeof targetRoomId === 'string' && targetRoomId.trim() ? targetRoomId : (roomId || 'MIX-PRO');
+    const clean = safeTarget.trim().toUpperCase();
     const u = new URL(window.location);
     u.searchParams.delete('view');
-    u.searchParams.set('room', clean);
-    window.history.pushState({}, '', u);
+    u.searchParams.delete('tab');
+    window.history.replaceState({}, '', u);
+    handleEnterRoom(clean);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
