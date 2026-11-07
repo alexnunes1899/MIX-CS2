@@ -2,7 +2,7 @@
   "$schema": "https://railway.com/railway.schema.json",
   "build": {
     "builder": "NIXPACKS",
-    "buildCommand": "node -e \"if (!require('fs').existsSync('dist/index.html')) require('child_process').execSync('npm run build', {stdio: 'inherit'})\""
+    "buildCommand": "npm run build"
   },
   "deploy": {
     "startCommand": "npm start",
