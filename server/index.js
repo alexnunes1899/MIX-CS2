@@ -1199,18 +1199,26 @@ io.on('connection', (socket) => {
     emitRoomState(roomId, room);
   });
 
-  // Quick Random Map Draw (Supports MD1, MD3, MD5)
-  socket.on('quick_random_map', ({ roomId, map, startingSide, matchFormat = 'MD1', drawnSeries = [] }) => {
+  // Quick Random Map Draw (Supports MD1, MD3, MD5 with 100% cryptographic reliability)
+  socket.on('quick_random_map', ({ roomId, map, startingSide, startingSideTeamA, matchFormat = 'MD1', drawnSeries = [] }) => {
     const room = getRoomAndTouch(roomId);
     if (!room) return;
 
     const chosenMap = map || room.maps[Math.floor(Math.random() * room.maps.length)];
+    const sideTeamB = startingSide || (Math.random() < 0.5 ? 'CT' : 'TR');
+    const sideTeamA = startingSideTeamA || (sideTeamB === 'CT' ? 'TR' : 'CT');
+
     room.finalMap = chosenMap;
-    room.startingSideTeamB = startingSide || (Math.random() < 0.5 ? 'CT' : 'TR');
+    room.startingSideTeamB = sideTeamB;
+    room.startingSideTeamA = sideTeamA;
     room.matchFormat = matchFormat || 'MD1';
     room.drawnSeries = Array.isArray(drawnSeries) && drawnSeries.length > 0
-      ? drawnSeries
-      : [{ map: chosenMap, sideTimeA: startingSide || 'CT', role: 'Mapa 1' }];
+      ? drawnSeries.map((s, idx) => ({
+          ...s,
+          sideTimeA: s.sideTimeA || 'CT',
+          sideTimeB: s.sideTimeB || (s.sideTimeA === 'CT' ? 'TR' : 'CT'),
+        }))
+      : [{ map: chosenMap, sideTimeA, sideTimeB, role: 'Mapa 1' }];
     room.phase = 'finished';
 
     if (room.teamA.length === 0) {

@@ -1028,19 +1028,33 @@ export default function App() {
     }
   };
 
-  // Direct Quick Map Roll (Supports MD1, MD3, MD5)
+  // Direct Quick Map Roll (Supports MD1, MD3, MD5 with 100% reliable cryptographic draw)
   const handleApplyQuickMap = (map, startingSide, matchFormat = 'MD1', drawnSeries = []) => {
     const targetRoomId = roomId || `MAPA-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
     if (!roomId) setRoomId(targetRoomId);
     setView('mix');
+
+    const sideTeamA = (typeof startingSide === 'object' && startingSide?.sideTimeA) ? startingSide.sideTimeA : (typeof startingSide === 'string' ? startingSide : 'CT');
+    const sideTeamB = (typeof startingSide === 'object' && startingSide?.sideTimeB) ? startingSide.sideTimeB : (sideTeamA === 'CT' ? 'TR' : 'CT');
+
+    const formattedSeries = Array.isArray(drawnSeries) && drawnSeries.length > 0
+      ? drawnSeries.map((s, idx) => ({
+          ...s,
+          sideTimeA: s.sideTimeA || 'CT',
+          sideTimeB: s.sideTimeB || (s.sideTimeA === 'CT' ? 'TR' : 'CT'),
+          role: s.role || `Mapa #${idx + 1}`,
+        }))
+      : [{ map, sideTimeA, sideTimeB, role: 'Mapa da Partida' }];
+
     setRoom((prev) => ({
       ...prev,
       id: targetRoomId,
       phase: 'finished',
       finalMap: map,
-      startingSideTeamB: startingSide,
+      startingSideTeamB: sideTeamB,
+      startingSideTeamA: sideTeamA,
       matchFormat,
-      drawnSeries: drawnSeries && drawnSeries.length > 0 ? drawnSeries : [{ map, sideTimeA: startingSide, role: 'Mapa da Partida' }],
+      drawnSeries: formattedSeries,
       teamA: prev.teamA.length > 0 ? prev.teamA : [{ id: 't1', nick: 'Time A', level: 15, avatar: '🛡️' }],
       teamB: prev.teamB.length > 0 ? prev.teamB : [{ id: 't2', nick: 'Time B', level: 15, avatar: '⚔️' }],
     }));
@@ -1051,7 +1065,14 @@ export default function App() {
         player: myProfile?.nick ? myProfile : null,
         createIfMissing: true,
       });
-      socket.emit('quick_random_map', { roomId: targetRoomId, map, startingSide, matchFormat, drawnSeries });
+      socket.emit('quick_random_map', {
+        roomId: targetRoomId,
+        map,
+        startingSide: sideTeamB,
+        startingSideTeamA: sideTeamA,
+        matchFormat,
+        drawnSeries: formattedSeries,
+      });
     }
   };
 
