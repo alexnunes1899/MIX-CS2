@@ -271,43 +271,105 @@ export async function sendDiscordWebhook({ webhookUrl, eventType, data = {} }) {
         },
       ],
     };
-  } else if (eventType === 'gsi_gameover') {
+  } else if (eventType === 'gsi_gameover' || eventType === 'match_stats') {
     const {
       roomName = 'MIX',
       mapName = 'Mirage',
       winner = 'Time CT',
       scoreCT = 13,
       scoreTR = 0,
+      nameA = 'Time A',
+      nameB = 'Time B',
+      allPlayersStats = [],
+      topFragger = null,
+      matchMvp = null,
       roomUrl = '',
     } = data;
 
+    const formatPlayerLine = (p, idx) => {
+      const kd = p.deaths > 0 ? (p.kills / p.deaths).toFixed(2) : p.kills.toFixed(2);
+      const mvpBadge = p.mvps > 0 ? ` • ${p.mvps}⭐` : '';
+      return `\`${idx + 1}.\` **${p.name || p.nick}** — ${p.kills}/${p.deaths}/${p.assists} (*K/D: ${kd}*)${mvpBadge}`;
+    };
+
+    const fields = [
+      {
+        name: '🥇 Vencedor da Partida',
+        value: `**${winner}** (${scoreCT > scoreTR ? `${scoreCT} × ${scoreTR}` : `${scoreTR} × ${scoreCT}`})`,
+        inline: true,
+      },
+      {
+        name: '🗺️ Mapa Disputado',
+        value: `\`${mapName}\``,
+        inline: true,
+      },
+    ];
+
+    if (matchMvp) {
+      const mvpKd = matchMvp.deaths > 0 ? (matchMvp.kills / matchMvp.deaths).toFixed(2) : matchMvp.kills.toFixed(2);
+      fields.push({
+        name: '⭐ MVP da Partida',
+        value: `🏆 **${matchMvp.name}**\n${matchMvp.kills} Kills • ${matchMvp.deaths} Mortes • ${matchMvp.assists} Assists • **K/D ${mvpKd}** • ${matchMvp.mvps} MVPs`,
+        inline: false,
+      });
+    }
+
+    if (allPlayersStats && allPlayersStats.length > 0) {
+      const ctPlayers = allPlayersStats.filter(p => p.team === 'CT');
+      const trPlayers = allPlayersStats.filter(p => p.team === 'T' || p.team === 'TR');
+
+      if (ctPlayers.length > 0 || trPlayers.length > 0) {
+        if (ctPlayers.length > 0) {
+          fields.push({
+            name: `🛡️ Contraterroristas (CT) — ${scoreCT} Rounds`,
+            value: ctPlayers.map((p, i) => formatPlayerLine(p, i)).join('\n') || 'Nenhum dado',
+            inline: false,
+          });
+        }
+        if (trPlayers.length > 0) {
+          fields.push({
+            name: `🔥 Terroristas (TR) — ${scoreTR} Rounds`,
+            value: trPlayers.map((p, i) => formatPlayerLine(p, i)).join('\n') || 'Nenhum dado',
+            inline: false,
+          });
+        }
+      } else {
+        // Flat scoreboard sorted by score
+        fields.push({
+          name: '📊 Scoreboard Geral da Partida',
+          value: allPlayersStats.slice(0, 10).map((p, i) => formatPlayerLine(p, i)).join('\n'),
+          inline: false,
+        });
+      }
+    }
+
+    if (topFragger && (!matchMvp || topFragger.name !== matchMvp.name)) {
+      fields.push({
+        name: '👑 Top Fragger',
+        value: `**${topFragger.name}** com **${topFragger.kills} eliminações**`,
+        inline: true,
+      });
+    }
+
+    if (roomUrl) {
+      fields.push({
+        name: '📈 Central de Partidas & Hall da Fama',
+        value: `[Ver Detalhes do Mix no Hub](${roomUrl})`,
+        inline: false,
+      });
+    }
+
     payload = {
-      username: 'CS2 Mix Hub • GSI Tracker',
+      username: 'CS2 Mix Hub • Estatísticas da Partida',
       avatar_url: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=200&q=80',
       embeds: [
         {
-          title: `🏆 FIM DE PARTIDA: ${winner.toUpperCase()} VENCEU!`,
-          description: `A partida competitiva no mapa **${mapName}** chegou ao fim com vitória do **${winner}**!\n\n**Placar Final:** 🛡️ CT **${scoreCT}**  ×  **${scoreTR}** Time TR 🔥`,
+          title: `🏆 RESULTADO & ESTATÍSTICAS DA PARTIDA: ${winner.toUpperCase()}`,
+          description: `A partida competitiva no mapa **${mapName}** chegou ao fim com vitória do **${winner}**!\n\n**Placar Final:** 🛡️ CT **${scoreCT}**  ×  **${scoreTR}** TR 🔥`,
           color: 0xeab308, // Gold
-          fields: [
-            {
-              name: '🥇 Vencedor',
-              value: `**${winner}**`,
-              inline: true,
-            },
-            {
-              name: '🗺️ Mapa Disputado',
-              value: `\`${mapName}\``,
-              inline: true,
-            },
-            {
-              name: '📈 Estatísticas',
-              value: roomUrl ? `[Ver no Hub e Gerar Card do Jogo](${roomUrl})` : 'Registrado no Hall da Fama',
-              inline: false,
-            },
-          ],
+          fields,
           footer: {
-            text: `CS2 Mix Hub • Partida Concluída • ${roomName}`,
+            text: `CS2 Mix Hub • Estatísticas Competitivas ao Vivo • ${roomName}`,
           },
           timestamp: new Date().toISOString(),
         },

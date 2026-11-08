@@ -28,6 +28,8 @@ export default function FinalSummary({
   const [copiedHltv, setCopiedHltv] = useState(false);
   const [discordSending, setDiscordSending] = useState(false);
   const [discordSent, setDiscordSent] = useState(false);
+  const [statsSending, setStatsSending] = useState(false);
+  const [statsSent, setStatsSent] = useState(false);
   const [rconExecuting, setRconExecuting] = useState(null);
 
   const { finalMap, teamA = [], teamB = [], metrics, startingSideTeamB, name: roomName = 'MIX', serverIp = '', rconPassword = '', liveMatch = null, rankingSystem = 'gc', discordWebhook = '', vetoLog = [] } = room;
@@ -96,6 +98,10 @@ export default function FinalSummary({
             metrics,
             serverIp,
             connectCommand: serverIp ? (serverIp.includes('connect') ? serverIp : `connect ${serverIp}`) : '',
+            allPlayersStats: liveMatch?.allPlayersStats || [],
+            topFragger: liveMatch?.topFragger || null,
+            matchMvp: liveMatch?.matchMvp || null,
+            roomUrl: typeof window !== 'undefined' ? window.location.href : '',
           },
         }),
       });
@@ -107,6 +113,52 @@ export default function FinalSummary({
       console.warn('Erro ao disparar webhook:', e);
     } finally {
       setDiscordSending(false);
+    }
+  };
+
+  const handleSendStatsDiscord = async () => {
+    if (soundEnabled) playClickSound();
+    if (!discordWebhook) {
+      if (onOpenDiscordModal) onOpenDiscordModal();
+      return;
+    }
+    setStatsSending(true);
+    try {
+      const winnerName = (liveMatch?.scoreCT || 0) > (liveMatch?.scoreTR || 0)
+        ? (upperA || 'Time CT')
+        : (liveMatch?.scoreTR || 0) > (liveMatch?.scoreCT || 0)
+        ? (upperB || 'Time TR')
+        : 'Empate';
+
+      const res = await fetch('/api/discord/webhook', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          webhookUrl: discordWebhook,
+          eventType: 'match_stats',
+          data: {
+            roomName,
+            mapName: fullMap?.name || liveMatch?.mapName || 'CS2 Map',
+            winner: winnerName,
+            scoreCT: liveMatch?.scoreCT || 0,
+            scoreTR: liveMatch?.scoreTR || 0,
+            nameA: labelA,
+            nameB: labelB,
+            allPlayersStats: liveMatch?.allPlayersStats || [],
+            topFragger: liveMatch?.topFragger || null,
+            matchMvp: liveMatch?.matchMvp || null,
+            roomUrl: typeof window !== 'undefined' ? window.location.href : '',
+          },
+        }),
+      });
+      if (res.ok) {
+        setStatsSent(true);
+        setTimeout(() => setStatsSent(false), 3000);
+      }
+    } catch (e) {
+      console.warn('Erro ao enviar estatísticas ao Discord:', e);
+    } finally {
+      setStatsSending(false);
     }
   };
 
@@ -415,24 +467,139 @@ export default function FinalSummary({
 
       {/* Valve GSI Live Scorecard (If match is in progress or completed) */}
       {liveMatch?.connected && (
-        <div className="bg-emerald-950/40 border border-emerald-500/50 rounded-2xl p-4 text-center shadow-lg shadow-emerald-950/40 animate-fadeIn">
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold uppercase tracking-wider mb-2">
-            <Radio size={12} className="animate-pulse text-emerald-400" /> Transmissão Valve GSI Ao Vivo
+        <div className="bg-emerald-950/30 border border-emerald-500/40 rounded-3xl p-5 text-center shadow-2xl shadow-emerald-950/30 animate-fadeIn space-y-4">
+          <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-emerald-500/20">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold uppercase tracking-wider">
+              <Radio size={12} className="animate-pulse text-emerald-400" /> Transmissão Valve GSI Ao Vivo
+            </div>
+            <div className="text-[11px] font-mono text-emerald-300/80">
+              Round #{liveMatch.roundNumber} • Mapa: {liveMatch.mapName} • Fase: {liveMatch.phase}
+            </div>
           </div>
-          <div className="flex items-center justify-center gap-8 text-3xl font-black font-heading text-white">
+
+          <div className="flex items-center justify-center gap-8 text-3xl sm:text-4xl font-black font-heading text-white">
             <div className="text-center">
-              <span className="text-[11px] text-sky-400 block font-normal font-sans uppercase font-bold">Time CT</span>
+              <span className="text-[11px] text-sky-400 block font-normal font-sans uppercase font-bold tracking-wider">Time CT</span>
               <span className="font-mono text-sky-400">{liveMatch.scoreCT}</span>
             </div>
             <span className="text-slate-600 text-2xl font-light">x</span>
             <div className="text-center">
-              <span className="text-[11px] text-amber-400 block font-normal font-sans uppercase font-bold">Time TR</span>
+              <span className="text-[11px] text-amber-400 block font-normal font-sans uppercase font-bold tracking-wider">Time TR</span>
               <span className="font-mono text-amber-400">{liveMatch.scoreTR}</span>
             </div>
           </div>
-          <p className="text-xs text-slate-400 mt-2 font-mono">
-            Round #{liveMatch.roundNumber} • Mapa: {liveMatch.mapName} • Fase: {liveMatch.phase}
-          </p>
+
+          {/* Player Statistics Scoreboard from CS2 GSI */}
+          {liveMatch.allPlayersStats && liveMatch.allPlayersStats.length > 0 && (
+            <div className="space-y-3 pt-3 border-t border-slate-800 text-left">
+              {/* Highlights Ribbon */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {liveMatch.matchMvp && (
+                  <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">⭐</span>
+                      <div>
+                        <span className="text-[9px] uppercase font-bold text-amber-400/80 block">MVP da Partida</span>
+                        <strong className="text-xs text-white block">{liveMatch.matchMvp.name}</strong>
+                      </div>
+                    </div>
+                    <span className="text-[11px] font-mono font-bold text-amber-300">
+                      {liveMatch.matchMvp.mvps} MVPs • K/D {liveMatch.matchMvp.kd}
+                    </span>
+                  </div>
+                )}
+
+                {liveMatch.topFragger && (
+                  <div className="p-2.5 rounded-xl bg-sky-500/10 border border-sky-500/30 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">👑</span>
+                      <div>
+                        <span className="text-[9px] uppercase font-bold text-sky-400/80 block">Top Fragger</span>
+                        <strong className="text-xs text-white block">{liveMatch.topFragger.name}</strong>
+                      </div>
+                    </div>
+                    <span className="text-[11px] font-mono font-bold text-sky-300">
+                      {liveMatch.topFragger.kills} Kills ({liveMatch.topFragger.deaths}D)
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Scoreboard Table */}
+              <div className="overflow-x-auto rounded-2xl border border-slate-800 bg-slate-950/80 no-scrollbar">
+                <table className="w-full text-left text-xs font-mono">
+                  <thead>
+                    <tr className="border-b border-slate-800 text-[10px] text-slate-400 uppercase tracking-wider bg-slate-900/60 font-sans">
+                      <th className="py-2 px-3">#</th>
+                      <th className="py-2 px-3">Competidor</th>
+                      <th className="py-2 px-2 text-center">Lado</th>
+                      <th className="py-2 px-3 text-center">K / D / A</th>
+                      <th className="py-2 px-3 text-center">K/D</th>
+                      <th className="py-2 px-2 text-center">MVPs</th>
+                      <th className="py-2 px-3 text-right">Pontos</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/60">
+                    {liveMatch.allPlayersStats.map((p, idx) => (
+                      <tr key={p.steamId || idx} className="hover:bg-slate-900/40 transition-colors">
+                        <td className="py-2 px-3 text-slate-500 font-bold">{idx + 1}</td>
+                        <td className="py-2 px-3 font-sans font-bold text-white flex items-center gap-1.5">
+                          <span>{p.name}</span>
+                          {liveMatch.matchMvp?.name === p.name && (
+                            <span className="text-amber-400" title="MVP">⭐</span>
+                          )}
+                        </td>
+                        <td className="py-2 px-2 text-center">
+                          <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                            p.team === 'CT' ? 'bg-sky-500/20 text-sky-300' : 'bg-amber-500/20 text-amber-300'
+                          }`}>
+                            {p.team}
+                          </span>
+                        </td>
+                        <td className="py-2 px-3 text-center font-bold">
+                          <span className="text-emerald-400">{p.kills}</span>
+                          <span className="text-slate-500"> / </span>
+                          <span className="text-rose-400">{p.deaths}</span>
+                          <span className="text-slate-500"> / </span>
+                          <span className="text-sky-400">{p.assists}</span>
+                        </td>
+                        <td className="py-2 px-3 text-center font-bold">
+                          <span className={p.kd >= 1.0 ? 'text-emerald-400' : 'text-slate-400'}>{p.kd}</span>
+                        </td>
+                        <td className="py-2 px-2 text-center text-amber-400 font-bold">
+                          {p.mvps > 0 ? `${p.mvps}⭐` : '-'}
+                        </td>
+                        <td className="py-2 px-3 text-right font-black text-slate-200">
+                          {p.score}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Button: Send Stats to Discord */}
+              <div className="flex items-center justify-between pt-1 flex-wrap gap-2">
+                <span className="text-[11px] text-slate-400">
+                  Transmitindo em tempo real direto da engine do CS2 via Game State Integration.
+                </span>
+                <button
+                  type="button"
+                  onClick={handleSendStatsDiscord}
+                  disabled={statsSending}
+                  className={`py-2 px-4 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer shadow-md active:scale-95 ${
+                    statsSent
+                      ? 'bg-emerald-500 text-slate-950'
+                      : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/25'
+                  }`}
+                  title="Envia o scoreboard completo com K/D e MVPs para o canal do Discord"
+                >
+                  {statsSent ? <Check size={14} /> : <Send size={14} />}
+                  <span>{statsSending ? 'Enviando...' : statsSent ? 'Estatísticas Enviadas!' : 'Mandar Estatísticas ao Discord'}</span>
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

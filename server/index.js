@@ -238,6 +238,7 @@ function getOrCreateRoom(roomId, customName = '', rankingSystem = 'gc', serverIp
       discordAutoVeto: true,
       discordGsiRounds: true,
       discordGsiBomb: false,
+      discordAutoStats: true,
       liveMatch: null,
       chat: [],
       history: [],
@@ -1653,7 +1654,7 @@ io.on('connection', (socket) => {
   });
 
   // Discord Webhook Settings for Room
-  socket.on('set_discord_webhook', ({ roomId, webhookUrl, autoLobby = true, autoVeto = true, autoGsiRounds = true, autoGsiBomb = false }) => {
+  socket.on('set_discord_webhook', ({ roomId, webhookUrl, autoLobby = true, autoVeto = true, autoGsiRounds = true, autoGsiBomb = false, autoStats = true }) => {
     const room = getRoomAndTouch(roomId);
     if (!room) return;
     room.discordWebhook = (webhookUrl || '').trim();
@@ -1661,6 +1662,7 @@ io.on('connection', (socket) => {
     room.discordAutoVeto = Boolean(autoVeto);
     room.discordGsiRounds = Boolean(autoGsiRounds);
     room.discordGsiBomb = Boolean(autoGsiBomb);
+    room.discordAutoStats = Boolean(autoStats);
     emitRoomState(roomId, room);
   });
 
@@ -1935,6 +1937,11 @@ function processGsiDiscordNotifications(room, liveState, req) {
         winner,
         scoreCT: liveState.scoreCT,
         scoreTR: liveState.scoreTR,
+        nameA: room.nameA || 'Time A',
+        nameB: room.nameB || 'Time B',
+        allPlayersStats: liveState.allPlayersStats || [],
+        topFragger: liveState.topFragger || null,
+        matchMvp: liveState.matchMvp || null,
         roomUrl,
       },
     }).catch((err) => console.error('[DISCORD GSI GAMEOVER ERROR]:', err.message));
@@ -1973,6 +1980,22 @@ app.post('/api/gsi/:roomId', (req, res) => {
           source: 'Valve CS2 GSI',
         });
         if (room.history.length > 20) room.history.pop();
+        const isCtWinner = liveState.scoreCT > liveState.scoreTR;
+        const winners = isCtWinner ? (room.teamA || []) : (room.teamB || []);
+        const losers = isCtWinner ? (room.teamB || []) : (room.teamA || []);
+        if (winners.length > 0 || losers.length > 0) {
+          try {
+            recordMatch({
+              winners,
+              losers,
+              map: liveState.mapName,
+              scoreWinners: Math.max(liveState.scoreCT, liveState.scoreTR),
+              scoreLosers: Math.min(liveState.scoreCT, liveState.scoreTR),
+            });
+          } catch (err) {
+            console.warn('[LEADERBOARD GSI RECORD ERROR]:', err.message);
+          }
+        }
         emitRoomState(roomId, room);
       }
     }

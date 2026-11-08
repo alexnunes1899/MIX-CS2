@@ -917,7 +917,7 @@ export default function App() {
   };
 
   // Update Discord Webhook settings
-  const handleSaveDiscordWebhook = ({ webhookUrl, autoLobby, autoVeto, autoGsiRounds, autoGsiBomb }) => {
+  const handleSaveDiscordWebhook = ({ webhookUrl, autoLobby, autoVeto, autoGsiRounds, autoGsiBomb, autoStats }) => {
     if (socket.connected) {
       socket.emit('set_discord_webhook', {
         roomId,
@@ -926,6 +926,7 @@ export default function App() {
         autoVeto,
         autoGsiRounds,
         autoGsiBomb,
+        autoStats,
       });
     }
     setRoom((prev) => ({
@@ -935,6 +936,7 @@ export default function App() {
       discordAutoVeto: autoVeto,
       discordGsiRounds: autoGsiRounds,
       discordGsiBomb: autoGsiBomb,
+      discordAutoStats: autoStats,
     }));
   };
 
@@ -1729,6 +1731,7 @@ export default function App() {
           autoVeto={room.discordAutoVeto !== false}
           autoGsiRounds={room.discordGsiRounds !== false}
           autoGsiBomb={Boolean(room.discordGsiBomb)}
+          autoStats={room.discordAutoStats !== false}
           onSaveWebhook={handleSaveDiscordWebhook}
           soundEnabled={soundEnabled}
         />
@@ -1879,6 +1882,7 @@ export default function App() {
           autoVeto={room.discordAutoVeto !== false}
           autoGsiRounds={room.discordGsiRounds !== false}
           autoGsiBomb={Boolean(room.discordGsiBomb)}
+          autoStats={room.discordAutoStats !== false}
           onSaveWebhook={handleSaveDiscordWebhook}
           soundEnabled={soundEnabled}
         />
@@ -2176,6 +2180,7 @@ export default function App() {
         autoVeto={room.discordAutoVeto !== false}
         autoGsiRounds={room.discordGsiRounds !== false}
         autoGsiBomb={Boolean(room.discordGsiBomb)}
+        autoStats={room.discordAutoStats !== false}
         onSaveWebhook={handleSaveDiscordWebhook}
         soundEnabled={soundEnabled}
       />

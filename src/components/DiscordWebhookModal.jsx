@@ -11,6 +11,7 @@ export default function DiscordWebhookModal({
   autoVeto = true,
   autoGsiRounds = true,
   autoGsiBomb = false,
+  autoStats = true,
   onSaveWebhook,
   soundEnabled,
 }) {
@@ -19,13 +20,15 @@ export default function DiscordWebhookModal({
   const [optVeto, setOptVeto] = useState(autoVeto);
   const [optGsiRounds, setOptGsiRounds] = useState(autoGsiRounds);
   const [optGsiBomb, setOptGsiBomb] = useState(autoGsiBomb);
+  const [optStats, setOptStats] = useState(autoStats);
   const [testing, setTesting] = useState(false);
   const [statusMsg, setStatusMsg] = useState(null);
 
   useEffect(() => {
     setOptGsiRounds(autoGsiRounds);
     setOptGsiBomb(autoGsiBomb);
-  }, [autoGsiRounds, autoGsiBomb]);
+    setOptStats(autoStats);
+  }, [autoGsiRounds, autoGsiBomb, autoStats]);
 
   useEffect(() => {
     if (currentWebhook) {
@@ -83,6 +86,7 @@ export default function DiscordWebhookModal({
         autoVeto: optVeto,
         autoGsiRounds: optGsiRounds,
         autoGsiBomb: optGsiBomb,
+        autoStats: optStats,
       });
     }
 
@@ -165,6 +169,16 @@ export default function DiscordWebhookModal({
                 className="w-4 h-4 rounded text-indigo-500 focus:ring-0 bg-slate-900 border-slate-700"
               />
               <span>Avisar no canal quando o <strong>veto terminar</strong> com mapa, times e connect</span>
+            </label>
+
+            <label className="flex items-center gap-2.5 cursor-pointer text-xs text-slate-300">
+              <input
+                type="checkbox"
+                checked={optStats}
+                onChange={(e) => setOptStats(e.target.checked)}
+                className="w-4 h-4 rounded text-indigo-500 focus:ring-0 bg-slate-900 border-slate-700"
+              />
+              <span>Enviar <strong>Estatísticas dos Competidores</strong> (Scoreboard, K/D, MVPs e Top Fragger) no Discord</span>
             </label>
 
             <div className="pt-2 border-t border-slate-800/60">

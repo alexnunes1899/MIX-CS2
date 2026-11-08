@@ -23,6 +23,61 @@ export function handleGsiPayload(roomId, payload) {
   const roundPhase = roundData.phase || 'unknown'; // 'freezetime' | 'live' | 'over'
   const winTeam = roundData.win_team || null;
 
+  // Parse all players match statistics (Kills, Deaths, Assists, MVPs, Score, K/D)
+  const allPlayersStats = [];
+  if (payload.allplayers && typeof payload.allplayers === 'object') {
+    Object.entries(payload.allplayers).forEach(([steamId, pData]) => {
+      if (!pData || typeof pData !== 'object') return;
+      const stats = pData.match_stats || {};
+      const kills = typeof stats.kills === 'number' ? stats.kills : 0;
+      const deaths = typeof stats.deaths === 'number' ? stats.deaths : 0;
+      const assists = typeof stats.assists === 'number' ? stats.assists : 0;
+      const mvps = typeof stats.mvps === 'number' ? stats.mvps : 0;
+      const score = typeof stats.score === 'number' ? stats.score : 0;
+      const kd = deaths > 0 ? Number((kills / deaths).toFixed(2)) : Number(kills.toFixed(2));
+
+      allPlayersStats.push({
+        steamId,
+        name: pData.name || 'Jogador',
+        team: pData.team === 'CT' ? 'CT' : 'T',
+        kills,
+        deaths,
+        assists,
+        mvps,
+        score,
+        kd,
+      });
+    });
+  } else if (player?.steamid && player?.match_stats) {
+    // Fallback: client-only GSI without allplayers
+    const stats = player.match_stats;
+    const kills = stats.kills || 0;
+    const deaths = stats.deaths || 0;
+    const assists = stats.assists || 0;
+    const mvps = stats.mvps || 0;
+    const score = stats.score || 0;
+    const kd = deaths > 0 ? Number((kills / deaths).toFixed(2)) : Number(kills.toFixed(2));
+    allPlayersStats.push({
+      steamId: player.steamid,
+      name: player.name || 'Jogador',
+      team: player.team === 'CT' ? 'CT' : 'T',
+      kills,
+      deaths,
+      assists,
+      mvps,
+      score,
+      kd,
+    });
+  }
+
+  // Sort players by score desc, then kills desc
+  allPlayersStats.sort((a, b) => b.score - a.score || b.kills - a.kills);
+
+  const topFragger = allPlayersStats.length > 0 ? allPlayersStats[0] : null;
+  const matchMvp = allPlayersStats.length > 0
+    ? [...allPlayersStats].sort((a, b) => (b.mvps * 10 + b.score) - (a.mvps * 10 + a.score))[0]
+    : null;
+
   const now = Date.now();
 
   const liveState = {
@@ -36,7 +91,10 @@ export function handleGsiPayload(roomId, payload) {
     bomb,
     roundPhase,
     winTeam,
-    rawPlayer: player?.name ? { name: player.name, team: player.team, steamId: player.steamid } : null,
+    rawPlayer: player?.name ? { name: player.name, team: player.team, steamId: player.steamid, matchStats: player.match_stats } : null,
+    allPlayersStats,
+    topFragger,
+    matchMvp,
     isGameOver: phase === 'gameover' || (scoreCT >= 13 && scoreCT - scoreTR >= 2) || (scoreTR >= 13 && scoreTR - scoreCT >= 2),
   };
 
