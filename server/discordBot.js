@@ -349,11 +349,10 @@ class DiscordBotManager {
           `• Não precisa de todos os 10 jogadores! Apenas **1 pessoa** (jogador, admin ou espectador) coloca o arquivo no CS2.\n` +
           `• O CS2 dele transmite automaticamente cada round para o bot via protocolo oficial da Valve.\n` +
           `• O bot encerra o mix **automaticamente** ao final do jogo (\`13-9\`, \`13-11\`) e computa o Ranking e Patentes sem ninguém precisar digitar \`!vitoria\`!\n\n` +
-          `📁 **COMO INSTALAR NO SEU CS2 COM 1 CLIQUE:**\n` +
-          `1. Clique no botão verde abaixo para **Baixar o CFG**.\n` +
-          `2. Salve o arquivo \`gamestate_integration_cs2mixhub.cfg\` na pasta do seu CS2:\n` +
-          `\`...\\steamapps\\common\\Counter-Strike Global Offensive\\game\\csgo\\cfg\\\`\n` +
-          `3. Pronto! Abra o CS2 e entre na partida.\n\n` +
+          `⚡ **INSTALAÇÃO AUTOMÁTICA EM 1 CLIQUE NO SEU PC (ZERO ESFORÇO):**\n` +
+          `1. Clique no botão verde **[⚡ Instalador 1-Clique (.bat)]** abaixo.\n` +
+          `2. Dê 2 cliques no arquivo baixado: **ele detecta a pasta do seu CS2 sozinho** (mesmo em HD ou SSD secundário) e instala tudo em 1 segundo!\n` +
+          `3. Pronto! Abra o CS2 e jogue normalmente.\n\n` +
           `🛡️ **100% SEGURO & VAC-SAFE:** O GSI é uma funcionalidade nativa oficial desenvolvida pela Valve (usada pela ESL, BLAST e HLTV). Zero risco de ban.`
       )
       .setFooter({ text: 'CS2 Mix Hub • Engine Oficial Valve GSI' })
@@ -511,9 +510,9 @@ class DiscordBotManager {
         .setLabel('🔄 Atualizar Agora')
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
-        .setLabel('📥 Configurar GSI (.cfg)')
+        .setLabel('⚡ Instalar 1-Clique (.bat)')
         .setStyle(ButtonStyle.Link)
-        .setURL('http://localhost:3000/api/gsi/cfg/MIX-PRO'),
+        .setURL('http://localhost:3000/api/gsi/installer/MIX-PRO'),
       new ButtonBuilder()
         .setCustomId('live_stop')
         .setLabel('⏹️ Parar Monitoramento')
@@ -1364,7 +1363,11 @@ class DiscordBotManager {
     const embed = this.buildGsiEmbed();
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setLabel('📥 Baixar Config GSI (.cfg)')
+        .setLabel('⚡ Instalador 1-Clique (.bat)')
+        .setStyle(ButtonStyle.Link)
+        .setURL('http://localhost:3000/api/gsi/installer/MIX-PRO'),
+      new ButtonBuilder()
+        .setLabel('📥 Manual (.cfg)')
         .setStyle(ButtonStyle.Link)
         .setURL('http://localhost:3000/api/gsi/cfg/MIX-PRO'),
       new ButtonBuilder()
@@ -3829,7 +3832,11 @@ class DiscordBotManager {
     const embed = this.buildGsiEmbed();
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setLabel('📥 Baixar Config GSI (.cfg)')
+        .setLabel('⚡ Instalador 1-Clique (.bat)')
+        .setStyle(ButtonStyle.Link)
+        .setURL('http://localhost:3000/api/gsi/installer/MIX-PRO'),
+      new ButtonBuilder()
+        .setLabel('📥 Manual (.cfg)')
         .setStyle(ButtonStyle.Link)
         .setURL('http://localhost:3000/api/gsi/cfg/MIX-PRO'),
       new ButtonBuilder()

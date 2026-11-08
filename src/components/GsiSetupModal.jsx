@@ -1,5 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { X, Download, Copy, Check, Radio, Server, ShieldCheck, HelpCircle, FileCode, CheckCircle2, Flame, ArrowRight, Laptop } from 'lucide-react';
+import {
+  X,
+  Download,
+  Copy,
+  Check,
+  Radio,
+  Server,
+  ShieldCheck,
+  HelpCircle,
+  FileCode,
+  CheckCircle2,
+  Flame,
+  ArrowRight,
+  Laptop,
+  Zap,
+  Terminal,
+} from 'lucide-react';
 import { playClickSound } from '../utils/audio';
 import { copyText } from '../utils/clipboard';
 
@@ -11,8 +27,9 @@ export default function GsiSetupModal({
   soundEnabled,
 }) {
   const [copied, setCopied] = useState(false);
+  const [copiedPs1, setCopiedPs1] = useState(false);
   const [gsiStatus, setGsiStatus] = useState(liveMatch || null);
-  const [activeTab, setActiveTab] = useState('firegames'); // 'firegames' | 'local'
+  const [activeTab, setActiveTab] = useState('auto'); // 'auto' | 'firegames' | 'manual'
 
   useEffect(() => {
     if (!isOpen) return;
@@ -33,6 +50,8 @@ export default function GsiSetupModal({
 
   const currentHost = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
   const cfgUrl = `/api/gsi/cfg/${encodeURIComponent(roomId)}`;
+  const installerBatUrl = `/api/gsi/installer/${encodeURIComponent(roomId)}`;
+  const ps1Command = `irm ${currentHost}/api/gsi/installer/ps1/${encodeURIComponent(roomId)} | iex`;
   const cfgContent = `"CS2MixHub Integration"
 {
     "uri" "${currentHost}/api/gsi/${roomId}"
@@ -63,6 +82,23 @@ export default function GsiSetupModal({
     copyText(cfgContent);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleCopyPs1 = () => {
+    if (soundEnabled) playClickSound();
+    copyText(ps1Command);
+    setCopiedPs1(true);
+    setTimeout(() => setCopiedPs1(false), 2000);
+  };
+
+  const handleDownloadBat = () => {
+    if (soundEnabled) playClickSound();
+    const link = document.createElement('a');
+    link.href = installerBatUrl;
+    link.download = 'instalar_monitoramento_cs2.bat';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const handleDownload = () => {
@@ -241,36 +277,129 @@ export default function GsiSetupModal({
           )}
         </div>
 
-        {/* TAB SELECTOR: FIREGAMES VS LOCAL PC */}
-        <div className="flex items-center gap-2 mb-4 p-1 bg-slate-950/80 border border-slate-800 rounded-2xl">
+        {/* TAB SELECTOR: AUTO 1-CLICK VS FIREGAMES VS MANUAL */}
+        <div className="flex items-center gap-1.5 mb-4 p-1 bg-slate-950/80 border border-slate-800 rounded-2xl overflow-x-auto no-scrollbar">
+          <button
+            type="button"
+            onClick={() => setActiveTab('auto')}
+            className={`flex-1 py-2 px-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5 shrink-0 ${
+              activeTab === 'auto'
+                ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 font-black shadow-md shadow-emerald-500/25'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Zap size={14} className={activeTab === 'auto' ? 'fill-slate-950' : 'text-emerald-400'} />
+            <span>1. Instalador 1-Clique PC (Mais Fácil)</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setActiveTab('firegames')}
-            className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 ${
+            className={`flex-1 py-2 px-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5 shrink-0 ${
               activeTab === 'firegames'
                 ? 'bg-emerald-500 text-slate-950 font-black shadow-md shadow-emerald-500/20'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
             <Server size={14} />
-            <span>1. No Servidor FireGames (Recomendado)</span>
+            <span>2. Servidor FireGames</span>
           </button>
 
           <button
             type="button"
-            onClick={() => setActiveTab('local')}
-            className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 ${
-              activeTab === 'local'
+            onClick={() => setActiveTab('manual')}
+            className={`flex-1 py-2 px-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-1.5 shrink-0 ${
+              activeTab === 'manual'
                 ? 'bg-sky-500 text-slate-950 font-black shadow-md shadow-sky-500/20'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
             <Laptop size={14} />
-            <span>2. No CS2 do seu PC (Alternativa Rápida)</span>
+            <span>3. Manual (.cfg)</span>
           </button>
         </div>
 
-        {/* FIREGAMES INSTRUCTIONS */}
+        {/* TAB 1: AUTOMATED 1-CLICK INSTALLER (THE EASIEST) */}
+        {activeTab === 'auto' && (
+          <div className="space-y-3.5 bg-gradient-to-b from-emerald-950/40 via-slate-950/80 to-slate-950 border border-emerald-500/40 rounded-2xl p-4 sm:p-5 text-xs text-slate-300 shadow-lg">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center justify-center shrink-0 shadow-md">
+                <Zap size={22} className="fill-emerald-400" />
+              </div>
+              <div>
+                <h4 className="font-heading font-black text-white text-sm sm:text-base flex items-center gap-2">
+                  <span>Instalação Automática em 1 Segundo (Zero Esforço)</span>
+                  <span className="text-[10px] font-mono bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded font-bold uppercase">
+                    Automático
+                  </span>
+                </h4>
+                <p className="text-slate-300 mt-1 leading-relaxed">
+                  Não sabe onde fica a pasta do CS2? <strong>Não tem problema!</strong> Nosso instalador inteligente faz uma busca no seu computador, descobre a pasta exata da Steam (em qualquer HD ou SSD secundário) e coloca o arquivo no lugar certo sozinho.
+                </p>
+              </div>
+            </div>
+
+            {/* Step 1 & 2 Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2">
+              <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 flex items-start gap-2.5">
+                <span className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 font-bold font-mono text-xs flex items-center justify-center shrink-0">
+                  1
+                </span>
+                <div>
+                  <strong className="text-white block">Baixe o Instalador:</strong>
+                  <span className="text-slate-400 text-[11px]">Clique no botão verde abaixo para baixar o arquivo executável <code className="text-emerald-300">.bat</code>.</span>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 flex items-start gap-2.5">
+                <span className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 font-bold font-mono text-xs flex items-center justify-center shrink-0">
+                  2
+                </span>
+                <div>
+                  <strong className="text-white block">Dê 2 Cliques:</strong>
+                  <span className="text-slate-400 text-[11px]">Execute o arquivo no seu Windows. Uma janela preta abrirá e confirmará <em>[OK] Instalado com sucesso</em>!</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Giant Download Button */}
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={handleDownloadBat}
+                className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black font-heading uppercase tracking-wider text-xs sm:text-sm shadow-xl shadow-emerald-500/30 transition-all cursor-pointer flex items-center justify-center gap-2.5 hover:scale-[1.01] active:scale-[0.99]"
+              >
+                <Zap size={18} className="fill-slate-950" />
+                <span>Baixar Instalador Automático de 1-Clique (.bat)</span>
+                <Download size={16} />
+              </button>
+            </div>
+
+            {/* PowerShell 1-liner alternative */}
+            <div className="pt-2 border-t border-slate-900 space-y-1.5">
+              <div className="flex items-center justify-between text-[11px] text-slate-400 font-semibold">
+                <span className="flex items-center gap-1.5">
+                  <Terminal size={12} className="text-sky-400" />
+                  <span>Ou cole direto no PowerShell (Win + R ➔ powershell):</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={handleCopyPs1}
+                  className="text-sky-400 hover:text-sky-300 text-[10px] font-bold cursor-pointer flex items-center gap-1"
+                >
+                  {copiedPs1 ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
+                  <span>{copiedPs1 ? 'Comando Copiado!' : 'Copiar Comando'}</span>
+                </button>
+              </div>
+              <div className="p-2 rounded-xl bg-slate-950 border border-slate-800 font-mono text-[11px] text-slate-300 select-all truncate">
+                <span className="text-slate-500 select-none">$ </span>
+                <span className="text-sky-300">{ps1Command}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 2: FIREGAMES INSTRUCTIONS */}
         {activeTab === 'firegames' && (
           <div className="space-y-3 bg-slate-950/60 border border-slate-800 rounded-2xl p-4 text-xs text-slate-300">
             <h4 className="font-bold text-white text-sm flex items-center gap-2">
@@ -301,18 +430,29 @@ export default function GsiSetupModal({
                 <strong>Pronto!</strong> Não precisa nem reiniciar o servidor; a Valve já começa a enviar cada ponto, mapa e vencedor em tempo real para esta tela!
               </li>
             </ol>
+
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={handleDownload}
+                className="w-full py-2.5 px-4 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold uppercase tracking-wider text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
+              >
+                <Download size={14} />
+                <span>Baixar gamestate_integration_cs2mixhub.cfg</span>
+              </button>
+            </div>
           </div>
         )}
 
-        {/* LOCAL PC INSTRUCTIONS */}
-        {activeTab === 'local' && (
+        {/* TAB 3: MANUAL LOCAL PC INSTRUCTIONS */}
+        {activeTab === 'manual' && (
           <div className="space-y-3 bg-slate-950/60 border border-slate-800 rounded-2xl p-4 text-xs text-slate-300">
             <h4 className="font-bold text-white text-sm flex items-center gap-2">
               <Laptop size={16} className="text-sky-400" />
-              Não tem acesso ao painel da FireGames agora? Use no seu próprio CS2:
+              Instalação Manual (Arrastar e Soltar o .cfg):
             </h4>
             <p className="text-slate-400 leading-relaxed">
-              Você ou qualquer jogador/espectador do mix pode colocar esse arquivo no próprio computador. O seu jogo enviará o placar ao vivo automaticamente para o site:
+              Se você prefere colocar o arquivo manualmente sem usar o instalador automático:
             </p>
 
             <ol className="list-decimal list-inside space-y-2 text-slate-300">
@@ -321,7 +461,7 @@ export default function GsiSetupModal({
               </li>
               <li>
                 Abra a pasta do seu CS2 no Windows (geralmente em):
-                <code className="block mt-1 p-2 rounded-lg bg-slate-900 border border-slate-800 font-mono text-sky-300 text-[11px] break-all">
+                <code className="block mt-1 p-2 rounded-lg bg-slate-900 border border-slate-800 font-mono text-sky-300 text-[11px] break-all select-all">
                   C:\Program Files (x86)\Steam\steamapps\common\Counter-Strike Global Offensive\game\csgo\cfg\
                 </code>
               </li>
@@ -329,9 +469,28 @@ export default function GsiSetupModal({
                 Cole o arquivo dentro dessa pasta <span className="font-mono text-white">cfg</span>.
               </li>
               <li>
-                Ao jogar o mix ou assistir no servidor, o placar será atualizado no site em tempo real sem delay!
+                Abra o CS2 e jogue normalmente!
               </li>
             </ol>
+
+            <div className="pt-2 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleDownload}
+                className="flex-1 py-2.5 px-4 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold uppercase tracking-wider text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
+              >
+                <Download size={14} />
+                <span>Baixar .cfg Manual</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 font-bold uppercase tracking-wider text-xs transition-all cursor-pointer flex items-center justify-center gap-2"
+              >
+                {copied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                <span>{copied ? 'Copiado!' : 'Copiar Texto'}</span>
+              </button>
+            </div>
           </div>
         )}
 

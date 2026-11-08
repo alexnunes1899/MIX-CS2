@@ -6,7 +6,13 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { fetchLiveOfficialRotation, getCurrentRotationState, ALL_MAPS_CATALOGUE } from './mapSync.js';
 import { executeRconCommand } from './rcon.js';
-import { handleGsiPayload, getGsiState, generateGsiConfig } from './gsi.js';
+import {
+  handleGsiPayload,
+  getGsiState,
+  generateGsiConfig,
+  generateGsiBatchInstaller,
+  generateGsiPowerShellInstaller,
+} from './gsi.js';
 import { getSteamPlayerDetails } from './steamApi.js';
 import { fetchFaceitPlayer } from './faceit.js';
 import { sendDiscordWebhook, isValidDiscordWebhookUrl } from './discordWebhook.js';
@@ -2120,6 +2126,31 @@ app.get('/api/gsi/cfg/:roomId', (req, res) => {
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
   res.setHeader('Content-Disposition', 'attachment; filename="gamestate_integration_cs2mixhub.cfg"');
   res.send(cfgContent);
+});
+
+// Download Automated 1-Click Windows Installer (.bat)
+app.get('/api/gsi/installer/:roomId', (req, res) => {
+  const roomId = req.params.roomId || 'MIX-PRO';
+  const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+  const host = req.get('host');
+  const serverBaseUrl = `${protocol}://${host}`;
+
+  const batContent = generateGsiBatchInstaller(serverBaseUrl, roomId);
+  res.setHeader('Content-Type', 'application/x-bat; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="instalar_monitoramento_cs2.bat"');
+  res.send(batContent);
+});
+
+// Raw PowerShell 1-Click Script endpoint (for irm ... | iex)
+app.get('/api/gsi/installer/ps1/:roomId', (req, res) => {
+  const roomId = req.params.roomId || 'MIX-PRO';
+  const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+  const host = req.get('host');
+  const serverBaseUrl = `${protocol}://${host}`;
+
+  const ps1Content = generateGsiPowerShellInstaller(serverBaseUrl, roomId);
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.send(ps1Content);
 });
 
 // Check GSI connection status for a room
