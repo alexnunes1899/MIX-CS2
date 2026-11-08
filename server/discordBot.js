@@ -31,6 +31,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const CONFIG_FILE = path.join(__dirname, 'data', 'discordBotConfig.json');
 const PROFILES_FILE = path.join(__dirname, 'data', 'playerProfiles.json');
+const MATCH_HISTORY_FILE = path.join(__dirname, 'data', 'matchHistory.json');
+const LEADERBOARD_FILE = path.join(__dirname, 'data', 'leaderboard.json');
 
 // Default Active Duty Maps for Pick & Ban with official CDN images
 const OFFICIAL_MAPS = [
@@ -168,6 +170,60 @@ class DiscordBotManager {
       updatedAt: Date.now(),
     };
     this.savePlayerProfiles(profiles);
+    this.updateLeaderboardFile(profiles);
+  }
+
+  loadMatchHistory() {
+    try {
+      if (fs.existsSync(MATCH_HISTORY_FILE)) {
+        const raw = fs.readFileSync(MATCH_HISTORY_FILE, 'utf8');
+        return JSON.parse(raw);
+      }
+    } catch (e) {
+      console.warn('[DISCORD BOT] Falha ao ler matchHistory.json:', e.message);
+    }
+    return [];
+  }
+
+  saveMatchHistory(matches) {
+    try {
+      const dataDir = path.dirname(MATCH_HISTORY_FILE);
+      if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+      fs.writeFileSync(MATCH_HISTORY_FILE, JSON.stringify(matches, null, 2), 'utf8');
+    } catch (e) {
+      console.error('[DISCORD BOT] Falha ao salvar matchHistory.json:', e.message);
+    }
+  }
+
+  updateLeaderboardFile(profiles) {
+    try {
+      const list = Object.entries(profiles)
+        .map(([id, p]) => {
+          const wins = p.wins || 0;
+          const losses = p.losses || 0;
+          const total = wins + losses;
+          const winRate = total > 0 ? Math.round((wins / total) * 100) : 0;
+          return {
+            id,
+            nick: p.username || `<@${id}>`,
+            level: p.level || 16,
+            wins,
+            losses,
+            total,
+            winRate,
+            mvps: p.mvps || 0,
+            streak: p.streak || 0,
+          };
+        })
+        .filter((p) => p.total > 0 || p.wins > 0 || p.mvps > 0)
+        .sort((a, b) => (b.wins || 0) - (a.wins || 0) || (b.winRate || 0) - (a.winRate || 0));
+
+      const dataDir = path.dirname(LEADERBOARD_FILE);
+      if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+      fs.writeFileSync(LEADERBOARD_FILE, JSON.stringify(list, null, 2), 'utf8');
+    } catch (e) {
+      console.warn('[DISCORD BOT] Falha ao atualizar leaderboard.json:', e.message);
+    }
   }
 
   loadConfig() {
@@ -437,6 +493,33 @@ class DiscordBotManager {
             .setMaxValue(21)
         ),
 
+      new SlashCommandBuilder()
+        .setName('vitoria')
+        .setDescription('Registra o resultado da partida (Time A ou B) e atualiza o ranking')
+        .addStringOption((opt) =>
+          opt
+            .setName('time')
+            .setDescription('Qual time venceu a partida?')
+            .setRequired(true)
+            .addChoices({ name: 'Time A', value: 'A' }, { name: 'Time B', value: 'B' })
+        )
+        .addStringOption((opt) =>
+          opt
+            .setName('placar')
+            .setDescription('Placar final do jogo (ex: 13-9, 13-11, 16-14)')
+            .setRequired(false)
+        ),
+
+      new SlashCommandBuilder()
+        .setName('sub')
+        .setDescription('Substitui um jogador ausente ou desconectado por um reserva')
+        .addUserOption((opt) => opt.setName('novo').setDescription('Novo jogador que vai entrar').setRequired(true))
+        .addUserOption((opt) => opt.setName('antigo').setDescription('Jogador que saiu (opcional)').setRequired(false)),
+
+      new SlashCommandBuilder()
+        .setName('cargo')
+        .setDescription('Ativa ou desativa notificações do cargo @Mix CS2 para ser avisado quando faltarem vagas'),
+
       new SlashCommandBuilder().setName('ajuda').setDescription('Manual completo de comandos do Bot do Mix'),
     ];
 
@@ -546,7 +629,10 @@ class DiscordBotManager {
     if (command === 'sortear' || command === 'times') return this.prefixDraw(message);
     if (command === 'veto' || command === 'ban') return this.prefixVeto(message);
     if (command === 'roleta') return this.prefixRoulette(message);
-    if (command === 'ranking') return this.prefixRanking(message);
+    if (command === 'ranking' || command === 'top' || command === 'leaderboard') return this.prefixRanking(message);
+    if (command === 'vitoria' || command === 'resultado' || command === 'ganhador') return this.prefixMatchResult(message, args.slice(1));
+    if (command === 'sub' || command === 'substituto' || command === 'reserva') return this.prefixSubstitute(message, args.slice(1));
+    if (command === 'cargo' || command === 'notificar' || command === 'notificacao') return this.prefixToggleRole(message);
     if (command === 'level' || command === 'lvl' || command === 'gc') return this.prefixSetLevel(message, args[1]);
     if (command === 'stats' || command === 'perfil') return this.prefixStats(message, args[1]);
     if (command === 'smoke' || command === 'granada' || command === 'lineup') return this.prefixGrenade(message, args.slice(1).join(' '));
@@ -634,6 +720,10 @@ class DiscordBotManager {
       ready: true,
     });
 
+    if (mix.players.length === 8 || mix.players.length === 9) {
+      this.notifyMissingSlots(mix, message.guild, message.channel).catch(() => {});
+    }
+
     if (mix.players.length === 10) {
       this.startReadyCheck(mix, message.channel);
       const embed = this.buildReadyCheckEmbed(mix);
@@ -708,29 +798,43 @@ class DiscordBotManager {
   }
 
   async prefixRanking(message) {
-    try {
-      const filePath = path.join(__dirname, 'data', 'leaderboard.json');
-      let data = [];
-      if (fs.existsSync(filePath)) {
-        data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-      }
-      if (!Array.isArray(data) || data.length === 0) {
-        return message.reply('🏆 **Hall da Fama:** Ainda não há partidas registradas. Jogue o primeiro mix para pontuar!');
-      }
-      const top5 = data.slice(0, 5);
-      const list = top5
-        .map((p, i) => `**${i + 1}º** ${p.nick} • **${p.wins || 0}V** / ${p.losses || 0}D (\`${p.winRate || 0}%\` Win Rate) - Lvl ${p.level || 16}`)
-        .join('\n');
-      const embed = new EmbedBuilder()
-        .setTitle('🏆 HALL DA FAMA & RANKING DA COMUNIDADE')
-        .setDescription(list)
-        .setColor(0xf59e0b)
-        .setFooter({ text: 'CS2 Mix Hub • Leaderboard' })
-        .setTimestamp();
-      return message.reply({ embeds: [embed] });
-    } catch (e) {
-      return message.reply(`❌ Erro ao buscar ranking: ${e.message}`);
+    const embed = this.buildRankingEmbed();
+    return message.reply({ embeds: [embed] });
+  }
+
+  async prefixMatchResult(message, args) {
+    const mix = this.activeMixes.get(message.channelId);
+    if (!mix) {
+      return message.reply('⚠️ Nenhum mix ativo encontrado neste canal para registrar vitória.');
     }
+    const winner = (args[0] || '').toUpperCase();
+    if (winner !== 'A' && winner !== 'B') {
+      return message.reply('👉 Uso correto: `!vitoria A 13-9` ou `!vitoria B 13-11` (indique Time A ou Time B).');
+    }
+    const score = args[1] || '13-9';
+    const res = await this.recordMatchResult(mix, winner, score, message.author, message.channel);
+    if (!res.success) return message.reply(`⚠️ ${res.error}`);
+    return message.channel.send({ embeds: res.embeds, components: res.components });
+  }
+
+  async prefixSubstitute(message, args) {
+    const mix = this.activeMixes.get(message.channelId);
+    if (!mix) {
+      return message.reply('⚠️ Nenhum mix ativo neste canal para fazer substituição.');
+    }
+    if (!args[0]) {
+      return message.reply('👉 Uso correto: `!sub @novo_jogador` ou `!sub @jogador_antigo @novo_jogador`');
+    }
+    const outArg = args.length >= 2 ? args[0] : message.author.id;
+    const inArg = args.length >= 2 ? args[1] : args[0];
+    const res = await this.executeSubstitute(mix, outArg, inArg, message.guild, message.channel);
+    return message.channel.send(res.message);
+  }
+
+  async prefixToggleRole(message) {
+    if (!message.guild || !message.member) return;
+    const res = await this.toggleMixRole(message.guild, message.member);
+    return message.reply(res.message);
   }
 
   async prefixSetLevel(message, levelArg) {
@@ -843,32 +947,36 @@ class DiscordBotManager {
       .setColor(0x38bdf8)
       .setDescription(
         `Você pode usar o prefixo \`!\` ou barra \`/\` para tudo:\n\n` +
-          `• \`!painel\` - Painel fixo com botão verde para abrir mix\n` +
-          `• \`!mix\` ou \`!criar\` - Abre uma nova fila 5v5 com botões interativos\n` +
-          `• \`!entrar\` / \`!sair\` - Gerencia sua vaga no lobby\n` +
-          `• \`!sortear\` - Sorteio inteligente e balanceamento snake-draft\n` +
-          `• \`!veto\` - Pick & Ban oficial da Valve com escolha de lados CT/TR\n` +
-          `• \`!roleta\` - Gira a roleta rápida de mapas\n` +
-          `• \`!stats [@jogador]\` - Perfil competitivo do jogador\n` +
-          `• \`!smoke [mapa]\` - Lineups de granadas e smokes\n` +
-          `• \`!treino\` - CFG completa de treino para console do CS2\n` +
-          `• \`!moeda\` - Sorteio de cara ou coroa\n` +
-          `• \`!servidor [ip:porta]\` - Define ou consulta o IP do CS2\n` +
-          `• \`!ranking\` - Hall da Fama da comunidade`
+          `• \`!painel\` — Painel fixo com botão verde para abrir mix\n` +
+          `• \`!mix\` ou \`!criar\` — Abre uma nova fila 5v5 com botões interativos\n` +
+          `• \`!entrar\` / \`!sair\` — Gerencia sua vaga no lobby\n` +
+          `• \`!sortear\` — Sorteio inteligente e balanceamento snake-draft\n` +
+          `• \`!veto\` — Pick & Ban oficial da Valve com escolha de lados CT/TR\n` +
+          `• \`!vitoria [A|B] [placar]\` — Registra o resultado oficial da partida e pontua no ranking!\n` +
+          `• \`!ranking\` / \`!top\` — Hall da Fama e Top 10 de vitórias e MVPs da comunidade\n` +
+          `• \`!sub @novo\` — Substitui um jogador ausente por um reserva\n` +
+          `• \`!cargo\` — Ativa/desativa notificações do cargo @Mix CS2 quando faltarem vagas\n` +
+          `• \`!stats [@jogador]\` — Perfil competitivo, vitórias reais e medalhas de MVP\n` +
+          `• \`!lvl <1-21>\` — Configura seu nível da Gamers Club (GC)\n` +
+          `• \`!smoke [mapa]\` — Lineups de granadas e smokes táticas\n` +
+          `• \`!treino\` — CFG completa de treino para console do CS2\n` +
+          `• \`!moeda\` — Sorteio de cara ou coroa para desempates rápidos\n` +
+          `• \`!servidor [ip:porta]\` — Define ou consulta o IP do servidor CS2`
       )
       .setFooter({ text: 'CS2 Mix Hub • Powered by Discord.js' });
     return message.reply({ embeds: [embed] });
   }
 
   buildUserStatsEmbed(targetUser) {
-    const level = this.getPlayerLevel(targetUser.id);
-    const seed = parseInt(targetUser.id.slice(-4), 10) || 1234;
-    const wins = 15 + (seed % 35);
-    const losses = 10 + ((seed * 3) % 25);
+    const profiles = this.loadPlayerProfiles();
+    const prof = profiles[targetUser.id] || {};
+    const level = prof.level || this.getPlayerLevel(targetUser.id) || 16;
+    const wins = prof.wins || 0;
+    const losses = prof.losses || 0;
     const total = wins + losses;
-    const winRate = Math.round((wins / total) * 100);
-    const kd = (1.05 + ((seed % 50) / 100)).toFixed(2);
-    const hs = 42 + (seed % 28);
+    const winRate = total > 0 ? Math.round((wins / total) * 100) : 0;
+    const mvps = prof.mvps || 0;
+    const streak = prof.streak || 0;
     const gcBadge = level >= 20 ? '👑 Major Lvl 20+' : level >= 18 ? '🏆 Lvl 18-19' : level >= 14 ? '🥇 Lvl 14-17' : '🥈 Lvl 1-13';
 
     const embed = new EmbedBuilder()
@@ -880,17 +988,373 @@ class DiscordBotManager {
         `⚔️ **Classificação:** FACEIT Lvl ${Math.min(10, Math.max(5, Math.floor(level / 2)))} • Veterano da Comunidade CS2`
       )
       .addFields(
-        { name: '🎮 Partidas', value: `${total}`, inline: true },
+        { name: '🎮 Partidas Oficiais', value: `${total}`, inline: true },
         { name: '🏆 Vitórias', value: `${wins}`, inline: true },
         { name: '💀 Derrotas', value: `${losses}`, inline: true },
         { name: '🎯 Win Rate', value: `${winRate}%`, inline: true },
-        { name: '⚡ K/D Ratio', value: `${kd}`, inline: true },
-        { name: '🎯 HS Rate', value: `${hs}%`, inline: true }
+        { name: '⭐ MVPs de Partida', value: `${mvps}`, inline: true },
+        { name: '🔥 Win Streak', value: streak > 0 ? `${streak} Seguidas` : '0', inline: true }
       )
-      .setFooter({ text: 'CS2 Mix Hub • Perfil Competitivo' })
+      .setFooter({ text: 'CS2 Mix Hub • Perfil Competitivo Atualizado' })
       .setTimestamp();
 
     return embed;
+  }
+
+  buildRankingEmbed() {
+    const profiles = this.loadPlayerProfiles();
+    const list = Object.entries(profiles)
+      .map(([id, p]) => {
+        const wins = p.wins || 0;
+        const losses = p.losses || 0;
+        const total = wins + losses;
+        const winRate = total > 0 ? Math.round((wins / total) * 100) : 0;
+        return {
+          id,
+          username: p.username || 'Competidor',
+          level: p.level || 16,
+          wins,
+          losses,
+          total,
+          winRate,
+          mvps: p.mvps || 0,
+          streak: p.streak || 0,
+        };
+      })
+      .filter((p) => p.total > 0 || p.wins > 0 || p.mvps > 0)
+      .sort((a, b) => (b.wins || 0) - (a.wins || 0) || (b.winRate || 0) - (a.winRate || 0) || (b.mvps || 0) - (a.mvps || 0));
+
+    if (list.length === 0) {
+      return new EmbedBuilder()
+        .setTitle('🏆 CS2 MIX HUB • HALL DA FAMA & RANKING')
+        .setDescription(
+          `Ainda não há partidas com resultado registrado neste servidor!\n\n` +
+          `👉 **Como pontuar no Ranking:**\n` +
+          `1. Crie uma partida com \`!mix\`\n` +
+          `2. Jogue com seus amigos (10/10)\n` +
+          `3. Ao final, use o botão **\`[🏆 Declarar Placar]\`** ou digite \`!vitoria A 13-9\`!\n\n` +
+          `O ranking registrará automaticamente suas vitórias, taxa de win rate e MVPs!`
+        )
+        .setColor(0x38bdf8)
+        .setFooter({ text: 'CS2 Mix Hub • Seja o primeiro campeão!' });
+    }
+
+    const medals = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
+    const lines = list.slice(0, 10).map((p, i) => {
+      const medal = medals[i] || `**#${i + 1}**`;
+      const mvpBadge = p.mvps > 0 ? ` • ⭐ **${p.mvps}x MVP**` : '';
+      const streakBadge = p.streak >= 2 ? ` • 🔥 **${p.streak} Win Streak**` : '';
+      return `${medal} <@${p.id}> — **${p.wins}V** / ${p.losses}D (\`${p.winRate}%\` Win Rate)${mvpBadge}${streakBadge} • \`Lvl ${p.level} GC\``;
+    });
+
+    return new EmbedBuilder()
+      .setTitle('🏆 HALL DA FAMA & RANKING GERAL • TOP 10 CS2')
+      .setDescription(
+        `Confira os maiores vencedores da comunidade nos Mixes 5v5:\n\n` +
+        lines.join('\n\n') +
+        `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+        `💡 *Para subir de posição, jogue mixes e registre a vitória com \`!vitoria A\` ou pelo botão!*`
+      )
+      .setColor(0xf59e0b)
+      .setThumbnail('https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=200&q=80')
+      .setFooter({ text: 'CS2 Mix Hub • Atualizado em tempo real' })
+      .setTimestamp();
+  }
+
+  async recordMatchResult(mix, winnerTeamLetter, scoreInput, declaredByUser, channel) {
+    const isA = (winnerTeamLetter || '').toUpperCase() === 'A';
+    const isB = (winnerTeamLetter || '').toUpperCase() === 'B';
+    if (!isA && !isB) {
+      return { success: false, error: 'O vencedor deve ser Time A ou Time B (ex: `!vitoria A 13-9`).' };
+    }
+
+    const winnerTeam = isA ? mix.teamA : mix.teamB;
+    const loserTeam = isA ? mix.teamB : mix.teamA;
+    const score = (scoreInput || '13-9').trim();
+
+    mix.phase = 'finished';
+    mix.winner = winnerTeam.name;
+    mix.finalScore = score;
+
+    const profiles = this.loadPlayerProfiles();
+
+    // Update winners
+    winnerTeam.players.forEach((p) => {
+      const prof = profiles[p.id] || { level: p.level || 16, username: p.username };
+      prof.wins = (prof.wins || 0) + 1;
+      prof.totalMatches = (prof.totalMatches || 0) + 1;
+      prof.streak = (prof.streak || 0) + 1;
+      prof.username = p.username || prof.username;
+      profiles[p.id] = prof;
+    });
+
+    // Update losers
+    loserTeam.players.forEach((p) => {
+      const prof = profiles[p.id] || { level: p.level || 16, username: p.username };
+      prof.losses = (prof.losses || 0) + 1;
+      prof.totalMatches = (prof.totalMatches || 0) + 1;
+      prof.streak = 0;
+      prof.username = p.username || prof.username;
+      profiles[p.id] = prof;
+    });
+
+    this.savePlayerProfiles(profiles);
+
+    // Save match to match history
+    const history = this.loadMatchHistory();
+    const matchRecord = {
+      id: mix.id,
+      timestamp: Date.now(),
+      map: mix.veto.deciderMap?.name || 'Mirage',
+      winner: winnerTeam.name,
+      loser: loserTeam.name,
+      score,
+      declaredBy: declaredByUser.username,
+      winnerPlayers: winnerTeam.players.map((p) => ({ id: p.id, nick: p.displayName || p.username })),
+      loserPlayers: loserTeam.players.map((p) => ({ id: p.id, nick: p.displayName || p.username })),
+    };
+    history.unshift(matchRecord);
+    this.saveMatchHistory(history.slice(0, 100));
+    this.updateLeaderboardFile(profiles);
+
+    // Build victory embed
+    const victoryEmbed = new EmbedBuilder()
+      .setTitle(`🏆 VITÓRIA DO ${winnerTeam.name.toUpperCase()}! • PLACAR ${score}`)
+      .setDescription(
+        `A partida foi encerrada e as estatísticas de todos os 10 jogadores foram atualizadas no **Ranking Geral**!\n\n` +
+        `🗺️ **Mapa:** **${mix.veto.deciderMap?.name || 'Mirage'}**\n` +
+        `⚔️ **Resultado Oficial:** **${winnerTeam.name}** venceu por **${score}**!\n` +
+        `👑 **Declarado por:** <@${declaredByUser.id}>\n\n` +
+        `⭐ **VOTAÇÃO DE MVP INICIADA:** Selecione no menu abaixo quem jogou mais nesta partida!`
+      )
+      .setColor(0x22c55e)
+      .addFields(
+        {
+          name: `🥇 Campeões • ${winnerTeam.name} (+1 Vitória)`,
+          value: winnerTeam.players.map((p) => `👑 <@${p.id}> \`[Lvl ${p.level || 16}]\``).join('\n') || '*Sem jogadores*',
+          inline: true,
+        },
+        {
+          name: `🥈 Vice-Campeões • ${loserTeam.name}`,
+          value: loserTeam.players.map((p) => `💀 <@${p.id}> \`[Lvl ${p.level || 16}]\``).join('\n') || '*Sem jogadores*',
+          inline: true,
+        }
+      )
+      .setFooter({ text: 'CS2 Mix Hub • Partida Concluída' })
+      .setTimestamp();
+
+    if (mix.veto.deciderMap?.image) {
+      victoryEmbed.setThumbnail(mix.veto.deciderMap.image);
+    }
+
+    // Initialize MVP voting state
+    mix.mvpVote = {
+      active: true,
+      votes: new Map(),
+      expiresAt: Date.now() + 60000,
+    };
+
+    // MVP select options
+    const selectOptions = mix.players.slice(0, 25).map((p) => ({
+      label: (p.displayName || p.username || 'Jogador').slice(0, 25),
+      description: `Lvl ${p.level || 16} GC • ${winnerTeam.players.some((w) => w.id === p.id) ? 'Time Vencedor 🏆' : 'Time Perdedor'}`,
+      value: p.id,
+      emoji: winnerTeam.players.some((w) => w.id === p.id) ? '🥇' : '🎯',
+    }));
+
+    const selectMenu = new StringSelectMenuBuilder()
+      .setCustomId(`mvp_vote:${mix.id}`)
+      .setPlaceholder('⭐ Escolha o MVP da Partida...')
+      .addOptions(selectOptions);
+
+    const selectRow = new ActionRowBuilder().addComponents(selectMenu);
+
+    const finishBtn = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`mvp_finish:${mix.id}`)
+        .setLabel('Encerrar Votação e Declarar MVP')
+        .setEmoji('👑')
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId('panel_create_mix')
+        .setLabel('Jogar Outro Mix')
+        .setEmoji('🎮')
+        .setStyle(ButtonStyle.Primary)
+    );
+
+    return { success: true, embeds: [victoryEmbed], components: [selectRow, finishBtn] };
+  }
+
+  async finishMvpVote(mix, channel) {
+    if (!mix || !mix.mvpVote) return;
+    mix.mvpVote.active = false;
+
+    const voteCounts = new Map();
+    mix.mvpVote.votes.forEach((candidateId) => {
+      voteCounts.set(candidateId, (voteCounts.get(candidateId) || 0) + 1);
+    });
+
+    let bestCandidateId = null;
+    let maxVotes = -1;
+    voteCounts.forEach((count, candidateId) => {
+      if (count > maxVotes) {
+        maxVotes = count;
+        bestCandidateId = candidateId;
+      }
+    });
+
+    if (!bestCandidateId) {
+      bestCandidateId = mix.winner === mix.teamA.name ? (mix.teamA.captain?.id || mix.players[0]?.id) : (mix.teamB.captain?.id || mix.players[1]?.id);
+      maxVotes = 0;
+    }
+
+    const profiles = this.loadPlayerProfiles();
+    const prof = profiles[bestCandidateId] || { level: 16 };
+    prof.mvps = (prof.mvps || 0) + 1;
+    profiles[bestCandidateId] = prof;
+    this.savePlayerProfiles(profiles);
+    this.updateLeaderboardFile(profiles);
+
+    const mvpEmbed = new EmbedBuilder()
+      .setTitle('👑 MVP DA PARTIDA COROADO!')
+      .setDescription(
+        `A comunidade votou e escolheu o grande destaque da partida no mapa **${mix.veto.deciderMap?.name || 'Mirage'}**:\n\n` +
+        `⭐ **MVP ELEITO:** <@${bestCandidateId}> (\`${maxVotes} votos\`)\n` +
+        `🏆 **Total de MVPs na Carreira:** **${prof.mvps}x MVP**\n` +
+        `🎖️ **Nível GC:** Lvl ${prof.level || 16}`
+      )
+      .setColor(0xf59e0b)
+      .setThumbnail('https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=200&q=80')
+      .setFooter({ text: 'CS2 Mix Hub • Hall da Fama' })
+      .setTimestamp();
+
+    if (channel) {
+      await channel.send({ embeds: [mvpEmbed] }).catch(() => {});
+    }
+    return mvpEmbed;
+  }
+
+  async notifyMissingSlots(mix, guild, channel) {
+    if (!guild || !channel) return;
+    const missing = 10 - mix.players.length;
+    if (missing !== 1 && missing !== 2) return;
+
+    try {
+      const role = guild.roles.cache.find(
+        (r) => r.name.toLowerCase() === 'mix cs2' || r.name.toLowerCase() === 'mix'
+      );
+      const roleMention = role ? `<@&${role.id}> ` : '';
+      const plural = missing === 1 ? 'VAGA RESTANTE' : 'VAGAS RESTANTES';
+      const msg = `📢 ${roleMention}**FALTA(M) APENAS ${missing} ${plural} PARA FECHAR O MIX 5v5!**\n` +
+        `👉 Quem vai jogar? Clique no botão verde **\`[➕ Entrar]\`** ou digite \`!entrar\` agora!`;
+      await channel.send(msg);
+    } catch (e) {
+      console.warn('[DISCORD BOT] Falha ao notificar vagas:', e.message);
+    }
+  }
+
+  async toggleMixRole(guild, member) {
+    if (!guild || !member) return { success: false, message: 'Servidor ou membro inválido.' };
+    try {
+      let role = guild.roles.cache.find(
+        (r) => r.name.toLowerCase() === 'mix cs2' || r.name.toLowerCase() === 'mix'
+      );
+      if (!role) {
+        try {
+          role = await guild.roles.create({
+            name: 'Mix CS2',
+            color: 0x38bdf8,
+            reason: 'Cargo de notificações para partidas de CS2 Mix Hub',
+          });
+        } catch (roleCreateErr) {
+          return { success: false, message: '⚠️ Não foi possível encontrar ou criar o cargo `@Mix CS2`. Verifique se o bot tem permissão de gerenciar cargos!' };
+        }
+      }
+
+      if (member.roles.cache.has(role.id)) {
+        await member.roles.remove(role.id);
+        return { success: true, added: false, roleId: role.id, message: `🔕 Você removeu o cargo <@&${role.id}>. Você não será mais notificado quando faltarem vagas nos mixes.` };
+      } else {
+        await member.roles.add(role.id);
+        return { success: true, added: true, roleId: role.id, message: `🔔 Sucesso! Você recebeu o cargo <@&${role.id}>! Você será avisado automaticamente quando faltarem 1 ou 2 vagas para iniciar o 5v5!` };
+      }
+    } catch (e) {
+      return { success: false, message: `❌ Erro ao gerenciar cargo: ${e.message}` };
+    }
+  }
+
+  async executeSubstitute(mix, outArg, inArg, guild, channel) {
+    if (!mix) return { success: false, message: 'Nenhum mix ativo encontrado neste canal.' };
+    const cleanOut = (outArg || '').replace(/[<@!>]/g, '').trim().toLowerCase();
+    const cleanIn = (inArg || '').replace(/[<@!>]/g, '').trim().toLowerCase();
+
+    const outIdx = mix.players.findIndex(
+      (p) => p.id === cleanOut || (p.displayName || p.username || '').toLowerCase().includes(cleanOut)
+    );
+    if (outIdx === -1) {
+      return { success: false, message: `❌ Não foi possível encontrar o jogador que vai sair: "${outArg}".` };
+    }
+    const oldPlayer = mix.players[outIdx];
+
+    let newMember = null;
+    if (guild) {
+      newMember = guild.members.cache.find(
+        (m) => m.id === cleanIn || m.user.username.toLowerCase().includes(cleanIn) || (m.displayName || '').toLowerCase().includes(cleanIn)
+      );
+    }
+
+    const newId = newMember ? newMember.id : cleanIn;
+    const newUsername = newMember ? newMember.user.username : inArg;
+    const newDisplayName = newMember ? newMember.displayName : inArg;
+    const newAvatar = newMember ? newMember.user.displayAvatarURL({ dynamic: true }) : null;
+
+    if (mix.players.some((p) => p.id === newId)) {
+      return { success: false, message: `⚠️ O substituto <@${newId}> já está participando deste mix!` };
+    }
+
+    const newLevel = this.getPlayerLevel(newId);
+    const newPlayerObj = {
+      id: newId,
+      username: newUsername,
+      displayName: newDisplayName,
+      avatar: newAvatar,
+      level: newLevel,
+      ready: true,
+    };
+
+    mix.players.splice(outIdx, 1, newPlayerObj);
+
+    let teamName = 'Lobby';
+    let targetTeam = null;
+    const idxA = mix.teamA.players.findIndex((p) => p.id === oldPlayer.id);
+    if (idxA !== -1) {
+      mix.teamA.players.splice(idxA, 1, newPlayerObj);
+      teamName = mix.teamA.name;
+      targetTeam = 'teamA';
+      if (mix.teamA.captain?.id === oldPlayer.id) mix.teamA.captain = newPlayerObj;
+    }
+
+    const idxB = mix.teamB.players.findIndex((p) => p.id === oldPlayer.id);
+    if (idxB !== -1) {
+      mix.teamB.players.splice(idxB, 1, newPlayerObj);
+      teamName = mix.teamB.name;
+      targetTeam = 'teamB';
+      if (mix.teamB.captain?.id === oldPlayer.id) mix.teamB.captain = newPlayerObj;
+    }
+
+    if (this.config.autoMoveVoice && targetTeam && guild && newMember) {
+      const voiceId = targetTeam === 'teamA' ? this.config.teamAVoiceId : this.config.teamBVoiceId;
+      if (voiceId && newMember.voice?.channelId) {
+        newMember.voice.setChannel(voiceId).catch(() => {});
+      }
+    }
+
+    this.syncToWebRoom(mix);
+
+    return {
+      success: true,
+      message: `🔄 **SUBSTITUIÇÃO EFETUADA!**\n<@${oldPlayer.id}> foi substituído por <@${newPlayerObj.id}> \`[Lvl ${newLevel} GC]\` no **${teamName}**!`,
+    };
   }
 
   // ==========================================
@@ -1138,17 +1602,22 @@ class DiscordBotManager {
           `**5️⃣ Veto de Mapas (Pick & Ban) e Escolha de Lado:**\n` +
           `• Clique em **\`[🗳️ Pick & Ban]\`** (ou \`!veto\`) para os capitães banirem os mapas da Valve.\n` +
           `• No mapa final, o Capitão B escolhe começar de **CT** 🛡️ ou **TR** 💣!\n\n` +
-          `**6️⃣ Mover Calls de Voz Automaticamente:**\n` +
+          `**6️⃣ Conectar no Servidor & Mover Calls:**\n` +
+          `• Clique em **\`[🚀 Conectar Direto no CS2]\`** para abrir o jogo pela Steam com 1 clique!\n` +
           `• Clique em **\`[📞 Mover Calls]\`** para o bot puxar cada time para sua sala de voz oficial.\n\n` +
+          `**7️⃣ Placar da Partida, MVP & Ranking Geral:**\n` +
+          `• Ao final do jogo, clique em **\`[🏆 Declarar Placar]\`** ou digite \`!vitoria A 13-9\`.\n` +
+          `• O bot pontua as vitórias no **\`!ranking\`** e abre a eleição do **MVP da Partida** ⭐!\n\n` +
           `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-          `⚡ **Comandos Rápidos no Chat:**\n` +
+          `⚡ **Comandos Oficiais no Chat:**\n` +
           `• \`!mix\` — Abre um novo lobby 5v5\n` +
+          `• \`!vitoria [A|B] [placar]\` — Registra a vitória e pontua no ranking\n` +
+          `• \`!ranking\` / \`!top\` — Hall da Fama e Top 10 com vitórias e medalhas\n` +
+          `• \`!sub @novo\` — Substitui um jogador ausente por um reserva\n` +
+          `• \`!cargo\` — Ativa/desativa notificações de vagas restantes (@Mix CS2)\n` +
           `• \`!lvl <1-21>\` — Cadastra/atualiza seu nível da Gamers Club\n` +
-          `• \`!stats\` — Exibe suas estatísticas, partidas e vitórias\n` +
-          `• \`!smoke <mapa>\` — Mostra lineups de granadas (ex: \`!smoke mirage\`)\n` +
-          `• \`!treino\` — Envia a CFG oficial de treino para console do CS2\n` +
-          `• \`!moeda\` — Joga cara ou coroa para desempates rápidos\n` +
-          `• \`!servidor <ip>\` — Configura o IP do servidor CS2 para o comando connect`
+          `• \`!stats\` — Exibe suas estatísticas, vitórias, medalhas de MVP e streak\n` +
+          `• \`!smoke <mapa>\` • Lineups | \`!treino\` • CFG console | \`!moeda\` • Cara ou coroa`
       )
       .setColor(0x38bdf8)
       .setThumbnail('https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_mirage_1_png.png')
@@ -1431,6 +1900,51 @@ class DiscordBotManager {
     return embed;
   }
 
+  buildMatchReadyButtons(mix) {
+    const rows = [];
+    const row1 = new ActionRowBuilder();
+
+    if (mix.serverIp) {
+      const cleanIp = mix.serverIp.replace(/^connect\s+/i, '').trim();
+      row1.addComponents(
+        new ButtonBuilder()
+          .setLabel('🚀 Conectar Direto no CS2')
+          .setStyle(ButtonStyle.Link)
+          .setURL(`http://localhost:3000/connect?ip=${encodeURIComponent(cleanIp)}`)
+      );
+    }
+
+    row1.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`match_result:${mix.id}`)
+        .setLabel('🏆 Declarar Placar')
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId(`mix_sub:${mix.id}`)
+        .setLabel('🔄 Substituto')
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(`mix_voice:${mix.id}`)
+        .setLabel('📞 Mover Calls')
+        .setStyle(ButtonStyle.Secondary)
+    );
+    rows.push(row1);
+
+    const row2 = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setLabel('🌐 Acompanhar Partida no Site')
+        .setStyle(ButtonStyle.Link)
+        .setURL(`http://localhost:3000/?room=${mix.id}`),
+      new ButtonBuilder()
+        .setCustomId('panel_create_mix')
+        .setLabel('🎮 Novo Mix')
+        .setStyle(ButtonStyle.Primary)
+    );
+    rows.push(row2);
+
+    return rows;
+  }
+
   // ==========================================
   // BUTTON INTERACTION HANDLERS
   // ==========================================
@@ -1490,7 +2004,11 @@ class DiscordBotManager {
       });
 
       // If 10 players reached, launch Ready Check!
-      if (mix.players.length === 10) {
+      if (mix.players.length === 8 || mix.players.length === 9) {
+      this.notifyMissingSlots(mix, message.guild, message.channel).catch(() => {});
+    }
+
+    if (mix.players.length === 10) {
         this.startReadyCheck(mix, interaction.channel);
         const embed = this.buildReadyCheckEmbed(mix);
         const components = this.buildReadyCheckButtons(mix);
@@ -1718,22 +2236,12 @@ class DiscordBotManager {
       }
 
       const finalEmbed = this.buildMatchReadyEmbed(mix);
-      const actionRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setLabel('🌐 Acompanhar Partida no Site')
-          .setStyle(ButtonStyle.Link)
-          .setURL(`http://localhost:3000/?room=${mix.id}`),
-        new ButtonBuilder()
-          .setCustomId(`mix_voice:${mix.id}`)
-          .setLabel('Mover para Calls')
-          .setEmoji('📞')
-          .setStyle(ButtonStyle.Secondary)
-      );
+      const components = this.buildMatchReadyButtons(mix);
 
       return interaction.update({
         content: `🔥 **PARTIDA PRONTA PARA COMEÇAR!** GL & HF!`,
         embeds: [finalEmbed],
-        components: [actionRow],
+        components,
       });
     }
 
@@ -1745,34 +2253,87 @@ class DiscordBotManager {
       mix.phase = 'live';
       this.syncToWebRoom(mix);
 
-      const embed = new EmbedBuilder()
-        .setTitle('🎲 ROLETA OFICIAL DE MAPA')
-        .setDescription(
-          `O algoritmo Fisher-Yates CSPRNG sorteou o mapa para o confronto:\n\n` +
-            `🗺️ **MAPA SORTEADO:** ${drawn.emoji} **${drawn.name.toUpperCase()}** (\`${drawn.id}\`)\n` +
-            `🎯 **Lado Inicial:** Time A (CT) | Time B (TR)\n\n` +
-            (mix.serverIp ? `💻 **Conectar no CS2:**\n\`connect ${mix.serverIp}\`\n\n` : '') +
-            `GL & HF!`
-        )
-        .setColor(0xf59e0b)
-        .setImage(drawn.image)
-        .setFooter({ text: 'CS2 Mix Hub • CSPRNG Randomizer' })
-        .setTimestamp();
+      const embed = this.buildMatchReadyEmbed(mix);
+      const components = this.buildMatchReadyButtons(mix);
 
-      const actionRow = new ActionRowBuilder().addComponents(
-        new ButtonBuilder()
-          .setLabel('🌐 Acompanhar Partida no Site')
-          .setStyle(ButtonStyle.Link)
-          .setURL(`http://localhost:3000/?room=${mix.id}`)
-      );
-
-      return interaction.update({ embeds: [embed], components: [actionRow] });
+      return interaction.update({
+        content: `🎲 **MAPA DEFINIDO PELA ROLETA!** GL & HF!`,
+        embeds: [embed],
+        components,
+      });
     }
 
     // 9. VOICE MOVER
     if (action === 'mix_voice') {
       const result = await this.executeVoiceMover(interaction.guild, mix);
       return interaction.reply({ content: result.message, ephemeral: true });
+    }
+
+    // 10. DECLARE MATCH RESULT (MODAL)
+    if (action === 'match_result') {
+      const modal = new ModalBuilder()
+        .setCustomId(`modal_match_result:${mix.id}`)
+        .setTitle('🏆 Declarar Placar da Partida');
+
+      const winnerInput = new TextInputBuilder()
+        .setCustomId('winner_input')
+        .setLabel('Time Vencedor (digite A ou B)')
+        .setPlaceholder('Ex: A ou B')
+        .setStyle(TextInputStyle.Short)
+        .setMinLength(1)
+        .setMaxLength(1)
+        .setRequired(true);
+
+      const scoreInput = new TextInputBuilder()
+        .setCustomId('score_input')
+        .setLabel('Placar Final do Confronto')
+        .setPlaceholder('Ex: 13-9, 13-11, 16-14')
+        .setValue('13-9')
+        .setStyle(TextInputStyle.Short)
+        .setMinLength(3)
+        .setMaxLength(10)
+        .setRequired(true);
+
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(winnerInput),
+        new ActionRowBuilder().addComponents(scoreInput)
+      );
+
+      return interaction.showModal(modal);
+    }
+
+    // 11. SUBSTITUTE MODAL
+    if (action === 'mix_sub') {
+      const modal = new ModalBuilder()
+        .setCustomId(`modal_mix_sub:${mix.id}`)
+        .setTitle('🔄 Substituição de Jogador');
+
+      const outInput = new TextInputBuilder()
+        .setCustomId('sub_out')
+        .setLabel('Quem vai sair do mix? (Nick ou ID)')
+        .setPlaceholder('Ex: nick_do_jogador ou ID')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true);
+
+      const inInput = new TextInputBuilder()
+        .setCustomId('sub_in')
+        .setLabel('Quem vai entrar como reserva? (Nick ou ID)')
+        .setPlaceholder('Ex: novo_jogador ou ID')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true);
+
+      modal.addComponents(
+        new ActionRowBuilder().addComponents(outInput),
+        new ActionRowBuilder().addComponents(inInput)
+      );
+
+      return interaction.showModal(modal);
+    }
+
+    // 12. FINISH MVP VOTE
+    if (action === 'mvp_finish') {
+      await interaction.deferUpdate().catch(() => {});
+      return this.finishMvpVote(mix, interaction.channel);
     }
 
     // 10. CANCEL MIX
@@ -1889,7 +2450,28 @@ class DiscordBotManager {
     if (commandName === 'level' || commandName === 'lvl') return this.cmdSetLevel(interaction);
     if (commandName === 'servidor') return this.cmdServer(interaction);
     if (commandName === 'ranking') return this.cmdRanking(interaction);
+    if (commandName === 'vitoria' || commandName === 'resultado') return this.cmdMatchResult(interaction);
+    if (commandName === 'sub') return this.cmdSubstitute(interaction);
+    if (commandName === 'cargo') return this.cmdToggleRole(interaction);
     if (commandName === 'ajuda') return this.cmdHelp(interaction);
+  }
+
+  async handleSelectMenuInteraction(interaction) {
+    const customId = interaction.customId;
+    if (customId.startsWith('mvp_vote')) {
+      const [_, mixId] = customId.split(':');
+      const mix = this.activeMixes.get(interaction.channelId);
+      if (!mix || !mix.mvpVote?.active) {
+        return interaction.reply({ content: '⚠️ Esta votação de MVP já foi encerrada.', ephemeral: true });
+      }
+      const chosenPlayerId = interaction.values[0];
+      mix.mvpVote.votes.set(interaction.user.id, chosenPlayerId);
+      const totalVotes = mix.mvpVote.votes.size;
+      return interaction.reply({
+        content: `⭐ Seu voto de MVP para <@${chosenPlayerId}> foi computado com sucesso! (Total de votos computados: ${totalVotes})`,
+        ephemeral: true,
+      });
+    }
   }
 
   async handleModalSubmit(interaction) {
@@ -1928,6 +2510,64 @@ class DiscordBotManager {
         ephemeral: true,
       });
     }
+
+    if (customId.startsWith('modal_match_result')) {
+      const winner = interaction.fields.getTextInputValue('winner_input');
+      const score = interaction.fields.getTextInputValue('score_input');
+      const mix = this.activeMixes.get(interaction.channelId);
+      if (!mix) {
+        return interaction.reply({ content: '⚠️ Nenhum mix ativo encontrado neste canal.', ephemeral: true });
+      }
+      const result = await this.recordMatchResult(mix, winner, score, interaction.user, interaction.channel);
+      if (!result.success) {
+        return interaction.reply({ content: `⚠️ ${result.error}`, ephemeral: true });
+      }
+      return interaction.reply({ embeds: result.embeds, components: result.components });
+    }
+
+    if (customId.startsWith('modal_mix_sub')) {
+      const outNick = interaction.fields.getTextInputValue('sub_out');
+      const inNick = interaction.fields.getTextInputValue('sub_in');
+      const mix = this.activeMixes.get(interaction.channelId);
+      if (!mix) {
+        return interaction.reply({ content: '⚠️ Nenhum mix ativo encontrado neste canal.', ephemeral: true });
+      }
+      const res = await this.executeSubstitute(mix, outNick, inNick, interaction.guild, interaction.channel);
+      return interaction.reply({ content: res.message, ephemeral: !res.success });
+    }
+  }
+
+  async cmdMatchResult(interaction) {
+    const mix = this.activeMixes.get(interaction.channelId);
+    if (!mix) {
+      return interaction.reply({ content: '⚠️ Nenhum mix ativo encontrado neste canal para registrar vitória.', ephemeral: true });
+    }
+    const winner = interaction.options.getString('time');
+    const score = interaction.options.getString('placar') || '13-9';
+    const res = await this.recordMatchResult(mix, winner, score, interaction.user, interaction.channel);
+    if (!res.success) {
+      return interaction.reply({ content: `⚠️ ${res.error}`, ephemeral: true });
+    }
+    return interaction.reply({ embeds: res.embeds, components: res.components });
+  }
+
+  async cmdSubstitute(interaction) {
+    const mix = this.activeMixes.get(interaction.channelId);
+    if (!mix) {
+      return interaction.reply({ content: '⚠️ Nenhum mix ativo encontrado neste canal para fazer substituição.', ephemeral: true });
+    }
+    const newUser = interaction.options.getUser('novo');
+    const oldUser = interaction.options.getUser('antigo') || interaction.user;
+    const res = await this.executeSubstitute(mix, oldUser.id, newUser.id, interaction.guild, interaction.channel);
+    return interaction.reply({ content: res.message, ephemeral: !res.success });
+  }
+
+  async cmdToggleRole(interaction) {
+    if (!interaction.guild || !interaction.member) {
+      return interaction.reply({ content: '⚠️ Este comando só pode ser usado em um servidor.', ephemeral: true });
+    }
+    const res = await this.toggleMixRole(interaction.guild, interaction.member);
+    return interaction.reply({ content: res.message, ephemeral: true });
   }
 
   async cmdSetLevel(interaction) {
@@ -1993,6 +2633,10 @@ class DiscordBotManager {
       level: this.getPlayerLevel(interaction.user.id),
       ready: true,
     });
+
+    if (mix.players.length === 8 || mix.players.length === 9) {
+      this.notifyMissingSlots(mix, message.guild, message.channel).catch(() => {});
+    }
 
     if (mix.players.length === 10) {
       this.startReadyCheck(mix, interaction.channel);

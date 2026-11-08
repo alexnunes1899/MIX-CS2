@@ -1792,6 +1792,43 @@ app.get(['/health', '/api/health'], (req, res) => {
   res.status(200).json({ status: 'ok', time: new Date().toISOString(), activeRooms: rooms.size });
 });
 
+// Steam direct connect handler for Discord Bot 1-click launch
+app.get(['/connect', '/join-cs2'], (req, res) => {
+  const ip = (req.query.ip || '').trim();
+  if (!ip) {
+    return res.status(400).send('IP do servidor CS2 não fornecido.');
+  }
+  const cleanIp = ip.replace(/^connect\s+/i, '');
+  const steamUrl = `steam://connect/${cleanIp}`;
+  res.send(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Conectando ao CS2...</title>
+  <style>
+    body { background: #0b0f17; color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+    .card { background: #131b2e; border: 1px solid #1e293b; padding: 2.5rem; border-radius: 1rem; text-align: center; max-width: 480px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5); }
+    h1 { color: #38bdf8; font-size: 1.5rem; margin-bottom: 0.5rem; }
+    p { color: #94a3b8; font-size: 0.95rem; margin-bottom: 1.5rem; }
+    code { background: #0f172a; padding: 0.4rem 0.8rem; border-radius: 0.375rem; color: #fbbf24; font-size: 1.1rem; display: inline-block; margin-bottom: 1rem; }
+    .btn { display: inline-block; margin-top: 1.25rem; background: #22c55e; color: #fff; padding: 0.75rem 1.5rem; border-radius: 0.5rem; text-decoration: none; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>🚀 CONECTANDO AO SERVIDOR CS2</h1>
+    <p>Iniciando o Counter-Strike 2 pela Steam...</p>
+    <code>connect ${cleanIp}</code>
+    <br>
+    <a href="${steamUrl}" class="btn">Abrir CS2 Novamente</a>
+  </div>
+  <script>
+    window.location.href = "${steamUrl}";
+  </script>
+</body>
+</html>`);
+});
+
 // Get active rooms (runs inactivity cleanup first)
 app.get('/api/rooms', (req, res) => {
   cleanupInactiveRooms();
