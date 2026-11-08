@@ -373,9 +373,9 @@ class DiscordBotManager {
 
     if (!isOnline || !player.name) {
       embed
-        .setTitle('📡 RADAR AO VIVO • AGUARDANDO CS2')
+        .setTitle('📡 MONITORAR PARTIDA • AGUARDANDO CS2')
         .setDescription(
-          `⏳ **Radar ativado com sucesso! Aguardando início da partida no CS2...**\n\n` +
+          `⏳ **Monitoramento ativado com sucesso! Aguardando início da partida no CS2...**\n\n` +
             `O bot está em modo de escuta ativa. **Assim que você conectar no servidor e o round começar, este card será atualizado automaticamente em tempo real!**\n\n` +
             `Seus amigos já podem deixar este card aberto no Discord ou no Hub Web para acompanhar:\n` +
             `• 🛡️ / 💣 **Lado da Equipe:** CT ou TR (com mudança de cores)\n` +
@@ -390,7 +390,7 @@ class DiscordBotManager {
         )
         .addFields(
           {
-            name: '📡 Status do Radar',
+            name: '📡 Status do Monitoramento',
             value: '🟢 **Monitoramento Ativo** (Auto-Sync Ligado)',
             inline: true,
           },
@@ -406,7 +406,7 @@ class DiscordBotManager {
           }
         )
         .setColor(0x6366f1)
-        .setFooter({ text: 'CS2 Mix Hub • Radar Ao Vivo • Atualização Automática no 1º Round' });
+        .setFooter({ text: 'CS2 Mix Hub • Monitorar Partida • Atualização Automática no 1º Round' });
       return embed;
     }
 
@@ -516,7 +516,7 @@ class DiscordBotManager {
         .setURL('http://localhost:3000/api/gsi/cfg/MIX-PRO'),
       new ButtonBuilder()
         .setCustomId('live_stop')
-        .setLabel('⏹️ Parar Radar')
+        .setLabel('⏹️ Parar Monitoramento')
         .setStyle(ButtonStyle.Danger)
     );
     return row;
@@ -1203,7 +1203,7 @@ class DiscordBotManager {
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
         .setCustomId('panel_live_radar')
-        .setLabel('Radar Ao Vivo')
+        .setLabel('Monitorar Partida')
         .setEmoji('📡')
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
@@ -1387,7 +1387,7 @@ class DiscordBotManager {
           }
         }
       }
-      return message.reply(`⏹️ Radar ao vivo desativado neste canal (${stopped} rastreador(es) removido(s)).`);
+      return message.reply(`⏹️ Monitoramento de partida desativado neste canal (${stopped} rastreador(es) removido(s)).`);
     }
 
     const requester = message.author?.username || 'Jogador';
@@ -1549,7 +1549,7 @@ class DiscordBotManager {
           `• \`!sortear\` — Sorteio inteligente e balanceamento snake-draft\n` +
           `• \`!veto\` — Pick & Ban oficial da Valve com escolha de lados CT/TR\n` +
           `• \`!vitoria [A|B] [placar]\` — Registra a vitória, pontua no ranking e inicia votação de MVP\n` +
-          `• \`!aovivo\` [parar] — Radar ao vivo com auto-atualização round a round: placar, CT/TR, HP e armas (ative antes ou durante o jogo!)\n` +
+          `• \`!aovivo\` [parar] — Monitorar Partida com auto-atualização round a round: placar, CT/TR, HP e armas (ative antes ou durante o jogo!)\n` +
           `• \`!gsi\` — Instruções e download do Valve GSI para transmissão em tempo real\n` +
           `• \`!historico [qtde]\` — Histórico das últimas partidas finalizadas\n` +
           `• \`!x1 @amigo\` — Duelo direto Head-to-Head e sinergia de duo\n` +
@@ -2490,7 +2490,7 @@ class DiscordBotManager {
           `⚡ **Comandos Oficiais no Chat:**\n` +
           `• \`!mix\` — Abre um novo lobby 5v5\n` +
           `• \`!vitoria [A|B] [placar]\` — Registra a vitória, pontua no ranking e inicia votação de MVP\n` +
-          `• \`!aovivo\` [parar] — Radar ao vivo round a round: placar, CT/TR, HP e armas (ative antes da partida!)\n` +
+          `• \`!aovivo\` [parar] — Monitorar Partida round a round: placar, CT/TR, HP e armas (ative antes da partida!)\n` +
           `• \`!historico\` — Histórico de partidas recentes com placares e destaques\n` +
           `• \`!x1 @amigo\` — Duelo direto Head-to-Head e sinergia de duo\n` +
           `• \`!mapas\` — Estatísticas dos mapas mais disputados no servidor\n` +
@@ -2598,7 +2598,7 @@ class DiscordBotManager {
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId(`mix_live_tracker:${mix.id}`)
-        .setLabel('Radar Ao Vivo')
+        .setLabel('Monitorar Partida')
         .setEmoji('📡')
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
@@ -2821,7 +2821,7 @@ class DiscordBotManager {
     const row2 = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId(`mix_live_tracker:${mix.id}`)
-        .setLabel('Radar Ao Vivo')
+        .setLabel('Monitorar Partida')
         .setEmoji('📡')
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
@@ -2881,13 +2881,13 @@ class DiscordBotManager {
       return interaction.showModal(modal);
     }
 
-    // Permanent Panel Live Radar Trigger
+    // Permanent Panel Live Match Monitor Trigger
     if (customId === 'panel_live_radar') {
       const requester = user.username || 'Jogador';
       const embed = this.buildLiveMatchEmbed(requester);
       const row = this.buildLiveMatchButtons(Boolean(this.lastGsiState?.player?.name));
       const sent = await interaction.reply({
-        content: `📡 <@${user.id}> ativou o **Radar de Partida Ao Vivo**!`,
+        content: `📡 <@${user.id}> ativou o **Monitorar Partida**!`,
         embeds: [embed],
         components: [row],
         fetchReply: true,
@@ -2914,7 +2914,7 @@ class DiscordBotManager {
       const embed = new EmbedBuilder()
         .setTitle('⏹️ MONITOR AO VIVO ENCERRADO')
         .setDescription(
-          `O radar de partida ao vivo foi desativado por <@${user.id}>.\n` +
+          `O monitoramento de partida ao vivo foi desativado por <@${user.id}>.\n` +
             `Para iniciar novamente a qualquer momento antes ou durante uma partida, digite \`!aovivo\` ou \`/aovivo\`.`
         )
         .setColor(0x64748b)
@@ -2930,7 +2930,7 @@ class DiscordBotManager {
       const embed = this.buildLiveMatchEmbed(requester);
       const row = this.buildLiveMatchButtons(Boolean(this.lastGsiState?.player?.name));
       const sent = await interaction.reply({
-        content: `📡 <@${user.id}> ativou o **Radar de Partida Ao Vivo**!`,
+        content: `📡 <@${user.id}> ativou o **Monitorar Partida**!`,
         embeds: [embed],
         components: [row],
         fetchReply: true,
@@ -3719,7 +3719,7 @@ class DiscordBotManager {
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
         .setCustomId('panel_live_radar')
-        .setLabel('Radar Ao Vivo')
+        .setLabel('Monitorar Partida')
         .setEmoji('📡')
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
@@ -3862,7 +3862,7 @@ class DiscordBotManager {
           `• \`!sortear\` - Sorteio snake-draft balanceado por elo\n` +
           `• \`!veto\` - Pick & Ban de mapas oficial com escolha de lados CT/TR\n` +
           `• \`!vitoria [A|B] [placar]\` - Registra a vitória, pontua no ranking e inicia votação de MVP\n` +
-          `• \`!aovivo\` ou \`/aovivo\` - Radar com auto-atualização round a round: placar, CT/TR, HP e armas (ative antes ou durante o jogo!)\n` +
+          `• \`!aovivo\` ou \`/aovivo\` - Monitorar Partida com auto-atualização round a round: placar, CT/TR, HP e armas (ative antes ou durante o jogo!)\n` +
           `• \`!gsi\` ou \`/gsi\` - Instruções e download do arquivo CFG do Valve GSI\n` +
           `• \`!historico\` ou \`/historico\` - Histórico de partidas recentes e placares\n` +
           `• \`!x1 @amigo\` ou \`/x1\` - Duelo Head-to-Head e sinergia de vitórias juntos\n` +
