@@ -27,6 +27,7 @@ import { playClickSound, playReadySound } from '../utils/audio';
 import { copyText } from '../utils/clipboard';
 import { DEFAULT_TOURNAMENT_TEAMS, PRESET_LOGOS } from '../data/tournamentTeams';
 import { drawTournamentBracketCanvas, drawMatchVersusCardCanvas } from '../utils/tournamentCanvas';
+import { getTournamentRecommendation, buildMatchesStructure } from '../utils/tournamentAdvisor';
 
 export default function TournamentBracketModal({
   isOpen,
@@ -36,7 +37,13 @@ export default function TournamentBracketModal({
   roomId = 'MIX',
 }) {
   const [activeTab, setActiveTab] = useState('bracket'); // 'bracket' | 'schedule' | 'teams'
-  const [teamCount, setTeamCount] = useState(4); // 4 or 8
+  const [teamCount, setTeamCount] = useState(() => {
+    try {
+      const saved = localStorage.getItem(`cs2_tournament_teamcount_${roomId}`);
+      if (saved) return Math.max(2, Math.min(16, Number(saved) || 8));
+    } catch (e) {}
+    return 8;
+  });
   const [tournamentName, setTournamentName] = useState('COPA DE MIX CS2 2026');
   const [isEditingName, setIsEditingName] = useState(false);
 
@@ -57,6 +64,11 @@ export default function TournamentBracketModal({
     } catch (e) {}
     return {};
   });
+
+  // Smart Advisor Recommendation
+  const recommendation = useMemo(() => {
+    return getTournamentRecommendation(teamCount);
+  }, [teamCount]);
 
   // Selected Team for Editing in Teams tab
   const [selectedTeamId, setSelectedTeamId] = useState('team-1');
@@ -92,69 +104,97 @@ export default function TournamentBracketModal({
       localStorage.setItem(`cs2_tournament_teams_${roomId}`, JSON.stringify(teams));
       localStorage.setItem(`cs2_tournament_matches_${roomId}`, JSON.stringify(matches));
       localStorage.setItem(`cs2_tournament_name_${roomId}`, tournamentName);
+      localStorage.setItem(`cs2_tournament_teamcount_${roomId}`, String(teamCount));
     } catch (e) {}
-  }, [teams, matches, tournamentName, roomId]);
+  }, [teams, matches, tournamentName, teamCount, roomId]);
 
-  // Initialize Default Matches if empty
-  const initBracketMatches = useCallback((count, currentTeams = teams) => {
-    const tNames = currentTeams.map((t) => t.name);
+  // Propagador Inteligente de Vencedores entre Chaves
+  const propagateWinner = useCallback((next, matchId, winnerTeam, count) => {
+    if (!winnerTeam) return next;
     if (count === 4) {
-      setMatches({
-        m1: {
-          id: 'm1',
-          round: 'semi',
-          title: 'Semifinal 1',
-          teamA: tNames[0] || 'Time 1',
-          teamB: tNames[1] || 'Time 2',
-          scoreA: 0,
-          scoreB: 0,
-          winner: null,
-          time: '20:00',
-          status: 'pending', // 'pending' | 'live' | 'finished'
-          format: 'MD3',
-          map: 'de_mirage',
-        },
-        m2: {
-          id: 'm2',
-          round: 'semi',
-          title: 'Semifinal 2',
-          teamA: tNames[2] || 'Time 3',
-          teamB: tNames[3] || 'Time 4',
-          scoreA: 0,
-          scoreB: 0,
-          winner: null,
-          time: '21:00',
-          status: 'pending',
-          format: 'MD3',
-          map: 'de_inferno',
-        },
-        m3: {
-          id: 'm3',
-          round: 'final',
-          title: 'Grande Final',
-          teamA: 'Vencedor SF1',
-          teamB: 'Vencedor SF2',
-          scoreA: 0,
-          scoreB: 0,
-          winner: null,
-          time: '22:30',
-          status: 'pending',
-          format: 'MD3',
-          map: 'de_nuke',
-        },
-      });
-    } else {
-      setMatches({
-        q1: { id: 'q1', round: 'quarter', title: 'Quartas 1', teamA: tNames[0], teamB: tNames[1], scoreA: 0, scoreB: 0, winner: null, time: '19:00', status: 'pending', format: 'MD1', map: 'de_mirage' },
-        q2: { id: 'q2', round: 'quarter', title: 'Quartas 2', teamA: tNames[2], teamB: tNames[3], scoreA: 0, scoreB: 0, winner: null, time: '19:45', status: 'pending', format: 'MD1', map: 'de_inferno' },
-        q3: { id: 'q3', round: 'quarter', title: 'Quartas 3', teamA: tNames[4], teamB: tNames[5], scoreA: 0, scoreB: 0, winner: null, time: '20:30', status: 'pending', format: 'MD1', map: 'de_dust2' },
-        q4: { id: 'q4', round: 'quarter', title: 'Quartas 4', teamA: tNames[6], teamB: tNames[7], scoreA: 0, scoreB: 0, winner: null, time: '21:15', status: 'pending', format: 'MD1', map: 'de_ancient' },
-        s1: { id: 's1', round: 'semi', title: 'Semifinal 1', teamA: 'Vencedor QF1', teamB: 'Vencedor QF2', scoreA: 0, scoreB: 0, winner: null, time: '22:00', status: 'pending', format: 'MD3', map: 'de_nuke' },
-        s2: { id: 's2', round: 'semi', title: 'Semifinal 2', teamA: 'Vencedor QF3', teamB: 'Vencedor QF4', scoreA: 0, scoreB: 0, winner: null, time: '22:45', status: 'pending', format: 'MD3', map: 'de_anubis' },
-        f1: { id: 'f1', round: 'final', title: 'Grande Final', teamA: 'Vencedor SF1', teamB: 'Vencedor SF2', scoreA: 0, scoreB: 0, winner: null, time: '23:30', status: 'pending', format: 'MD3', map: 'de_mirage' },
-      });
+      if (matchId === 'm1' && next.m3) next.m3.teamA = winnerTeam;
+      if (matchId === 'm2' && next.m3) next.m3.teamB = winnerTeam;
+      return next;
     }
+    if (count === 5) {
+      if (matchId === 'pi1' && next.m1) next.m1.teamB = winnerTeam;
+      if (matchId === 'm1' && next.m3) next.m3.teamA = winnerTeam;
+      if (matchId === 'm2' && next.m3) next.m3.teamB = winnerTeam;
+      return next;
+    }
+    if (count === 6) {
+      if (matchId === 'q1' && next.m1) next.m1.teamB = winnerTeam;
+      if (matchId === 'q2' && next.m2) next.m2.teamB = winnerTeam;
+      if (matchId === 'm1' && next.m3) next.m3.teamA = winnerTeam;
+      if (matchId === 'm2' && next.m3) next.m3.teamB = winnerTeam;
+      return next;
+    }
+    if (count === 7) {
+      if (matchId === 'q1' && next.m1) next.m1.teamB = winnerTeam;
+      if (matchId === 'q2' && next.m2) next.m2.teamA = winnerTeam;
+      if (matchId === 'q3' && next.m2) next.m2.teamB = winnerTeam;
+      if (matchId === 'm1' && next.m3) next.m3.teamA = winnerTeam;
+      if (matchId === 'm2' && next.m3) next.m3.teamB = winnerTeam;
+      return next;
+    }
+    if (count === 8) {
+      if (matchId === 'q1' && next.s1) next.s1.teamA = winnerTeam;
+      if (matchId === 'q2' && next.s1) next.s1.teamB = winnerTeam;
+      if (matchId === 'q3' && next.s2) next.s2.teamA = winnerTeam;
+      if (matchId === 'q4' && next.s2) next.s2.teamB = winnerTeam;
+      if (matchId === 's1' && next.f1) next.f1.teamA = winnerTeam;
+      if (matchId === 's2' && next.f1) next.f1.teamB = winnerTeam;
+      return next;
+    }
+    if (count >= 9 && count <= 12) {
+      if (matchId === 'pi1' && next.q1) next.q1.teamB = winnerTeam;
+      if (matchId === 'pi2' && next.q3) next.q3.teamB = winnerTeam;
+      if (matchId === 'q1' && next.s1) next.s1.teamA = winnerTeam;
+      if (matchId === 'q2' && next.s1) next.s1.teamB = winnerTeam;
+      if (matchId === 'q3' && next.s2) next.s2.teamA = winnerTeam;
+      if (matchId === 'q4' && next.s2) next.s2.teamB = winnerTeam;
+      if (matchId === 's1' && next.f1) next.f1.teamA = winnerTeam;
+      if (matchId === 's2' && next.f1) next.f1.teamB = winnerTeam;
+      return next;
+    }
+    if (count >= 13) {
+      if (matchId === 'o1' && next.q1) next.q1.teamA = winnerTeam;
+      if (matchId === 'o2' && next.q1) next.q1.teamB = winnerTeam;
+      if (matchId === 'o3' && next.q2) next.q2.teamA = winnerTeam;
+      if (matchId === 'o4' && next.q2) next.q2.teamB = winnerTeam;
+      if (matchId === 'o5' && next.q3) next.q3.teamA = winnerTeam;
+      if (matchId === 'o6' && next.q3) next.q3.teamB = winnerTeam;
+      if (matchId === 'o7' && next.q4) next.q4.teamA = winnerTeam;
+      if (matchId === 'o8' && next.q4) next.q4.teamB = winnerTeam;
+      if (matchId === 'q1' && next.s1) next.s1.teamA = winnerTeam;
+      if (matchId === 'q2' && next.s1) next.s1.teamB = winnerTeam;
+      if (matchId === 'q3' && next.s2) next.s2.teamA = winnerTeam;
+      if (matchId === 'q4' && next.s2) next.s2.teamB = winnerTeam;
+      if (matchId === 's1' && next.f1) next.f1.teamA = winnerTeam;
+      if (matchId === 's2' && next.f1) next.f1.teamB = winnerTeam;
+      return next;
+    }
+    return next;
+  }, []);
+
+  // Initialize Matches using buildMatchesStructure
+  const initBracketMatches = useCallback((count, currentTeams = teams) => {
+    const validCount = Math.max(2, Math.min(16, Number(count) || 8));
+    const generated = buildMatchesStructure(validCount, currentTeams);
+    setMatches(generated);
   }, [teams]);
+
+  // Handle Dynamic Team Count Change
+  const handleSelectTeamCount = (count) => {
+    const validCount = Math.max(2, Math.min(16, Number(count) || 8));
+    if (soundEnabled) playClickSound();
+    setTeamCount(validCount);
+    initBracketMatches(validCount, teams);
+    const available = teams.slice(0, validCount);
+    if (!available.some((t) => t.id === selectedTeamId)) {
+      setSelectedTeamId(available[0]?.id || 'team-1');
+    }
+  };
 
   useEffect(() => {
     if (!matches || Object.keys(matches).length === 0) {
@@ -175,6 +215,7 @@ export default function TournamentBracketModal({
     const num = Math.max(0, parseInt(score, 10) || 0);
     setMatches((prev) => {
       const match = { ...prev[matchId] };
+      if (!match) return prev;
       if (side === 'A') match.scoreA = num;
       if (side === 'B') match.scoreB = num;
 
@@ -190,20 +231,7 @@ export default function TournamentBracketModal({
       }
 
       const next = { ...prev, [matchId]: match };
-
-      if (teamCount === 4) {
-        if (matchId === 'm1' && match.winner) next.m3.teamA = match.winner;
-        if (matchId === 'm2' && match.winner) next.m3.teamB = match.winner;
-      } else {
-        if (matchId === 'q1' && match.winner) next.s1.teamA = match.winner;
-        if (matchId === 'q2' && match.winner) next.s1.teamB = match.winner;
-        if (matchId === 'q3' && match.winner) next.s2.teamA = match.winner;
-        if (matchId === 'q4' && match.winner) next.s2.teamB = match.winner;
-        if (matchId === 's1' && match.winner) next.f1.teamA = match.winner;
-        if (matchId === 's2' && match.winner) next.f1.teamB = match.winner;
-      }
-
-      return next;
+      return propagateWinner(next, matchId, match.winner, teamCount);
     });
   };
 
@@ -212,20 +240,7 @@ export default function TournamentBracketModal({
     setMatches((prev) => {
       const match = { ...prev[matchId], winner: winnerTeam, status: 'finished' };
       const next = { ...prev, [matchId]: match };
-
-      if (teamCount === 4) {
-        if (matchId === 'm1') next.m3.teamA = winnerTeam;
-        if (matchId === 'm2') next.m3.teamB = winnerTeam;
-      } else {
-        if (matchId === 'q1') next.s1.teamA = winnerTeam;
-        if (matchId === 'q2') next.s1.teamB = winnerTeam;
-        if (matchId === 'q3') next.s2.teamA = winnerTeam;
-        if (matchId === 'q4') next.s2.teamB = winnerTeam;
-        if (matchId === 's1') next.f1.teamA = winnerTeam;
-        if (matchId === 's2') next.f1.teamB = winnerTeam;
-      }
-
-      return next;
+      return propagateWinner(next, matchId, winnerTeam, teamCount);
     });
   };
 
@@ -277,7 +292,7 @@ export default function TournamentBracketModal({
   };
 
   // Champion
-  const champion = teamCount === 4 ? matches.m3?.winner : matches.f1?.winner;
+  const champion = teamCount === 2 ? matches.f1?.winner : (matches.f1?.winner || matches.m3?.winner || null);
 
   // Launch match directly into the CS2 Mix Hub
   const handleSendMatchToMix = (match) => {
@@ -482,29 +497,31 @@ export default function TournamentBracketModal({
 
           {/* Quick Tools */}
           <div className="flex items-center gap-2">
-            {/* Team Count Toggle */}
-            <div className="bg-slate-950 border border-slate-800 rounded-xl p-0.5 flex items-center">
+            {/* Dynamic Stepper */}
+            <div className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1 flex items-center gap-1.5 shadow-sm">
+              <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 font-bold hidden sm:inline">
+                Equipes:
+              </span>
               <button
-                onClick={() => {
-                  setTeamCount(4);
-                  initBracketMatches(4);
-                }}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold cursor-pointer transition-all ${
-                  teamCount === 4 ? 'bg-amber-500 text-slate-950' : 'text-slate-400 hover:text-white'
-                }`}
+                type="button"
+                onClick={() => handleSelectTeamCount(teamCount - 1)}
+                disabled={teamCount <= 2}
+                className="w-5 h-5 rounded flex items-center justify-center text-xs font-black text-slate-400 hover:text-white bg-slate-900 border border-slate-800 disabled:opacity-30 cursor-pointer"
+                title="Diminuir equipes"
               >
-                4 Times
+                -
               </button>
+              <span className="px-1.5 font-mono text-xs font-black text-amber-400">
+                {teamCount}
+              </span>
               <button
-                onClick={() => {
-                  setTeamCount(8);
-                  initBracketMatches(8);
-                }}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold cursor-pointer transition-all ${
-                  teamCount === 8 ? 'bg-amber-500 text-slate-950' : 'text-slate-400 hover:text-white'
-                }`}
+                type="button"
+                onClick={() => handleSelectTeamCount(teamCount + 1)}
+                disabled={teamCount >= 16}
+                className="w-5 h-5 rounded flex items-center justify-center text-xs font-black text-slate-400 hover:text-white bg-slate-900 border border-slate-800 disabled:opacity-30 cursor-pointer"
+                title="Aumentar equipes"
               >
-                8 Times
+                +
               </button>
             </div>
 
@@ -540,7 +557,84 @@ export default function TournamentBracketModal({
 
         {/* TAB 1: BRACKET VIEW */}
         {activeTab === 'bracket' && (
-          <div className="p-4 sm:p-6 overflow-y-auto no-scrollbar space-y-6">
+          <div className="p-4 sm:p-6 overflow-y-auto no-scrollbar space-y-5">
+            {/* AI TOURNAMENT ADVISOR CARD */}
+            <div className="bg-gradient-to-r from-amber-500/10 via-purple-500/10 to-indigo-500/10 border border-amber-500/30 rounded-3xl p-4 sm:p-5 shadow-xl flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+              <div className="flex items-start gap-3 flex-1 min-w-0">
+                <div className="w-11 h-11 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-400 flex items-center justify-center shrink-0 shadow-md">
+                  <Sparkles size={22} className="animate-pulse" />
+                </div>
+                <div className="min-w-0 space-y-1.5">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] font-mono font-black uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2.5 py-0.5 rounded-full shadow-sm">
+                      🧠 {recommendation.badge}
+                    </span>
+                    <h4 className="text-sm sm:text-base font-black font-heading text-white">
+                      {recommendation.title}
+                    </h4>
+                    <span className="text-[10px] font-mono bg-purple-500/20 text-purple-300 border border-purple-500/40 px-2.5 py-0.5 rounded-full font-bold">
+                      ⏱️ {recommendation.estimatedDuration}
+                    </span>
+                    <span className="text-[10px] font-mono bg-blue-500/20 text-blue-300 border border-blue-500/40 px-2.5 py-0.5 rounded-full font-bold">
+                      ⚔️ {recommendation.totalMatches} Partidas • {recommendation.rounds} Rodadas
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    <strong className="text-amber-400">Fórmula Recomendada: </strong>
+                    {recommendation.rationale}
+                  </p>
+                  {recommendation.byes && recommendation.byes.length > 0 && (
+                    <div className="flex items-center gap-1.5 text-xs text-amber-300/90 font-mono pt-0.5">
+                      <Flame size={13} className="text-amber-400 shrink-0" />
+                      <span>Folgas Estratégicas (BYEs): <strong>Seeds {recommendation.byes.map((b) => `#${b}`).join(', ')}</strong> avançam direto!</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Quick Select Buttons */}
+              <div className="flex flex-col items-start lg:items-end gap-1.5 shrink-0 w-full lg:w-auto pt-2 lg:pt-0 border-t lg:border-t-0 border-slate-800">
+                <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 font-bold">
+                  Definir Quantidade de Times:
+                </span>
+                <div className="flex items-center gap-1 flex-wrap">
+                  {[2, 3, 4, 5, 6, 8, 10, 12, 16].map((num) => (
+                    <button
+                      key={num}
+                      type="button"
+                      onClick={() => handleSelectTeamCount(num)}
+                      className={`px-2 py-1 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer ${
+                        teamCount === num
+                          ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/30 ring-1 ring-amber-300 scale-105'
+                          : 'bg-slate-950/80 hover:bg-slate-800 text-slate-300 border border-slate-800'
+                      }`}
+                    >
+                      {num}
+                    </button>
+                  ))}
+                  <div className="flex items-center ml-1 bg-slate-950 border border-slate-800 rounded-lg p-0.5">
+                    <button
+                      type="button"
+                      onClick={() => handleSelectTeamCount(teamCount - 1)}
+                      disabled={teamCount <= 2}
+                      className="px-1.5 py-0.5 text-xs font-bold text-slate-400 hover:text-white disabled:opacity-30 cursor-pointer"
+                    >
+                      -
+                    </button>
+                    <span className="px-1.5 text-xs font-mono font-black text-amber-400">{teamCount}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleSelectTeamCount(teamCount + 1)}
+                      disabled={teamCount >= 16}
+                      className="px-1.5 py-0.5 text-xs font-bold text-slate-400 hover:text-white disabled:opacity-30 cursor-pointer"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {champion && (
               <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/20 via-yellow-500/20 to-amber-500/20 border-2 border-amber-400 text-center space-y-1 shadow-xl animate-bounce">
                 <Crown size={28} className="mx-auto text-amber-400" />
@@ -552,338 +646,335 @@ export default function TournamentBracketModal({
               </div>
             )}
 
-            {teamCount === 4 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
-                {/* Semis */}
-                <div className="space-y-5">
-                  <span className="text-xs font-mono uppercase tracking-wider text-amber-400 font-bold block pb-1 border-b border-slate-800">
-                    Semifinais (MD1 / MD3)
-                  </span>
+            {/* DYNAMIC BRACKET PHASES */}
+            {(() => {
+              // Reusable Match Card Renderer
+              const renderMatchCard = (mKey, match, customTitle = null, isFinal = false) => {
+                if (!match) return null;
+                const isAWin = match.winner && match.winner === match.teamA;
+                const isBWin = match.winner && match.winner === match.teamB;
 
-                  {['m1', 'm2'].map((mKey, idx) => {
-                    const m = matches[mKey];
-                    if (!m) return null;
-                    return (
-                      <div
-                        key={mKey}
-                        className="bg-slate-950/80 border border-slate-800 hover:border-amber-500/40 rounded-2xl p-4 space-y-3 shadow-lg"
-                      >
-                        <div className="flex items-center justify-between text-xs font-mono font-bold text-slate-400">
-                          <span className="flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-amber-400" />
-                            {m.title} • {m.format}
-                          </span>
-                          <span className="text-slate-500">{m.time}</span>
-                        </div>
+                return (
+                  <div
+                    key={mKey}
+                    className={`rounded-2xl p-3 space-y-2 transition-all shadow-lg ${
+                      isFinal
+                        ? 'bg-slate-950/90 border-2 border-amber-500/60 shadow-amber-500/10'
+                        : match.winner
+                        ? 'bg-slate-950/80 border border-amber-500/30'
+                        : 'bg-slate-950/80 border border-slate-800 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between text-xs font-mono font-bold text-slate-400">
+                      <span className="flex items-center gap-1.5 truncate">
+                        <span className={`w-2 h-2 rounded-full shrink-0 ${match.status === 'live' ? 'bg-rose-500 animate-pulse' : isFinal ? 'bg-amber-400' : 'bg-slate-500'}`} />
+                        <span className="truncate">{customTitle || match.title || match.roundName || 'Confronto'}</span>
+                        <span className="text-[10px] text-purple-300 bg-purple-500/15 border border-purple-500/30 px-1.5 py-0.2 rounded font-bold shrink-0">
+                          {match.format || 'MD1'}
+                        </span>
+                      </span>
+                      <span className="text-slate-500 text-[11px] shrink-0 font-mono">{match.time}</span>
+                    </div>
 
-                        {/* Team A */}
-                        <div
-                          className={`flex items-center justify-between p-2.5 rounded-xl transition-colors ${
-                            m.winner === m.teamA ? 'bg-emerald-500/15 border border-emerald-500/40' : 'bg-slate-900'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2 truncate flex-1 mr-2">
-                            <span className="text-base">{getTeamIcon(m.teamA)}</span>
-                            <button
-                              type="button"
-                              onClick={() => setManualWinner(mKey, m.teamA)}
-                              className="font-bold text-xs text-white hover:text-amber-400 cursor-pointer truncate text-left"
-                            >
-                              {m.teamA}
-                            </button>
-                          </div>
-                          <input
-                            type="number"
-                            min="0"
-                            max="30"
-                            value={m.scoreA}
-                            onChange={(e) => updateMatchScore(mKey, 'A', e.target.value)}
-                            className="w-12 bg-slate-950 border border-slate-700 rounded-lg text-center font-mono font-bold text-xs py-1 text-white outline-none"
-                          />
-                        </div>
-
-                        {/* Team B */}
-                        <div
-                          className={`flex items-center justify-between p-2.5 rounded-xl transition-colors ${
-                            m.winner === m.teamB ? 'bg-emerald-500/15 border border-emerald-500/40' : 'bg-slate-900'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2 truncate flex-1 mr-2">
-                            <span className="text-base">{getTeamIcon(m.teamB)}</span>
-                            <button
-                              type="button"
-                              onClick={() => setManualWinner(mKey, m.teamB)}
-                              className="font-bold text-xs text-white hover:text-amber-400 cursor-pointer truncate text-left"
-                            >
-                              {m.teamB}
-                            </button>
-                          </div>
-                          <input
-                            type="number"
-                            min="0"
-                            max="30"
-                            value={m.scoreB}
-                            onChange={(e) => updateMatchScore(mKey, 'B', e.target.value)}
-                            className="w-12 bg-slate-950 border border-slate-700 rounded-lg text-center font-mono font-bold text-xs py-1 text-white outline-none"
-                          />
-                        </div>
-
-                        {/* Action Buttons */}
-                        <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-900">
-                          <button
-                            onClick={() => handleOpenExportMatch(m)}
-                            className="py-1.5 px-2 bg-slate-900 hover:bg-slate-800 text-slate-300 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors"
-                          >
-                            <Image size={11} className="text-indigo-400" />
-                            <span>Card Versus</span>
-                          </button>
-                          {onLoadTeamsToMix && (
-                            <button
-                              onClick={() => handleSendMatchToMix(m)}
-                              className="py-1.5 px-2 bg-slate-900 hover:bg-slate-800 text-amber-300 rounded-xl text-[11px] font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors"
-                            >
-                              <Play size={11} className="text-amber-400" />
-                              <span>Jogar no Mix</span>
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Final */}
-                <div className="space-y-5">
-                  <span className="text-xs font-mono uppercase tracking-wider text-amber-400 font-bold block pb-1 border-b border-slate-800">
-                    🏆 Grande Final
-                  </span>
-
-                  {matches.m3 && (
-                    <div className="bg-slate-950/90 border-2 border-amber-500/60 rounded-3xl p-5 space-y-4 shadow-2xl relative overflow-hidden">
-                      <div className="flex items-center justify-between text-xs font-mono font-bold text-amber-400">
-                        <span>DECISÃO DO TÍTULO • MD3</span>
-                        {matches.m3.winner && (
-                          <span className="text-amber-300 bg-amber-500/20 px-2.5 py-0.5 rounded-full border border-amber-500/40">
-                            👑 CAMPEÃO: {matches.m3.winner}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Team A */}
-                      <div
-                        className={`flex items-center justify-between p-3 rounded-xl ${
-                          matches.m3.winner === matches.m3.teamA ? 'bg-amber-500/20 border border-amber-500/60' : 'bg-slate-900'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 truncate flex-1 mr-2">
-                          <span className="text-lg">{getTeamIcon(matches.m3.teamA)}</span>
-                          <button
-                            type="button"
-                            onClick={() => setManualWinner('m3', matches.m3.teamA)}
-                            className="font-bold text-sm text-white hover:text-amber-400 cursor-pointer truncate text-left"
-                          >
-                            {matches.m3.teamA}
-                          </button>
-                        </div>
-                        <input
-                          type="number"
-                          min="0"
-                          max="30"
-                          value={matches.m3.scoreA}
-                          onChange={(e) => updateMatchScore('m3', 'A', e.target.value)}
-                          className="w-14 bg-slate-950 border border-slate-700 rounded-lg text-center font-mono font-bold text-sm py-1.5 text-white outline-none"
-                        />
-                      </div>
-
-                      {/* Team B */}
-                      <div
-                        className={`flex items-center justify-between p-3 rounded-xl ${
-                          matches.m3.winner === matches.m3.teamB ? 'bg-amber-500/20 border border-amber-500/60' : 'bg-slate-900'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 truncate flex-1 mr-2">
-                          <span className="text-lg">{getTeamIcon(matches.m3.teamB)}</span>
-                          <button
-                            type="button"
-                            onClick={() => setManualWinner('m3', matches.m3.teamB)}
-                            className="font-bold text-sm text-white hover:text-amber-400 cursor-pointer truncate text-left"
-                          >
-                            {matches.m3.teamB}
-                          </button>
-                        </div>
-                        <input
-                          type="number"
-                          min="0"
-                          max="30"
-                          value={matches.m3.scoreB}
-                          onChange={(e) => updateMatchScore('m3', 'B', e.target.value)}
-                          className="w-14 bg-slate-950 border border-slate-700 rounded-lg text-center font-mono font-bold text-sm py-1.5 text-white outline-none"
-                        />
-                      </div>
-
-                      {/* Actions */}
-                      <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-800">
+                    {/* Team A */}
+                    <div
+                      className={`flex items-center justify-between p-2 rounded-xl transition-colors ${
+                        isAWin ? 'bg-emerald-500/20 border border-emerald-500/50' : 'bg-slate-900'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 truncate flex-1 mr-2">
+                        <span className="text-base shrink-0">{getTeamIcon(match.teamA)}</span>
                         <button
-                          onClick={() => handleOpenExportMatch(matches.m3)}
-                          className="py-2 px-3 bg-slate-900 hover:bg-slate-800 text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                          type="button"
+                          onClick={() => setManualWinner(mKey, match.teamA)}
+                          className="font-bold text-xs text-white hover:text-amber-300 cursor-pointer truncate text-left"
+                          title="Clique para declarar vencedor"
                         >
-                          <Image size={13} className="text-indigo-400" />
-                          <span>Card Versus</span>
+                          {match.teamA}
                         </button>
-                        {onLoadTeamsToMix && (
-                          <button
-                            onClick={() => handleSendMatchToMix(matches.m3)}
-                            className="py-2 px-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-md active:scale-95"
-                          >
-                            <Trophy size={13} />
-                            <span>Jogar Final</span>
-                          </button>
-                        )}
                       </div>
+                      <input
+                        type="number"
+                        min="0"
+                        max="30"
+                        value={match.scoreA}
+                        onChange={(e) => updateMatchScore(mKey, 'A', e.target.value)}
+                        className="w-11 bg-slate-950 border border-slate-700 rounded-lg text-center font-mono font-bold text-xs py-1 text-white outline-none focus:border-amber-400"
+                      />
                     </div>
-                  )}
-                </div>
-              </div>
-            ) : (
-              /* 8 Teams View */
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
-                {/* Quartas */}
-                <div className="space-y-4">
-                  <span className="text-xs font-mono uppercase tracking-wider text-amber-400 font-bold block pb-1 border-b border-slate-800">
-                    Quartas de Final
-                  </span>
-                  {['q1', 'q2', 'q3', 'q4'].map((qKey) => {
-                    const m = matches[qKey];
-                    if (!m) return null;
-                    return (
-                      <div key={qKey} className="bg-slate-950/80 border border-slate-800 rounded-xl p-3 space-y-2 text-xs">
-                        <div className="flex items-center justify-between text-[10px] text-slate-500 font-mono">
-                          <span>{m.title}</span>
-                          <button onClick={() => handleOpenExportMatch(m)} className="text-indigo-400 hover:underline cursor-pointer">
-                            Card
-                          </button>
-                        </div>
-                        <div className={`flex items-center justify-between p-1.5 rounded-lg ${m.winner === m.teamA ? 'bg-emerald-500/15' : 'bg-slate-900'}`}>
-                          <div className="flex items-center gap-1.5 truncate flex-1 mr-1">
-                            <span>{getTeamIcon(m.teamA)}</span>
-                            <span onClick={() => setManualWinner(qKey, m.teamA)} className="font-bold text-white truncate cursor-pointer">{m.teamA}</span>
-                          </div>
-                          <input
-                            type="number"
-                            value={m.scoreA}
-                            onChange={(e) => updateMatchScore(qKey, 'A', e.target.value)}
-                            className="w-10 bg-slate-950 border border-slate-700 rounded text-center text-xs py-0.5 text-white"
-                          />
-                        </div>
-                        <div className={`flex items-center justify-between p-1.5 rounded-lg ${m.winner === m.teamB ? 'bg-emerald-500/15' : 'bg-slate-900'}`}>
-                          <div className="flex items-center gap-1.5 truncate flex-1 mr-1">
-                            <span>{getTeamIcon(m.teamB)}</span>
-                            <span onClick={() => setManualWinner(qKey, m.teamB)} className="font-bold text-white truncate cursor-pointer">{m.teamB}</span>
-                          </div>
-                          <input
-                            type="number"
-                            value={m.scoreB}
-                            onChange={(e) => updateMatchScore(qKey, 'B', e.target.value)}
-                            className="w-10 bg-slate-950 border border-slate-700 rounded text-center text-xs py-0.5 text-white"
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
 
-                {/* Semis */}
-                <div className="space-y-6">
-                  <span className="text-xs font-mono uppercase tracking-wider text-amber-400 font-bold block pb-1 border-b border-slate-800">
-                    Semifinais
-                  </span>
-                  {['s1', 's2'].map((sKey) => {
-                    const m = matches[sKey];
-                    if (!m) return null;
-                    return (
-                      <div key={sKey} className="bg-slate-950/80 border border-slate-800 rounded-xl p-3 space-y-2.5 text-xs">
-                        <div className="flex items-center justify-between text-[10px] text-slate-500 font-mono">
-                          <span>{m.title}</span>
-                          <button onClick={() => handleOpenExportMatch(m)} className="text-indigo-400 hover:underline cursor-pointer">
-                            Card
-                          </button>
-                        </div>
-                        <div className={`flex items-center justify-between p-2 rounded-lg ${m.winner === m.teamA ? 'bg-emerald-500/15' : 'bg-slate-900'}`}>
-                          <div className="flex items-center gap-1.5 truncate flex-1 mr-1">
-                            <span>{getTeamIcon(m.teamA)}</span>
-                            <span onClick={() => setManualWinner(sKey, m.teamA)} className="font-bold text-white truncate cursor-pointer">{m.teamA}</span>
-                          </div>
-                          <input
-                            type="number"
-                            value={m.scoreA}
-                            onChange={(e) => updateMatchScore(sKey, 'A', e.target.value)}
-                            className="w-10 bg-slate-950 border border-slate-700 rounded text-center text-xs py-0.5 text-white"
-                          />
-                        </div>
-                        <div className={`flex items-center justify-between p-2 rounded-lg ${m.winner === m.teamB ? 'bg-emerald-500/15' : 'bg-slate-900'}`}>
-                          <div className="flex items-center gap-1.5 truncate flex-1 mr-1">
-                            <span>{getTeamIcon(m.teamB)}</span>
-                            <span onClick={() => setManualWinner(sKey, m.teamB)} className="font-bold text-white truncate cursor-pointer">{m.teamB}</span>
-                          </div>
-                          <input
-                            type="number"
-                            value={m.scoreB}
-                            onChange={(e) => updateMatchScore(sKey, 'B', e.target.value)}
-                            className="w-10 bg-slate-950 border border-slate-700 rounded text-center text-xs py-0.5 text-white"
-                          />
-                        </div>
+                    {/* Team B */}
+                    <div
+                      className={`flex items-center justify-between p-2 rounded-xl transition-colors ${
+                        isBWin ? 'bg-emerald-500/20 border border-emerald-500/50' : 'bg-slate-900'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 truncate flex-1 mr-2">
+                        <span className="text-base shrink-0">{getTeamIcon(match.teamB)}</span>
+                        <button
+                          type="button"
+                          onClick={() => setManualWinner(mKey, match.teamB)}
+                          className="font-bold text-xs text-white hover:text-amber-300 cursor-pointer truncate text-left"
+                          title="Clique para declarar vencedor"
+                        >
+                          {match.teamB}
+                        </button>
                       </div>
-                    );
-                  })}
-                </div>
+                      <input
+                        type="number"
+                        min="0"
+                        max="30"
+                        value={match.scoreB}
+                        onChange={(e) => updateMatchScore(mKey, 'B', e.target.value)}
+                        className="w-11 bg-slate-950 border border-slate-700 rounded-lg text-center font-mono font-bold text-xs py-1 text-white outline-none focus:border-amber-400"
+                      />
+                    </div>
 
-                {/* Final */}
-                <div className="space-y-6">
-                  <span className="text-xs font-mono uppercase tracking-wider text-amber-400 font-bold block pb-1 border-b border-slate-800">
-                    🏆 Grande Final
-                  </span>
-                  {matches.f1 && (
-                    <div className="bg-slate-950/90 border-2 border-amber-500/60 rounded-3xl p-4 space-y-3 shadow-2xl">
-                      <div className="text-center">
-                        <Trophy size={28} className="mx-auto text-amber-400 mb-1" />
-                        <div className="text-xs font-black text-white uppercase">{matches.f1.title}</div>
-                      </div>
-                      <div className={`flex items-center justify-between p-2 rounded-xl ${matches.f1.winner === matches.f1.teamA ? 'bg-amber-500/20' : 'bg-slate-900'}`}>
-                        <div className="flex items-center gap-1.5 truncate flex-1 mr-1">
-                          <span>{getTeamIcon(matches.f1.teamA)}</span>
-                          <span onClick={() => setManualWinner('f1', matches.f1.teamA)} className="font-bold text-xs text-white truncate cursor-pointer">{matches.f1.teamA}</span>
-                        </div>
-                        <input
-                          type="number"
-                          value={matches.f1.scoreA}
-                          onChange={(e) => updateMatchScore('f1', 'A', e.target.value)}
-                          className="w-12 bg-slate-950 border border-slate-700 rounded text-center text-xs py-1 text-white"
-                        />
-                      </div>
-                      <div className={`flex items-center justify-between p-2 rounded-xl ${matches.f1.winner === matches.f1.teamB ? 'bg-amber-500/20' : 'bg-slate-900'}`}>
-                        <div className="flex items-center gap-1.5 truncate flex-1 mr-1">
-                          <span>{getTeamIcon(matches.f1.teamB)}</span>
-                          <span onClick={() => setManualWinner('f1', matches.f1.teamB)} className="font-bold text-xs text-white truncate cursor-pointer">{matches.f1.teamB}</span>
-                        </div>
-                        <input
-                          type="number"
-                          value={matches.f1.scoreB}
-                          onChange={(e) => updateMatchScore('f1', 'B', e.target.value)}
-                          className="w-12 bg-slate-950 border border-slate-700 rounded text-center text-xs py-1 text-white"
-                        />
-                      </div>
+                    {/* Action Buttons */}
+                    <div className="grid grid-cols-2 gap-1.5 pt-1 border-t border-slate-900">
                       <button
-                        onClick={() => handleOpenExportMatch(matches.f1)}
-                        className="w-full py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+                        onClick={() => handleOpenExportMatch(match)}
+                        className="py-1 px-2 bg-slate-900 hover:bg-slate-800 text-slate-300 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 cursor-pointer transition-colors"
                       >
-                        <Image size={12} className="text-indigo-400" />
-                        <span>Gerar Card da Grande Final</span>
+                        <Image size={11} className="text-indigo-400" />
+                        <span>Card Versus</span>
                       </button>
+                      {onLoadTeamsToMix && (
+                        <button
+                          onClick={() => handleSendMatchToMix(match)}
+                          className={`py-1 px-2 rounded-lg text-[10px] font-black flex items-center justify-center gap-1 cursor-pointer transition-all active:scale-95 ${
+                            isFinal
+                              ? 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 shadow-md'
+                              : 'bg-slate-900 hover:bg-slate-800 text-amber-300'
+                          }`}
+                        >
+                          {isFinal ? <Trophy size={11} className="text-slate-950" /> : <Play size={11} className="text-amber-400" />}
+                          <span>{isFinal ? 'Jogar Final' : 'Jogar no Mix'}</span>
+                        </button>
+                      )}
                     </div>
-                  )}
+                  </div>
+                );
+              };
+
+              // 2 Times Layout
+              if (teamCount === 2) {
+                return (
+                  <div className="max-w-xl mx-auto space-y-4">
+                    <span className="text-xs font-mono uppercase tracking-wider text-amber-400 font-bold block pb-1 border-b border-slate-800 text-center">
+                      🏆 Decisão do Título (MD3 / MD5)
+                    </span>
+                    {renderMatchCard('f1', matches.f1 || matches.m1, 'Showdown Decisivo', true)}
+                  </div>
+                );
+              }
+
+              // 3 Times Layout (Triangular)
+              if (teamCount === 3) {
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                    <div className="space-y-4">
+                      <span className="text-xs font-mono uppercase tracking-wider text-amber-400 font-bold block pb-1 border-b border-slate-800">
+                        Fase de Pontos • Triangular (MD1)
+                      </span>
+                      {['r1', 'r2', 'r3'].map((k) => renderMatchCard(k, matches[k]))}
+                    </div>
+                    <div className="space-y-4">
+                      <span className="text-xs font-mono uppercase tracking-wider text-amber-400 font-bold block pb-1 border-b border-slate-800">
+                        🏆 Grande Final (Top 1 vs Top 2)
+                      </span>
+                      {renderMatchCard('f1', matches.f1, 'Decisão do Triangular', true)}
+                    </div>
+                  </div>
+                );
+              }
+
+              // 4 Times Layout
+              if (teamCount === 4) {
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                    <div className="space-y-4">
+                      <span className="text-xs font-mono uppercase tracking-wider text-amber-400 font-bold block pb-1 border-b border-slate-800">
+                        Semifinais (MD3)
+                      </span>
+                      {['m1', 'm2'].map((k) => renderMatchCard(k, matches[k]))}
+                    </div>
+                    <div className="space-y-4">
+                      <span className="text-xs font-mono uppercase tracking-wider text-amber-400 font-bold block pb-1 border-b border-slate-800">
+                        🏆 Grande Final (MD3)
+                      </span>
+                      {renderMatchCard('m3', matches.m3, 'Grande Decisão', true)}
+                    </div>
+                  </div>
+                );
+              }
+
+              // 5 Times Layout
+              if (teamCount === 5) {
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+                    <div className="space-y-4">
+                      <span className="text-xs font-mono uppercase tracking-wider text-amber-400 font-bold block pb-1 border-b border-slate-800">
+                        Play-in Preliminar
+                      </span>
+                      {renderMatchCard('pi1', matches.pi1, 'Play-in (#4 vs #5)')}
+                    </div>
+                    <div className="space-y-4">
+                      <span className="text-xs font-mono uppercase tracking-wider text-amber-400 font-bold block pb-1 border-b border-slate-800">
+                        Semifinais (Top 3 BYE)
+                      </span>
+                      {['m1', 'm2'].map((k) => renderMatchCard(k, matches[k]))}
+                    </div>
+                    <div className="space-y-4">
+                      <span className="text-xs font-mono uppercase tracking-wider text-amber-400 font-bold block pb-1 border-b border-slate-800">
+                        🏆 Grande Final
+                      </span>
+                      {renderMatchCard('m3', matches.m3, 'Grande Decisão', true)}
+                    </div>
+                  </div>
+                );
+              }
+
+              // 6 Times Layout
+              if (teamCount === 6) {
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+                    <div className="space-y-4">
+                      <span className="text-xs font-mono uppercase tracking-wider text-amber-400 font-bold block pb-1 border-b border-slate-800">
+                        Quartas de Final
+                      </span>
+                      {['q1', 'q2'].map((k) => renderMatchCard(k, matches[k]))}
+                    </div>
+                    <div className="space-y-4">
+                      <span className="text-xs font-mono uppercase tracking-wider text-amber-400 font-bold block pb-1 border-b border-slate-800">
+                        Semifinais (Seeds #1 e #2 BYE)
+                      </span>
+                      {['m1', 'm2'].map((k) => renderMatchCard(k, matches[k]))}
+                    </div>
+                    <div className="space-y-4">
+                      <span className="text-xs font-mono uppercase tracking-wider text-amber-400 font-bold block pb-1 border-b border-slate-800">
+                        🏆 Grande Final
+                      </span>
+                      {renderMatchCard('m3', matches.m3, 'Grande Decisão', true)}
+                    </div>
+                  </div>
+                );
+              }
+
+              // 7 Times Layout
+              if (teamCount === 7) {
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+                    <div className="space-y-4">
+                      <span className="text-xs font-mono uppercase tracking-wider text-amber-400 font-bold block pb-1 border-b border-slate-800">
+                        Quartas de Final (Seed #1 BYE)
+                      </span>
+                      {['q1', 'q2', 'q3'].map((k) => renderMatchCard(k, matches[k]))}
+                    </div>
+                    <div className="space-y-4">
+                      <span className="text-xs font-mono uppercase tracking-wider text-amber-400 font-bold block pb-1 border-b border-slate-800">
+                        Semifinais
+                      </span>
+                      {['m1', 'm2'].map((k) => renderMatchCard(k, matches[k]))}
+                    </div>
+                    <div className="space-y-4">
+                      <span className="text-xs font-mono uppercase tracking-wider text-amber-400 font-bold block pb-1 border-b border-slate-800">
+                        🏆 Grande Final
+                      </span>
+                      {renderMatchCard('m3', matches.m3, 'Grande Decisão', true)}
+                    </div>
+                  </div>
+                );
+              }
+
+              // 8 Times Layout
+              if (teamCount === 8) {
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+                    <div className="space-y-4">
+                      <span className="text-xs font-mono uppercase tracking-wider text-amber-400 font-bold block pb-1 border-b border-slate-800">
+                        Quartas de Final
+                      </span>
+                      {['q1', 'q2', 'q3', 'q4'].map((k) => renderMatchCard(k, matches[k]))}
+                    </div>
+                    <div className="space-y-4">
+                      <span className="text-xs font-mono uppercase tracking-wider text-amber-400 font-bold block pb-1 border-b border-slate-800">
+                        Semifinais
+                      </span>
+                      {['s1', 's2'].map((k) => renderMatchCard(k, matches[k]))}
+                    </div>
+                    <div className="space-y-4">
+                      <span className="text-xs font-mono uppercase tracking-wider text-amber-400 font-bold block pb-1 border-b border-slate-800">
+                        🏆 Grande Final
+                      </span>
+                      {renderMatchCard('f1', matches.f1, 'Grande Decisão', true)}
+                    </div>
+                  </div>
+                );
+              }
+
+              // 9 to 12 Times Layout
+              if (teamCount >= 9 && teamCount <= 12) {
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-start">
+                    <div className="space-y-3">
+                      <span className="text-xs font-mono uppercase tracking-wider text-amber-400 font-bold block pb-1 border-b border-slate-800">
+                        Play-in Preliminar
+                      </span>
+                      {['pi1', 'pi2'].map((k) => renderMatchCard(k, matches[k]))}
+                    </div>
+                    <div className="space-y-3">
+                      <span className="text-xs font-mono uppercase tracking-wider text-amber-400 font-bold block pb-1 border-b border-slate-800">
+                        Quartas de Final
+                      </span>
+                      {['q1', 'q2', 'q3', 'q4'].map((k) => renderMatchCard(k, matches[k]))}
+                    </div>
+                    <div className="space-y-3">
+                      <span className="text-xs font-mono uppercase tracking-wider text-amber-400 font-bold block pb-1 border-b border-slate-800">
+                        Semifinais
+                      </span>
+                      {['s1', 's2'].map((k) => renderMatchCard(k, matches[k]))}
+                    </div>
+                    <div className="space-y-3">
+                      <span className="text-xs font-mono uppercase tracking-wider text-amber-400 font-bold block pb-1 border-b border-slate-800">
+                        🏆 Grande Final
+                      </span>
+                      {renderMatchCard('f1', matches.f1, 'Grande Decisão', true)}
+                    </div>
+                  </div>
+                );
+              }
+
+              // 13 to 16 Times Layout (Major 16)
+              return (
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-start">
+                  <div className="space-y-2.5">
+                    <span className="text-xs font-mono uppercase tracking-wider text-amber-400 font-bold block pb-1 border-b border-slate-800">
+                      Oitavas de Final (8 Jogos)
+                    </span>
+                    {['o1', 'o2', 'o3', 'o4', 'o5', 'o6', 'o7', 'o8'].map((k) => renderMatchCard(k, matches[k]))}
+                  </div>
+                  <div className="space-y-3">
+                    <span className="text-xs font-mono uppercase tracking-wider text-amber-400 font-bold block pb-1 border-b border-slate-800">
+                      Quartas de Final (4 Jogos)
+                    </span>
+                    {['q1', 'q2', 'q3', 'q4'].map((k) => renderMatchCard(k, matches[k]))}
+                  </div>
+                  <div className="space-y-3">
+                    <span className="text-xs font-mono uppercase tracking-wider text-amber-400 font-bold block pb-1 border-b border-slate-800">
+                      Semifinais (2 Jogos)
+                    </span>
+                    {['s1', 's2'].map((k) => renderMatchCard(k, matches[k]))}
+                  </div>
+                  <div className="space-y-3">
+                    <span className="text-xs font-mono uppercase tracking-wider text-amber-400 font-bold block pb-1 border-b border-slate-800">
+                      🏆 Grande Final
+                    </span>
+                    {renderMatchCard('f1', matches.f1, 'Grande Decisão', true)}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
         )}
 

@@ -52,64 +52,151 @@ export function drawTournamentBracketCanvas(canvas, { tournamentName, teamCount,
 
   // Helper to draw match box
   const drawMatch = (x, y, w, h, match, roundTitle) => {
+    const isCompact = h < 115;
     // Card background
     ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
     ctx.beginPath();
-    ctx.roundRect(x, y, w, h, 16);
+    ctx.roundRect(x, y, w, h, isCompact ? 10 : 16);
     ctx.fill();
     ctx.strokeStyle = match?.winner ? 'rgba(245, 158, 11, 0.6)' : 'rgba(255, 255, 255, 0.12)';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = isCompact ? 1.5 : 2;
     ctx.stroke();
 
     // Round title
     ctx.fillStyle = '#64748b';
-    ctx.font = '800 13px monospace';
+    ctx.font = isCompact ? '800 11px monospace' : '800 13px monospace';
     ctx.textAlign = 'left';
-    ctx.fillText((roundTitle || '').toUpperCase(), x + 16, y + 26);
+    ctx.fillText((roundTitle || '').toUpperCase(), x + 14, isCompact ? y + 18 : y + 26);
 
     const timeTxt = match?.time || 'AO VIVO';
     ctx.textAlign = 'right';
     ctx.fillStyle = match?.status === 'live' ? '#ef4444' : '#94a3b8';
-    ctx.fillText(timeTxt, x + w - 16, y + 26);
+    ctx.fillText(timeTxt, x + w - 14, isCompact ? y + 18 : y + 26);
+
+    // Box dimensions
+    const boxH = isCompact ? 28 : 38;
+    const tAY = isCompact ? y + 24 : y + 40;
+    const tBY = isCompact ? y + 56 : y + 84;
+    const textOffsetY = isCompact ? 19 : 25;
+    const scoreOffsetY = isCompact ? 20 : 26;
+    const fontSize = isCompact ? '13px' : '17px';
+    const fontBoldSize = isCompact ? '14px' : '18px';
+    const scoreFontSize = isCompact ? '14px' : '20px';
 
     // Team A
-    const tAY = y + 40;
     const isWinA = match?.winner && match?.winner === match?.teamA;
     ctx.fillStyle = isWinA ? 'rgba(16, 185, 129, 0.2)' : 'rgba(30, 41, 59, 0.6)';
     ctx.beginPath();
-    ctx.roundRect(x + 10, tAY, w - 20, 38, 10);
+    ctx.roundRect(x + 8, tAY, w - 16, boxH, isCompact ? 6 : 10);
     ctx.fill();
 
     ctx.textAlign = 'left';
-    ctx.font = isWinA ? '900 18px sans-serif' : '700 17px sans-serif';
+    ctx.font = isWinA ? `900 ${fontBoldSize} sans-serif` : `700 ${fontSize} sans-serif`;
     ctx.fillStyle = isWinA ? '#34d399' : '#ffffff';
-    ctx.fillText(match?.teamA || 'A Definir', x + 24, tAY + 25);
+    ctx.fillText(match?.teamA || 'A Definir', x + 18, tAY + textOffsetY);
 
     ctx.textAlign = 'right';
-    ctx.font = '900 20px monospace';
+    ctx.font = `900 ${scoreFontSize} monospace`;
     ctx.fillStyle = isWinA ? '#34d399' : '#94a3b8';
-    ctx.fillText(String(match?.scoreA ?? 0), x + w - 24, tAY + 26);
+    ctx.fillText(String(match?.scoreA ?? 0), x + w - 18, tAY + scoreOffsetY);
 
     // Team B
-    const tBY = y + 84;
     const isWinB = match?.winner && match?.winner === match?.teamB;
     ctx.fillStyle = isWinB ? 'rgba(16, 185, 129, 0.2)' : 'rgba(30, 41, 59, 0.6)';
     ctx.beginPath();
-    ctx.roundRect(x + 10, tBY, w - 20, 38, 10);
+    ctx.roundRect(x + 8, tBY, w - 16, boxH, isCompact ? 6 : 10);
     ctx.fill();
 
     ctx.textAlign = 'left';
-    ctx.font = isWinB ? '900 18px sans-serif' : '700 17px sans-serif';
+    ctx.font = isWinB ? `900 ${fontBoldSize} sans-serif` : `700 ${fontSize} sans-serif`;
     ctx.fillStyle = isWinB ? '#34d399' : '#ffffff';
-    ctx.fillText(match?.teamB || 'A Definir', x + 24, tBY + 25);
+    ctx.fillText(match?.teamB || 'A Definir', x + 18, tBY + textOffsetY);
 
     ctx.textAlign = 'right';
-    ctx.font = '900 20px monospace';
+    ctx.font = `900 ${scoreFontSize} monospace`;
     ctx.fillStyle = isWinB ? '#34d399' : '#94a3b8';
-    ctx.fillText(String(match?.scoreB ?? 0), x + w - 24, tBY + 26);
+    ctx.fillText(String(match?.scoreB ?? 0), x + w - 18, tBY + scoreOffsetY);
   };
 
-  if (teamCount === 4) {
+  const resolvedChampion = champion || matches?.f1?.winner || matches?.m3?.winner || null;
+
+  if (teamCount === 2) {
+    // 2 Teams Layout: Single Direct Showdown
+    const boxW = 520;
+    const boxH = 150;
+    const m = matches?.f1 || matches?.m1;
+
+    ctx.fillStyle = '#f59e0b';
+    ctx.font = '800 26px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('🏆 GRANDE DECISÃO DO TÍTULO (MD3 / MD5)', width / 2, 280);
+
+    drawMatch(width / 2 - boxW / 2, 330, boxW, boxH, m, 'Decisão Direta');
+
+    if (resolvedChampion) {
+      const champY = 560;
+      ctx.fillStyle = 'rgba(245, 158, 11, 0.18)';
+      ctx.beginPath();
+      ctx.roundRect(width / 2 - boxW / 2, champY, boxW, 190, 20);
+      ctx.fill();
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 4;
+      ctx.stroke();
+
+      ctx.fillStyle = '#f59e0b';
+      ctx.font = '900 26px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('👑 GRANDE CAMPEÃO 👑', width / 2, champY + 55);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '900 38px sans-serif';
+      ctx.fillText(resolvedChampion, width / 2, champY + 115);
+
+      ctx.fillStyle = '#34d399';
+      ctx.font = '700 18px monospace';
+      ctx.fillText('VENCEDOR DO CONFRONTO SHOWDOWN', width / 2, champY + 155);
+    }
+  } else if (teamCount === 3) {
+    // 3 Teams Layout: Triangular + Final
+    const boxW = 380;
+    const boxH = 135;
+
+    ctx.fillStyle = '#f59e0b';
+    ctx.font = '800 22px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('FASE DE PONTOS (TRIANGULAR MD1)', 240, 230);
+    ctx.fillText('🏆 GRANDE FINAL (MD3)', 980, 230);
+
+    drawMatch(240, 270, boxW, boxH, matches.r1, 'Rodada 1 • Triangular');
+    drawMatch(240, 440, boxW, boxH, matches.r2, 'Rodada 2 • Triangular');
+    drawMatch(240, 610, boxW, boxH, matches.r3, 'Rodada 3 • Triangular');
+
+    drawMatch(980, 360, boxW + 40, boxH + 15, matches.f1, 'Decisão do Título');
+
+    if (resolvedChampion) {
+      const champY = 580;
+      ctx.fillStyle = 'rgba(245, 158, 11, 0.18)';
+      ctx.beginPath();
+      ctx.roundRect(980, champY, boxW + 40, 180, 20);
+      ctx.fill();
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 4;
+      ctx.stroke();
+
+      ctx.fillStyle = '#f59e0b';
+      ctx.font = '900 24px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('👑 CAMPEÃO TRIANGULAR 👑', 980 + (boxW + 40) / 2, champY + 50);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '900 34px sans-serif';
+      ctx.fillText(resolvedChampion, 980 + (boxW + 40) / 2, champY + 105);
+
+      ctx.fillStyle = '#34d399';
+      ctx.font = '700 16px monospace';
+      ctx.fillText('LÍDER DA COMPETIÇÃO', 980 + (boxW + 40) / 2, champY + 145);
+    }
+  } else if (teamCount === 4) {
     // 4 Teams Layout: 2 Semis on Left, Grand Final on Right + Trophy Center/Right
     const boxW = 380;
     const boxH = 135;
@@ -147,7 +234,7 @@ export function drawTournamentBracketCanvas(canvas, { tournamentName, teamCount,
     drawMatch(1050, 370, boxW + 40, boxH + 10, matches.m3, 'Decisão do Título');
 
     // Champion Banner
-    if (champion) {
+    if (resolvedChampion) {
       const champY = 660;
       ctx.fillStyle = 'rgba(245, 158, 11, 0.15)';
       ctx.beginPath();
@@ -164,9 +251,67 @@ export function drawTournamentBracketCanvas(canvas, { tournamentName, teamCount,
 
       ctx.fillStyle = '#ffffff';
       ctx.font = '900 38px sans-serif';
-      ctx.fillText(champion, 1050 + (boxW + 40) / 2, champY + 110);
+      ctx.fillText(resolvedChampion, 1050 + (boxW + 40) / 2, champY + 110);
     }
-  } else {
+  } else if (teamCount >= 5 && teamCount <= 7) {
+    // 5, 6, 7 Teams Layout (Play-in / QF + Semis + Final)
+    const boxW = 340;
+    const boxH = 130;
+
+    const col1Title = teamCount === 5 ? 'PLAY-IN PRELIMINAR' : 'QUARTAS DE FINAL';
+    const col2Title = teamCount === 5 ? 'SEMIFINAIS (TOP 3 BYE)' : teamCount === 6 ? 'SEMIFINAIS (TOP 2 BYE)' : 'SEMIFINAIS';
+
+    ctx.fillStyle = '#f59e0b';
+    ctx.font = '800 20px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(col1Title, 120, 220);
+    ctx.fillText(col2Title, 580, 220);
+    ctx.fillText('🏆 GRANDE FINAL', 1040, 220);
+
+    if (teamCount === 5) {
+      drawMatch(120, 400, boxW, boxH, matches.pi1, 'Play-in (#4 vs #5)');
+    } else if (teamCount === 6) {
+      drawMatch(120, 320, boxW, boxH, matches.q1, 'Quartas 1 (#3 vs #6)');
+      drawMatch(120, 520, boxW, boxH, matches.q2, 'Quartas 2 (#4 vs #5)');
+    } else {
+      drawMatch(120, 280, boxW, boxH, matches.q1, 'Quartas 1 (#2 vs #7)');
+      drawMatch(120, 460, boxW, boxH, matches.q2, 'Quartas 2 (#3 vs #6)');
+      drawMatch(120, 640, boxW, boxH, matches.q3, 'Quartas 3 (#4 vs #5)');
+    }
+
+    // Semis
+    drawMatch(580, 340, boxW, boxH, matches.m1 || matches.s1, 'Semifinal 1');
+    drawMatch(580, 560, boxW, boxH, matches.m2 || matches.s2, 'Semifinal 2');
+
+    // Final
+    drawMatch(1040, 440, boxW + 40, boxH + 15, matches.m3 || matches.f1, 'Decisão do Título');
+
+    // Champion
+    if (resolvedChampion) {
+      const champX = 1460;
+      const champY = 400;
+      ctx.fillStyle = 'rgba(245, 158, 11, 0.18)';
+      ctx.beginPath();
+      ctx.roundRect(champX, champY, 360, 210, 20);
+      ctx.fill();
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 4;
+      ctx.stroke();
+
+      ctx.fillStyle = '#f59e0b';
+      ctx.font = '900 24px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('👑 CAMPEÃO 👑', champX + 180, champY + 60);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '900 34px sans-serif';
+      ctx.fillText(resolvedChampion, champX + 180, champY + 120);
+
+      ctx.fillStyle = '#34d399';
+      ctx.font = '700 18px monospace';
+      ctx.fillText('VENCEDOR DO TORNEIO', champX + 180, champY + 165);
+    }
+  } else if (teamCount === 8) {
     // 8 Teams Layout: Quartas (col 1), Semis (col 2), Final (col 3)
     const boxW = 340;
     const boxH = 130;
@@ -193,7 +338,7 @@ export function drawTournamentBracketCanvas(canvas, { tournamentName, teamCount,
     drawMatch(1040, 500, boxW + 40, boxH + 15, matches.f1, 'Decisão do Título');
 
     // Champion
-    if (champion) {
+    if (resolvedChampion) {
       const champX = 1460;
       const champY = 460;
       ctx.fillStyle = 'rgba(245, 158, 11, 0.18)';
@@ -211,11 +356,117 @@ export function drawTournamentBracketCanvas(canvas, { tournamentName, teamCount,
 
       ctx.fillStyle = '#ffffff';
       ctx.font = '900 34px sans-serif';
-      ctx.fillText(champion, champX + 180, champY + 120);
+      ctx.fillText(resolvedChampion, champX + 180, champY + 120);
 
       ctx.fillStyle = '#34d399';
       ctx.font = '700 18px monospace';
       ctx.fillText('VENCEDOR DO TORNEIO', champX + 180, champY + 165);
+    }
+  } else if (teamCount >= 9 && teamCount <= 12) {
+    // 9 to 12 Teams: Play-in + Quartas + Semis + Final
+    const boxW = 300;
+    const boxH = 125;
+
+    ctx.fillStyle = '#f59e0b';
+    ctx.font = '800 18px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('PLAY-IN', 80, 220);
+    ctx.fillText('QUARTAS DE FINAL', 460, 220);
+    ctx.fillText('SEMIFINAIS', 840, 220);
+    ctx.fillText('🏆 GRANDE FINAL', 1220, 220);
+
+    drawMatch(80, 360, boxW, boxH, matches.pi1, 'Play-in 1');
+    drawMatch(80, 560, boxW, boxH, matches.pi2, 'Play-in 2');
+
+    drawMatch(460, 260, boxW, boxH, matches.q1, 'Quartas 1');
+    drawMatch(460, 420, boxW, boxH, matches.q2, 'Quartas 2');
+    drawMatch(460, 580, boxW, boxH, matches.q3, 'Quartas 3');
+    drawMatch(460, 740, boxW, boxH, matches.q4, 'Quartas 4');
+
+    drawMatch(840, 340, boxW, boxH, matches.s1, 'Semifinal 1');
+    drawMatch(840, 660, boxW, boxH, matches.s2, 'Semifinal 2');
+
+    drawMatch(1220, 500, boxW + 40, boxH + 15, matches.f1, 'Decisão do Título');
+
+    if (resolvedChampion) {
+      const champX = 1580;
+      const champY = 460;
+      ctx.fillStyle = 'rgba(245, 158, 11, 0.18)';
+      ctx.beginPath();
+      ctx.roundRect(champX, champY, 260, 210, 16);
+      ctx.fill();
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      ctx.fillStyle = '#f59e0b';
+      ctx.font = '900 20px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('👑 CAMPEÃO 👑', champX + 130, champY + 55);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '900 24px sans-serif';
+      ctx.fillText(resolvedChampion, champX + 130, champY + 115);
+
+      ctx.fillStyle = '#34d399';
+      ctx.font = '700 15px monospace';
+      ctx.fillText('VENCEDOR', champX + 130, champY + 160);
+    }
+  } else {
+    // 13 to 16 Teams: Major 16 Style (Oitavas -> Quartas -> Semis -> Final)
+    const boxW = 280;
+    const boxH = 92;
+
+    ctx.fillStyle = '#f59e0b';
+    ctx.font = '800 17px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('OITAVAS DE FINAL', 60, 190);
+    ctx.fillText('QUARTAS', 440, 190);
+    ctx.fillText('SEMIFINAIS', 820, 190);
+    ctx.fillText('🏆 GRANDE FINAL', 1200, 190);
+
+    // Oitavas (8 games)
+    for (let i = 1; i <= 8; i++) {
+      const oKey = `o${i}`;
+      drawMatch(60, 215 + (i - 1) * 96, boxW, boxH, matches[oKey], `Oitavas ${i}`);
+    }
+
+    // Quartas (4 games)
+    for (let i = 1; i <= 4; i++) {
+      const qKey = `q${i}`;
+      drawMatch(440, 260 + (i - 1) * 190, boxW, 115, matches[qKey], `Quartas ${i}`);
+    }
+
+    // Semis (2 games)
+    drawMatch(820, 350, boxW, 125, matches.s1, 'Semifinal 1');
+    drawMatch(820, 680, boxW, 125, matches.s2, 'Semifinal 2');
+
+    // Final
+    drawMatch(1200, 500, boxW + 40, 135, matches.f1, 'Decisão do Título');
+
+    if (resolvedChampion) {
+      const champX = 1560;
+      const champY = 460;
+      ctx.fillStyle = 'rgba(245, 158, 11, 0.18)';
+      ctx.beginPath();
+      ctx.roundRect(champX, champY, 280, 210, 16);
+      ctx.fill();
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      ctx.fillStyle = '#f59e0b';
+      ctx.font = '900 20px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('👑 CAMPEÃO MAJOR 👑', champX + 140, champY + 55);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '900 24px sans-serif';
+      ctx.fillText(resolvedChampion, champX + 140, champY + 115);
+
+      ctx.fillStyle = '#34d399';
+      ctx.font = '700 15px monospace';
+      ctx.fillText('CAMPEÃO DO TORNEIO', champX + 140, champY + 160);
     }
   }
 
