@@ -147,7 +147,6 @@ class DiscordBotManager {
           GatewayIntentBits.Guilds,
           GatewayIntentBits.GuildMessages,
           GatewayIntentBits.GuildVoiceStates,
-          GatewayIntentBits.MessageContent,
         ],
       });
 
@@ -189,7 +188,7 @@ class DiscordBotManager {
   async registerSlashCommands() {
     if (!this.client || !this.client.user) return;
     const token = this.config.token.trim();
-    const clientId = (this.config.clientId || this.client.user.id).trim();
+    const clientId = (this.client.user?.id || this.config.clientId || '').trim();
 
     const commands = [
       new SlashCommandBuilder()
