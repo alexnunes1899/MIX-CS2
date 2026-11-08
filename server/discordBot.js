@@ -25,6 +25,7 @@ import {
 } from 'discord.js';
 import fs from 'fs';
 import path from 'path';
+import dgram from 'dgram';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -111,6 +112,137 @@ const GRENADE_GUIDES = {
     { title: 'Smoke Meio / Canal', desc: 'Canal ➔ Alinhe na escada de madeira e mire na quina da parede.' },
   ],
 };
+
+/**
+ * Steam A2S_INFO UDP Server Query Protocol
+ * Queries live CS2 dedicated server status (ping, current map, players count).
+ */
+export function queryA2SServer(hostWithPort, timeoutMs = 2500) {
+  return new Promise((resolve) => {
+    let [host, portStr] = (hostWithPort || '').split(':');
+    host = (host || '').trim();
+    const port = parseInt(portStr, 10) || 27015;
+
+    if (!host) {
+      return resolve({ online: false, error: 'Endereço de IP inválido.' });
+    }
+
+    const socket = dgram.createSocket('udp4');
+    const startTime = Date.now();
+    let timer = null;
+
+    const cleanup = () => {
+      if (timer) clearTimeout(timer);
+      try {
+        socket.close();
+      } catch (e) {}
+    };
+
+    timer = setTimeout(() => {
+      cleanup();
+      resolve({
+        online: false,
+        host,
+        port,
+        error: 'Tempo limite esgotado (servidor offline ou porta UDP bloqueada).',
+      });
+    }, timeoutMs);
+
+    const basePacket = Buffer.from([
+      0xff, 0xff, 0xff, 0xff,
+      0x54, // 'T'
+      0x53, 0x6f, 0x75, 0x72, 0x63, 0x65, 0x20, 0x45, 0x6e, 0x67, 0x69, 0x6e, 0x65, 0x20, 0x51, 0x75, 0x65, 0x72, 0x79, 0x00,
+    ]);
+
+    socket.on('error', (err) => {
+      cleanup();
+      resolve({ online: false, host, port, error: err.message });
+    });
+
+    socket.on('message', (msg) => {
+      if (msg.length < 5) return;
+      const header = msg.readInt32LE(0);
+      if (header !== -1) return;
+      const type = msg.readUInt8(4);
+
+      // Challenge response (0x41)
+      if (type === 0x41 && msg.length >= 9) {
+        const challenge = msg.subarray(5, 9);
+        const challengePacket = Buffer.concat([basePacket, challenge]);
+        socket.send(challengePacket, port, host, (err) => {
+          if (err) {
+            cleanup();
+            resolve({ online: false, host, port, error: err.message });
+          }
+        });
+        return;
+      }
+
+      // A2S_INFO Response (0x49)
+      if (type === 0x49) {
+        const ping = Date.now() - startTime;
+        cleanup();
+        try {
+          let offset = 5;
+          const protocol = msg.readUInt8(offset++);
+
+          const readString = () => {
+            const nullIdx = msg.indexOf(0x00, offset);
+            if (nullIdx === -1) return '';
+            const str = msg.toString('utf8', offset, nullIdx);
+            offset = nullIdx + 1;
+            return str;
+          };
+
+          const name = readString();
+          const map = readString();
+          const folder = readString();
+          const game = readString();
+          offset += 2; // Steam App ID
+          const players = msg.readUInt8(offset++);
+          const maxPlayers = msg.readUInt8(offset++);
+          const bots = msg.readUInt8(offset++);
+
+          resolve({
+            online: true,
+            host,
+            port,
+            ping,
+            name,
+            map,
+            players,
+            maxPlayers,
+            bots,
+          });
+        } catch (e) {
+          resolve({
+            online: true,
+            host,
+            port,
+            ping,
+            name: 'Servidor CS2',
+            map: 'de_mirage',
+            players: 0,
+            maxPlayers: 10,
+            bots: 0,
+          });
+        }
+      }
+    });
+
+    try {
+      socket.send(basePacket, port, host, (err) => {
+        if (err) {
+          cleanup();
+          resolve({ online: false, host, port, error: err.message });
+        }
+      });
+    } catch (err) {
+      cleanup();
+      resolve({ online: false, host, port, error: err.message });
+    }
+  });
+}
 
 class DiscordBotManager {
   constructor() {
@@ -520,6 +652,28 @@ class DiscordBotManager {
         .setName('cargo')
         .setDescription('Ativa ou desativa notificações do cargo @Mix CS2 para ser avisado quando faltarem vagas'),
 
+      new SlashCommandBuilder()
+        .setName('historico')
+        .setDescription('Exibe o histórico das últimas partidas finalizadas no servidor'),
+
+      new SlashCommandBuilder()
+        .setName('x1')
+        .setDescription('Compara o confronto direto (Head-to-Head) e sinergia entre dois jogadores')
+        .addUserOption((opt) =>
+          opt
+            .setName('adversario')
+            .setDescription('Jogador adversário para comparar estatísticas mútuas')
+            .setRequired(true)
+        ),
+
+      new SlashCommandBuilder()
+        .setName('mapas')
+        .setDescription('Estatísticas dos mapas mais disputados e populares no servidor'),
+
+      new SlashCommandBuilder()
+        .setName('status-servidor')
+        .setDescription('Consulta ao vivo o servidor CS2 (A2S_INFO Steam UDP: Ping, mapa e players online)'),
+
       new SlashCommandBuilder().setName('ajuda').setDescription('Manual completo de comandos do Bot do Mix'),
     ];
 
@@ -630,6 +784,10 @@ class DiscordBotManager {
     if (command === 'veto' || command === 'ban') return this.prefixVeto(message);
     if (command === 'roleta') return this.prefixRoulette(message);
     if (command === 'ranking' || command === 'top' || command === 'leaderboard') return this.prefixRanking(message);
+    if (command === 'historico' || command === 'history') return this.prefixHistory(message, args.slice(1));
+    if (command === 'x1' || command === 'confronto' || command === 'duelo' || command === 'headtohead') return this.prefixHeadToHead(message, args.slice(1));
+    if (command === 'mapas' || command === 'mapstats') return this.prefixMapStats(message);
+    if (command === 'status-server' || command === 'status-servidor') return this.prefixServerStatus(message, args.slice(1));
     if (command === 'vitoria' || command === 'resultado' || command === 'ganhador') return this.prefixMatchResult(message, args.slice(1));
     if (command === 'sub' || command === 'substituto' || command === 'reserva') return this.prefixSubstitute(message, args.slice(1));
     if (command === 'cargo' || command === 'notificar' || command === 'notificacao') return this.prefixToggleRole(message);
@@ -640,6 +798,9 @@ class DiscordBotManager {
     if (command === 'moeda' || command === 'coinflip' || command === 'flip') return this.prefixCoinflip(message);
     if (command === 'ping' || command === 'bot' || command === 'status') return this.prefixPing(message);
     if (command === 'servidor') {
+      if (subArg === 'status') {
+        return this.prefixServerStatus(message, args.slice(2));
+      }
       const ip = args.slice(1).join(' ').trim();
       if (ip) {
         this.config.serverConnect = ip;
@@ -802,6 +963,49 @@ class DiscordBotManager {
     return message.reply({ embeds: [embed] });
   }
 
+  async prefixHistory(message, args) {
+    const limit = parseInt(args[0], 10) || 6;
+    const embed = this.buildMatchHistoryEmbed(Math.min(15, Math.max(1, limit)));
+    return message.reply({ embeds: [embed] });
+  }
+
+  async prefixHeadToHead(message, args) {
+    let target = message.mentions.users.first();
+    if (!target && args[0]) {
+      const cleanId = args[0].replace(/[<@!>]/g, '').trim();
+      target = this.client?.users.cache.get(cleanId);
+    }
+    if (!target) {
+      return message.reply(
+        '👉 Para comparar o confronto direto, mencione o jogador ou passe o ID:\n' +
+        'Exemplo: `!x1 @amigo` ou `!duelo @amigo`'
+      );
+    }
+    if (target.id === message.author.id) {
+      return message.reply('😅 Você não pode disputar um X1 contra você mesmo! Mencione outro jogador do servidor.');
+    }
+    const embed = this.buildHeadToHeadEmbed(message.author, target);
+    return message.reply({ embeds: [embed] });
+  }
+
+  async prefixMapStats(message) {
+    const embed = this.buildMapStatsEmbed();
+    return message.reply({ embeds: [embed] });
+  }
+
+  async prefixServerStatus(message, args) {
+    const address = (args && args[0]) ? args[0].trim() : (this.config.serverConnect || '127.0.0.1:27015');
+    const res = await queryA2SServer(address, 3000);
+    const embed = this.buildServerStatusEmbed(res, address);
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setLabel('🚀 Conectar no CS2')
+        .setStyle(ButtonStyle.Link)
+        .setURL(`http://localhost:3000/connect?ip=${encodeURIComponent(address)}`)
+    );
+    return message.reply({ embeds: [embed], components: [row] });
+  }
+
   async prefixMatchResult(message, args) {
     const mix = this.activeMixes.get(message.channelId);
     if (!mix) {
@@ -952,8 +1156,12 @@ class DiscordBotManager {
           `• \`!entrar\` / \`!sair\` — Gerencia sua vaga no lobby\n` +
           `• \`!sortear\` — Sorteio inteligente e balanceamento snake-draft\n` +
           `• \`!veto\` — Pick & Ban oficial da Valve com escolha de lados CT/TR\n` +
-          `• \`!vitoria [A|B] [placar]\` — Registra o resultado oficial da partida e pontua no ranking!\n` +
-          `• \`!ranking\` / \`!top\` — Hall da Fama e Top 10 de vitórias e MVPs da comunidade\n` +
+          `• \`!vitoria [A|B] [placar]\` — Registra a vitória, pontua no ranking e inicia votação de MVP\n` +
+          `• \`!historico [qtde]\` — Histórico das últimas partidas finalizadas\n` +
+          `• \`!x1 @amigo\` — Duelo direto Head-to-Head e sinergia de duo\n` +
+          `• \`!mapas\` — Estatísticas dos mapas mais disputados no servidor\n` +
+          `• \`!status-server\` — Consulta ping, mapa e players online no CS2 (A2S_INFO)\n` +
+          `• \`!ranking\` / \`!top\` — Hall da Fama e Top 10 de vitórias e MVPs\n` +
           `• \`!sub @novo\` — Substitui um jogador ausente por um reserva\n` +
           `• \`!cargo\` — Ativa/desativa notificações do cargo @Mix CS2 quando faltarem vagas\n` +
           `• \`!stats [@jogador]\` — Perfil competitivo, vitórias reais e medalhas de MVP\n` +
@@ -1061,6 +1269,259 @@ class DiscordBotManager {
       .setTimestamp();
   }
 
+  buildMatchHistoryEmbed(limit = 6) {
+    const history = this.loadMatchHistory();
+    const embed = new EmbedBuilder()
+      .setTitle('📜 HISTÓRICO DE PARTIDAS • CS2 MIX HUB')
+      .setColor(0x3b82f6)
+      .setFooter({ text: 'CS2 Mix Hub • Histórico Oficial de Partidas' })
+      .setTimestamp();
+
+    if (!history || history.length === 0) {
+      embed.setDescription(
+        'Nenhuma partida finalizada foi registrada ainda neste servidor!\n\n' +
+        '👉 Para registrar o placar de um mix finalizado, use o botão **`[🏆 Declarar Placar]`** ou digite no chat:\n' +
+        '`!vitoria A 13-9` ou `!vitoria B 13-11`.'
+      );
+      return embed;
+    }
+
+    const recent = history.slice(0, limit);
+    embed.setDescription(`Exibindo as últimas **${recent.length}** partidas finalizadas e computadas no ranking geral:`);
+
+    recent.forEach((m, idx) => {
+      const dateStr = m.timestamp
+        ? new Date(m.timestamp).toLocaleDateString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+        : 'Recente';
+      const winNames = (m.winnerPlayers || []).map((p) => p.nick || p.username).join(', ') || 'Equipe';
+      const mvpBadge = m.mvpNick ? ` • ⭐ MVP: **${m.mvpNick}**` : '';
+      embed.addFields({
+        name: `#${idx + 1} • 🗺️ ${m.map || 'Mirage'} [${m.score || '13-9'}] • ${m.winner || 'Time Vencedor'} 🏆`,
+        value: `📅 *${dateStr}*${mvpBadge}\n👑 **Campeões:** \`${winNames}\`\nDeclarado por: **${m.declaredBy || 'Admin'}**`,
+        inline: false,
+      });
+    });
+
+    return embed;
+  }
+
+  buildHeadToHeadEmbed(user1, user2) {
+    const history = this.loadMatchHistory();
+    const u1Id = String(user1.id);
+    const u2Id = String(user2.id);
+    const u1Name = user1.displayName || user1.username || 'Jogador 1';
+    const u2Name = user2.displayName || user2.username || 'Jogador 2';
+
+    let directDuels = 0;
+    let u1Wins = 0;
+    let u2Wins = 0;
+    let teammatesCount = 0;
+    let teammateWins = 0;
+
+    history.forEach((m) => {
+      const u1InWinners = (m.winnerPlayers || []).some((p) => String(p.id) === u1Id);
+      const u1InLosers = (m.loserPlayers || []).some((p) => String(p.id) === u1Id);
+      const u2InWinners = (m.winnerPlayers || []).some((p) => String(p.id) === u2Id);
+      const u2InLosers = (m.loserPlayers || []).some((p) => String(p.id) === u2Id);
+
+      // Direct duel (opposite teams)
+      if ((u1InWinners && u2InLosers) || (u1InLosers && u2InWinners)) {
+        directDuels++;
+        if (u1InWinners) u1Wins++;
+        else if (u2InWinners) u2Wins++;
+      }
+      // Teammates (same team)
+      else if ((u1InWinners && u2InWinners) || (u1InLosers && u2InLosers)) {
+        teammatesCount++;
+        if (u1InWinners) teammateWins++;
+      }
+    });
+
+    const embed = new EmbedBuilder()
+      .setTitle(`⚔️ CONFRONTO DIRETO • HEAD-TO-HEAD`)
+      .setDescription(`Comparativo oficial de partidas entre **${u1Name}** vs **${u2Name}** no CS2 Mix Hub.`)
+      .setColor(0x8b5cf6)
+      .setThumbnail('https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=200&q=80')
+      .setFooter({ text: 'CS2 Mix Hub • Estatísticas Head-to-Head' })
+      .setTimestamp();
+
+    if (directDuels === 0 && teammatesCount === 0) {
+      embed.addFields({
+        name: '🤝 Sem histórico mútuo',
+        value: `Estes dois jogadores ainda não disputaram partidas juntos ou como adversários em mixes finalizados no servidor.`,
+        inline: false,
+      });
+      return embed;
+    }
+
+    const u1Pct = directDuels > 0 ? Math.round((u1Wins / directDuels) * 100) : 50;
+    const u2Pct = directDuels > 0 ? 100 - u1Pct : 50;
+    const barBlocks = 10;
+    const u1Blocks = Math.round((u1Pct / 100) * barBlocks);
+    const u2Blocks = barBlocks - u1Blocks;
+    const duelBar = `🟦`.repeat(Math.max(0, u1Blocks)) + `🟧`.repeat(Math.max(0, u2Blocks));
+
+    embed.addFields(
+      {
+        name: `🥊 Duelos Diretos (Adversários): ${directDuels} jogos`,
+        value: `${duelBar}\n\n` +
+          `🟦 **${u1Name}:** **${u1Wins} vitórias** (${u1Pct}%)\n` +
+          `🟧 **${u2Name}:** **${u2Wins} vitórias** (${u2Pct}%)`,
+        inline: false,
+      },
+      {
+        name: `🤝 Jogando no Mesmo Time (Duo / Parceiros): ${teammatesCount} jogos`,
+        value: teammatesCount > 0
+          ? `🏆 **Vitórias Juntos:** **${teammateWins} / ${teammatesCount}** (${Math.round((teammateWins / teammatesCount) * 100)}% de taxa de vitória conjunta)`
+          : `*Ainda não jogaram na mesma equipe.*`,
+        inline: false,
+      }
+    );
+
+    return embed;
+  }
+
+  buildMapStatsEmbed() {
+    const history = this.loadMatchHistory();
+    const embed = new EmbedBuilder()
+      .setTitle('🗺️ ESTATÍSTICAS DE MAPAS DO SERVIDOR • CS2')
+      .setColor(0x10b981)
+      .setFooter({ text: 'CS2 Mix Hub • Active Duty Analytics' })
+      .setTimestamp();
+
+    if (!history || history.length === 0) {
+      embed.setDescription(
+        'Nenhuma partida foi registrada ainda para calcular estatísticas de mapas!\n\n' +
+        'O pool ativo da Valve inclui: **Mirage, Inferno, Nuke, Dust II, Ancient, Anubis e Cache**.'
+      );
+      return embed;
+    }
+
+    const mapCounts = {};
+    history.forEach((m) => {
+      const clean = (m.map || 'Mirage').replace(/^de_/, '');
+      const mapName = clean.charAt(0).toUpperCase() + clean.slice(1);
+      mapCounts[mapName] = (mapCounts[mapName] || 0) + 1;
+    });
+
+    const total = history.length;
+    const sorted = Object.entries(mapCounts).sort((a, b) => b[1] - a[1]);
+
+    let desc = `Total de **${total}** partidas analisadas no servidor:\n\n`;
+    sorted.forEach(([map, count], idx) => {
+      const pct = Math.round((count / total) * 100);
+      const medal = idx === 0 ? '👑' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '📍';
+      const greenBlocks = Math.max(1, Math.round(pct / 10));
+      const darkBlocks = Math.max(0, 10 - greenBlocks);
+      const bar = '🟩'.repeat(greenBlocks) + '⬛'.repeat(darkBlocks);
+      desc += `${medal} **${map}**: **${count} jogos** (\`${pct}%\`)\n${bar}\n\n`;
+    });
+
+    embed.setDescription(desc);
+    return embed;
+  }
+
+  buildServerStatusEmbed(queryResult, serverAddress) {
+    const address = serverAddress || this.config.serverConnect || '127.0.0.1:27015';
+    const embed = new EmbedBuilder().setTimestamp();
+
+    if (queryResult.online) {
+      embed
+        .setTitle('📡 STATUS DO SERVIDOR CS2 • ONLINE 🟢')
+        .setDescription(
+          `O servidor de CS2 está online e respondendo via protocolo Valve A2S_INFO!\n\n` +
+          `🏷️ **Nome do Servidor:** **${queryResult.name || 'Servidor CS2'}**\n` +
+          `🗺️ **Mapa Atual:** \`${queryResult.map || 'de_mirage'}\`\n` +
+          `👥 **Jogadores:** **${queryResult.players} / ${queryResult.maxPlayers}** ${queryResult.bots ? `(${queryResult.bots} bots)` : ''}\n` +
+          `📶 **Latência (Ping UDP):** **${queryResult.ping} ms**\n` +
+          `🔗 **Endereço IP:** \`${queryResult.host}:${queryResult.port}\`\n\n` +
+          `👉 Para entrar, clique no botão abaixo ou digite no console:\n\`connect ${queryResult.host}:${queryResult.port}\``
+        )
+        .setColor(0x22c55e)
+        .setFooter({ text: 'CS2 Mix Hub • Live Server Query Engine' });
+    } else {
+      embed
+        .setTitle('📡 STATUS DO SERVIDOR CS2 • INACESSÍVEL / OFFLINE 🔴')
+        .setDescription(
+          `Não foi possível obter resposta UDP do servidor CS2 no endereço \`${address}\`.\n\n` +
+          `⚠️ **Motivo:** ${queryResult.error || 'Tempo limite esgotado'}\n\n` +
+          `💡 **Dicas para Conectar:**\n` +
+          `• Verifique se o servidor dedicado de CS2 está aberto e ativo.\n` +
+          `• Verifique se a porta UDP 27015 está liberada no firewall.\n` +
+          `• Configure o IP correto usando \`!servidor <ip:porta>\`.`
+        )
+        .setColor(0xef4444)
+        .setFooter({ text: 'CS2 Mix Hub • Live Server Query Engine' });
+    }
+
+    return embed;
+  }
+
+  async checkAndAwardTierRoles(guild, players, profiles) {
+    if (!guild || !players || !Array.isArray(players)) return [];
+    const awarded = [];
+
+    const TIERS = [
+      {
+        name: 'Rei do Servidor',
+        color: 0xffd700,
+        check: (p, all) => {
+          const list = Object.values(all).sort((a, b) => (b.wins || 0) - (a.wins || 0));
+          return list[0] && list[0].username === p.username && (p.wins || 0) >= 10;
+        },
+      },
+      { name: 'Major Champion', minWins: 30, color: 0xf59e0b },
+      { name: 'Veterano do Mix', minWins: 15, color: 0x8b5cf6 },
+      { name: 'Competidor', minWins: 5, color: 0x3b82f6 },
+    ];
+
+    try {
+      const me = guild.members.me;
+      const canManageRoles = me && me.permissions && me.permissions.has(PermissionsBitField.Flags.ManageRoles);
+      if (!canManageRoles) return [];
+
+      for (const p of players) {
+        const prof = profiles[p.id];
+        if (!prof) continue;
+        const wins = prof.wins || 0;
+
+        const member = await guild.members.fetch(p.id).catch(() => null);
+        if (!member) continue;
+
+        for (const tier of TIERS) {
+          let qualifies = false;
+          if (tier.check) {
+            qualifies = tier.check(prof, profiles);
+          } else if (wins >= tier.minWins) {
+            qualifies = true;
+          }
+
+          if (qualifies) {
+            let role = guild.roles.cache.find(
+              (r) => r.name.toLowerCase() === tier.name.toLowerCase()
+            );
+            if (!role) {
+              role = await guild.roles
+                .create({
+                  name: tier.name,
+                  color: tier.color,
+                  reason: 'Cargo automático por conquistas competitivas no CS2 Mix Hub',
+                })
+                .catch(() => null);
+            }
+            if (role && !member.roles.cache.has(role.id)) {
+              await member.roles.add(role).catch(() => {});
+              awarded.push({ member, roleName: tier.name });
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[DISCORD BOT] Falha ao verificar/atribuir patentes:', e.message);
+    }
+    return awarded;
+  }
+
   async recordMatchResult(mix, winnerTeamLetter, scoreInput, declaredByUser, channel) {
     const isA = (winnerTeamLetter || '').toUpperCase() === 'A';
     const isB = (winnerTeamLetter || '').toUpperCase() === 'B';
@@ -1120,6 +1581,11 @@ class DiscordBotManager {
     history.unshift(matchRecord);
     this.saveMatchHistory(history.slice(0, 100));
     this.updateLeaderboardFile(profiles);
+
+    // Check and award tier roles asynchronously to winners
+    this.checkAndAwardTierRoles(channel?.guild, winnerTeam.players, profiles).catch((err) => {
+      console.warn('[DISCORD BOT] Falha ao atribuir patentes automáticas:', err.message);
+    });
 
     // Build victory embed
     const victoryEmbed = new EmbedBuilder()
@@ -1221,6 +1687,17 @@ class DiscordBotManager {
     profiles[bestCandidateId] = prof;
     this.savePlayerProfiles(profiles);
     this.updateLeaderboardFile(profiles);
+
+    try {
+      const history = this.loadMatchHistory();
+      if (history.length > 0 && history[0].id === mix.id) {
+        history[0].mvpId = bestCandidateId;
+        history[0].mvpNick = prof.username || `<@${bestCandidateId}>`;
+        this.saveMatchHistory(history);
+      }
+    } catch (e) {
+      console.warn('[DISCORD BOT] Falha ao atualizar MVP no histórico:', e.message);
+    }
 
     const mvpEmbed = new EmbedBuilder()
       .setTitle('👑 MVP DA PARTIDA COROADO!')
@@ -1618,7 +2095,11 @@ class DiscordBotManager {
           `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
           `⚡ **Comandos Oficiais no Chat:**\n` +
           `• \`!mix\` — Abre um novo lobby 5v5\n` +
-          `• \`!vitoria [A|B] [placar]\` — Registra a vitória e pontua no ranking\n` +
+          `• \`!vitoria [A|B] [placar]\` — Registra a vitória, pontua no ranking e inicia votação de MVP\n` +
+          `• \`!historico\` — Histórico de partidas recentes com placares e destaques\n` +
+          `• \`!x1 @amigo\` — Duelo direto Head-to-Head e sinergia de duo\n` +
+          `• \`!mapas\` — Estatísticas dos mapas mais disputados no servidor\n` +
+          `• \`!status-server\` — Consulta ping, mapa e players online no CS2 (A2S_INFO)\n` +
           `• \`!ranking\` / \`!top\` — Hall da Fama e Top 10 com vitórias e medalhas\n` +
           `• \`!sub @novo\` — Substitui um jogador ausente por um reserva\n` +
           `• \`!cargo\` — Ativa/desativa notificações de vagas restantes (@Mix CS2)\n` +
@@ -2457,6 +2938,10 @@ class DiscordBotManager {
     if (commandName === 'level' || commandName === 'lvl') return this.cmdSetLevel(interaction);
     if (commandName === 'servidor') return this.cmdServer(interaction);
     if (commandName === 'ranking') return this.cmdRanking(interaction);
+    if (commandName === 'historico') return this.cmdHistory(interaction);
+    if (commandName === 'x1') return this.cmdHeadToHead(interaction);
+    if (commandName === 'mapas') return this.cmdMapStats(interaction);
+    if (commandName === 'status-servidor') return this.cmdServerStatus(interaction);
     if (commandName === 'vitoria' || commandName === 'resultado') return this.cmdMatchResult(interaction);
     if (commandName === 'sub') return this.cmdSubstitute(interaction);
     if (commandName === 'cargo') return this.cmdToggleRole(interaction);
@@ -2808,6 +3293,42 @@ class DiscordBotManager {
     }
   }
 
+  async cmdHistory(interaction) {
+    const embed = this.buildMatchHistoryEmbed(6);
+    return interaction.reply({ embeds: [embed] });
+  }
+
+  async cmdHeadToHead(interaction) {
+    const targetUser = interaction.options.getUser('adversario');
+    if (!targetUser) {
+      return interaction.reply({ content: '⚠️ Selecione um jogador para comparar o confronto direto.', ephemeral: true });
+    }
+    if (targetUser.id === interaction.user.id) {
+      return interaction.reply({ content: '😅 Você não pode disputar um X1 contra você mesmo! Escolha outro competidor.', ephemeral: true });
+    }
+    const embed = this.buildHeadToHeadEmbed(interaction.user, targetUser);
+    return interaction.reply({ embeds: [embed] });
+  }
+
+  async cmdMapStats(interaction) {
+    const embed = this.buildMapStatsEmbed();
+    return interaction.reply({ embeds: [embed] });
+  }
+
+  async cmdServerStatus(interaction) {
+    await interaction.deferReply();
+    const address = this.config.serverConnect || '127.0.0.1:27015';
+    const res = await queryA2SServer(address, 3000);
+    const embed = this.buildServerStatusEmbed(res, address);
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setLabel('🚀 Conectar no CS2')
+        .setStyle(ButtonStyle.Link)
+        .setURL(`http://localhost:3000/connect?ip=${encodeURIComponent(address)}`)
+    );
+    return interaction.editReply({ embeds: [embed], components: [row] });
+  }
+
   async cmdHelp(interaction) {
     const embed = new EmbedBuilder()
       .setTitle('📖 GUIA DE COMANDOS • CS2 MIX HUB BOT')
@@ -2820,13 +3341,18 @@ class DiscordBotManager {
           `• \`!entrar\` / \`!sair\` - Gerencia sua vaga no lobby\n` +
           `• \`!sortear\` - Sorteio snake-draft balanceado por elo\n` +
           `• \`!veto\` - Pick & Ban de mapas oficial com escolha de lados CT/TR\n` +
-          `• \`!roleta\` - Gira a roleta de mapas instantânea\n` +
-          `• \`!stats [@jogador]\` - Consulta estatísticas e elo\n` +
+          `• \`!vitoria [A|B] [placar]\` - Registra a vitória, pontua no ranking e inicia votação de MVP\n` +
+          `• \`!historico\` ou \`/historico\` - Histórico de partidas recentes e placares\n` +
+          `• \`!x1 @amigo\` ou \`/x1\` - Duelo Head-to-Head e sinergia de vitórias juntos\n` +
+          `• \`!mapas\` ou \`/mapas\` - Estatísticas dos mapas mais disputados\n` +
+          `• \`!status-server\` ou \`/status-servidor\` - Consulta ping, mapa e players no servidor CS2\n` +
+          `• \`!sub @novo\` - Substitui jogador ausente por um reserva\n` +
+          `• \`!cargo\` - Ativa/desativa notificações de vagas restantes (@Mix CS2)\n` +
+          `• \`!ranking\` - Mostra os líderes do Hall da Fama\n` +
+          `• \`!stats [@jogador]\` - Consulta estatísticas, vitórias e elo\n` +
           `• \`!smoke [mapa]\` - Lineups de granadas\n` +
           `• \`!treino\` - CFG completa de treino do CS2\n` +
-          `• \`!moeda\` - Cara ou coroa com animação\n` +
-          `• \`!servidor\` - Consulta ou define o IP do servidor de CS2\n` +
-          `• \`!ranking\` - Mostra os líderes do Hall da Fama`
+          `• \`!moeda\` - Cara ou coroa com animação`
       )
       .setFooter({ text: 'CS2 Mix Hub • eSports Competitive Engine' });
 
