@@ -2050,6 +2050,9 @@ app.post('/api/gsi/:roomId', (req, res) => {
     // Dispara notificações automáticas de round, C4 e vitória no Discord
     processGsiDiscordNotifications(room, liveState, req);
 
+    // Repassa evento ao Bot do Discord para encerramento e monitoramento automático
+    discordBotManager.handleGsiEvent(roomId, liveState);
+
     // If game ended, record score automatically in history
     if (liveState.isGameOver && liveState.phase === 'gameover') {
       const matchKey = `${liveState.mapName}-${liveState.scoreCT}-${liveState.scoreTR}`;
@@ -2101,6 +2104,7 @@ app.post('/api/gsi', (req, res) => {
       io.to(room.id).emit('gsi_update', liveState);
       processGsiDiscordNotifications(room, liveState, req);
     });
+    discordBotManager.handleGsiEvent(token, liveState);
   }
   res.json({ success: true });
 });

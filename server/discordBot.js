@@ -261,10 +261,98 @@ class DiscordBotManager {
     this.activeMixes = new Map();
     // Reference to Web Hub rooms store
     this.webRoomsRef = null;
+    // Valve CS2 Game State Integration cache
+    this.lastGsiState = null;
   }
 
   setWebRoomsReference(roomsRef) {
     this.webRoomsRef = roomsRef;
+  }
+
+  handleGsiEvent(roomId, liveState) {
+    if (!liveState) return;
+    this.lastGsiState = {
+      ...liveState,
+      roomId: roomId || 'MIX-PRO',
+      receivedAt: Date.now(),
+    };
+
+    // If match ended in CS2, automatically finalize any active mix
+    if (liveState.isGameOver && liveState.phase === 'gameover') {
+      for (const [channelId, mix] of this.activeMixes.entries()) {
+        if (mix.phase !== 'finished' && mix.phase !== 'lobby') {
+          const isCtWinner = (liveState.scoreCT || 0) > (liveState.scoreTR || 0);
+          const score = `${Math.max(liveState.scoreCT || 0, liveState.scoreTR || 0)}-${Math.min(liveState.scoreCT || 0, liveState.scoreTR || 0)}`;
+
+          let winnerLetter = 'A';
+          if (mix.veto?.sidePick) {
+            const teamBSide = mix.veto.sidePick.teamBSide || 'CT';
+            const winningSide = isCtWinner ? 'CT' : 'TR';
+            winnerLetter = teamBSide === winningSide ? 'B' : 'A';
+          } else {
+            winnerLetter = isCtWinner ? 'A' : 'B';
+          }
+
+          const channel = this.client?.channels?.cache?.get(channelId);
+          this.recordMatchResult(
+            mix,
+            winnerLetter,
+            score,
+            { id: 'gsi_system', username: 'Valve CS2 GSI' },
+            channel
+          )
+            .then((res) => {
+              if (res.success && channel) {
+                channel
+                  .send({
+                    content: `🤖 📡 **[VALVE CS2 GSI DETECTADO]** Partida concluída no mapa **${liveState.mapName || 'CS2'}**!\nPlacar final registrado automaticamente pelo cliente do jogador: **${score}**!`,
+                    embeds: res.embeds,
+                    components: res.components,
+                  })
+                  .catch(() => {});
+              }
+            })
+            .catch((err) => console.warn('[DISCORD BOT GSI AUTO-RESULT ERROR]:', err.message));
+          break;
+        }
+      }
+    }
+  }
+
+  buildGsiEmbed() {
+    const isOnline = Boolean(
+      this.lastGsiState && Date.now() - (this.lastGsiState.receivedAt || 0) < 60000
+    );
+    const state = this.lastGsiState || {};
+
+    const embed = new EmbedBuilder()
+      .setTitle('📡 VALVE CS2 GAME STATE INTEGRATION (GSI)')
+      .setColor(isOnline ? 0x22c55e : 0x38bdf8)
+      .setDescription(
+        `O **Valve GSI** permite ao bot monitorar e encerrar os mixes **ao vivo**, diretamente pelo CS2 de um dos jogadores!\n\n` +
+          `**Status da Transmissão:** ${isOnline ? '🟢 **ONLINE (CS2 Conectado e Transmitindo)**' : '🔴 **AGUARDANDO CONEXÃO DO CS2**'}\n` +
+          (isOnline
+            ? `• **Mapa Atual:** \`${state.mapName || 'de_mirage'}\`\n` +
+              `• **Placar ao Vivo:** **CT ${state.scoreCT || 0} x ${state.scoreTR || 0} TR** (Round ${state.roundNumber || 0})\n` +
+              `• **Fase do Jogo:** \`${state.phase || 'live'}\`\n` +
+              `• **Status da C4:** \`${state.bomb || 'none'}\`\n\n`
+            : '\n') +
+          `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+          `⭐ **COMO FUNCIONA (APENAS 1 JOGADOR PRECISA INSTALAR):**\n` +
+          `• Não precisa de todos os 10 jogadores! Apenas **1 pessoa** (jogador, admin ou espectador) coloca o arquivo no CS2.\n` +
+          `• O CS2 dele transmite automaticamente cada round para o bot via protocolo oficial da Valve.\n` +
+          `• O bot encerra o mix **automaticamente** ao final do jogo (\`13-9\`, \`13-11\`) e computa o Ranking e Patentes sem ninguém precisar digitar \`!vitoria\`!\n\n` +
+          `📁 **COMO INSTALAR NO SEU CS2 COM 1 CLIQUE:**\n` +
+          `1. Clique no botão verde abaixo para **Baixar o CFG**.\n` +
+          `2. Salve o arquivo \`gamestate_integration_cs2mixhub.cfg\` na pasta do seu CS2:\n` +
+          `\`...\\steamapps\\common\\Counter-Strike Global Offensive\\game\\csgo\\cfg\\\`\n` +
+          `3. Pronto! Abra o CS2 e entre na partida.\n\n` +
+          `🛡️ **100% SEGURO & VAC-SAFE:** O GSI é uma funcionalidade nativa oficial desenvolvida pela Valve (usada pela ESL, BLAST e HLTV). Zero risco de ban.`
+      )
+      .setFooter({ text: 'CS2 Mix Hub • Engine Oficial Valve GSI' })
+      .setTimestamp();
+
+    return embed;
   }
 
   loadPlayerProfiles() {
@@ -674,6 +762,10 @@ class DiscordBotManager {
         .setName('status-servidor')
         .setDescription('Consulta ao vivo o servidor CS2 (A2S_INFO Steam UDP: Ping, mapa e players online)'),
 
+      new SlashCommandBuilder()
+        .setName('gsi')
+        .setDescription('Instruções e download do Valve GSI para monitorar partidas ao vivo do CS2'),
+
       new SlashCommandBuilder().setName('ajuda').setDescription('Manual completo de comandos do Bot do Mix'),
     ];
 
@@ -788,6 +880,7 @@ class DiscordBotManager {
     if (command === 'x1' || command === 'confronto' || command === 'duelo' || command === 'headtohead') return this.prefixHeadToHead(message, args.slice(1));
     if (command === 'mapas' || command === 'mapstats') return this.prefixMapStats(message);
     if (command === 'status-server' || command === 'status-servidor') return this.prefixServerStatus(message, args.slice(1));
+    if (command === 'gsi') return this.prefixGsi(message);
     if (command === 'vitoria' || command === 'resultado' || command === 'ganhador') return this.prefixMatchResult(message, args.slice(1));
     if (command === 'sub' || command === 'substituto' || command === 'reserva') return this.prefixSubstitute(message, args.slice(1));
     if (command === 'cargo' || command === 'notificar' || command === 'notificacao') return this.prefixToggleRole(message);
@@ -1002,6 +1095,21 @@ class DiscordBotManager {
         .setLabel('🚀 Conectar no CS2')
         .setStyle(ButtonStyle.Link)
         .setURL(`http://localhost:3000/connect?ip=${encodeURIComponent(address)}`)
+    );
+    return message.reply({ embeds: [embed], components: [row] });
+  }
+
+  async prefixGsi(message) {
+    const embed = this.buildGsiEmbed();
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setLabel('📥 Baixar Config GSI (.cfg)')
+        .setStyle(ButtonStyle.Link)
+        .setURL('http://localhost:3000/api/gsi/cfg/MIX-PRO'),
+      new ButtonBuilder()
+        .setLabel('🌐 Ver Partida no Hub Web')
+        .setStyle(ButtonStyle.Link)
+        .setURL('http://localhost:3000/')
     );
     return message.reply({ embeds: [embed], components: [row] });
   }
@@ -2942,6 +3050,7 @@ class DiscordBotManager {
     if (commandName === 'x1') return this.cmdHeadToHead(interaction);
     if (commandName === 'mapas') return this.cmdMapStats(interaction);
     if (commandName === 'status-servidor') return this.cmdServerStatus(interaction);
+    if (commandName === 'gsi') return this.cmdGsi(interaction);
     if (commandName === 'vitoria' || commandName === 'resultado') return this.cmdMatchResult(interaction);
     if (commandName === 'sub') return this.cmdSubstitute(interaction);
     if (commandName === 'cargo') return this.cmdToggleRole(interaction);
@@ -3327,6 +3436,21 @@ class DiscordBotManager {
         .setURL(`http://localhost:3000/connect?ip=${encodeURIComponent(address)}`)
     );
     return interaction.editReply({ embeds: [embed], components: [row] });
+  }
+
+  async cmdGsi(interaction) {
+    const embed = this.buildGsiEmbed();
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setLabel('📥 Baixar Config GSI (.cfg)')
+        .setStyle(ButtonStyle.Link)
+        .setURL('http://localhost:3000/api/gsi/cfg/MIX-PRO'),
+      new ButtonBuilder()
+        .setLabel('🌐 Ver Partida no Hub Web')
+        .setStyle(ButtonStyle.Link)
+        .setURL('http://localhost:3000/')
+    );
+    return interaction.reply({ embeds: [embed], components: [row] });
   }
 
   async cmdHelp(interaction) {
