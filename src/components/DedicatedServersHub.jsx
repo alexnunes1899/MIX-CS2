@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import MainNavigationMenu from './MainNavigationMenu';
+import MixHubLogo from './MixHubLogo';
 import {
   Server,
   Laptop,
@@ -380,7 +381,7 @@ pause
                 className="flex items-center gap-2.5 cursor-pointer group"
                 onClick={onGoHome}
               >
-                <img src="/favicon.png" alt="CS2 Mix" className="w-9 h-9 object-contain drop-shadow-[0_2px_10px_rgba(245,158,11,0.3)] group-hover:scale-105 transition-transform" />
+                <MixHubLogo className="w-9 h-9" />
                 <div>
                   <span className="text-base font-bold font-heading tracking-wider text-white group-hover:text-amber-400 transition-colors">
                     MIX HUB

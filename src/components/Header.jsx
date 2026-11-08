@@ -3,6 +3,7 @@ import { Share2, Check, Users, Swords, MapPin, Trophy, Volume2, VolumeX, Layers,
 import PlayerAvatar from './PlayerAvatar';
 import DeleteRoomModal from './DeleteRoomModal';
 import MainNavigationMenu from './MainNavigationMenu';
+import MixHubLogo from './MixHubLogo';
 import { playClickSound } from '../utils/audio';
 import { parseServerDetails } from '../utils/serverParser';
 import { copyText } from '../utils/clipboard';
@@ -81,13 +82,7 @@ export default function Header({
         <div className="flex items-center justify-between gap-3 flex-wrap">
           {/* Left: Logo & Room Details */}
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 flex items-center justify-center shrink-0">
-              <img
-                src="/favicon.png"
-                alt="CS2 Mix"
-                className="w-10 h-10 object-contain drop-shadow-[0_2px_10px_rgba(245,158,11,0.3)] hover:scale-105 transition-transform"
-              />
-            </div>
+            <MixHubLogo className="w-10 h-10" />
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-base sm:text-lg font-black font-heading tracking-wide text-white">

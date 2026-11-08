@@ -1,0 +1,149 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Background Gradient -->
+    <radialGradient id="apexBg" cx="50%" cy="32%" r="72%">
+      <stop offset="0%" stop-color="#1e293b" />
+      <stop offset="50%" stop-color="#0a0f1d" />
+      <stop offset="100%" stop-color="#030509" />
+    </radialGradient>
+
+    <!-- Championship Gold Rim -->
+    <linearGradient id="apexGold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fef08a" />
+      <stop offset="25%" stop-color="#f59e0b" />
+      <stop offset="70%" stop-color="#ea580c" />
+      <stop offset="100%" stop-color="#9a3412" />
+    </linearGradient>
+
+    <!-- Inner Neon Accent -->
+    <linearGradient id="innerRim" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.9" />
+      <stop offset="30%" stop-color="#fef08a" stop-opacity="0.6" />
+      <stop offset="70%" stop-color="#f59e0b" stop-opacity="0.3" />
+      <stop offset="100%" stop-color="#ea580c" stop-opacity="0.1" />
+    </linearGradient>
+
+    <!-- CS Text Gradient (Platinum Ice & Gold) -->
+    <linearGradient id="csGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="35%" stop-color="#f8fafc" />
+      <stop offset="75%" stop-color="#fef08a" />
+      <stop offset="100%" stop-color="#f59e0b" />
+    </linearGradient>
+
+    <!-- CS2 Fire Orange Gradient -->
+    <linearGradient id="twoGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="20%" stop-color="#fed7aa" />
+      <stop offset="50%" stop-color="#f97316" />
+      <stop offset="85%" stop-color="#ea580c" />
+      <stop offset="100%" stop-color="#c2410c" />
+    </linearGradient>
+
+    <!-- Glow & Shadow Filters -->
+    <filter id="apexGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <filter id="softGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="4" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+
+    <filter id="apexShadow" x="-25%" y="-20%" width="150%" height="145%">
+      <feDropShadow dx="0" dy="12" stdDeviation="14" flood-color="#000000" flood-opacity="0.88" />
+    </filter>
+  </defs>
+
+  <!-- Outer Ambient Atmospheric Glow -->
+  <path d="M 256,16 L 444,70 L 464,220 L 416,360 L 256,494 L 96,360 L 48,220 L 68,70 Z"
+        fill="none" stroke="#f59e0b" stroke-width="16" opacity="0.35" filter="url(#apexGlow)" />
+
+  <!-- Master Shield Body (Faceted Aerodynamic Crest) -->
+  <path d="M 256,22 L 438,74 L 456,216 L 410,352 L 256,484 L 102,352 L 56,216 L 74,74 Z"
+        fill="url(#apexBg)" stroke="url(#apexGold)" stroke-width="8.5" stroke-linejoin="round" filter="url(#apexShadow)" />
+
+  <!-- Inner High-Precision Rim -->
+  <path d="M 256,38 L 420,86 L 436,210 L 394,336 L 256,460 L 118,336 L 76,210 L 92,86 Z"
+        fill="none" stroke="url(#innerRim)" stroke-width="2.2" opacity="0.6" />
+
+  <!-- Tactical Shoulder Chevron Slashes (FACEIT & Apex Dynamic Wing Inspiration) -->
+  <g fill="#f59e0b" opacity="0.32">
+    <path d="M 76,108 L 106,108 L 126,146 L 96,146 Z" />
+    <path d="M 68,162 L 98,162 L 118,200 L 88,200 Z" />
+    <path d="M 436,108 L 406,108 L 386,146 L 416,146 Z" />
+    <path d="M 444,162 L 414,162 L 394,200 L 424,200 Z" />
+  </g>
+
+  <!-- Tactical Reticle & Crosshair Grid (Subtle CS2 HUD Laser Watermark) -->
+  <g opacity="0.14" stroke="#f59e0b" stroke-width="1.5">
+    <line x1="84" y1="226" x2="428" y2="226" stroke-dasharray="6 5" />
+    <line x1="256" y1="56" x2="256" y2="444" stroke-dasharray="6 5" />
+    <circle cx="256" cy="226" r="118" fill="none" stroke-width="1.2" />
+    <circle cx="256" cy="226" r="48" fill="none" stroke-dasharray="4 3" />
+    <!-- Reticle Center Pips -->
+    <circle cx="256" cy="226" r="3" fill="#fbbf24" stroke="none" />
+  </g>
+
+  <!-- Crown Apex Triangle Pin -->
+  <polygon points="256,44 280,62 256,56 232,62" fill="#fef08a" filter="url(#softGlow)" />
+
+  <!-- HERO CS2 MONOGRAM (Bold, Athletic, Championship Contrast) -->
+  <g filter="url(#apexShadow)">
+    <!-- "CS" in Platinum & Gold -->
+    <text x="204" y="266" 
+          font-family="'Chakra Petch', system-ui, -apple-system, sans-serif" 
+          font-size="144" 
+          font-weight="900" 
+          font-style="italic" 
+          letter-spacing="-3" 
+          fill="url(#csGrad)" 
+          stroke="#451a03" 
+          stroke-width="3.5" 
+          text-anchor="middle">CS</text>
+
+    <!-- "2" in High-Velocity CS2 Flame Orange with Specular Shine -->
+    <text x="340" y="268" 
+          font-family="'Chakra Petch', system-ui, -apple-system, sans-serif" 
+          font-size="164" 
+          font-weight="900" 
+          font-style="italic" 
+          fill="url(#twoGrad)" 
+          stroke="#451a03" 
+          stroke-width="4" 
+          text-anchor="middle" 
+          filter="url(#apexGlow)">2</text>
+  </g>
+
+  <!-- Lower Tactical Chamfered Pill: "MIX HUB" -->
+  <g transform="translate(0, 8)" filter="url(#apexShadow)">
+    <path d="M 158,344 L 354,344 L 372,367 L 354,390 L 158,390 L 140,367 Z" 
+          fill="#070a13" stroke="url(#apexGold)" stroke-width="2.5" />
+    <path d="M 160,347 L 352,347 L 366,367 L 352,387 L 160,387 L 146,367 Z" 
+          fill="none" stroke="#fbbf24" stroke-width="0.8" opacity="0.4" />
+    
+    <text x="256" y="374" 
+          font-family="'Chakra Petch', system-ui, -apple-system, sans-serif" 
+          font-size="22" 
+          font-weight="900" 
+          letter-spacing="5" 
+          fill="#fbbf24" 
+          text-anchor="middle">MIX HUB</text>
+  </g>
+
+  <!-- 5v5 Dot Match Formation (at Lower Apex) -->
+  <g fill="#f59e0b" opacity="0.95">
+    <circle cx="216" cy="434" r="3.5" />
+    <circle cx="236" cy="440" r="4" />
+    <circle cx="256" cy="444" r="5.5" fill="#fef08a" filter="url(#softGlow)" />
+    <circle cx="276" cy="440" r="4" />
+    <circle cx="296" cy="434" r="3.5" />
+  </g>
+</svg>
