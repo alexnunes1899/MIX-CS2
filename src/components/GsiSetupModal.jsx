@@ -42,11 +42,13 @@ export default function GsiSetupModal({
     "heartbeat" "15.0"
     "data"
     {
+        "provider"              "1"
         "map"                   "1"
         "round"                 "1"
         "player_id"             "1"
         "allplayers_id"         "1"
         "player_state"          "1"
+        "player_weapons"        "1"
         "allplayers_state"      "1"
         "allplayers_match_stats" "1"
     }
@@ -128,26 +130,110 @@ export default function GsiSetupModal({
           </div>
 
           {gsiStatus?.connected ? (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-emerald-500/20 text-xs">
-              <div>
-                <span className="text-[10px] text-slate-400 block">Mapa</span>
-                <strong className="text-white font-mono">{gsiStatus.mapName || 'Em jogo'}</strong>
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-emerald-500/20 text-xs">
+                <div>
+                  <span className="text-[10px] text-slate-400 block">Mapa</span>
+                  <strong className="text-white font-mono">{gsiStatus.mapName || 'Em jogo'}</strong>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 block">Placar</span>
+                  <strong className="text-emerald-300 font-mono text-sm">
+                    CT {gsiStatus.scoreCT} x {gsiStatus.scoreTR} TR
+                  </strong>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 block">Fase</span>
+                  <strong className="text-slate-200 capitalize font-mono">{gsiStatus.phase}</strong>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 block">Round</span>
+                  <strong className="text-amber-300 font-mono">#{gsiStatus.roundNumber}</strong>
+                </div>
               </div>
-              <div>
-                <span className="text-[10px] text-slate-400 block">Placar</span>
-                <strong className="text-emerald-300 font-mono text-sm">
-                  CT {gsiStatus.scoreCT} x {gsiStatus.scoreTR} TR
-                </strong>
-              </div>
-              <div>
-                <span className="text-[10px] text-slate-400 block">Fase</span>
-                <strong className="text-slate-200 capitalize font-mono">{gsiStatus.phase}</strong>
-              </div>
-              <div>
-                <span className="text-[10px] text-slate-400 block">Round</span>
-                <strong className="text-amber-300 font-mono">#{gsiStatus.roundNumber}</strong>
-              </div>
-            </div>
+
+              {/* INDIVIDUAL PLAYER TELEMETRY HUD */}
+              {gsiStatus?.player && (
+                <div className="mt-3 pt-3 border-t border-emerald-500/20 bg-slate-950/70 p-3.5 rounded-xl border border-slate-800 space-y-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={`px-2.5 py-0.5 rounded-lg text-xs font-black uppercase tracking-wider font-heading ${
+                          gsiStatus.player.team === 'CT'
+                            ? 'bg-sky-500/20 text-sky-400 border border-sky-500/40'
+                            : 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
+                        }`}
+                      >
+                        {gsiStatus.player.team === 'CT' ? '🛡️ Time CT (Defensores)' : '💣 Time TR (Atacantes)'}
+                      </span>
+                      <strong className="text-white text-sm font-heading">{gsiStatus.player.name}</strong>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="text-slate-400">Economia:</span>
+                      <strong className="text-emerald-400 font-mono font-bold">
+                        ${gsiStatus.player.money?.toLocaleString('pt-BR') || 0}
+                      </strong>
+                    </div>
+                  </div>
+
+                  {/* HP BAR & ARMOR */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-slate-300 font-bold flex items-center gap-1.5">
+                        {gsiStatus.player.isAlive ? '❤️ Vida (HP)' : '💀 Eliminado neste round'}
+                      </span>
+                      <span className="font-mono font-bold text-white">
+                        {gsiStatus.player.health} / 100 HP
+                        {gsiStatus.player.armor > 0 &&
+                          ` • 🛡️ ${gsiStatus.player.armor}% Colete${gsiStatus.player.hasHelmet ? ' + Capacete' : ''}`}
+                      </span>
+                    </div>
+                    <div className="w-full h-2.5 bg-slate-900 rounded-full overflow-hidden border border-slate-800">
+                      <div
+                        className={`h-full transition-all duration-300 ${
+                          gsiStatus.player.health > 50
+                            ? 'bg-emerald-500'
+                            : gsiStatus.player.health > 20
+                            ? 'bg-amber-500'
+                            : 'bg-rose-500'
+                        }`}
+                        style={{ width: `${Math.max(0, Math.min(100, gsiStatus.player.health))}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* ARSENAL & STATS ROW */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs pt-1">
+                    <div className="bg-slate-900/80 p-2 rounded-lg border border-slate-800">
+                      <span className="text-[10px] text-slate-500 block uppercase font-bold">Arma em Mãos</span>
+                      <strong className="text-amber-300 font-mono text-xs truncate block">
+                        {gsiStatus.player.activeWeapon?.name || 'Faca'}
+                        {gsiStatus.player.activeWeapon?.ammoClip !== null &&
+                          gsiStatus.player.activeWeapon?.ammoClip !== undefined &&
+                          ` [${gsiStatus.player.activeWeapon.ammoClip}/${gsiStatus.player.activeWeapon.ammoReserve || 0}]`}
+                      </strong>
+                    </div>
+
+                    <div className="bg-slate-900/80 p-2 rounded-lg border border-slate-800">
+                      <span className="text-[10px] text-slate-500 block uppercase font-bold">K / D / A</span>
+                      <strong className="text-white font-mono text-xs">
+                        {gsiStatus.player.kills || 0} / {gsiStatus.player.deaths || 0} / {gsiStatus.player.assists || 0}
+                      </strong>
+                    </div>
+
+                    <div className="bg-slate-900/80 p-2 rounded-lg border border-slate-800">
+                      <span className="text-[10px] text-slate-500 block uppercase font-bold">K/D Ratio</span>
+                      <strong className="text-emerald-400 font-mono text-xs">{gsiStatus.player.kd || 0}</strong>
+                    </div>
+
+                    <div className="bg-slate-900/80 p-2 rounded-lg border border-slate-800">
+                      <span className="text-[10px] text-slate-500 block uppercase font-bold">MVPs de Partida</span>
+                      <strong className="text-amber-400 font-mono text-xs">⭐ {gsiStatus.player.mvps || 0} MVPs</strong>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
           ) : (
             <p className="text-xs text-slate-400 mt-1">
               O CS2 ainda não transmitiu dados para a sala <strong>{roomId}</strong>. Siga os 2 passos rápidos abaixo para ativar no seu servidor da FireGames ou no seu próprio jogo!

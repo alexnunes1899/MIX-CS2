@@ -78,6 +78,86 @@ export function handleGsiPayload(roomId, payload) {
     ? [...allPlayersStats].sort((a, b) => (b.mvps * 10 + b.score) - (a.mvps * 10 + a.score))[0]
     : null;
 
+  // Parse detailed individual player live telemetry (health, armor, weapons, ammo, money)
+  let individualPlayer = null;
+  if (player && (player.name || player.steamid)) {
+    const pState = player.state || {};
+    const stats = player.match_stats || {};
+    const kills = typeof stats.kills === 'number' ? stats.kills : 0;
+    const deaths = typeof stats.deaths === 'number' ? stats.deaths : 0;
+    const assists = typeof stats.assists === 'number' ? stats.assists : 0;
+    const mvps = typeof stats.mvps === 'number' ? stats.mvps : 0;
+    const score = typeof stats.score === 'number' ? stats.score : 0;
+    const kd = deaths > 0 ? Number((kills / deaths).toFixed(2)) : Number(kills.toFixed(2));
+
+    const weaponsList = [];
+    let activeWeapon = null;
+    let primaryWeapon = null;
+    let secondaryWeapon = null;
+    const grenades = [];
+
+    if (player.weapons && typeof player.weapons === 'object') {
+      Object.values(player.weapons).forEach((w) => {
+        if (!w || !w.name) return;
+        const cleanName = w.name.replace(/^weapon_/, '').replace('_silencer', '-S').toUpperCase();
+        const weaponObj = {
+          raw: w.name,
+          name: cleanName,
+          type: w.type || 'weapon',
+          state: w.state || 'holstered',
+          ammoClip: typeof w.ammo_clip === 'number' ? w.ammo_clip : null,
+          ammoReserve: typeof w.ammo_reserve === 'number' ? w.ammo_reserve : null,
+        };
+        weaponsList.push(weaponObj);
+        if (w.state === 'active') activeWeapon = weaponObj;
+        if (
+          ['rifle', 'sniperrifle', 'submachinegun', 'shotgun', 'machinegun'].includes((w.type || '').toLowerCase()) ||
+          ['AK47', 'M4A1-S', 'M4A4', 'AWP', 'GALILAR', 'FAMAS', 'SG556', 'AUG', 'SSG08', 'MP9', 'MAC10'].includes(cleanName)
+        ) {
+          primaryWeapon = weaponObj;
+        } else if (
+          (w.type || '').toLowerCase() === 'pistol' ||
+          ['DEAGLE', 'USP-S', 'GLOCK', 'P250', 'FIVESEVEN', 'TEC9', 'CZ75A'].includes(cleanName)
+        ) {
+          secondaryWeapon = weaponObj;
+        } else if ((w.type || '').toLowerCase() === 'grenade') {
+          grenades.push(cleanName);
+        }
+      });
+    }
+
+    const health = typeof pState.health === 'number' ? pState.health : 100;
+    const armor = typeof pState.armor === 'number' ? pState.armor : 0;
+
+    individualPlayer = {
+      name: player.name || 'Jogador',
+      steamId: player.steamid || '',
+      team: player.team === 'CT' ? 'CT' : player.team === 'T' ? 'TR' : (player.team || 'Indefinido'),
+      activity: player.activity || 'playing',
+      health,
+      isAlive: health > 0,
+      armor,
+      hasHelmet: Boolean(pState.helmet),
+      flashed: typeof pState.flashed === 'number' ? pState.flashed : 0,
+      isBurning: Boolean(pState.burning && pState.burning > 0),
+      money: typeof pState.money === 'number' ? pState.money : 0,
+      equipValue: typeof pState.equip_value === 'number' ? pState.equip_value : 0,
+      roundKills: typeof pState.round_kills === 'number' ? pState.round_kills : 0,
+      roundKillHs: typeof pState.round_killhs === 'number' ? pState.round_killhs : 0,
+      kills,
+      deaths,
+      assists,
+      mvps,
+      score,
+      kd,
+      weapons: weaponsList,
+      activeWeapon: activeWeapon || primaryWeapon || secondaryWeapon || { name: 'Faca', ammoClip: null },
+      primaryWeapon,
+      secondaryWeapon,
+      grenades,
+    };
+  }
+
   const now = Date.now();
 
   const liveState = {
@@ -92,6 +172,7 @@ export function handleGsiPayload(roomId, payload) {
     roundPhase,
     winTeam,
     rawPlayer: player?.name ? { name: player.name, team: player.team, steamId: player.steamid, matchStats: player.match_stats } : null,
+    player: individualPlayer,
     allPlayersStats,
     topFragger,
     matchMvp,
@@ -137,11 +218,13 @@ export function generateGsiConfig(serverBaseUrl, roomId) {
     "heartbeat" "15.0"
     "data"
     {
+        "provider"              "1"
         "map"                   "1"
         "round"                 "1"
         "player_id"             "1"
         "allplayers_id"         "1"
         "player_state"          "1"
+        "player_weapons"        "1"
         "allplayers_state"      "1"
         "allplayers_match_stats" "1"
     }

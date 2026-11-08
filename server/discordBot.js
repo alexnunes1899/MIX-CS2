@@ -355,6 +355,97 @@ class DiscordBotManager {
     return embed;
   }
 
+  buildLiveMatchEmbed() {
+    const isOnline = Boolean(
+      this.lastGsiState && Date.now() - (this.lastGsiState.receivedAt || 0) < 60000
+    );
+    const state = this.lastGsiState || {};
+    const player = state.player || {};
+
+    const embed = new EmbedBuilder().setTimestamp();
+
+    if (!isOnline || !player.name) {
+      embed
+        .setTitle('📡 MONITOR DE PARTIDA AO VIVO • CS2')
+        .setDescription(
+          `🔴 **Nenhuma transmissão ao vivo ativa no momento!**\n\n` +
+            `Para que seus amigos acompanhem sua partida com **placar, lado (CT/TR), vida e armas ao vivo**:\n` +
+            `1. Digite \`!gsi\` para baixar o arquivo de configuração.\n` +
+            `2. Coloque na pasta \`csgo/cfg\` do seu CS2.\n` +
+            `3. Abra o jogo e entre em qualquer partida ou mix!\n\n` +
+            `💡 *Assim que você estiver em jogo no CS2, digite \`!aovivo\` novamente para ver o HUD completo!*`
+        )
+        .setColor(0x64748b)
+        .setFooter({ text: 'CS2 Mix Hub • Live Telemetry Engine' });
+      return embed;
+    }
+
+    const isCt = player.team === 'CT';
+    const sideBadge = isCt ? '🛡️ **Counter-Terrorists (CT)**' : '💣 **Terrorists (TR)**';
+    const sideColor = isCt ? 0x38bdf8 : 0xf59e0b;
+    const healthBar = player.isAlive
+      ? `${'🟩'.repeat(Math.max(1, Math.round(player.health / 10)))}${'⬛'.repeat(Math.max(0, 10 - Math.round(player.health / 10)))} **${player.health} HP**`
+      : '💀 **ELIMINADO / MORTO NESTE ROUND**';
+    const armorBadge = player.hasHelmet
+      ? `🛡️ ${player.armor}% + Capacete`
+      : player.armor > 0
+      ? `🛡️ ${player.armor}% Colete`
+      : '❌ Sem Colete';
+
+    let bombStatusText = '🟢 Round em Andamento';
+    if (state.bomb === 'planted') bombStatusText = '🚨 💣 **C4 PLANTADA! TEMPO CORRENDO!**';
+    else if (state.bomb === 'defused') bombStatusText = '🛡️ **C4 DEFUSADA PELOS CTs!**';
+    else if (state.bomb === 'exploded') bombStatusText = '💥 **C4 DETONADA! VITÓRIA DOS TRs!**';
+
+    const weaponName = player.activeWeapon?.name || player.primaryWeapon?.name || 'Faca';
+    const ammoText =
+      player.activeWeapon?.ammoClip !== null && player.activeWeapon?.ammoClip !== undefined
+        ? `\`[${player.activeWeapon.ammoClip}/${player.activeWeapon.ammoReserve || 0}]\``
+        : '';
+    const nadesText = (player.grenades || []).length > 0 ? player.grenades.join(', ') : 'Nenhum';
+
+    embed
+      .setTitle(`🔴 AO VIVO • ${player.name.toUpperCase()} NO CS2`)
+      .setColor(sideColor)
+      .setDescription(
+        `Acompanhe a partida em tempo real diretamente do CS2 de **${player.name}**:\n\n` +
+          `🗺️ **Mapa:** **${state.mapName || 'Mirage'}** • *Fase: ${state.phase || 'live'}*\n` +
+          `⚖️ **Lado que está jogando:** ${sideBadge}\n` +
+          `🔢 **Placar da Partida:** 🛡️ **CT ${state.scoreCT || 0} x ${state.scoreTR || 0} TR** 💣 (Round **${state.roundNumber || 1}**)\n` +
+          `⏱️ **Situação:** ${bombStatusText}`
+      )
+      .addFields(
+        {
+          name: '❤️ Vida & Proteção',
+          value: `${healthBar}\n${armorBadge}`,
+          inline: true,
+        },
+        {
+          name: '💵 Economia & Dinheiro',
+          value: `💰 **$${player.money || 0}**\nEquipamento: \`$${player.equipValue || 0}\``,
+          inline: true,
+        },
+        {
+          name: '🔫 Armamento Atual',
+          value: `🎯 **${weaponName}** ${ammoText}\nUtilitários: \`${nadesText}\``,
+          inline: true,
+        },
+        {
+          name: `📊 Estatísticas na Partida (Score: ${player.score || 0})`,
+          value: `🎯 **${player.kills || 0} Kills** • 💀 **${player.deaths || 0} Mortes** • 🤝 **${player.assists || 0} Assists** • ⭐ **${player.mvps || 0} MVPs**`,
+          inline: false,
+        },
+        {
+          name: '📈 Eficiência de Combate',
+          value: `🔥 **K/D Ratio:** **${player.kd || 0}**\n⚡ **Kills neste Round:** **${player.roundKills || 0}** (${player.roundKillHs || 0} Headshots)`,
+          inline: false,
+        }
+      )
+      .setFooter({ text: 'CS2 Mix Hub • Telemetria Individual Valve GSI (Atualizado em tempo real)' });
+
+    return embed;
+  }
+
   loadPlayerProfiles() {
     try {
       if (fs.existsSync(PROFILES_FILE)) {
@@ -766,6 +857,10 @@ class DiscordBotManager {
         .setName('gsi')
         .setDescription('Instruções e download do Valve GSI para monitorar partidas ao vivo do CS2'),
 
+      new SlashCommandBuilder()
+        .setName('aovivo')
+        .setDescription('Acompanha a partida de CS2 ao vivo em tempo real (placar, lado CT/TR, vida e armas)'),
+
       new SlashCommandBuilder().setName('ajuda').setDescription('Manual completo de comandos do Bot do Mix'),
     ];
 
@@ -881,6 +976,7 @@ class DiscordBotManager {
     if (command === 'mapas' || command === 'mapstats') return this.prefixMapStats(message);
     if (command === 'status-server' || command === 'status-servidor') return this.prefixServerStatus(message, args.slice(1));
     if (command === 'gsi') return this.prefixGsi(message);
+    if (command === 'aovivo' || command === 'live' || command === 'partida' || command === 'hud') return this.prefixLive(message);
     if (command === 'vitoria' || command === 'resultado' || command === 'ganhador') return this.prefixMatchResult(message, args.slice(1));
     if (command === 'sub' || command === 'substituto' || command === 'reserva') return this.prefixSubstitute(message, args.slice(1));
     if (command === 'cargo' || command === 'notificar' || command === 'notificacao') return this.prefixToggleRole(message);
@@ -1114,6 +1210,21 @@ class DiscordBotManager {
     return message.reply({ embeds: [embed], components: [row] });
   }
 
+  async prefixLive(message) {
+    const embed = this.buildLiveMatchEmbed();
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setLabel('🌐 Acompanhar no Hub Web')
+        .setStyle(ButtonStyle.Link)
+        .setURL('http://localhost:3000/'),
+      new ButtonBuilder()
+        .setLabel('📥 Configurar GSI (.cfg)')
+        .setStyle(ButtonStyle.Link)
+        .setURL('http://localhost:3000/api/gsi/cfg/MIX-PRO')
+    );
+    return message.reply({ embeds: [embed], components: [row] });
+  }
+
   async prefixMatchResult(message, args) {
     const mix = this.activeMixes.get(message.channelId);
     if (!mix) {
@@ -1265,6 +1376,8 @@ class DiscordBotManager {
           `• \`!sortear\` — Sorteio inteligente e balanceamento snake-draft\n` +
           `• \`!veto\` — Pick & Ban oficial da Valve com escolha de lados CT/TR\n` +
           `• \`!vitoria [A|B] [placar]\` — Registra a vitória, pontua no ranking e inicia votação de MVP\n` +
+          `• \`!aovivo\` / \`!live\` — Telemetria ao vivo: placar, lado CT/TR, HP, armas e economia\n` +
+          `• \`!gsi\` — Instruções e download do Valve GSI para transmissão em tempo real\n` +
           `• \`!historico [qtde]\` — Histórico das últimas partidas finalizadas\n` +
           `• \`!x1 @amigo\` — Duelo direto Head-to-Head e sinergia de duo\n` +
           `• \`!mapas\` — Estatísticas dos mapas mais disputados no servidor\n` +
@@ -3051,6 +3164,7 @@ class DiscordBotManager {
     if (commandName === 'mapas') return this.cmdMapStats(interaction);
     if (commandName === 'status-servidor') return this.cmdServerStatus(interaction);
     if (commandName === 'gsi') return this.cmdGsi(interaction);
+    if (commandName === 'aovivo') return this.cmdLive(interaction);
     if (commandName === 'vitoria' || commandName === 'resultado') return this.cmdMatchResult(interaction);
     if (commandName === 'sub') return this.cmdSubstitute(interaction);
     if (commandName === 'cargo') return this.cmdToggleRole(interaction);
@@ -3453,6 +3567,21 @@ class DiscordBotManager {
     return interaction.reply({ embeds: [embed], components: [row] });
   }
 
+  async cmdLive(interaction) {
+    const embed = this.buildLiveMatchEmbed();
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setLabel('🌐 Acompanhar no Hub Web')
+        .setStyle(ButtonStyle.Link)
+        .setURL('http://localhost:3000/'),
+      new ButtonBuilder()
+        .setLabel('📥 Configurar GSI (.cfg)')
+        .setStyle(ButtonStyle.Link)
+        .setURL('http://localhost:3000/api/gsi/cfg/MIX-PRO')
+    );
+    return interaction.reply({ embeds: [embed], components: [row] });
+  }
+
   async cmdHelp(interaction) {
     const embed = new EmbedBuilder()
       .setTitle('📖 GUIA DE COMANDOS • CS2 MIX HUB BOT')
@@ -3466,6 +3595,8 @@ class DiscordBotManager {
           `• \`!sortear\` - Sorteio snake-draft balanceado por elo\n` +
           `• \`!veto\` - Pick & Ban de mapas oficial com escolha de lados CT/TR\n` +
           `• \`!vitoria [A|B] [placar]\` - Registra a vitória, pontua no ranking e inicia votação de MVP\n` +
+          `• \`!aovivo\` ou \`/aovivo\` - Monitora ao vivo: placar, lado CT/TR, vida, armas e economia\n` +
+          `• \`!gsi\` ou \`/gsi\` - Instruções e download do arquivo CFG do Valve GSI\n` +
           `• \`!historico\` ou \`/historico\` - Histórico de partidas recentes e placares\n` +
           `• \`!x1 @amigo\` ou \`/x1\` - Duelo Head-to-Head e sinergia de vitórias juntos\n` +
           `• \`!mapas\` ou \`/mapas\` - Estatísticas dos mapas mais disputados\n` +
