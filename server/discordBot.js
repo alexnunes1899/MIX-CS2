@@ -257,24 +257,45 @@ class DiscordBotManager {
     ];
 
     try {
-      // First attempt: try with MessageContent (allows reading !mix directly)
+      // First attempt: try with MessageContent & GuildMembers (full privileged capabilities)
       try {
         this.client = new Client({
-          intents: [...baseIntents, GatewayIntentBits.MessageContent],
+          intents: [
+            ...baseIntents,
+            GatewayIntentBits.MessageContent,
+            GatewayIntentBits.GuildMembers,
+          ],
         });
         this.setupEventHandlers();
         await this.client.login(token);
-        console.log(`🎮 [DISCORD BOT] Conectado com sucesso (com suporte a prefixo !) como ${this.client.user.tag}!`);
+        console.log(`🎮 [DISCORD BOT] Conectado com sucesso (com suporte a prefixo ! e Membros) como ${this.client.user.tag}!`);
       } catch (intentErr) {
         if (intentErr.message?.includes('disallowed intents')) {
-          console.warn('⚠️ [DISCORD BOT] Intent MessageContent não está ativada no Portal do Discord. Conectando em modo seguro...');
-          if (this.client) {
-            try { this.client.destroy(); } catch (e) {}
+          console.warn('⚠️ [DISCORD BOT] Tentando conexão sem GuildMembers...');
+          try {
+            if (this.client) {
+              try { this.client.destroy(); } catch (e) {}
+            }
+            this.client = new Client({
+              intents: [...baseIntents, GatewayIntentBits.MessageContent],
+            });
+            this.setupEventHandlers();
+            await this.client.login(token);
+            console.log(`🎮 [DISCORD BOT] Conectado com suporte a prefixo ! como ${this.client.user.tag}!`);
+          } catch (intentErr2) {
+            if (intentErr2.message?.includes('disallowed intents')) {
+              console.warn('⚠️ [DISCORD BOT] Intents privilegiadas desativadas no Portal. Conectando em modo básico...');
+              if (this.client) {
+                try { this.client.destroy(); } catch (e) {}
+              }
+              this.client = new Client({ intents: baseIntents });
+              this.setupEventHandlers();
+              await this.client.login(token);
+              console.log(`🎮 [DISCORD BOT] Conectado em modo básico como ${this.client.user.tag}!`);
+            } else {
+              throw intentErr2;
+            }
           }
-          this.client = new Client({ intents: baseIntents });
-          this.setupEventHandlers();
-          await this.client.login(token);
-          console.log(`🎮 [DISCORD BOT] Conectado com sucesso como ${this.client.user.tag}!`);
         } else {
           throw intentErr;
         }
@@ -553,11 +574,12 @@ class DiscordBotManager {
     const user = message.author;
     const name = customName || `Mix 5v5 de ${user.username}`;
     const mix = this.getOrCreateMix(message.channelId, user, { name });
+    const tutorialEmbed = this.buildMixTutorialEmbed();
     const embed = this.buildLobbyEmbed(mix);
     const components = this.buildLobbyButtons(mix);
     return message.channel.send({
       content: `🎮 <@${user.id}> criou um novo **Lobby de Mix CS2 5v5**!`,
-      embeds: [embed],
+      embeds: [tutorialEmbed, embed],
       components,
     });
   }
@@ -1095,6 +1117,44 @@ class DiscordBotManager {
     ];
   }
 
+  buildMixTutorialEmbed() {
+    return new EmbedBuilder()
+      .setTitle('📖 GUIA RÁPIDO DO CS2 MIX HUB • COMO MEXER NO BOT')
+      .setDescription(
+        `Seja bem-vindo ao sistema oficial de Mix 5v5 da comunidade!\n` +
+          `Aqui está o passo a passo de como funciona a fila e os comandos:\n\n` +
+          `**1️⃣ Como Entrar e Sair da Fila:**\n` +
+          `• Clique no botão verde **\`[➕ Entrar]\`** logo abaixo ou digite \`!entrar\` no chat.\n` +
+          `• Se precisar desmarcar, clique em **\`[➖ Sair]\`** ou digite \`!sair\`.\n\n` +
+          `**2️⃣ Cadastre seu Nível da Gamers Club (GC):**\n` +
+          `• Clique no botão azul **\`[⭐ Meu Nível GC]\`** ou digite \`!lvl <1 a 21>\` (ex: \`!lvl 16\`).\n` +
+          `• O bot salva seu nível para sempre! Isso garante que o sorteio forme times equilibrados.\n\n` +
+          `**3️⃣ Confirmação de Presença (Anti-AFK):**\n` +
+          `• Assim que a fila atingir **10/10 jogadores**, o bot abrirá um check-in de 45 segundos.\n` +
+          `• Todos devem clicar em **\`[✅ Confirmar Presença]\`**. Quem não confirmar sai automaticamente!\n\n` +
+          `**4️⃣ Sorteio dos Times & Capitães:**\n` +
+          `• Clique em **\`[⚔️ Sortear Times]\`** (ou \`!sortear\`).\n` +
+          `• Os dois jogadores de maior nível viram os Capitães 👑 (Time A e Time B) e o sistema divide os elos igualmente.\n\n` +
+          `**5️⃣ Veto de Mapas (Pick & Ban) e Escolha de Lado:**\n` +
+          `• Clique em **\`[🗳️ Pick & Ban]\`** (ou \`!veto\`) para os capitães banirem os mapas da Valve.\n` +
+          `• No mapa final, o Capitão B escolhe começar de **CT** 🛡️ ou **TR** 💣!\n\n` +
+          `**6️⃣ Mover Calls de Voz Automaticamente:**\n` +
+          `• Clique em **\`[📞 Mover Calls]\`** para o bot puxar cada time para sua sala de voz oficial.\n\n` +
+          `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+          `⚡ **Comandos Rápidos no Chat:**\n` +
+          `• \`!mix\` — Abre um novo lobby 5v5\n` +
+          `• \`!lvl <1-21>\` — Cadastra/atualiza seu nível da Gamers Club\n` +
+          `• \`!stats\` — Exibe suas estatísticas, partidas e vitórias\n` +
+          `• \`!smoke <mapa>\` — Mostra lineups de granadas (ex: \`!smoke mirage\`)\n` +
+          `• \`!treino\` — Envia a CFG oficial de treino para console do CS2\n` +
+          `• \`!moeda\` — Joga cara ou coroa para desempates rápidos\n` +
+          `• \`!servidor <ip>\` — Configura o IP do servidor CS2 para o comando connect`
+      )
+      .setColor(0x38bdf8)
+      .setThumbnail('https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_mirage_1_png.png')
+      .setFooter({ text: 'Dica: Todos os botões do Mix estão disponíveis logo abaixo deste card! 👇' });
+  }
+
   buildLobbyEmbed(mix) {
     const total = mix.players.length;
     const isFull = total >= 10;
@@ -1382,11 +1442,12 @@ class DiscordBotManager {
     // Permanent Panel Trigger
     if (customId === 'panel_create_mix') {
       const mix = this.getOrCreateMix(interaction.channelId, user, { name: `Mix 5v5 de ${user.username}` });
+      const tutorialEmbed = this.buildMixTutorialEmbed();
       const embed = this.buildLobbyEmbed(mix);
       const components = this.buildLobbyButtons(mix);
       return interaction.reply({
         content: `🎮 <@${user.id}> abriu um novo **Lobby de Mix CS2**!`,
-        embeds: [embed],
+        embeds: [tutorialEmbed, embed],
         components,
       });
     }
@@ -1901,12 +1962,13 @@ class DiscordBotManager {
     const name = interaction.options.getString('nome') || `Mix 5v5 de ${interaction.user.username}`;
     const format = interaction.options.getString('formato') || 'MD1';
     const mix = this.getOrCreateMix(interaction.channelId, interaction.user, { name, format });
+    const tutorialEmbed = this.buildMixTutorialEmbed();
     const embed = this.buildLobbyEmbed(mix);
     const components = this.buildLobbyButtons(mix);
 
     return interaction.reply({
       content: `🎮 <@${interaction.user.id}> criou um novo **Lobby de Mix CS2 5v5**!`,
-      embeds: [embed],
+      embeds: [tutorialEmbed, embed],
       components,
     });
   }
