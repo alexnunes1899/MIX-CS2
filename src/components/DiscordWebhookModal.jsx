@@ -23,6 +23,7 @@ import {
   EyeOff,
   Volume2,
   Cpu,
+  Copy,
 } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
 
@@ -41,6 +42,8 @@ export default function DiscordWebhookModal({
 }) {
   const [activeTab, setActiveTab] = useState('bot'); // 'bot' | 'voicemover' | 'webhook'
   const [showToken, setShowToken] = useState(false);
+  const [copiedInvite, setCopiedInvite] = useState(false);
+  const [showCriteria, setShowCriteria] = useState(false);
 
   // Bot Status State from /api/discord/bot/status
   const [botStatus, setBotStatus] = useState({
@@ -374,6 +377,16 @@ export default function DiscordWebhookModal({
     }, 1200);
   };
 
+  const effectiveClientId = clientId.trim() || botStatus.id || '1569029813518336030';
+  const botInviteUrl = `https://discord.com/oauth2/authorize?client_id=${effectiveClientId}&permissions=8&integration_type=0&scope=bot+applications.commands`;
+
+  const handleCopyInvite = () => {
+    if (soundEnabled) playClickSound();
+    navigator.clipboard.writeText(botInviteUrl);
+    setCopiedInvite(true);
+    setTimeout(() => setCopiedInvite(false), 2500);
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/85 backdrop-blur-md animate-fadeIn">
       <div className="relative w-full max-w-2xl max-h-[92vh] overflow-y-auto bg-slate-900 border border-slate-800 rounded-3xl p-5 sm:p-7 shadow-2xl space-y-4 custom-scrollbar">
@@ -541,6 +554,128 @@ export default function DiscordWebhookModal({
               {/* Bot Info Callout */}
               <div className="pt-2 border-t border-slate-800/80 text-[11px] text-slate-400 leading-relaxed">
                 Organize partidas 5v5 diretamente no canal de texto do Discord com botões de entrada, sorteio equilibrado de capitães e times, e <strong>Pick & Ban de mapas oficial</strong> com turnos alternados!
+              </div>
+            </div>
+
+            {/* 1-CLICK DISCORD BOT INVITE & CRITERIA SHOWCASE */}
+            <div className="bg-gradient-to-br from-indigo-950/70 via-slate-950 to-purple-950/50 p-4 rounded-2xl border border-indigo-500/30 space-y-3 shadow-lg">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                    <h3 className="text-sm font-black font-heading text-white uppercase tracking-wider flex items-center gap-1.5">
+                      <Bot size={17} className="text-indigo-400" />
+                      Adicione o Bot ao seu Servidor
+                    </h3>
+                  </div>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Clique no botão para convidar o <strong>CS2 Mix Hub Bot</strong> para o seu servidor Discord e liberar comandos <code>!mix</code>, sorteio por elo e Pick & Ban!
+                  </p>
+                </div>
+
+                {/* Invite & Copy Buttons */}
+                <div className="flex items-center gap-2 shrink-0">
+                  <a
+                    href={botInviteUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => soundEnabled && playClickSound()}
+                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-500 via-indigo-600 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white font-black text-xs uppercase tracking-wider flex items-center gap-2 shadow-lg shadow-indigo-600/30 transition-all cursor-pointer hover:scale-[1.02] active:scale-95"
+                  >
+                    <ExternalLink size={14} />
+                    <span>Convidar Bot</span>
+                  </a>
+
+                  <button
+                    type="button"
+                    onClick={handleCopyInvite}
+                    className="p-2 rounded-xl bg-slate-800/90 hover:bg-slate-750 text-slate-300 border border-slate-700/70 text-xs transition-colors cursor-pointer flex items-center gap-1.5"
+                    title="Copiar link de convite do Bot"
+                  >
+                    {copiedInvite ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                    <span className="text-[11px] font-bold">{copiedInvite ? 'Copiado!' : 'Copiar Link'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* CRITÉRIOS OBRIGATÓRIOS PARA CONSEGUIR ADICIONAR */}
+              <div className="pt-2.5 border-t border-indigo-500/20">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (soundEnabled) playClickSound();
+                    setShowCriteria(!showCriteria);
+                  }}
+                  className="w-full flex items-center justify-between text-left text-xs font-bold text-indigo-300 hover:text-indigo-200 cursor-pointer py-1"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <ShieldCheck size={15} className="text-amber-400" />
+                    <strong>Critérios obrigatórios para conseguir adicionar o bot ao servidor</strong>
+                  </span>
+                  <span className="text-[11px] font-mono text-indigo-400 underline">
+                    {showCriteria ? 'Ocultar requisitos ▲' : 'Ver requisitos necessários ▼'}
+                  </span>
+                </button>
+
+                {showCriteria && (
+                  <div className="mt-2.5 p-3.5 rounded-xl bg-slate-950/95 border border-indigo-500/30 space-y-3 text-[11px] text-slate-300 leading-relaxed animate-fadeIn">
+                    <div className="flex items-start gap-2.5">
+                      <div className="w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0 mt-0.5 font-bold text-[10px]">
+                        1
+                      </div>
+                      <div>
+                        <strong className="text-white block font-heading text-xs">
+                          👑 Permissão de Administrador ou "Gerenciar Servidor" (Manage Server)
+                        </strong>
+                        <span className="text-slate-400 block mt-0.5">
+                          No Discord, apenas o <strong>Dono do Servidor</strong> ou membros que possuam um cargo com a permissão <strong>"Gerenciar Servidor"</strong> ou <strong>"Administrador"</strong> ativa podem autorizar e adicionar novos bots. Se você for membro comum, copie o link de convite e envie para um administrador do seu servidor.
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-2.5">
+                      <div className="w-5 h-5 rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center shrink-0 mt-0.5 font-bold text-[10px]">
+                        2
+                      </div>
+                      <div>
+                        <strong className="text-white block font-heading text-xs">
+                          📱 Conta do Discord Verificada
+                        </strong>
+                        <span className="text-slate-400 block mt-0.5">
+                          Para autorizar aplicativos externos OAuth2, o Discord exige que a sua conta de usuário tenha um <strong>e-mail ou número de telefone verificado</strong>.
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-2.5">
+                      <div className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 mt-0.5 font-bold text-[10px]">
+                        3
+                      </div>
+                      <div>
+                        <strong className="text-white block font-heading text-xs">
+                          🛡️ Hierarquia de Cargos (Para Patentes Automáticas)
+                        </strong>
+                        <span className="text-slate-400 block mt-0.5">
+                          Após o bot entrar no servidor, vá em <em>Configurações do Servidor &gt; Cargos</em> e arraste o cargo do bot (<code>cs hub</code>) para <strong>cima dos membros comuns</strong>. A hierarquia do Discord exige que o bot esteja acima para poder entregar as patentes automáticas (<code>@Competidor</code>, <code>@Veterano</code>, <code>@Major Champion</code> e <code>@Rei do Servidor</code>).
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-2.5">
+                      <div className="w-5 h-5 rounded-full bg-purple-500/20 text-purple-400 flex items-center justify-center shrink-0 mt-0.5 font-bold text-[10px]">
+                        4
+                      </div>
+                      <div>
+                        <strong className="text-white block font-heading text-xs">
+                          🎙️ Permissão de Voz (Mover Membros) & Texto (Embeds)
+                        </strong>
+                        <span className="text-slate-400 block mt-0.5">
+                          Para que o botão <code>[📞 Mover Calls]</code> funcione puxando os times para as salas CT e TR, o bot precisa da permissão <strong>"Mover Membros"</strong> ativa. No canal de texto, garanta permissão para enviar links e embeds.
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 

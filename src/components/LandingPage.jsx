@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Sparkles, Swords, Dices, Shield, Flame, Users, Layers, Zap, Trophy, ArrowRight, ExternalLink, Hash, CheckCircle2, Monitor, RefreshCw, Globe, Laptop, Server, Home, Bell } from 'lucide-react';
+import { Play, Sparkles, Swords, Dices, Shield, Flame, Users, Layers, Zap, Trophy, ArrowRight, ExternalLink, Hash, CheckCircle2, Monitor, RefreshCw, Globe, Laptop, Server, Home, Bell, Bot, ShieldCheck, Check } from 'lucide-react';
 import { ACTIVE_DUTY_MAPS, EXTRA_CS2_MAPS } from '../data/maps';
 import PlayerAvatar from './PlayerAvatar';
 import SteamIcon from './SteamIcon';
@@ -509,6 +509,64 @@ export default function LandingPage({
             <div className="pt-1 flex items-center gap-1.5 text-xs font-bold text-emerald-400 group-hover:text-emerald-300">
               <span>Abrir Central de Servidores</span>
               <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* DISCORD BOT BANNER & INVITE SHOWCASE */}
+      <section className="max-w-6xl mx-auto px-4 py-8">
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-indigo-950/80 via-slate-900 to-purple-950/80 border border-indigo-500/30 p-6 sm:p-10 shadow-2xl">
+          <div className="absolute -right-10 -bottom-10 w-80 h-80 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="relative z-10 flex flex-col lg:flex-row items-center justify-between gap-8">
+            <div className="space-y-4 max-w-2xl text-center lg:text-left">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 text-xs font-bold uppercase tracking-wider">
+                <Bot size={14} />
+                <span>Bot Oficial de Mix 5v5 para Discord</span>
+              </div>
+              <h2 className="text-2xl sm:text-4xl font-black font-heading text-white tracking-wide leading-tight">
+                Adicione o Bot ao seu Servidor do Discord
+              </h2>
+              <p className="text-sm text-slate-300 leading-relaxed">
+                Organize partidas 5v5 completas com seus amigos sem sair do Discord! Fila automática com botões interativos, balanceamento inteligente por nível Gamers Club (1 a 21), veto oficial de mapas da Valve, movimentação de canais de voz CT/TR e patentes automáticas.
+              </p>
+              <div className="flex flex-wrap items-center justify-center lg:justify-start gap-4 text-xs text-slate-400">
+                <div className="flex items-center gap-1.5 text-emerald-400 font-semibold">
+                  <Check size={16} /> 100% Gratuito
+                </div>
+                <div className="flex items-center gap-1.5 text-indigo-400 font-semibold">
+                  <Check size={16} /> 20 Slash Commands
+                </div>
+                <div className="flex items-center gap-1.5 text-purple-400 font-semibold">
+                  <Check size={16} /> Valve GSI Integrado
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row lg:flex-col gap-3 w-full sm:w-auto shrink-0">
+              <a
+                href="https://discord.com/oauth2/authorize?client_id=1569029813518336030&permissions=8&integration_type=0&scope=bot+applications.commands"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => soundEnabled && playClickSound()}
+                className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-indigo-500 via-indigo-600 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white font-black text-sm uppercase tracking-wider flex items-center justify-center gap-2.5 shadow-xl shadow-indigo-600/30 transition-all cursor-pointer hover:scale-[1.02] active:scale-95 text-center"
+              >
+                <Bot size={18} />
+                <span>Adicionar ao Discord</span>
+                <ExternalLink size={14} />
+              </a>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (soundEnabled) playClickSound();
+                  if (onOpenDiscordModal) onOpenDiscordModal();
+                }}
+                className="px-5 py-3 rounded-2xl bg-slate-800/80 hover:bg-slate-750 text-indigo-300 border border-indigo-500/30 text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+              >
+                <ShieldCheck size={16} className="text-amber-400" />
+                <span>Ver Critérios & Como Configurar</span>
+              </button>
             </div>
           </div>
         </div>
