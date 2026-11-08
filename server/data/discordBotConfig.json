@@ -1,0 +1,12 @@
+{
+  "token": "",
+  "clientId": "",
+  "guildId": "",
+  "defaultChannelId": "",
+  "lobbyVoiceId": "",
+  "teamAVoiceId": "",
+  "teamBVoiceId": "",
+  "autoMoveVoice": true,
+  "autoStartVetoOnFull": false,
+  "serverConnect": ""
+}

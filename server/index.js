@@ -13,6 +13,7 @@ import { sendDiscordWebhook, isValidDiscordWebhookUrl } from './discordWebhook.j
 import { getLeaderboard, recordMatch } from './leaderboard.js';
 import { pingCs2Server } from './serverQuery.js';
 import { moveGuildMember, testDiscordBotVoiceChannels } from './discordVoiceMover.js';
+import { discordBotManager } from './discordBot.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -2294,6 +2295,74 @@ app.post('/api/discord/move-members', sensitiveLimiter, async (req, res) => {
   res.json({ results });
 });
 
+// Official Discord Bot Engine Endpoints
+app.get('/api/discord/bot/status', (req, res) => {
+  res.json(discordBotManager.getStatus());
+});
+
+app.post('/api/discord/bot/config', sensitiveLimiter, async (req, res) => {
+  const {
+    token,
+    clientId,
+    guildId,
+    defaultChannelId,
+    lobbyVoiceId,
+    teamAVoiceId,
+    teamBVoiceId,
+    autoMoveVoice,
+    serverConnect,
+  } = req.body;
+
+  discordBotManager.saveConfig({
+    ...(token !== undefined ? { token: token.trim() } : {}),
+    ...(clientId !== undefined ? { clientId: clientId.trim() } : {}),
+    ...(guildId !== undefined ? { guildId: guildId.trim() } : {}),
+    ...(defaultChannelId !== undefined ? { defaultChannelId: defaultChannelId.trim() } : {}),
+    ...(lobbyVoiceId !== undefined ? { lobbyVoiceId: lobbyVoiceId.trim() } : {}),
+    ...(teamAVoiceId !== undefined ? { teamAVoiceId: teamAVoiceId.trim() } : {}),
+    ...(teamBVoiceId !== undefined ? { teamBVoiceId: teamBVoiceId.trim() } : {}),
+    ...(autoMoveVoice !== undefined ? { autoMoveVoice: Boolean(autoMoveVoice) } : {}),
+    ...(serverConnect !== undefined ? { serverConnect: (serverConnect || '').trim() } : {}),
+  });
+
+  res.json({ success: true, status: discordBotManager.getStatus() });
+});
+
+app.post('/api/discord/bot/start', sensitiveLimiter, async (req, res) => {
+  const result = await discordBotManager.start();
+  res.json(result);
+});
+
+app.post('/api/discord/bot/stop', sensitiveLimiter, async (req, res) => {
+  const result = await discordBotManager.stop();
+  res.json(result);
+});
+
+app.post('/api/discord/bot/panel', sensitiveLimiter, async (req, res) => {
+  const { channelId } = req.body;
+  const targetChannelId = channelId || discordBotManager.config.defaultChannelId;
+  if (!discordBotManager.client || !discordBotManager.client.isReady()) {
+    return res.status(400).json({ error: 'O Bot do Discord não está conectado ou online.' });
+  }
+  if (!targetChannelId) {
+    return res.status(400).json({ error: 'ID do canal de texto não fornecido.' });
+  }
+  try {
+    const channel = await discordBotManager.client.channels.fetch(targetChannelId);
+    if (!channel || !channel.isTextBased()) {
+      return res.status(400).json({ error: 'Canal de texto inválido ou inacessível pelo bot.' });
+    }
+    await discordBotManager.cmdSendPermanentPanel({
+      channel,
+      user: discordBotManager.client.user,
+      reply: async () => {},
+    });
+    res.json({ success: true, channelName: channel.name });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // 3. Valve Steam Web API (CS2 Hours, VAC Bans, Account Age)
 app.get('/api/steam/player-stats/:steamId', async (req, res) => {
   try {
@@ -2446,6 +2515,12 @@ app.use((req, res) => {
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`🎮 [CS2 MIX HUB] Servidor rodando na porta ${PORT} em 0.0.0.0`);
+  discordBotManager.setWebRoomsReference(rooms);
+  if (discordBotManager.config.token || process.env.DISCORD_BOT_TOKEN) {
+    discordBotManager.start().catch((err) => {
+      console.warn('[DISCORD BOT] Aviso ao inicializar bot:', err.message);
+    });
+  }
 });
 
 // Graceful shutdown for Railway & container orchestrators
