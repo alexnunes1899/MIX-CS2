@@ -19,6 +19,9 @@ import {
   StringSelectMenuBuilder,
   ChannelType,
   PermissionsBitField,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle,
 } from 'discord.js';
 import fs from 'fs';
 import path from 'path';
@@ -27,6 +30,7 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const CONFIG_FILE = path.join(__dirname, 'data', 'discordBotConfig.json');
+const PROFILES_FILE = path.join(__dirname, 'data', 'playerProfiles.json');
 
 // Default Active Duty Maps for Pick & Ban with official CDN images
 const OFFICIAL_MAPS = [
@@ -127,6 +131,43 @@ class DiscordBotManager {
 
   setWebRoomsReference(roomsRef) {
     this.webRoomsRef = roomsRef;
+  }
+
+  loadPlayerProfiles() {
+    try {
+      if (fs.existsSync(PROFILES_FILE)) {
+        const raw = fs.readFileSync(PROFILES_FILE, 'utf8');
+        return JSON.parse(raw);
+      }
+    } catch (e) {
+      console.warn('[DISCORD BOT] Falha ao ler playerProfiles.json:', e.message);
+    }
+    return {};
+  }
+
+  savePlayerProfiles(profiles) {
+    try {
+      const dataDir = path.dirname(PROFILES_FILE);
+      if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+      fs.writeFileSync(PROFILES_FILE, JSON.stringify(profiles, null, 2), 'utf8');
+    } catch (e) {
+      console.error('[DISCORD BOT] Falha ao salvar playerProfiles.json:', e.message);
+    }
+  }
+
+  getPlayerLevel(userId) {
+    const profiles = this.loadPlayerProfiles();
+    return profiles[userId]?.level || 16;
+  }
+
+  setPlayerProfile(userId, data) {
+    const profiles = this.loadPlayerProfiles();
+    profiles[userId] = {
+      ...(profiles[userId] || {}),
+      ...data,
+      updatedAt: Date.now(),
+    };
+    this.savePlayerProfiles(profiles);
   }
 
   loadConfig() {
@@ -351,6 +392,30 @@ class DiscordBotManager {
         .setName('ranking')
         .setDescription('Exibe os melhores jogadores e o Hall da Fama do CS2 Mix Hub'),
 
+      new SlashCommandBuilder()
+        .setName('level')
+        .setDescription('Configura o seu nível da Gamers Club (1 a 21) para o balanceamento de times')
+        .addIntegerOption((opt) =>
+          opt
+            .setName('nivel')
+            .setDescription('Seu nível na Gamers Club (de 1 a 21)')
+            .setRequired(true)
+            .setMinValue(1)
+            .setMaxValue(21)
+        ),
+
+      new SlashCommandBuilder()
+        .setName('lvl')
+        .setDescription('Atalho rápido para definir seu nível da Gamers Club (1 a 21)')
+        .addIntegerOption((opt) =>
+          opt
+            .setName('nivel')
+            .setDescription('Seu nível na Gamers Club (de 1 a 21)')
+            .setRequired(true)
+            .setMinValue(1)
+            .setMaxValue(21)
+        ),
+
       new SlashCommandBuilder().setName('ajuda').setDescription('Manual completo de comandos do Bot do Mix'),
     ];
 
@@ -388,13 +453,15 @@ class DiscordBotManager {
       }
     });
 
-    // Handle Slash Commands and Buttons
+    // Handle Slash Commands, Buttons, and Modals
     this.client.on('interactionCreate', async (interaction) => {
       try {
         if (interaction.isChatInputCommand()) {
           await this.handleChatCommand(interaction);
         } else if (interaction.isButton()) {
           await this.handleButtonInteraction(interaction);
+        } else if (interaction.isModalSubmit()) {
+          await this.handleModalSubmit(interaction);
         } else if (interaction.isStringSelectMenu()) {
           await this.handleSelectMenuInteraction(interaction);
         }
@@ -459,6 +526,7 @@ class DiscordBotManager {
     if (command === 'veto' || command === 'ban') return this.prefixVeto(message);
     if (command === 'roleta') return this.prefixRoulette(message);
     if (command === 'ranking') return this.prefixRanking(message);
+    if (command === 'level' || command === 'lvl' || command === 'gc') return this.prefixSetLevel(message, args[1]);
     if (command === 'stats' || command === 'perfil') return this.prefixStats(message, args[1]);
     if (command === 'smoke' || command === 'granada' || command === 'lineup') return this.prefixGrenade(message, args.slice(1).join(' '));
     if (command === 'treino' || command === 'cfg' || command === 'praticar') return this.prefixTreino(message);
@@ -540,7 +608,7 @@ class DiscordBotManager {
       username: message.author.username,
       displayName: message.member?.displayName || message.author.username,
       avatar: message.author.displayAvatarURL({ dynamic: true }),
-      level: Math.floor(Math.random() * 8) + 14,
+      level: this.getPlayerLevel(message.author.id),
       ready: true,
     });
 
@@ -643,6 +711,35 @@ class DiscordBotManager {
     }
   }
 
+  async prefixSetLevel(message, levelArg) {
+    const raw = (levelArg || '').trim();
+    const parsed = parseInt(raw, 10);
+    if (!raw || isNaN(parsed) || parsed < 1 || parsed > 21) {
+      const current = this.getPlayerLevel(message.author.id);
+      return message.reply(
+        `ℹ️ Seu nível atual da Gamers Club é **Lvl ${current || 16}**.\n` +
+        `👉 Para alterar, digite: \`!lvl <1 a 21>\` (Exemplo: \`!lvl 19\` ou \`!gc 18\`).`
+      );
+    }
+
+    this.setPlayerProfile(message.author.id, {
+      level: parsed,
+      username: message.author.username,
+    });
+
+    const mix = this.activeMixes.get(message.channelId);
+    if (mix) {
+      const p = mix.players.find((pl) => pl.id === message.author.id);
+      if (p) p.level = parsed;
+    }
+
+    const badge = parsed >= 20 ? '👑 Lvl 20+' : parsed >= 18 ? '🏆 Lvl 18-19' : parsed >= 14 ? '🥇 Lvl 14-17' : '🥈 Lvl 1-13';
+    return message.reply(
+      `✅ <@${message.author.id}>, seu nível da Gamers Club foi configurado para **Lvl ${parsed}** (\`${badge}\`)!\n` +
+      `Os próximos sorteios de times balancearão as equipes com base no seu nível real.`
+    );
+  }
+
   async prefixStats(message, userArg) {
     let target = message.author;
     if (message.mentions.users.first()) {
@@ -742,6 +839,7 @@ class DiscordBotManager {
   }
 
   buildUserStatsEmbed(targetUser) {
+    const level = this.getPlayerLevel(targetUser.id);
     const seed = parseInt(targetUser.id.slice(-4), 10) || 1234;
     const wins = 15 + (seed % 35);
     const losses = 10 + ((seed * 3) % 25);
@@ -749,15 +847,15 @@ class DiscordBotManager {
     const winRate = Math.round((wins / total) * 100);
     const kd = (1.05 + ((seed % 50) / 100)).toFixed(2);
     const hs = 42 + (seed % 28);
-    const level = 14 + (seed % 8);
+    const gcBadge = level >= 20 ? '👑 Major Lvl 20+' : level >= 18 ? '🏆 Lvl 18-19' : level >= 14 ? '🥇 Lvl 14-17' : '🥈 Lvl 1-13';
 
     const embed = new EmbedBuilder()
       .setTitle(`📊 CARD DO COMPETIDOR • ${targetUser.username.toUpperCase()}`)
       .setThumbnail(targetUser.displayAvatarURL({ dynamic: true, size: 256 }))
       .setColor(0x38bdf8)
       .setDescription(
-        `🏆 **Nível Competitivo:** Gamers Club **Lvl ${level}** / FACEIT **Lvl ${Math.min(10, Math.max(5, Math.floor(level / 2)))}**\n` +
-        `⚔️ **Classificação:** Veterano da Comunidade CS2`
+        `🏆 **Nível Gamers Club:** **Lvl ${level}** (\`${gcBadge}\`)\n` +
+        `⚔️ **Classificação:** FACEIT Lvl ${Math.min(10, Math.max(5, Math.floor(level / 2)))} • Veterano da Comunidade CS2`
       )
       .addFields(
         { name: '🎮 Partidas', value: `${total}`, inline: true },
@@ -817,6 +915,12 @@ class DiscordBotManager {
 
   balanceTeams(mix) {
     if (!mix.players || mix.players.length < 2) return;
+
+    // Refresh every player's level from their persistent profile
+    mix.players.forEach((p) => {
+      p.level = this.getPlayerLevel(p.id) || p.level || 16;
+    });
+
     const sorted = [...mix.players].sort((a, b) => (b.level || 16) - (a.level || 16));
     const teamA = [];
     const teamB = [];
@@ -836,10 +940,10 @@ class DiscordBotManager {
     const balancePct = Math.max(75, Math.min(100, Math.round(100 - diff * 3.5)));
 
     mix.teamA.players = teamA;
-    mix.teamA.captain = teamA[0] || null;
+    mix.teamA.captain = teamA[0] || null; // Top Gamers Club player in Team A
     mix.teamA.avgLevel = avgA;
     mix.teamB.players = teamB;
-    mix.teamB.captain = teamB[0] || null;
+    mix.teamB.captain = teamB[0] || null; // Top Gamers Club player in Team B
     mix.teamB.avgLevel = avgB;
     mix.balancePct = balancePct;
     mix.phase = 'teams';
@@ -1000,7 +1104,9 @@ class DiscordBotManager {
     for (let i = 0; i < 10; i++) {
       const p = mix.players[i];
       if (p) {
-        playerList.push(`**${i + 1}.** <@${p.id}> \`[Lvl ${p.level || 16}]\``);
+        const lvl = p.level || this.getPlayerLevel(p.id) || 16;
+        const gcEmoji = lvl >= 20 ? '👑' : lvl >= 18 ? '🏆' : lvl >= 14 ? '🥇' : '🥈';
+        playerList.push(`**${i + 1}.** <@${p.id}> \`[Lvl ${lvl} GC ${gcEmoji}]\``);
       } else {
         playerList.push(`**${i + 1}.** *[Vazio - Disponível]*`);
       }
@@ -1074,6 +1180,11 @@ class DiscordBotManager {
 
     const row2 = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
+        .setCustomId(`mix_set_level:${mix.id}`)
+        .setLabel('Meu Nível GC')
+        .setEmoji('⭐')
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
         .setCustomId(`mix_roulette:${mix.id}`)
         .setLabel('Roleta de Mapa')
         .setEmoji('🎲')
@@ -1102,11 +1213,11 @@ class DiscordBotManager {
     const bar = '█'.repeat(filled) + '░'.repeat(10 - filled);
 
     const aPlayers = (teamA.players || [])
-      .map((p, i) => `${i === 0 ? '👑 ' : ''}<@${p.id}> \`[Lvl ${p.level || 16}]\``)
+      .map((p, i) => `${i === 0 ? '👑 ' : ''}<@${p.id}> \`[Lvl ${p.level || 16} GC]\``)
       .join('\n') || '*Nenhum jogador*';
 
     const bPlayers = (teamB.players || [])
-      .map((p, i) => `${i === 0 ? '👑 ' : ''}<@${p.id}> \`[Lvl ${p.level || 16}]\``)
+      .map((p, i) => `${i === 0 ? '👑 ' : ''}<@${p.id}> \`[Lvl ${p.level || 16} GC]\``)
       .join('\n') || '*Nenhum jogador*';
 
     const embed = new EmbedBuilder()
@@ -1307,12 +1418,13 @@ class DiscordBotManager {
         });
       }
 
+      const userLvl = this.getPlayerLevel(user.id);
       mix.players.push({
         id: user.id,
         username: user.username,
         displayName: interaction.member?.displayName || user.username,
         avatar: user.displayAvatarURL({ dynamic: true }),
-        level: Math.floor(Math.random() * 8) + 14,
+        level: userLvl,
         ready: true,
       });
 
@@ -1327,6 +1439,29 @@ class DiscordBotManager {
       const embed = this.buildLobbyEmbed(mix);
       const components = this.buildLobbyButtons(mix);
       return interaction.update({ embeds: [embed], components });
+    }
+
+    // SET LEVEL MODAL POPUP
+    if (action === 'mix_set_level') {
+      const current = this.getPlayerLevel(user.id);
+      const modal = new ModalBuilder()
+        .setCustomId(`modal_set_level:${mix.id}`)
+        .setTitle('Nível Gamers Club (GC)');
+
+      const levelInput = new TextInputBuilder()
+        .setCustomId('gc_level_input')
+        .setLabel('Seu Nível na Gamers Club (1 a 21)')
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('Ex: 18')
+        .setValue(String(current || 16))
+        .setMinLength(1)
+        .setMaxLength(2)
+        .setRequired(true);
+
+      const actionRow = new ActionRowBuilder().addComponents(levelInput);
+      modal.addComponents(actionRow);
+
+      return interaction.showModal(modal);
     }
 
     // 2. READY CONFIRM (ANTI-AFK CHECK-IN)
@@ -1690,9 +1825,76 @@ class DiscordBotManager {
         .setFooter({ text: 'CS2 Mix Hub • Randomizer' });
       return interaction.reply({ embeds: [embed] });
     }
+    if (commandName === 'level' || commandName === 'lvl') return this.cmdSetLevel(interaction);
     if (commandName === 'servidor') return this.cmdServer(interaction);
     if (commandName === 'ranking') return this.cmdRanking(interaction);
     if (commandName === 'ajuda') return this.cmdHelp(interaction);
+  }
+
+  async handleModalSubmit(interaction) {
+    const customId = interaction.customId;
+    if (customId.startsWith('modal_set_level')) {
+      const raw = interaction.fields.getTextInputValue('gc_level_input');
+      const parsed = parseInt(raw?.trim(), 10);
+      if (isNaN(parsed) || parsed < 1 || parsed > 21) {
+        return interaction.reply({
+          content: '⚠️ Nível inválido! Insira um número de **1 a 21** correspondente ao seu nível na Gamers Club.',
+          ephemeral: true,
+        });
+      }
+
+      this.setPlayerProfile(interaction.user.id, {
+        level: parsed,
+        username: interaction.user.username,
+      });
+
+      const mix = this.activeMixes.get(interaction.channelId);
+      if (mix) {
+        const p = mix.players.find((pl) => pl.id === interaction.user.id);
+        if (p) {
+          p.level = parsed;
+          const embed = this.buildLobbyEmbed(mix);
+          const components = this.buildLobbyButtons(mix);
+          if (mix.phase === 'lobby' && interaction.message) {
+            await interaction.message.edit({ embeds: [embed], components }).catch(() => {});
+          }
+        }
+      }
+
+      const badge = parsed >= 20 ? '👑 Lvl 20+' : parsed >= 18 ? '🏆 Lvl 18-19' : parsed >= 14 ? '🥇 Lvl 14-17' : '🥈 Lvl 1-13';
+      return interaction.reply({
+        content: `✅ <@${interaction.user.id}>, seu nível da Gamers Club foi salvo com sucesso como **Lvl ${parsed}** (\`${badge}\`)!\nTodos os sorteios de times balancearão as equipes com base no seu nível real.`,
+        ephemeral: true,
+      });
+    }
+  }
+
+  async cmdSetLevel(interaction) {
+    const parsed = interaction.options.getInteger('nivel');
+    if (!parsed || parsed < 1 || parsed > 21) {
+      const current = this.getPlayerLevel(interaction.user.id);
+      return interaction.reply({
+        content: `ℹ️ Seu nível atual da Gamers Club é **Lvl ${current || 16}**.\nPara alterar, use: \`/level nivel: 19\`.`,
+        ephemeral: true,
+      });
+    }
+
+    this.setPlayerProfile(interaction.user.id, {
+      level: parsed,
+      username: interaction.user.username,
+    });
+
+    const mix = this.activeMixes.get(interaction.channelId);
+    if (mix) {
+      const p = mix.players.find((pl) => pl.id === interaction.user.id);
+      if (p) p.level = parsed;
+    }
+
+    const badge = parsed >= 20 ? '👑 Lvl 20+' : parsed >= 18 ? '🏆 Lvl 18-19' : parsed >= 14 ? '🥇 Lvl 14-17' : '🥈 Lvl 1-13';
+    return interaction.reply({
+      content: `✅ Seu nível da Gamers Club foi salvo com sucesso como **Lvl ${parsed}** (\`${badge}\`)! O sorteio de times será balanceado com base no seu nível.`,
+      ephemeral: true,
+    });
   }
 
   async cmdCreateMix(interaction) {
@@ -1726,7 +1928,7 @@ class DiscordBotManager {
       username: interaction.user.username,
       displayName: interaction.member?.displayName || interaction.user.username,
       avatar: interaction.user.displayAvatarURL({ dynamic: true }),
-      level: Math.floor(Math.random() * 8) + 14,
+      level: this.getPlayerLevel(interaction.user.id),
       ready: true,
     });
 
