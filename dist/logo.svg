@@ -83,24 +83,22 @@
   </g>
 
   <!-- Tactical Reticle & Crosshair Grid (Subtle CS2 HUD Laser Watermark) -->
-  <g opacity="0.14" stroke="#f59e0b" stroke-width="1.5">
-    <line x1="84" y1="226" x2="428" y2="226" stroke-dasharray="6 5" />
-    <line x1="256" y1="56" x2="256" y2="444" stroke-dasharray="6 5" />
-    <circle cx="256" cy="226" r="118" fill="none" stroke-width="1.2" />
-    <circle cx="256" cy="226" r="48" fill="none" stroke-dasharray="4 3" />
-    <!-- Reticle Center Pips -->
-    <circle cx="256" cy="226" r="3" fill="#fbbf24" stroke="none" />
+  <g opacity="0.16" stroke="#fbbf24" stroke-width="1.2">
+    <circle cx="256" cy="208" r="95" fill="none" stroke-dasharray="6 4" />
+    <circle cx="256" cy="208" r="50" fill="none" stroke-dasharray="4 4" />
+    <line x1="256" y1="92" x2="256" y2="324" stroke-dasharray="3 3" />
+    <line x1="140" y1="208" x2="372" y2="208" stroke-dasharray="3 3" />
   </g>
 
-  <!-- Crown Apex Triangle Pin -->
-  <polygon points="256,44 280,62 256,56 232,62" fill="#fef08a" filter="url(#softGlow)" />
+  <!-- Top Crown Accent (Golden Chevron) -->
+  <polygon points="256,42 278,64 256,60 234,64" fill="#fef08a" filter="url(#softGlow)" />
 
-  <!-- HERO CS2 MONOGRAM (Bold, Athletic, Championship Contrast) -->
-  <g filter="url(#apexShadow)">
-    <!-- "CS" in Platinum & Gold -->
-    <text x="204" y="266" 
+  <!-- Core CS2 Brand Typography (Athletic Condensed Italic) -->
+  <g>
+    <!-- "CS" in High-Contrast Platinum/Gold -->
+    <text x="194" y="268" 
           font-family="'Chakra Petch', system-ui, -apple-system, sans-serif" 
-          font-size="144" 
+          font-size="160" 
           font-weight="900" 
           font-style="italic" 
           letter-spacing="-3" 
