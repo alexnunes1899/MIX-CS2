@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
 import { parseServerDetails } from '../utils/serverParser';
+import { copyText } from '../utils/clipboard';
 
 export default function LocalHostModal({
   isOpen,
@@ -244,7 +245,7 @@ echo "CS2 Mix Hub Config Carregada com Sucesso!"
 
   const handleCopyHostCommand = () => {
     if (soundEnabled) playClickSound();
-    navigator.clipboard.writeText(hostConsoleCommand);
+    copyText(hostConsoleCommand);
     setCopiedHostCmd(true);
     setTimeout(() => setCopiedHostCmd(false), 2000);
   };
@@ -252,7 +253,7 @@ echo "CS2 Mix Hub Config Carregada com Sucesso!"
   const handleCopyConnectCommand = () => {
     if (!fullLocalAddress) return;
     if (soundEnabled) playClickSound();
-    navigator.clipboard.writeText(`connect ${fullLocalAddress}`);
+    copyText(`connect ${fullLocalAddress}`);
     setCopiedConnectCmd(true);
     setTimeout(() => setCopiedConnectCmd(false), 2000);
   };
@@ -484,7 +485,7 @@ echo "CS2 Mix Hub Config Carregada com Sucesso!"
                     type="button"
                     onClick={() => {
                       if (soundEnabled) playClickSound();
-                      navigator.clipboard.writeText(parsedOnline.connectCommand);
+                      copyText(parsedOnline.connectCommand);
                       setCopiedOnlineConnect(true);
                       setTimeout(() => setCopiedOnlineConnect(false), 2000);
                     }}

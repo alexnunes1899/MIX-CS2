@@ -1218,7 +1218,7 @@ io.on('connection', (socket) => {
           sideTimeA: s.sideTimeA || 'CT',
           sideTimeB: s.sideTimeB || (s.sideTimeA === 'CT' ? 'TR' : 'CT'),
         }))
-      : [{ map: chosenMap, sideTimeA, sideTimeB, role: 'Mapa 1' }];
+      : [{ map: chosenMap, sideTimeA: sideTeamA, sideTimeB: sideTeamB, role: 'Mapa 1' }];
     room.phase = 'finished';
 
     if (room.teamA.length === 0) {

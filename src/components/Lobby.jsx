@@ -5,6 +5,7 @@ import PlayerAvatar from './PlayerAvatar';
 import ServerConnectBar from './ServerConnectBar';
 import { Users, Trash2, Bot, Scale, Shuffle, Shield, Flame, CheckCircle2, Crown, Check, AlertCircle, Zap, Dices, ArrowLeftRight, Lock, Globe, Share2, Layers, Copy, KeyRound, Hash, Eye, EyeOff, Sparkles, Bell } from 'lucide-react';
 import { playClickSound, playReadySound } from '../utils/audio';
+import { copyText } from '../utils/clipboard';
 
 export default function Lobby({
   players = [],
@@ -73,14 +74,14 @@ export default function Lobby({
     if (roomPassword) {
       url.searchParams.set('pwd', roomPassword);
     }
-    navigator.clipboard.writeText(url.toString());
+    copyText(url.toString());
     setCopiedInvite(true);
     setTimeout(() => setCopiedInvite(false), 2000);
   };
 
   const handleCopyUser = () => {
     if (soundEnabled) playClickSound();
-    navigator.clipboard.writeText(roomId);
+    copyText(roomId);
     setCopiedUser(true);
     setTimeout(() => setCopiedUser(false), 2000);
   };
@@ -88,7 +89,7 @@ export default function Lobby({
   const handleCopyPassword = () => {
     if (!roomPassword) return;
     if (soundEnabled) playClickSound();
-    navigator.clipboard.writeText(roomPassword);
+    copyText(roomPassword);
     setCopiedPwd(true);
     setTimeout(() => setCopiedPwd(false), 2000);
   };

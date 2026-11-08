@@ -6,6 +6,7 @@ import SteamIcon from './SteamIcon';
 import { Shield, Flame, Shuffle, UserPlus, CheckCircle2, LogOut, RefreshCw, Zap, Lock, ArrowRightLeft, Trophy, Sparkles, Copy, Check } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
 import { getPlayerStats } from '../utils/playerStats';
+import { copyText } from '../utils/clipboard';
 
 const AVATARS = ['🎯', '👑', '💀', '⚡', '🛡️', '💣', '🔥', '🦅', '🚀', '🧠'];
 
@@ -312,7 +313,7 @@ export default function PlayerForm({
                     type="button"
                     onClick={() => {
                       if (soundEnabled) playClickSound();
-                      navigator.clipboard.writeText(currentProfile.steamId);
+                      copyText(currentProfile.steamId);
                       setCopiedSteamId(true);
                       setTimeout(() => setCopiedSteamId(false), 2000);
                     }}

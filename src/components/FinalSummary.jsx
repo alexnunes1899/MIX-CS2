@@ -8,6 +8,7 @@ import { formatDiscordSummary, formatServerCommand } from '../utils/exportText';
 import { playClickSound } from '../utils/audio';
 import { getTeamNames } from '../utils/teamNames';
 import ServerConnectBar from './ServerConnectBar';
+import { copyText } from '../utils/clipboard';
 
 export default function FinalSummary({
   room,
@@ -28,6 +29,7 @@ export default function FinalSummary({
   const [copiedHltv, setCopiedHltv] = useState(false);
   const [discordSending, setDiscordSending] = useState(false);
   const [discordSent, setDiscordSent] = useState(false);
+  const [discordError, setDiscordError] = useState(null);
   const [statsSending, setStatsSending] = useState(false);
   const [statsSent, setStatsSent] = useState(false);
   const [rconExecuting, setRconExecuting] = useState(null);
@@ -63,7 +65,7 @@ export default function FinalSummary({
         return `${i + 1}. ${log.mapName} sobrou como Mapa Decider${deciderSideTxt}`;
       }),
     ];
-    navigator.clipboard.writeText(lines.join('\n'));
+    copyText(lines.join('\n'));
     setCopiedHltv(true);
     setTimeout(() => setCopiedHltv(false), 2000);
   };
@@ -110,10 +112,17 @@ export default function FinalSummary({
       });
       if (res.ok) {
         setDiscordSent(true);
+        setDiscordError(null);
         setTimeout(() => setDiscordSent(false), 3000);
+      } else {
+        const body = await res.json().catch(() => ({}));
+        setDiscordError(body.error || `Falha ao enviar (HTTP ${res.status}). Verifique a URL do Webhook.`);
+        setTimeout(() => setDiscordError(null), 6000);
       }
     } catch (e) {
       console.warn('Erro ao disparar webhook:', e);
+      setDiscordError('Sem conexão com o servidor. Tente novamente.');
+      setTimeout(() => setDiscordError(null), 6000);
     } finally {
       setDiscordSending(false);
     }
@@ -179,7 +188,7 @@ export default function FinalSummary({
       nameA: upperA,
       nameB: upperB,
     });
-    navigator.clipboard.writeText(text);
+    copyText(text);
     setCopiedDiscord(true);
     setTimeout(() => setCopiedDiscord(false), 2000);
   };
@@ -187,7 +196,7 @@ export default function FinalSummary({
   const handleCopyRcon = () => {
     if (soundEnabled) playClickSound();
     const cmd = formatServerCommand(fullMap);
-    navigator.clipboard.writeText(cmd);
+    copyText(cmd);
     setCopiedRcon(true);
     setTimeout(() => setCopiedRcon(false), 2000);
   };
@@ -296,6 +305,11 @@ export default function FinalSummary({
               <span>{copiedRcon ? 'Copiado!' : 'RCON'}</span>
             </button>
           </div>
+          {discordError && (
+            <p className="text-[11px] font-semibold text-rose-300 bg-rose-950/60 border border-rose-500/40 rounded-lg px-3 py-1.5 inline-block animate-fadeIn">
+              ⚠️ Discord: {discordError}
+            </p>
+          )}
         </div>
       </div>
 

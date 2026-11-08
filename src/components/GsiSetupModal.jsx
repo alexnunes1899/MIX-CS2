@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Download, Copy, Check, Radio, Server, ShieldCheck, HelpCircle, FileCode, CheckCircle2, Flame, ArrowRight, Laptop } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
+import { copyText } from '../utils/clipboard';
 
 export default function GsiSetupModal({
   isOpen,
@@ -57,7 +58,7 @@ export default function GsiSetupModal({
 
   const handleCopy = () => {
     if (soundEnabled) playClickSound();
-    navigator.clipboard.writeText(cfgContent);
+    copyText(cfgContent);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

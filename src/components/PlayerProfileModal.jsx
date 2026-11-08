@@ -7,6 +7,7 @@ import SteamIcon from './SteamIcon';
 import { getPlayerStats } from '../utils/playerStats';
 import { getGCTier } from '../data/gcLevels';
 import { playClickSound } from '../utils/audio';
+import { copyText } from '../utils/clipboard';
 
 export default function PlayerProfileModal({
   isOpen,
@@ -148,7 +149,7 @@ export default function PlayerProfileModal({
   const handleCopySteamId = () => {
     if (!steamId) return;
     if (soundEnabled) playClickSound();
-    navigator.clipboard.writeText(steamId);
+    copyText(steamId);
     setCopiedId(true);
     setTimeout(() => setCopiedId(false), 2000);
   };

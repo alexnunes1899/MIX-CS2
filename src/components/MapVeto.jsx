@@ -5,6 +5,7 @@ import { Shield, Flame, Ban, Check, Sparkles, History, RotateCcw, Trophy, Swords
 import { playBanSound, playFanfare, playPickSound, playClickSound } from '../utils/audio';
 import { getTeamNames } from '../utils/teamNames';
 import { getVetoSchedule, getOppositeTeam } from '../utils/proVeto';
+import { copyText } from '../utils/clipboard';
 
 export default function MapVeto({
   room,
@@ -113,7 +114,7 @@ export default function MapVeto({
 
   const handleCopyHltvLog = () => {
     if (soundEnabled) playClickSound();
-    navigator.clipboard.writeText(buildHltvLogText());
+    copyText(buildHltvLogText());
     setCopiedLog(true);
     setTimeout(() => setCopiedLog(false), 2000);
   };

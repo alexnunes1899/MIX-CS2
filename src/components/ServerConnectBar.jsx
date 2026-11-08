@@ -3,6 +3,7 @@ import { Server, Copy, Check, Edit2, Play, Trash2, Key, Radio, Terminal, Refresh
 import { playClickSound } from '../utils/audio';
 import { parseServerDetails } from '../utils/serverParser';
 import LocalHostModal from './LocalHostModal';
+import { copyText } from '../utils/clipboard';
 
 export default function ServerConnectBar({
   serverIp,
@@ -54,7 +55,7 @@ export default function ServerConnectBar({
   const handleCopy = () => {
     if (!parsed.isValid) return;
     if (soundEnabled) playClickSound();
-    navigator.clipboard.writeText(parsed.connectCommand);
+    copyText(parsed.connectCommand);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

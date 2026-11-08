@@ -36,6 +36,7 @@ import {
 import { playClickSound } from '../utils/audio';
 import { parseServerDetails } from '../utils/serverParser';
 import { ACTIVE_DUTY_MAPS } from '../data/maps';
+import { copyText } from '../utils/clipboard';
 
 export default function DedicatedServersHub({
   roomId = '',
@@ -755,7 +756,7 @@ pause
                           type="button"
                           onClick={() => {
                             if (soundEnabled) playClickSound();
-                            navigator.clipboard.writeText(parsedActive.connectCommand);
+                            copyText(parsedActive.connectCommand);
                             setCopiedConnect(true);
                             setTimeout(() => setCopiedConnect(false), 2000);
                           }}
@@ -923,7 +924,7 @@ pause
                       type="button"
                       onClick={() => {
                         if (soundEnabled) playClickSound();
-                        navigator.clipboard.writeText(`connect ${lanIp}:${port}`);
+                        copyText(`connect ${lanIp}:${port}`);
                         setCopiedConnect(true);
                         setTimeout(() => setCopiedConnect(false), 2000);
                       }}
@@ -955,7 +956,7 @@ pause
                     type="button"
                     onClick={() => {
                       if (soundEnabled) playClickSound();
-                      navigator.clipboard.writeText(hostConsoleCmd);
+                      copyText(hostConsoleCmd);
                       setCopiedHostCmd(true);
                       setTimeout(() => setCopiedHostCmd(false), 2000);
                     }}
@@ -1071,7 +1072,7 @@ pause
                       type="button"
                       onClick={() => {
                         if (soundEnabled) playClickSound();
-                        navigator.clipboard.writeText(`connect ${radminIp || '26.x.x.x'}:${port}`);
+                        copyText(`connect ${radminIp || '26.x.x.x'}:${port}`);
                         setCopiedConnect(true);
                         setTimeout(() => setCopiedConnect(false), 2000);
                       }}
@@ -1218,7 +1219,7 @@ pause
                       type="button"
                       onClick={() => {
                         if (soundEnabled) playClickSound();
-                        navigator.clipboard.writeText(`connect ${publicIp}:${port}`);
+                        copyText(`connect ${publicIp}:${port}`);
                         setCopiedConnect(true);
                         setTimeout(() => setCopiedConnect(false), 2000);
                       }}

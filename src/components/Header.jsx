@@ -5,6 +5,7 @@ import DeleteRoomModal from './DeleteRoomModal';
 import MainNavigationMenu from './MainNavigationMenu';
 import { playClickSound } from '../utils/audio';
 import { parseServerDetails } from '../utils/serverParser';
+import { copyText } from '../utils/clipboard';
 
 export default function Header({
   roomId,
@@ -48,7 +49,7 @@ export default function Header({
     if (roomPassword) {
       url.searchParams.set('pwd', roomPassword);
     }
-    navigator.clipboard.writeText(url.toString());
+    copyText(url.toString());
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -138,7 +139,7 @@ export default function Header({
                 <button
                   onClick={() => {
                     if (soundEnabled) playClickSound();
-                    navigator.clipboard.writeText(parsedServer.connectCommand);
+                    copyText(parsedServer.connectCommand);
                     setCopiedServer(true);
                     setTimeout(() => setCopiedServer(false), 2000);
                   }}

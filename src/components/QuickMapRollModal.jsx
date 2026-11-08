@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { CS2_MAPS, OFFICIAL_ACTIVE_DUTY, EXTRA_CS2_MAPS } from '../data/maps';
 import { playRouletteTick, playFanfare, playClickSound } from '../utils/audio';
+import { copyText } from '../utils/clipboard';
 
 /**
  * Generates an unbiased cryptographically secure random integer in [0, max - 1].
@@ -396,7 +397,7 @@ ${drawnSeries
 GL HF! 🔥 Boa sorte a ambas as equipes!`;
     }
 
-    navigator.clipboard.writeText(text);
+    copyText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

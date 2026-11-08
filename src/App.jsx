@@ -1044,7 +1044,7 @@ export default function App() {
           sideTimeB: s.sideTimeB || (s.sideTimeA === 'CT' ? 'TR' : 'CT'),
           role: s.role || `Mapa #${idx + 1}`,
         }))
-      : [{ map, sideTimeA, sideTimeB, role: 'Mapa da Partida' }];
+      : [{ map, sideTimeA: sideTeamA, sideTimeB: sideTeamB, role: 'Mapa da Partida' }];
 
     setRoom((prev) => ({
       ...prev,
