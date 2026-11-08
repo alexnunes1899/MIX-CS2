@@ -108,6 +108,16 @@ export default function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
   const [roomsHubOpen, setRoomsHubOpen] = useState(false);
+  const [activeRoomsCount, setActiveRoomsCount] = useState(0);
+
+  useEffect(() => {
+    fetch('/api/rooms')
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (Array.isArray(data)) setActiveRoomsCount(data.length);
+      })
+      .catch(() => {});
+  }, []);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [quickVetoOpen, setQuickVetoOpen] = useState(false);
   const [quickMapRollOpen, setQuickMapRollOpen] = useState(false);
@@ -1762,7 +1772,11 @@ export default function App() {
           onOpenRoomsHub={() => setRoomsHubOpen(true)}
           onOpenLeaderboard={() => setLeaderboardOpen(true)}
           onOpenDiscordModal={() => setDiscordModalOpen(true)}
+          onOpenTournament={() => setTournamentModalOpen(true)}
+          onOpenGrenades={() => setGrenadeModalOpen(true)}
+          onOpenAimReflex={() => setAimReflexModalOpen(true)}
           onOpenProfile={() => setProfileModalOpen(true)}
+          activeRoomsCount={activeRoomsCount}
           soundEnabled={soundEnabled}
           myProfile={myProfile}
         />
@@ -2064,6 +2078,7 @@ export default function App() {
         onDeleteRoom={handleDeleteRoom}
         soundEnabled={soundEnabled}
         setSoundEnabled={setSoundEnabled}
+        activeRoomsCount={activeRoomsCount}
         onOpenRoomsHub={() => setRoomsHubOpen(true)}
         onOpenHistory={() => setHistoryOpen(true)}
         onOpenQuickVeto={() => setQuickVetoOpen(true)}

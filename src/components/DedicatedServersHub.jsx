@@ -53,7 +53,11 @@ export default function DedicatedServersHub({
   onOpenRoomsHub,
   onOpenLeaderboard,
   onOpenDiscordModal,
+  onOpenTournament,
+  onOpenGrenades,
+  onOpenAimReflex,
   onOpenProfile,
+  activeRoomsCount = 0,
   soundEnabled,
   myProfile,
 }) {
@@ -434,6 +438,10 @@ pause
             onOpenQuickVeto={onOpenQuickVeto}
             onOpenServersPage={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
             onOpenRoomsHub={onOpenRoomsHub}
+            onOpenTournament={onOpenTournament}
+            onOpenGrenades={onOpenGrenades}
+            onOpenAimReflex={onOpenAimReflex}
+            activeRoomsCount={activeRoomsCount}
             soundEnabled={soundEnabled}
           />
         </div>

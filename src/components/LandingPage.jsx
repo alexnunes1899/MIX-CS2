@@ -119,7 +119,7 @@ export default function LandingPage({
             </div>
 
             {/* Quick Section Links */}
-            <div className="hidden lg:flex items-center gap-5 text-xs font-semibold uppercase tracking-wider text-slate-300">
+            <div className="hidden xl:flex items-center gap-5 text-xs font-semibold uppercase tracking-wider text-slate-300">
               <a href="#mapas" className="hover:text-amber-400 transition-colors flex items-center gap-1.5">
                 <span>Mapas Oficiais</span>
               </a>

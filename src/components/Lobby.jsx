@@ -3,7 +3,7 @@ import GCBadge from './GCBadge';
 import FaceitBadge from './FaceitBadge';
 import PlayerAvatar from './PlayerAvatar';
 import ServerConnectBar from './ServerConnectBar';
-import { Users, Trash2, Bot, Scale, Shuffle, Shield, Flame, CheckCircle2, Crown, Check, AlertCircle, Zap, Dices, ArrowLeftRight, Lock, Globe, Share2, Layers, Copy, KeyRound, Hash, Eye, EyeOff, Sparkles, Bell, BookOpen, Target, Trophy } from 'lucide-react';
+import { Users, Trash2, Bot, Scale, Shuffle, Shield, Flame, CheckCircle2, Crown, Check, AlertCircle, Zap, Dices, ArrowLeftRight, Lock, Globe, Share2, Layers, Copy, KeyRound, Hash, Eye, EyeOff, Sparkles, Bell, BookOpen, Target, Trophy, Server } from 'lucide-react';
 import { playClickSound, playReadySound } from '../utils/audio';
 import { copyText } from '../utils/clipboard';
 
@@ -108,12 +108,12 @@ export default function Lobby({
     <div className="space-y-6 pb-24 sm:pb-12">
       {/* Room Security & Privacy Card */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-lg space-y-3 backdrop-blur">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div className="space-y-1">
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+          <div className="space-y-1 min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-bold uppercase tracking-wider text-white flex items-center gap-1.5">
                 <Layers size={14} className="text-amber-400" />
-                Mix: <span className="text-amber-400 font-bold">{roomName || roomId}</span>
+                Mix: <span className="text-amber-400 font-bold truncate max-w-[200px]">{roomName || roomId}</span>
                 {roomName && roomName !== roomId && (
                   <span className="text-slate-500 font-mono text-[10px]">({roomId})</span>
                 )}
@@ -121,7 +121,7 @@ export default function Lobby({
 
               {isPrivate ? (
                 <span className="text-[10px] font-bold text-purple-300 bg-purple-500/15 border border-purple-500/30 px-2 py-0.5 rounded-full flex items-center gap-1 font-mono">
-                  <Lock size={10} /> Privado (Apenas com Link)
+                  <Lock size={10} /> Privado
                 </span>
               ) : (
                 <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-full flex items-center gap-1 font-mono">
@@ -131,24 +131,24 @@ export default function Lobby({
 
               {(hasPassword || roomPassword) && (
                 <span className="text-[10px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full flex items-center gap-1 font-mono">
-                  <Lock size={10} /> Protegida com Senha
+                  <Lock size={10} /> Senha Ativa
                 </span>
               )}
 
               {isAdmin && (
                 <span className="text-[10px] font-bold text-amber-300 bg-amber-500/20 border border-amber-500/40 px-2 py-0.5 rounded-full flex items-center gap-1 font-mono">
-                  <Crown size={10} className="text-amber-400" /> Admin da Sala
+                  <Crown size={10} className="text-amber-400" /> Admin
                 </span>
               )}
             </div>
             <p className="text-[11px] text-slate-400">
               {isPrivate
-                ? 'Esta sala é privada (estilo Gamers Club). Apenas quem tiver o link exclusivo abaixo consegue entrar.'
+                ? 'Sala privada. Apenas convidados com o link exclusivo conseguem entrar.'
                 : 'Mix público aberto. Qualquer jogador da comunidade pode entrar pelo Hub ou pelo link.'}
             </p>
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="flex items-center gap-2 w-full md:w-auto shrink-0 flex-wrap">
             {onOpenDiscordModal && (
               <button
                 type="button"
@@ -156,22 +156,22 @@ export default function Lobby({
                   if (soundEnabled) playClickSound();
                   onOpenDiscordModal();
                 }}
-                className="px-3 py-2.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95"
+                className="px-3 py-2 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95"
                 title="Configurar Notificações no Discord (Avisar quando fechar 10/10)"
               >
                 <Bell size={14} className="text-indigo-400" />
-                <span className="hidden sm:inline">Discord</span>
+                <span>Discord</span>
               </button>
             )}
 
             <button
               type="button"
               onClick={handleCopyInviteLink}
-              className="flex-1 sm:flex-none px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs uppercase tracking-wider shadow-md shadow-amber-500/20 flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95 shrink-0"
+              className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs uppercase tracking-wider shadow-md shadow-amber-500/20 flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
               title={isPrivate ? 'Copiar link de acesso exclusivo para convidados' : 'Copiar link para amigos entrarem'}
             >
               {copiedInvite ? <Check size={14} className="text-slate-950" /> : <Share2 size={14} />}
-              <span>{copiedInvite ? 'Link Copiado!' : isPrivate ? 'Copiar Link (Acesso Exclusivo)' : 'Copiar Link da Sala'}</span>
+              <span>{copiedInvite ? 'Copiado!' : 'Copiar Link'}</span>
             </button>
           </div>
         </div>
@@ -341,7 +341,7 @@ export default function Lobby({
               if (soundEnabled) playClickSound();
               onOpenTournament();
             }}
-            className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-purple-500/50 rounded-2xl p-3.5 flex items-center justify-between cursor-pointer transition-all shadow-sm group sm:col-span-2 lg:col-span-1"
+            className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-purple-500/50 rounded-2xl p-3.5 flex items-center justify-between cursor-pointer transition-all shadow-sm group"
           >
             <div className="flex items-center gap-2.5">
               <div className="w-9 h-9 rounded-xl bg-purple-500/20 text-purple-400 border border-purple-500/30 flex items-center justify-center group-hover:scale-105 transition-transform">
@@ -351,10 +351,34 @@ export default function Lobby({
                 <h4 className="font-bold text-xs uppercase tracking-wider text-white group-hover:text-purple-300 transition-colors">
                   Modo Torneio
                 </h4>
-                <p className="text-[11px] text-slate-400">Chaveamento rápido 4 ou 8 equipes</p>
+                <p className="text-[11px] text-slate-400">Chaveamento 4, 8 ou 16 equipes</p>
               </div>
             </div>
             <span className="text-xs font-bold text-purple-400 group-hover:translate-x-1 transition-transform">➔</span>
+          </div>
+        )}
+
+        {/* Dedicated Servers Hub */}
+        {onOpenServersPage && (
+          <div
+            onClick={() => {
+              if (soundEnabled) playClickSound();
+              onOpenServersPage();
+            }}
+            className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-emerald-500/50 rounded-2xl p-3.5 flex items-center justify-between cursor-pointer transition-all shadow-sm group"
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center group-hover:scale-105 transition-transform">
+                <Server size={18} />
+              </div>
+              <div>
+                <h4 className="font-bold text-xs uppercase tracking-wider text-white group-hover:text-emerald-300 transition-colors">
+                  Central de Servidores
+                </h4>
+                <p className="text-[11px] text-slate-400">Host 0ms, LAN e Dedicado Online</p>
+              </div>
+            </div>
+            <span className="text-xs font-bold text-emerald-400 group-hover:translate-x-1 transition-transform">➔</span>
           </div>
         )}
       </div>

@@ -19,6 +19,7 @@ export default function Header({
   onDeleteRoom,
   soundEnabled,
   setSoundEnabled,
+  activeRoomsCount = 0,
   onOpenRoomsHub,
   onOpenHistory,
   onOpenQuickVeto,
@@ -229,6 +230,7 @@ export default function Header({
           onOpenTournament={onOpenTournament}
           onOpenGrenades={onOpenGrenades}
           onOpenAimReflex={onOpenAimReflex}
+          activeRoomsCount={activeRoomsCount}
           soundEnabled={soundEnabled}
         />
 
