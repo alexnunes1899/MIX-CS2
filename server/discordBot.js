@@ -22,6 +22,7 @@ import {
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
+  Events,
 } from 'discord.js';
 import fs from 'fs';
 import path from 'path';
@@ -1039,7 +1040,8 @@ class DiscordBotManager {
   }
 
   setupEventHandlers() {
-    this.client.on('ready', () => {
+    const readyEvent = Events.ClientReady || 'clientReady';
+    this.client.on(readyEvent, () => {
       this.client.user?.setActivity('CS2 Mix 5v5 • !mix ou /mix', { type: 0 });
     });
 
@@ -2889,12 +2891,12 @@ class DiscordBotManager {
       const requester = user.username || 'Jogador';
       const embed = this.buildLiveMatchEmbed(requester);
       const row = this.buildLiveMatchButtons(Boolean(this.lastGsiState?.player?.name));
-      const sent = await interaction.reply({
+      await interaction.reply({
         content: `📡 <@${user.id}> ativou o **Monitorar Partida**!`,
         embeds: [embed],
         components: [row],
-        fetchReply: true,
       });
+      const sent = await interaction.fetchReply();
       this.registerLiveTracker(sent, requester);
       return;
     }
@@ -2932,12 +2934,12 @@ class DiscordBotManager {
       const requester = user.username || 'Jogador';
       const embed = this.buildLiveMatchEmbed(requester);
       const row = this.buildLiveMatchButtons(Boolean(this.lastGsiState?.player?.name));
-      const sent = await interaction.reply({
+      await interaction.reply({
         content: `📡 <@${user.id}> ativou o **Monitorar Partida**!`,
         embeds: [embed],
         components: [row],
-        fetchReply: true,
       });
+      const sent = await interaction.fetchReply();
       this.registerLiveTracker(sent, requester);
       return;
     }
@@ -3851,7 +3853,8 @@ class DiscordBotManager {
     const requester = interaction.user?.username || 'Jogador';
     const embed = this.buildLiveMatchEmbed(requester);
     const row = this.buildLiveMatchButtons(Boolean(this.lastGsiState?.player?.name));
-    const sent = await interaction.reply({ embeds: [embed], components: [row], fetchReply: true });
+    await interaction.reply({ embeds: [embed], components: [row] });
+    const sent = await interaction.fetchReply();
     this.registerLiveTracker(sent, requester);
     return sent;
   }
