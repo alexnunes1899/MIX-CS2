@@ -20,6 +20,11 @@ import {
   ShieldCheck,
   Terminal,
   Play,
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
+  Film,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { GRENADE_LINEUPS, GRENADE_TYPES, WORKSHOP_PRACTICE_MAPS } from '../data/grenades';
 import { playClickSound } from '../utils/audio';
@@ -38,6 +43,15 @@ export default function GrenadePlaybookModal({
   const [copiedId, setCopiedId] = useState(null);
   const [expandedAimId, setExpandedAimId] = useState(null);
   const [videoModalLineup, setVideoModalLineup] = useState(null);
+  const [mediaTab, setMediaTab] = useState('video'); // 'video' | 'aim' | 'stance' | 'impact'
+  const [isZoomed, setIsZoomed] = useState(false);
+
+  const openMediaModal = (lineup, initialMedia = 'video') => {
+    if (soundEnabled) playClickSound();
+    setVideoModalLineup(lineup);
+    setMediaTab(initialMedia);
+    setIsZoomed(false);
+  };
 
   useEffect(() => {
     if (initialMap) {
@@ -360,6 +374,41 @@ echo ">>> CS2 MIX HUB PRATICE CFG ATIVADA! ALT: Repetir Granada | V: Noclip <<<"
                         )}
 
                         <div>
+                          {/* Visual Media Preview Banner (100% In-Site Player Trigger) */}
+                          <div
+                            onClick={() => openMediaModal(lineup, 'video')}
+                            className="relative h-36 w-full rounded-xl overflow-hidden bg-slate-900 border border-slate-800/80 mb-3 group/banner cursor-pointer shadow-inner"
+                          >
+                            <img
+                              src={lineup.thumbnailUrl || lineup.mapImage}
+                              alt={lineup.title}
+                              className="w-full h-full object-cover group-hover/banner:scale-105 transition-transform duration-300"
+                              loading="lazy"
+                            />
+                            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/30 to-transparent" />
+
+                            {/* Centered Glowing Play Button */}
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <div className="px-3.5 py-1.5 rounded-xl bg-purple-600/90 hover:bg-purple-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-purple-600/40 backdrop-blur-sm group-hover/banner:scale-110 transition-transform">
+                                <Play size={13} className="fill-white" />
+                                <span>Ver Vídeo no Site</span>
+                              </div>
+                            </div>
+
+                            {/* Badges on Banner */}
+                            <div className="absolute top-2 left-2 flex items-center gap-1.5">
+                              <span className="text-[10px] font-mono font-bold bg-slate-950/80 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-md backdrop-blur-sm">
+                                🎯 {lineup.throwType}
+                              </span>
+                            </div>
+                            <div className="absolute bottom-2 right-2 flex items-center gap-1">
+                              <span className="text-[10px] font-bold bg-slate-950/85 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-md backdrop-blur-sm flex items-center gap-1">
+                                <Crosshair size={11} className="text-emerald-400" />
+                                <span>Foto da Mira</span>
+                              </span>
+                            </div>
+                          </div>
+
                           {/* Top Badges */}
                           <div className="flex items-center justify-between gap-2 mb-2">
                             <div className="flex items-center gap-1.5 flex-wrap">
@@ -452,33 +501,38 @@ echo ">>> CS2 MIX HUB PRATICE CFG ATIVADA! ALT: Repetir Granada | V: Noclip <<<"
 
                         {/* Card Interactive Footer Buttons */}
                         <div className="pt-2 border-t border-slate-900 flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <button
+                              onClick={() => openMediaModal(lineup, 'video')}
+                              className="px-2.5 py-1.5 rounded-lg bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/40 text-purple-200 text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                            >
+                              <Play size={12} className="fill-purple-300 text-purple-300" />
+                              <span>Vídeo no Site</span>
+                            </button>
+
+                            <button
+                              onClick={() => openMediaModal(lineup, 'aim')}
+                              className="px-2.5 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-300 text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                            >
+                              <Crosshair size={12} />
+                              <span>Foto da Mira</span>
+                            </button>
+
                             <button
                               onClick={() => {
                                 if (soundEnabled) playClickSound();
                                 setExpandedAimId(isAimExpanded ? null : lineup.id);
                               }}
-                              className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                              className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
                             >
                               {isAimExpanded ? <EyeOff size={12} /> : <Eye size={12} />}
-                              <span>{isAimExpanded ? 'Ocultar Mira' : 'Ver Mira'}</span>
-                            </button>
-
-                            <button
-                              onClick={() => {
-                                if (soundEnabled) playClickSound();
-                                setVideoModalLineup(lineup);
-                              }}
-                              className="px-2.5 py-1 rounded-lg bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/30 text-purple-300 text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
-                            >
-                              <Play size={12} className="text-purple-400" />
-                              <span>Vídeo / Tutorial</span>
+                              <span>{isAimExpanded ? 'Fechar' : 'Passos'}</span>
                             </button>
                           </div>
 
                           <button
                             onClick={() => handleCopySteps(lineup)}
-                            className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                            className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-white text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors shrink-0"
                           >
                             {isCopied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
                             <span className={isCopied ? 'text-emerald-400 font-bold' : ''}>
@@ -657,65 +711,289 @@ echo ">>> CS2 MIX HUB PRATICE CFG ATIVADA! ALT: Repetir Granada | V: Noclip <<<"
           </button>
         </div>
 
-        {/* Video Tutorial Sub-Modal */}
+        {/* In-Site Video & Media Player Sub-Modal (100% Inside Website) */}
         {videoModalLineup && (
           <div className="fixed inset-0 z-60 flex items-center justify-center p-3 sm:p-5 bg-black/90 backdrop-blur-md animate-fadeIn">
-            <div className="bg-slate-900 border-2 border-purple-500/40 rounded-3xl w-full max-w-2xl p-5 sm:p-6 shadow-2xl relative space-y-4">
-              <button
-                onClick={() => setVideoModalLineup(null)}
-                className="absolute top-4 right-4 p-2 rounded-xl text-slate-400 hover:text-white bg-slate-800/80 cursor-pointer"
-              >
-                <X size={18} />
-              </button>
-
-              <div className="flex items-center gap-2 text-purple-400 text-xs font-bold uppercase tracking-wider">
-                <Video size={16} />
-                <span>Tutorial em Vídeo & Guia Visual</span>
-              </div>
-
-              <div>
-                <h3 className="text-lg font-black text-white font-heading">
-                  {videoModalLineup.title} ({videoModalLineup.mapName})
-                </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  📍 {videoModalLineup.location} • Arremesso: <strong>{videoModalLineup.throwType}</strong>
-                </p>
-              </div>
-
-              {/* Aim & Breakdown Box */}
-              <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2 text-xs">
-                <div className="flex items-center gap-1.5 text-amber-300 font-bold">
-                  <Crosshair size={14} />
-                  <span>Alinhamento & Posição:</span>
-                </div>
-                <div className="space-y-1.5 text-slate-300">
-                  <p>
-                    <strong className="text-white">👣 Onde Pisar:</strong> {videoModalLineup.standPos}
-                  </p>
-                  <p>
-                    <strong className="text-white">🎯 Ponto de Mira:</strong> {videoModalLineup.aimPoint}
-                  </p>
-                  <p>
-                    <strong className="text-white">💨 O que Cobre:</strong> {videoModalLineup.bloomArea}
+            <div className="bg-slate-900 border-2 border-purple-500/50 rounded-3xl w-full max-w-3xl max-h-[92vh] flex flex-col shadow-2xl relative overflow-hidden">
+              {/* Header */}
+              <div className="px-5 sm:px-6 py-4 border-b border-slate-800 flex items-start justify-between bg-slate-950/80 shrink-0">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] font-mono font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/30 flex items-center gap-1">
+                      <span>{videoModalLineup.mapEmoji || '🗺️'}</span>
+                      <span>{videoModalLineup.mapName}</span>
+                    </span>
+                    <span
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                        videoModalLineup.side === 'TR'
+                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                          : 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
+                      }`}
+                    >
+                      Lado {videoModalLineup.side}
+                    </span>
+                    <span className="text-[10px] font-mono text-purple-300 bg-purple-500/15 border border-purple-500/30 px-2 py-0.5 rounded-md">
+                      🎯 {videoModalLineup.throwType}
+                    </span>
+                  </div>
+                  <h3 className="text-base sm:text-lg font-black text-white font-heading">
+                    {videoModalLineup.title}
+                  </h3>
+                  <p className="text-xs text-slate-400 flex items-center gap-1">
+                    <MapPin size={12} className="text-amber-400 shrink-0" />
+                    <span>{videoModalLineup.location}</span>
                   </p>
                 </div>
-              </div>
-
-              {/* YouTube Video Player Embed or Direct Link */}
-              <div className="space-y-2">
-                <a
-                  href={videoModalLineup.videoUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="w-full py-3 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-red-600/30 transition-all text-sm cursor-pointer"
+                <button
+                  onClick={() => setVideoModalLineup(null)}
+                  className="p-2 rounded-xl text-slate-400 hover:text-white bg-slate-800/80 hover:bg-slate-800 cursor-pointer transition-colors shrink-0"
                 >
-                  <Play size={16} className="fill-white" />
-                  <span>Assistir Vídeo Tutorial no YouTube (Oficial)</span>
-                  <ExternalLink size={14} />
-                </a>
-                <p className="text-[11px] text-center text-slate-500">
-                  Abre o tutorial direto no YouTube em nova aba com o alinhamento em 60 FPS.
-                </p>
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Media Switcher Tabs (Video vs Aim Photo vs Stance vs Impact) */}
+              <div className="px-5 sm:px-6 py-2 bg-slate-950/60 border-b border-slate-800 flex items-center gap-2 shrink-0 overflow-x-auto no-scrollbar">
+                <button
+                  onClick={() => {
+                    if (soundEnabled) playClickSound();
+                    setMediaTab('video');
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                    mediaTab === 'video'
+                      ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30'
+                      : 'bg-slate-800/80 text-slate-300 hover:text-white border border-slate-700/60'
+                  }`}
+                >
+                  <Film size={13} />
+                  <span>Vídeo no Site</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                </button>
+
+                <button
+                  onClick={() => {
+                    if (soundEnabled) playClickSound();
+                    setMediaTab('aim');
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                    mediaTab === 'aim'
+                      ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/30 font-black'
+                      : 'bg-slate-800/80 text-slate-300 hover:text-white border border-slate-700/60'
+                  }`}
+                >
+                  <Crosshair size={13} />
+                  <span>Foto da Mira & Retículo</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    if (soundEnabled) playClickSound();
+                    setMediaTab('stance');
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                    mediaTab === 'stance'
+                      ? 'bg-sky-500 text-slate-950 shadow-md shadow-sky-500/30 font-black'
+                      : 'bg-slate-800/80 text-slate-300 hover:text-white border border-slate-700/60'
+                  }`}
+                >
+                  <MapPin size={13} />
+                  <span>Onde Pisar</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    if (soundEnabled) playClickSound();
+                    setMediaTab('impact');
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                    mediaTab === 'impact'
+                      ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/30 font-black'
+                      : 'bg-slate-800/80 text-slate-300 hover:text-white border border-slate-700/60'
+                  }`}
+                >
+                  <Sparkles size={13} />
+                  <span>Área de Cobertura</span>
+                </button>
+              </div>
+
+              {/* Modal Body with Scroll */}
+              <div className="p-4 sm:p-6 overflow-y-auto space-y-4 max-h-[64vh] custom-scrollbar">
+                {/* 1. VIDEO VIEW (Embedded 100% Inside Web Page) */}
+                {mediaTab === 'video' && (
+                  <div className="space-y-3 animate-fadeIn">
+                    <div className="relative aspect-video w-full rounded-2xl overflow-hidden bg-black border-2 border-purple-500/40 shadow-2xl">
+                      <iframe
+                        src={`https://www.youtube-nocookie.com/embed/${videoModalLineup.youtubeId}?autoplay=1&rel=0&modestbranding=1&playsinline=1`}
+                        title={videoModalLineup.title}
+                        className="w-full h-full border-0"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                        allowFullScreen
+                      />
+                    </div>
+                    <div className="flex items-center justify-between text-xs px-1">
+                      <span className="flex items-center gap-1.5 text-emerald-400 font-bold">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                        <span>Vídeo executando em 60 FPS diretamente no site</span>
+                      </span>
+                      <span className="font-mono text-slate-400 text-[11px]">
+                        Arremesso: <strong className="text-purple-300">{videoModalLineup.throwType}</strong>
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* 2. AIM PHOTO & TACTICAL RETICLE VIEW */}
+                {mediaTab === 'aim' && (
+                  <div className="space-y-3 animate-fadeIn">
+                    <div className="relative aspect-video w-full rounded-2xl overflow-hidden bg-slate-950 border-2 border-emerald-500/40 shadow-2xl flex items-center justify-center select-none group">
+                      <img
+                        src={videoModalLineup.aimImage || videoModalLineup.thumbnailUrl}
+                        alt={videoModalLineup.title}
+                        className={`w-full h-full object-cover transition-transform duration-300 ${
+                          isZoomed ? 'scale-150 cursor-zoom-out' : 'scale-100 cursor-zoom-in'
+                        }`}
+                        onClick={() => setIsZoomed(!isZoomed)}
+                      />
+                      {/* CS2 Tactical Crosshair Reticle Overlay */}
+                      <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+                        <div className="relative flex items-center justify-center">
+                          {/* Pulsing ring */}
+                          <div className="w-10 h-10 rounded-full border-2 border-emerald-400/60 animate-ping absolute" />
+                          {/* Solid ring */}
+                          <div className="w-7 h-7 rounded-full border-2 border-emerald-400 bg-emerald-400/15 flex items-center justify-center">
+                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-300 shadow-sm shadow-emerald-400" />
+                          </div>
+                          {/* Reticle lines */}
+                          <div className="absolute top-1/2 -left-6 w-4 h-0.5 bg-emerald-400 shadow-sm" />
+                          <div className="absolute top-1/2 -right-6 w-4 h-0.5 bg-emerald-400 shadow-sm" />
+                          <div className="absolute -top-6 left-1/2 -translate-x-1/2 w-0.5 h-4 bg-emerald-400 shadow-sm" />
+                          <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 w-0.5 h-4 bg-emerald-400 shadow-sm" />
+                        </div>
+                      </div>
+
+                      {/* Zoom Toggle Pill */}
+                      <button
+                        onClick={() => setIsZoomed(!isZoomed)}
+                        className="absolute bottom-3 right-3 px-3 py-1.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700 text-xs font-bold text-white flex items-center gap-1.5 backdrop-blur-md shadow-lg cursor-pointer transition-all"
+                      >
+                        {isZoomed ? (
+                          <ZoomOut size={14} className="text-emerald-400" />
+                        ) : (
+                          <ZoomIn size={14} className="text-emerald-400" />
+                        )}
+                        <span>{isZoomed ? 'Reduzir (1x)' : 'Ampliar Pixel (Zoom)'}</span>
+                      </button>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-slate-950 border border-emerald-500/20 text-xs text-slate-300 flex items-start gap-2">
+                      <Crosshair size={16} className="text-emerald-400 shrink-0 mt-0.5" />
+                      <div>
+                        <strong className="text-white">Alinhamento Exato da Mira:</strong>{' '}
+                        <span>{videoModalLineup.aimPoint}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. STANCE VIEW */}
+                {mediaTab === 'stance' && (
+                  <div className="p-5 rounded-2xl bg-slate-950 border-2 border-sky-500/30 space-y-3 text-xs text-slate-300 animate-fadeIn">
+                    <div className="flex items-center gap-2 text-sky-400 font-bold text-sm">
+                      <MapPin size={16} />
+                      <span>Posicionamento dos Pés & Colisão com Parede</span>
+                    </div>
+                    <p className="leading-relaxed text-sm text-white">
+                      👣 <strong>Onde travar o jogador:</strong> {videoModalLineup.standPos}
+                    </p>
+                    <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 space-y-2 font-mono text-[11px] text-sky-300">
+                      <div>• <strong>Tipo de Movimento:</strong> {videoModalLineup.throwType}</div>
+                      <div>• <strong>Mapa Oficial:</strong> {videoModalLineup.mapName} ({videoModalLineup.map})</div>
+                      <div>• <strong>Lado:</strong> {videoModalLineup.side}</div>
+                      <div>• <strong>Grau de Dificuldade:</strong> {videoModalLineup.difficulty}</div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 4. IMPACT & COVERAGE VIEW */}
+                {mediaTab === 'impact' && (
+                  <div className="p-5 rounded-2xl bg-slate-950 border-2 border-amber-500/30 space-y-3 text-xs text-slate-300 animate-fadeIn">
+                    <div className="flex items-center gap-2 text-amber-400 font-bold text-sm">
+                      <Sparkles size={16} />
+                      <span>Área de Cobertura & Impacto Tático</span>
+                    </div>
+                    <p className="leading-relaxed text-sm text-white">
+                      💨 <strong>O que esta utilitária anula:</strong> {videoModalLineup.bloomArea}
+                    </p>
+                    {videoModalLineup.proTip && (
+                      <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200">
+                        💡 <strong>Dica Pro:</strong> {videoModalLineup.proTip}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Steps Checklist */}
+                <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2 text-xs">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center justify-between">
+                    <span>📋 Passo a Passo de Execução:</span>
+                    <span className="font-mono text-purple-300">{videoModalLineup.throwType}</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {videoModalLineup.steps.map((st, i) => (
+                      <div key={i} className="flex items-start gap-2 text-slate-300">
+                        <span className="w-4 h-4 rounded-full bg-purple-500/20 text-purple-300 font-mono text-[10px] flex items-center justify-center shrink-0 mt-0.5 border border-purple-500/40">
+                          {i + 1}
+                        </span>
+                        <span className="leading-relaxed">{st}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Pro Tip */}
+                {videoModalLineup.proTip && mediaTab !== 'impact' && (
+                  <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-200 flex items-start gap-2">
+                    <Lightbulb size={13} className="text-amber-400 shrink-0 mt-0.5" />
+                    <span>
+                      <strong>Dica Pro:</strong> {videoModalLineup.proTip}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Sub-Modal Footer Controls */}
+              <div className="px-5 sm:px-6 py-3 border-t border-slate-800 bg-slate-950/80 flex flex-col sm:flex-row items-center justify-between gap-2.5 shrink-0">
+                <button
+                  onClick={() => handleCopySteps(videoModalLineup)}
+                  className="w-full sm:w-auto px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-colors"
+                >
+                  {copiedId === videoModalLineup.id ? (
+                    <Check size={14} className="text-emerald-400" />
+                  ) : (
+                    <Copy size={14} />
+                  )}
+                  <span>
+                    {copiedId === videoModalLineup.id ? 'Lineup Copiada!' : 'Copiar Guia da Lineup'}
+                  </span>
+                </button>
+
+                <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                  <a
+                    href={videoModalLineup.videoUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-slate-400 hover:text-white text-[11px] flex items-center gap-1 hover:underline cursor-pointer"
+                  >
+                    <span>Abrir no YouTube (Opcional)</span>
+                    <ExternalLink size={11} />
+                  </a>
+                  <button
+                    onClick={() => setVideoModalLineup(null)}
+                    className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold cursor-pointer transition-colors"
+                  >
+                    Fechar Player
+                  </button>
+                </div>
               </div>
             </div>
           </div>
