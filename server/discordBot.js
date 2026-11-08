@@ -141,23 +141,39 @@ class DiscordBotManager {
       await this.stop();
     }
 
+    const baseIntents = [
+      GatewayIntentBits.Guilds,
+      GatewayIntentBits.GuildMessages,
+      GatewayIntentBits.GuildVoiceStates,
+    ];
+
     try {
-      this.client = new Client({
-        intents: [
-          GatewayIntentBits.Guilds,
-          GatewayIntentBits.GuildMessages,
-          GatewayIntentBits.GuildVoiceStates,
-        ],
-      });
+      // First attempt: try with MessageContent (allows reading !mix anywhere)
+      try {
+        this.client = new Client({
+          intents: [...baseIntents, GatewayIntentBits.MessageContent],
+        });
+        this.setupEventHandlers();
+        await this.client.login(token);
+        console.log(`🎮 [DISCORD BOT] Conectado com sucesso (com suporte a prefixo !) como ${this.client.user.tag}!`);
+      } catch (intentErr) {
+        if (intentErr.message?.includes('disallowed intents')) {
+          console.warn('⚠️ [DISCORD BOT] Intent MessageContent não está ativada no Portal do Discord. Conectando em modo seguro...');
+          if (this.client) {
+            try { this.client.destroy(); } catch (e) {}
+          }
+          this.client = new Client({ intents: baseIntents });
+          this.setupEventHandlers();
+          await this.client.login(token);
+          console.log(`🎮 [DISCORD BOT] Conectado com sucesso como ${this.client.user.tag}!`);
+        } else {
+          throw intentErr;
+        }
+      }
 
-      this.setupEventHandlers();
-
-      await this.client.login(token);
       this.status.running = true;
       this.status.startedAt = new Date().toISOString();
       this.status.lastError = null;
-
-      console.log(`🎮 [DISCORD BOT] Conectado com sucesso como ${this.client.user.tag}!`);
 
       // Register or update Slash Commands
       await this.registerSlashCommands();
@@ -274,7 +290,16 @@ class DiscordBotManager {
 
   setupEventHandlers() {
     this.client.on('ready', () => {
-      this.client.user?.setActivity('CS2 Mix 5v5 • /mix', { type: 0 }); // Playing
+      this.client.user?.setActivity('CS2 Mix 5v5 • !mix ou /mix', { type: 0 }); // Playing
+    });
+
+    // Handle Messages with Prefix '!'
+    this.client.on('messageCreate', async (message) => {
+      try {
+        await this.handlePrefixCommand(message);
+      } catch (err) {
+        console.error('[DISCORD BOT] Erro ao processar mensagem prefixo !:', err);
+      }
     });
 
     // Handle Slash Commands
@@ -297,6 +322,271 @@ class DiscordBotManager {
         }
       }
     });
+  }
+
+  // ==========================================
+  // PREFIX COMMAND (!) HANDLERS
+  // ==========================================
+
+  async handlePrefixCommand(message) {
+    if (!message || message.author?.bot) return;
+
+    let content = message.content?.trim() || '';
+    if (!content) return;
+
+    const botMention = `<@${this.client.user.id}>`;
+    const botNickMention = `<@!${this.client.user.id}>`;
+
+    let isMentioned = false;
+    if (content.startsWith(botMention)) {
+      content = content.slice(botMention.length).trim();
+      isMentioned = true;
+    } else if (content.startsWith(botNickMention)) {
+      content = content.slice(botNickMention.length).trim();
+      isMentioned = true;
+    }
+
+    // Must start with '!' or mention the bot
+    if (!content.startsWith('!') && !isMentioned) return;
+
+    // Remove leading '!' if present
+    if (content.startsWith('!')) {
+      content = content.slice(1).trim();
+    }
+
+    const args = content.split(/\s+/);
+    const command = (args[0] || '').toLowerCase();
+    const subArg = (args[1] || '').toLowerCase();
+
+    if (command === 'mix' || command === 'criar' || command === 'lobby') {
+      if (subArg === 'entrar') return this.prefixJoin(message);
+      if (subArg === 'sair') return this.prefixLeave(message);
+      if (subArg === 'sortear' || subArg === 'times') return this.prefixDraw(message);
+      if (subArg === 'veto' || subArg === 'ban') return this.prefixVeto(message);
+      if (subArg === 'roleta') return this.prefixRoulette(message);
+      if (subArg === 'cancelar') return this.prefixCancel(message);
+      return this.prefixCreateMix(message, args.slice(1).join(' '));
+    }
+
+    if (command === 'painel') {
+      return this.prefixPainel(message);
+    }
+
+    if (command === 'entrar') {
+      return this.prefixJoin(message);
+    }
+
+    if (command === 'sair') {
+      return this.prefixLeave(message);
+    }
+
+    if (command === 'sortear' || command === 'times') {
+      return this.prefixDraw(message);
+    }
+
+    if (command === 'veto' || command === 'ban') {
+      return this.prefixVeto(message);
+    }
+
+    if (command === 'roleta') {
+      return this.prefixRoulette(message);
+    }
+
+    if (command === 'servidor') {
+      const ip = args.slice(1).join(' ').trim();
+      if (ip) {
+        this.config.serverConnect = ip;
+        this.saveConfig({ serverConnect: ip });
+        return message.reply(`✅ Servidor CS2 configurado com sucesso para os mixes: \`${ip}\``);
+      }
+      return message.reply(
+        this.config.serverConnect
+          ? `💻 **Servidor Atual:** \`${this.config.serverConnect}\`\n👉 Para conectar: \`connect ${this.config.serverConnect}\``
+          : '⚠️ Nenhum servidor configurado. Use `!servidor 189.1.168.20:27015` para configurar!'
+      );
+    }
+
+    if (command === 'ranking') {
+      return this.prefixRanking(message);
+    }
+
+    if (command === 'ajuda' || command === 'help') {
+      return this.prefixHelp(message);
+    }
+
+    if (command === 'cancelar') {
+      return this.prefixCancel(message);
+    }
+  }
+
+  async prefixCreateMix(message, customName) {
+    const user = message.author;
+    const name = customName || `Mix 5v5 de ${user.username}`;
+    const mix = this.getOrCreateMix(message.channelId, user, { name });
+    const embed = this.buildLobbyEmbed(mix);
+    const components = this.buildLobbyButtons(mix);
+    return message.channel.send({
+      content: `🎮 <@${user.id}> criou um novo **Lobby de Mix CS2 5v5**!`,
+      embeds: [embed],
+      components,
+    });
+  }
+
+  async prefixPainel(message) {
+    const embed = new EmbedBuilder()
+      .setTitle('🏆 CS2 MIX HUB • PAINEL OFICIAL DA COMUNIDADE')
+      .setDescription(
+        `Bem-vindo à central de partidas 5v5 da comunidade!\n\n` +
+          `• **Lobbies Automáticos:** Clique em **Criar Mix** ou digite \`!mix\` para abrir uma fila 5v5.\n` +
+          `• **Balanceamento Competitivo:** Gamers Club e FACEIT oficial.\n` +
+          `• **Pick & Ban:** Veto de mapas oficial MD1 e MD3 da Valve com 1 clique.\n` +
+          `• **Canais de Voz:** Movimentação automática para calls CT e TR na hora do jogo!\n\n` +
+          `*Pressione o botão verde abaixo para iniciar um Mix agora:*`
+      )
+      .setColor(0x38bdf8)
+      .setThumbnail('https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=200&q=80')
+      .setFooter({ text: 'CS2 Mix Hub • Plataforma Competitiva' });
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('panel_create_mix')
+        .setLabel('🎮 Criar Mix 5v5')
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setLabel('🌐 Acessar Hub no Navegador')
+        .setStyle(ButtonStyle.Link)
+        .setURL('http://localhost:3000/')
+    );
+
+    return message.channel.send({ embeds: [embed], components: [row] });
+  }
+
+  async prefixJoin(message) {
+    const mix = this.activeMixes.get(message.channelId);
+    if (!mix) {
+      return message.reply('⚠️ Nenhum mix ativo neste canal. Crie um agora com `!mix` ou clicando no botão verde!');
+    }
+    if (mix.players.some((p) => p.id === message.author.id)) {
+      return message.reply('⚠️ Você já está no mix!');
+    }
+    if (mix.players.length >= 10) {
+      return message.reply('🚫 O mix já está lotado (10/10)!');
+    }
+    mix.players.push({
+      id: message.author.id,
+      username: message.author.username,
+      displayName: message.member?.displayName || message.author.username,
+      avatar: message.author.displayAvatarURL({ dynamic: true }),
+      level: 16,
+      ready: true,
+    });
+    return message.reply(`✅ <@${message.author.id}> entrou no mix! (${mix.players.length}/10)`);
+  }
+
+  async prefixLeave(message) {
+    const mix = this.activeMixes.get(message.channelId);
+    if (!mix) return message.reply('⚠️ Nenhum mix ativo neste canal.');
+    const idx = mix.players.findIndex((p) => p.id === message.author.id);
+    if (idx === -1) return message.reply('⚠️ Você não está no mix.');
+    mix.players.splice(idx, 1);
+    return message.reply(`🚪 <@${message.author.id}> saiu do mix. (${mix.players.length}/10)`);
+  }
+
+  async prefixDraw(message) {
+    const mix = this.activeMixes.get(message.channelId);
+    if (!mix) return message.reply('⚠️ Nenhum mix ativo neste canal.');
+    if (mix.players.length < 2) return message.reply('⚠️ É necessário pelo menos 2 jogadores para sortear!');
+    this.balanceTeams(mix);
+    const embed = this.buildTeamsDrawnEmbed(mix);
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`mix_veto:${mix.id}`).setLabel('🗳️ Iniciar Pick & Ban').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(`mix_roulette:${mix.id}`).setLabel('🎲 Roleta Rápida').setStyle(ButtonStyle.Secondary)
+    );
+    return message.reply({ embeds: [embed], components: [row] });
+  }
+
+  async prefixVeto(message) {
+    const mix = this.activeMixes.get(message.channelId);
+    if (!mix) return message.reply('⚠️ Nenhum mix ativo neste canal.');
+    if (mix.teamA.length === 0 || mix.teamB.length === 0) {
+      this.balanceTeams(mix);
+    }
+    mix.vetoState = this.initVetoState(mix);
+    mix.phase = 'VETO';
+    const embed = this.buildVetoEmbed(mix);
+    const components = this.buildVetoButtons(mix);
+    return message.reply({
+      content: `🗳️ **VETO DE MAPAS INICIADO!**\n👑 Capitão A: <@${mix.captainA.id}> | 👑 Capitão B: <@${mix.captainB.id}>\n👉 Vez de: <@${mix.vetoState.currentTurn.id}> banir um mapa!`,
+      embeds: [embed],
+      components,
+    });
+  }
+
+  async prefixRoulette(message) {
+    const shuffled = [...OFFICIAL_MAPS].sort(() => Math.random() - 0.5);
+    const picked = shuffled[0];
+    const embed = new EmbedBuilder()
+      .setTitle('🎲 ROLETA DE MAPAS CS2')
+      .setColor(0xf59e0b)
+      .setDescription(`O mapa sorteado pela roleta foi: ${picked.emoji} **${picked.name}** (\`${picked.id}\`)!`)
+      .setFooter({ text: 'CS2 Mix Hub • Roleta Instantânea' })
+      .setTimestamp();
+    return message.reply({ embeds: [embed] });
+  }
+
+  async prefixCancel(message) {
+    const mix = this.activeMixes.get(message.channelId);
+    if (!mix) return message.reply('⚠️ Nenhum mix ativo neste canal.');
+    this.activeMixes.delete(message.channelId);
+    return message.reply(`❌ O mix **${mix.name}** foi cancelado com sucesso.`);
+  }
+
+  async prefixRanking(message) {
+    try {
+      const filePath = path.join(__dirname, 'data', 'leaderboard.json');
+      let data = [];
+      if (fs.existsSync(filePath)) {
+        data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+      }
+      if (!Array.isArray(data) || data.length === 0) {
+        return message.reply('🏆 **Hall da Fama:** Ainda não há partidas registradas.');
+      }
+      const top5 = data.slice(0, 5);
+      const list = top5
+        .map((p, i) => `**${i + 1}º** ${p.nick} • **${p.wins || 0}V** / ${p.losses || 0}D (\`${p.winRate || 0}%\` Win Rate) - Lvl ${p.level || 16}`)
+        .join('\n');
+      const embed = new EmbedBuilder()
+        .setTitle('🏆 HALL DA FAMA & RANKING DA COMUNIDADE')
+        .setDescription(list)
+        .setColor(0xf59e0b)
+        .setFooter({ text: 'CS2 Mix Hub • Leaderboard' })
+        .setTimestamp();
+      return message.reply({ embeds: [embed] });
+    } catch (e) {
+      return message.reply(`❌ Erro ao buscar ranking: ${e.message}`);
+    }
+  }
+
+  async prefixHelp(message) {
+    const embed = new EmbedBuilder()
+      .setTitle('📖 GUIA DE COMANDOS COM PREFIXO (!) • CS2 MIX HUB')
+      .setColor(0x38bdf8)
+      .setDescription(
+        `Você pode usar o prefixo \`!\` para tudo no servidor:\n\n` +
+          `• \`!painel\` - Cria o painel fixo com botão verde para abrir mix\n` +
+          `• \`!mix\` ou \`!criar\` - Abre uma nova fila 5v5 com botões interativos\n` +
+          `• \`!entrar\` - Entra na fila do mix ativo\n` +
+          `• \`!sair\` - Sai da fila do mix\n` +
+          `• \`!sortear\` ou \`!times\` - Sorteia e equilibra os dois times\n` +
+          `• \`!veto\` - Inicia o Pick & Ban oficial da Valve com botões de mapas\n` +
+          `• \`!roleta\` - Gira a roleta rápida de mapas\n` +
+          `• \`!servidor [ip:porta]\` - Exibe ou define o IP do servidor de CS2\n` +
+          `• \`!ranking\` - Mostra o Top 5 do Hall da Fama\n` +
+          `• \`!ajuda\` - Exibe esta mensagem de ajuda\n\n` +
+          `*Você também pode continuar usando a barra \`/\` (\`/mix\`, \`/painel\`) normalmente!*`
+      )
+      .setFooter({ text: 'CS2 Mix Hub • Prefixo ! e Barra /' });
+    return message.reply({ embeds: [embed] });
   }
 
   // ==========================================
