@@ -253,7 +253,14 @@ export default function MatchCardModal({ isOpen, onClose, room, soundEnabled }) 
   const safeRoom = room || {};
   const { labelA, labelB, upperA, upperB } = getTeamNames(safeRoom);
   const finalMap = safeRoom.finalMap;
-  const fullMap = CS2_MAPS.find((m) => m.id === finalMap?.id) || finalMap || { name: 'Mirage', file: 'de_mirage' };
+  const fullMap =
+    CS2_MAPS.find(
+      (m) =>
+        m.id === finalMap?.id ||
+        m.file === finalMap?.file ||
+        m.file === finalMap?.id ||
+        m.name?.toLowerCase() === finalMap?.name?.toLowerCase()
+    ) || finalMap || { name: 'Mirage', file: 'de_mirage' };
   const sideTeamB = safeRoom.startingSideTeamB || 'CT';
   const sideTeamA =
     safeRoom.startingSideTeamA ||

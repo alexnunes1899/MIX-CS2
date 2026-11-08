@@ -41,7 +41,14 @@ export default function FinalSummary({
   const { finalMap, teamA = [], teamB = [], metrics, startingSideTeamB, name: roomName = 'MIX', serverIp = '', rconPassword = '', liveMatch = null, rankingSystem = 'gc', discordWebhook = '', vetoLog = [] } = room;
   const { labelA, labelB, upperA, upperB } = getTeamNames(room);
   const isFaceit = rankingSystem === 'faceit';
-  const fullMap = CS2_MAPS.find((m) => m.id === finalMap?.id) || finalMap;
+  const fullMap =
+    CS2_MAPS.find(
+      (m) =>
+        m.id === finalMap?.id ||
+        m.file === finalMap?.file ||
+        m.file === finalMap?.id ||
+        m.name?.toLowerCase() === finalMap?.name?.toLowerCase()
+    ) || finalMap;
 
   const sideTeamB = startingSideTeamB || 'CT';
   const sideTeamA = sideTeamB === 'KNIFE' ? 'KNIFE' : sideTeamB === 'CT' ? 'TR' : 'CT';
@@ -236,44 +243,63 @@ export default function FinalSummary({
   return (
     <div className="space-y-6">
       {/* Decider Map Hero Banner */}
-      <div className="relative overflow-hidden rounded-3xl border-2 border-amber-400 bg-slate-900 shadow-2xl p-6 sm:p-10 text-center animate-glow">
+      <div className="relative overflow-hidden rounded-3xl border-2 border-amber-500/50 bg-slate-900 shadow-[0_0_50px_rgba(245,158,11,0.15)] p-6 sm:p-10 text-center animate-glow">
         <div
-          className="absolute inset-0 bg-cover bg-center opacity-30"
+          className="absolute inset-0 bg-cover bg-center opacity-35 filter brightness-90"
           style={{
             backgroundImage: `url(${fullMap?.image || 'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=1200&q=80'})`,
           }}
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/80 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/85 to-slate-950/50" />
 
-        <div className="relative z-10 space-y-3 max-w-2xl mx-auto">
-          <div className="flex items-center justify-center gap-2 flex-wrap">
-            <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-amber-500 text-slate-950 font-black text-xs uppercase tracking-wider shadow-lg">
-              <Trophy size={14} /> Mix Pronto para Iniciar!
+        {/* Tactical Corner Accents */}
+        <div className="absolute top-3 left-3 w-3 h-3 border-t-2 border-l-2 border-amber-400/60 pointer-events-none" />
+        <div className="absolute top-3 right-3 w-3 h-3 border-t-2 border-r-2 border-amber-400/60 pointer-events-none" />
+        <div className="absolute bottom-3 left-3 w-3 h-3 border-b-2 border-l-2 border-amber-400/60 pointer-events-none" />
+        <div className="absolute bottom-3 right-3 w-3 h-3 border-b-2 border-r-2 border-amber-400/60 pointer-events-none" />
+
+        <div className="relative z-10 space-y-4 max-w-3xl mx-auto">
+          {/* Top Badges Bar */}
+          <div className="flex items-center justify-center gap-2.5 flex-wrap">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-500/20 border border-amber-500/50 text-amber-300 font-black text-xs uppercase tracking-wider shadow-lg backdrop-blur-sm">
+              <Trophy size={14} className="text-amber-400" />
+              <span>Mix Pronto para Iniciar!</span>
             </div>
-            {room.matchFormat && room.matchFormat !== 'MD1' && (
-              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-950/80 border border-amber-400 text-amber-300 font-black text-xs uppercase tracking-wider shadow-lg">
-                🏆 Formato {room.matchFormat}
+            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-950/90 border border-amber-500/30 text-amber-300 font-black text-xs uppercase tracking-wider shadow-lg font-mono">
+              <Flame size={13} className="text-amber-400" />
+              <span>Formato {room.matchFormat || 'MD1'}</span>
+            </div>
+            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-sky-500/10 border border-sky-500/30 text-sky-300 font-bold text-xs uppercase tracking-wider shadow-lg">
+              <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
+              <span>Rotação Oficial Valve</span>
+            </div>
+          </div>
+
+          {/* Centered Map Logo & Balanced Title */}
+          <div className="flex flex-col items-center justify-center my-2 text-center">
+            {fullMap?.logo && (
+              <div className="relative mb-2">
+                <div className="absolute inset-0 bg-amber-500/20 blur-xl rounded-full scale-125 pointer-events-none" />
+                <img
+                  src={fullMap.logo}
+                  alt={fullMap.name}
+                  className="relative w-20 h-20 sm:w-24 sm:h-24 object-contain drop-shadow-[0_12px_24px_rgba(0,0,0,0.95)] filter brightness-110"
+                />
               </div>
             )}
-          </div>
-
-          <div className="flex items-center justify-center gap-4 my-2">
-            {fullMap?.logo && (
-              <img
-                src={fullMap.logo}
-                alt={fullMap.name}
-                className="w-16 h-16 sm:w-20 sm:h-20 object-contain drop-shadow-[0_8px_16px_rgba(0,0,0,0.8)] animate-pulse"
-              />
-            )}
-            <h2 className="text-4xl sm:text-6xl font-black font-heading text-white tracking-wider">
-              {fullMap?.name?.toUpperCase() || 'MAPA DEFINIDO'}
+            <h2 className="text-4xl sm:text-6xl lg:text-7xl font-black font-heading text-white tracking-widest uppercase drop-shadow-[0_4px_20px_rgba(0,0,0,0.95)]">
+              {fullMap?.name || 'MAPA DEFINIDO'}
             </h2>
+            <div className="inline-flex items-center gap-2 mt-2 px-4 py-1 rounded-full bg-slate-950/85 border border-slate-800 text-xs text-slate-300 font-mono shadow-inner">
+              <span className="text-slate-500">ARQUIVO:</span>
+              <strong className="text-amber-400 font-bold">{fullMap?.file}</strong>
+              <span className="text-slate-600">•</span>
+              <span className="text-slate-500">LOCAL:</span>
+              <span className="text-slate-200">{fullMap?.location || 'CS2 Competitivo'}</span>
+            </div>
           </div>
 
-          <p className="text-sm text-slate-300">
-            Arquivo de Mapa: <strong className="text-amber-400 font-mono">{fullMap?.file}</strong> • Local: <strong className="text-slate-200">{fullMap?.location || 'CS2'}</strong>
-          </p>
-
+          {/* Action Buttons Unified Dock */}
           <div className="pt-2 flex flex-wrap items-center justify-center gap-2.5">
             {/* Generate Visual Match Card (PNG) */}
             {onOpenMatchCard && (
@@ -282,10 +308,10 @@ export default function FinalSummary({
                   if (soundEnabled) playClickSound();
                   onOpenMatchCard();
                 }}
-                className="px-4 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-amber-500/25 active:scale-95"
+                className="h-11 px-5 rounded-xl bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-black text-xs uppercase tracking-wider font-heading flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-amber-500/30 hover:shadow-amber-500/50 hover:scale-[1.02] active:scale-95"
                 title="Gera e baixa um card visual em alta resolução para WhatsApp ou redes sociais"
               >
-                <Sparkles size={15} />
+                <Sparkles size={16} />
                 <span>Gerar Card (PNG)</span>
               </button>
             )}
@@ -297,41 +323,50 @@ export default function FinalSummary({
                   if (soundEnabled) playClickSound();
                   onOpenStoryCard();
                 }}
-                className="px-4 py-3 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 text-white font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-purple-600/25 active:scale-95"
+                className="h-11 px-4 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 text-white font-bold text-xs uppercase tracking-wider font-heading flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-purple-600/30 hover:scale-[1.02] active:scale-95"
                 title="Gera imagem vertical em formato 9:16 para Stories do Instagram ou Status do WhatsApp"
               >
-                <Smartphone size={15} />
+                <Smartphone size={16} />
                 <span>Story (9:16)</span>
               </button>
             )}
-
-            {/* MatchZy 1-Click RCON Command */}
-            <button
-              onClick={handleCopyMatchzy}
-              className={`px-4 py-3 rounded-xl font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer shadow-lg active:scale-95 ${
-                copiedMatchzy
-                  ? 'bg-emerald-500 text-slate-950 shadow-emerald-500/25'
-                  : 'bg-teal-600 hover:bg-teal-500 text-white shadow-teal-600/25'
-              }`}
-              title="Copia o comando matchzy_loadmatch_url para carregar a partida no servidor dedicado automaticamente"
-            >
-              {copiedMatchzy ? <Check size={15} /> : <Zap size={15} />}
-              <span>{copiedMatchzy ? 'Comando Copiado!' : 'MatchZy 1-Click'}</span>
-            </button>
 
             {/* Post to Discord Webhook */}
             <button
               onClick={handleSendDiscord}
               disabled={discordSending}
-              className={`px-4 py-3 rounded-xl font-bold text-xs uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer shadow-lg active:scale-95 ${
+              className={`h-11 px-4 rounded-xl font-bold text-xs uppercase tracking-wider font-heading flex items-center gap-2 transition-all cursor-pointer shadow-lg active:scale-95 ${
                 discordSent
                   ? 'bg-emerald-500 text-slate-950'
-                  : 'bg-indigo-600/90 hover:bg-indigo-500 text-white shadow-indigo-500/25'
+                  : 'bg-[#5865F2] hover:bg-[#4752c4] text-white shadow-[#5865F2]/30 hover:scale-[1.02]'
               }`}
               title={discordWebhook ? 'Enviar notificação formatada para o Discord' : 'Configurar Webhook do Discord'}
             >
-              {discordSent ? <Check size={15} /> : <Bell size={15} />}
-              <span>{discordSending ? 'Enviando...' : discordSent ? 'Enviado ao Discord!' : 'Avisar no Discord'}</span>
+              {discordSent ? <Check size={16} /> : <Bell size={16} />}
+              <span>{discordSending ? 'Enviando...' : discordSent ? 'Enviado!' : 'Avisar no Discord'}</span>
+            </button>
+
+            {/* MatchZy 1-Click RCON Command */}
+            <button
+              onClick={handleCopyMatchzy}
+              className={`h-11 px-4 rounded-xl font-bold text-xs uppercase tracking-wider font-heading flex items-center gap-2 transition-all cursor-pointer shadow-lg active:scale-95 ${
+                copiedMatchzy
+                  ? 'bg-emerald-500 text-slate-950 shadow-emerald-500/25'
+                  : 'bg-teal-600 hover:bg-teal-500 text-white shadow-teal-600/25 hover:scale-[1.02]'
+              }`}
+              title="Copia o comando matchzy_loadmatch_url para carregar a partida no servidor dedicado automaticamente"
+            >
+              {copiedMatchzy ? <Check size={16} /> : <Zap size={16} />}
+              <span>{copiedMatchzy ? 'Copiado!' : 'MatchZy 1-Click'}</span>
+            </button>
+
+            {/* Copy Discord Text */}
+            <button
+              onClick={handleCopyDiscord}
+              className="h-11 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs uppercase tracking-wider font-heading flex items-center gap-2 transition-all cursor-pointer active:scale-95"
+            >
+              {copiedDiscord ? <Check size={16} className="text-emerald-400" /> : <Share2 size={16} />}
+              <span>{copiedDiscord ? 'Copiado!' : 'Copiar Texto'}</span>
             </button>
 
             {/* Change Server Map via RCON */}
@@ -341,31 +376,25 @@ export default function FinalSummary({
                   if (soundEnabled) playClickSound();
                   onChangeServerMapRcon(fullMap?.file || 'de_mirage');
                 }}
-                className="px-4 py-3 rounded-xl bg-emerald-600/90 hover:bg-emerald-500 text-slate-950 font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-emerald-500/25 active:scale-95"
+                className="h-11 px-4 rounded-xl bg-emerald-600/90 hover:bg-emerald-500 text-slate-950 font-black text-xs uppercase tracking-wider font-heading flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-emerald-500/25 active:scale-95"
                 title={`Muda o mapa no servidor FireGames para ${fullMap?.file} automaticamente via RCON`}
               >
-                <Zap size={15} />
+                <Zap size={16} />
                 <span>Mudar Servidor ({fullMap?.name})</span>
               </button>
             )}
 
-            <button
-              onClick={handleCopyDiscord}
-              className="px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer active:scale-95"
-            >
-              {copiedDiscord ? <Check size={15} className="text-emerald-400" /> : <Share2 size={15} />}
-              <span>{copiedDiscord ? 'Copiado!' : 'Copiar Texto'}</span>
-            </button>
-
+            {/* RCON Console Shortcut */}
             <button
               onClick={handleCopyRcon}
-              className="px-3.5 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-semibold text-xs flex items-center gap-2 transition-all cursor-pointer font-mono active:scale-95"
+              className="h-11 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-semibold text-xs flex items-center gap-2 transition-all cursor-pointer font-mono active:scale-95"
               title="Copiar comando de RCON changelevel"
             >
               {copiedRcon ? <Check size={14} className="text-emerald-400" /> : <Terminal size={14} />}
               <span>{copiedRcon ? 'Copiado!' : 'RCON'}</span>
             </button>
           </div>
+
           {discordError && (
             <p className="text-[11px] font-semibold text-rose-300 bg-rose-950/60 border border-rose-500/40 rounded-lg px-3 py-1.5 inline-block animate-fadeIn">
               ⚠️ Discord: {discordError}

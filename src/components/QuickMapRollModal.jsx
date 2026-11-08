@@ -933,7 +933,7 @@ GL HF! 🔥 Boa sorte a ambas as equipes!`;
         )}
 
         {/* 7. ACTION CONTROLS */}
-        <div className="space-y-3">
+        <div className="space-y-3 pb-3">
           <button
             onClick={handleSpin}
             disabled={spinning || !hasEnoughMaps}

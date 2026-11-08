@@ -436,7 +436,7 @@ export default function App() {
         player: myProfile.nick ? myProfile : null,
         password: roomPassword || undefined,
         inviteKey: inviteKey || undefined,
-        createIfMissing: false,
+        createIfMissing: true,
       });
     }
   }, []);
@@ -453,7 +453,7 @@ export default function App() {
           player: myProfile.nick ? myProfile : null,
           password: roomPassword || undefined,
           inviteKey: inviteKey || undefined,
-          createIfMissing: false,
+          createIfMissing: true,
         });
       }
     });
