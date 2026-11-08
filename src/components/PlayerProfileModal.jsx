@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, ExternalLink, Copy, Check, LogOut, ArrowRightLeft, Shield, Flame, Trophy, Sparkles, User, RefreshCw, Zap, ShieldCheck, Clock, AlertTriangle, ArrowLeft, Pencil, HelpCircle, Info } from 'lucide-react';
+import { X, ExternalLink, Copy, Check, LogOut, ArrowRightLeft, Shield, Flame, Trophy, Sparkles, User, RefreshCw, Zap, ShieldCheck, Clock, AlertTriangle, ArrowLeft, Pencil, HelpCircle, Info, Smartphone, Award, ThumbsUp } from 'lucide-react';
 import PlayerAvatar from './PlayerAvatar';
 import GCBadge from './GCBadge';
 import FaceitBadge from './FaceitBadge';
@@ -8,6 +8,7 @@ import { getPlayerStats } from '../utils/playerStats';
 import { getGCTier } from '../data/gcLevels';
 import { playClickSound } from '../utils/audio';
 import { copyText } from '../utils/clipboard';
+import { calculateTrustFactor } from '../utils/trustFactor';
 
 export default function PlayerProfileModal({
   isOpen,
@@ -18,6 +19,7 @@ export default function PlayerProfileModal({
   onSwitchAccount,
   soundEnabled,
   onSaveProfile,
+  onOpenStoryCard,
 }) {
   const [copiedId, setCopiedId] = useState(false);
   const [steamStats, setSteamStats] = useState(null);
@@ -39,6 +41,7 @@ export default function PlayerProfileModal({
   const gcTier = getGCTier(level);
 
   const effectiveHours = profile?.cs2Hours || steamStats?.cs2Hours || null;
+  const trust = calculateTrustFactor(profile, steamStats);
 
   // Auto-sync Steam hours when detected via API
   useEffect(() => {
@@ -482,18 +485,17 @@ export default function PlayerProfileModal({
             </div>
           </div>
 
-          {/* Official Valve Steam Data Section */}
-          {isSteamUser && (
-            <div className="space-y-2.5 pt-2 border-t border-slate-800">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5 font-heading">
-                  <SteamIcon className="w-3.5 h-3.5 text-[#66c0f4]" />
-                  <span>Dados Oficiais da Valve (Steam)</span>
-                </h3>
-                <span className="text-[10px] font-mono text-[#66c0f4] bg-[#1b2838] px-2 py-0.5 rounded-full border border-[#66c0f4]/30">
-                  {steamStats?.source || 'Steam Community'}
-                </span>
-              </div>
+          {/* Official Valve Steam Data & Trust Factor Section */}
+          <div className="space-y-2.5 pt-2 border-t border-slate-800">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5 font-heading">
+                <SteamIcon className="w-3.5 h-3.5 text-[#66c0f4]" />
+                <span>Dados da Valve & Trust Factor</span>
+              </h3>
+              <span className="text-[10px] font-mono text-[#66c0f4] bg-[#1b2838] px-2 py-0.5 rounded-full border border-[#66c0f4]/30">
+                {steamStats?.source || (isSteamUser ? 'Steam Community' : 'Configuração de Jogador')}
+              </span>
+            </div>
 
               {/* 1. FEATURED CARD: Horas de Jogo no CS2 (Spacious & Clean Layout) */}
               <div className="bg-slate-950/80 border border-slate-800 hover:border-amber-500/40 rounded-2xl p-3 sm:p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all shadow-inner">
@@ -650,34 +652,76 @@ export default function PlayerProfileModal({
               )}
 
               {/* Help Drawer about Steam Privacy Settings */}
-              {showHoursHelp && (
-                <div className="p-3 bg-slate-950/95 border border-sky-500/40 rounded-xl space-y-2 text-xs text-slate-300 animate-fadeIn shadow-xl">
-                  <div className="flex items-center justify-between text-sky-400 font-bold">
-                    <span className="flex items-center gap-1.5">
-                      <Info size={14} />
-                      Por que minhas horas não apareceram sozinhas?
+              {/* Mix Hub Trust Factor & Anti-Smurf Section */}
+              <div className="bg-slate-950/85 border border-slate-800 rounded-2xl p-3.5 space-y-2.5 shadow-inner">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5 font-heading">
+                    <ShieldCheck size={14} className={trust.color} />
+                    <span>Mix Hub Trust Factor & Anti-Smurf</span>
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${trust.bg} ${trust.border} ${trust.color}`}>
+                      ÍNDICE: {trust.score}/100 • {trust.category}
                     </span>
-                    <button type="button" onClick={() => setShowHoursHelp(false)} className="text-slate-400 hover:text-white cursor-pointer">✕</button>
                   </div>
-                  <p className="text-[11px] leading-relaxed text-slate-400">
-                    A Valve possui uma política de privacidade estrita onde todas as contas Steam possuem os <strong>"Detalhes dos Jogos"</strong> configurados como <em>Privado</em> por padrão.
-                  </p>
-                  <div className="bg-slate-900 p-2.5 rounded-lg border border-slate-800 space-y-1.5 text-[11px]">
-                    <strong className="text-white block font-heading">Como deixar público na Steam (100% automático):</strong>
-                    <ol className="list-decimal list-inside space-y-1 text-slate-300">
-                      <li>Abra a Steam &gt; Perfil &gt; <strong>Editar Perfil</strong>.</li>
-                      <li>Acesse a aba <strong>Configurações de privacidade</strong>.</li>
-                      <li>Altere <strong>Detalhes dos jogos</strong> para <span className="text-emerald-400 font-bold">Público</span>.</li>
-                      <li>Desmarque a opção <em>"Manter meu tempo total de jogo privado"</em>.</li>
-                    </ol>
-                  </div>
-                  <p className="text-[11px] text-amber-300 font-medium">
-                    💡 Caso queira manter seu perfil Steam privado, basta clicar no botão <strong>Editar / Definir</strong> acima e colocar suas horas manualmente!
-                  </p>
                 </div>
-              )}
+
+                {/* Progress bar */}
+                <div className="w-full bg-slate-900 h-2 rounded-full overflow-hidden border border-slate-800">
+                  <div
+                    className={`h-full transition-all duration-500 rounded-full ${
+                      trust.score >= 80 ? 'bg-gradient-to-r from-emerald-500 to-teal-400' :
+                      trust.score >= 60 ? 'bg-gradient-to-r from-sky-500 to-indigo-400' :
+                      trust.score >= 40 ? 'bg-gradient-to-r from-amber-500 to-orange-400' :
+                      'bg-gradient-to-r from-rose-600 to-red-400'
+                    }`}
+                    style={{ width: `${trust.score}%` }}
+                  />
+                </div>
+
+                {/* Smurf Inconsistency Alert if active */}
+                {trust.smurfAlert && (
+                  <div className="p-2.5 rounded-xl bg-rose-950/70 border border-rose-500/50 text-rose-300 text-xs flex items-start gap-2 animate-pulse">
+                    <AlertTriangle size={15} className="text-rose-400 shrink-0 mt-0.5" />
+                    <div>
+                      <strong className="block font-bold">⚠️ Alerta de Inconsistência de Conta:</strong>
+                      <span className="text-[11px] leading-relaxed opacity-90">{trust.smurfReason}</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Badges breakdown */}
+                <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                  {trust.badges.map((b, i) => (
+                    <span
+                      key={i}
+                      className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-md border flex items-center gap-1 ${
+                        b.type === 'gold' ? 'text-amber-400 bg-amber-500/10 border-amber-500/30' :
+                        b.type === 'emerald' ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30' :
+                        b.type === 'rose' ? 'text-rose-400 bg-rose-500/10 border-rose-500/30' :
+                        'text-sky-400 bg-sky-500/10 border-sky-500/30'
+                      }`}
+                    >
+                      <span>{b.icon}</span>
+                      <span>{b.label}</span>
+                    </span>
+                  ))}
+                  {onOpenStoryCard && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (soundEnabled) playClickSound();
+                        onOpenStoryCard();
+                      }}
+                      className="ml-auto text-[10px] font-bold text-purple-300 hover:text-white bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 px-2 py-0.5 rounded-md flex items-center gap-1 cursor-pointer transition-colors"
+                    >
+                      <Smartphone size={10} />
+                      <span>Card Stories (9:16)</span>
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
-          )}
 
           {/* CS2 Mix Hub Match Performance Statistics */}
           <div className="space-y-3 pt-2 border-t border-slate-800">

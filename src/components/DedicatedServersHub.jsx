@@ -1303,6 +1303,38 @@ pause
                     <li>Pressione a tecla <strong className="text-amber-400 font-mono font-bold">'</strong> (apóstrofo) ou <strong className="text-amber-400 font-mono font-bold">~</strong> (til) para abrir o console a qualquer momento!</li>
                   </ol>
                 </div>
+
+                {/* MatchZy / PugSharp Plugin Automation Box */}
+                <div className="bg-slate-900/90 border border-teal-500/40 rounded-3xl p-6 space-y-3.5 shadow-xl">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                      <Zap size={16} className="text-teal-400" />
+                      Automação MatchZy / PugSharp
+                    </h4>
+                    <span className="text-[10px] font-mono text-teal-300 bg-teal-500/15 px-2 py-0.5 rounded-full border border-teal-500/30">
+                      1-Click Match Load
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    O Mix Hub gera arquivos JSON oficiais para o plugin <strong className="text-teal-300">MatchZy</strong> ou <strong className="text-teal-300">PugSharp</strong>. Execute no console RCON do servidor dedicado:
+                  </p>
+                  <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 flex items-center justify-between gap-2">
+                    <code className="text-xs font-mono text-teal-300 truncate">
+                      matchzy_loadmatch_url "{typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000'}/api/matchzy/config/{roomId || 'MIX'}"
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (soundEnabled) playClickSound();
+                        copyText(`matchzy_loadmatch_url "${window.location.origin}/api/matchzy/config/${roomId || 'MIX'}"`);
+                      }}
+                      className="p-1.5 rounded-lg bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 border border-teal-500/40 cursor-pointer shrink-0"
+                      title="Copiar comando"
+                    >
+                      <Copy size={13} />
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

@@ -26,6 +26,9 @@ export default function Header({
   onOpenDiscordModal,
   onOpenLocalHost,
   onOpenServersPage,
+  onOpenTournament,
+  onOpenGrenades,
+  onOpenAimReflex,
   onGoHome,
   roomPassword = '',
   hasPassword = false,
@@ -228,6 +231,9 @@ export default function Header({
           onOpenQuickVeto={onOpenQuickVeto}
           onOpenServersPage={onOpenServersPage || onOpenLocalHost}
           onOpenRoomsHub={onOpenRoomsHub}
+          onOpenTournament={onOpenTournament}
+          onOpenGrenades={onOpenGrenades}
+          onOpenAimReflex={onOpenAimReflex}
           soundEnabled={soundEnabled}
         />
 

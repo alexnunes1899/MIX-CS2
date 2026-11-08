@@ -3,9 +3,9 @@ import GCBadge from './GCBadge';
 import FaceitBadge from './FaceitBadge';
 import PlayerAvatar from './PlayerAvatar';
 import { CS2_MAPS } from '../data/maps';
-import { Trophy, Share2, Terminal, RotateCcw, Shield, Flame, Check, History, Zap, Radio, Sparkles, Bell, Play, Pause, RefreshCw, Send, Image, Copy, Swords } from 'lucide-react';
+import { Trophy, Share2, Terminal, RotateCcw, Shield, Flame, Check, History, Zap, Radio, Sparkles, Bell, Play, Pause, RefreshCw, Send, Image, Copy, Swords, Smartphone, Download, Award, ThumbsUp, Heart, Star } from 'lucide-react';
 import { formatDiscordSummary, formatServerCommand } from '../utils/exportText';
-import { playClickSound } from '../utils/audio';
+import { playClickSound, playReadySound } from '../utils/audio';
 import { getTeamNames } from '../utils/teamNames';
 import ServerConnectBar from './ServerConnectBar';
 import { copyText } from '../utils/clipboard';
@@ -18,14 +18,17 @@ export default function FinalSummary({
   onChangeServerMapRcon,
   onExecRconCommand,
   onOpenMatchCard,
+  onOpenStoryCard,
   onOpenDiscordModal,
   onOpenGsiSetup,
   onOpenHistory,
   onOpenServersPage,
   soundEnabled,
+  onCommendPlayer,
 }) {
   const [copiedDiscord, setCopiedDiscord] = useState(false);
   const [copiedRcon, setCopiedRcon] = useState(false);
+  const [copiedMatchzy, setCopiedMatchzy] = useState(false);
   const [copiedHltv, setCopiedHltv] = useState(false);
   const [discordSending, setDiscordSending] = useState(false);
   const [discordSent, setDiscordSent] = useState(false);
@@ -33,6 +36,7 @@ export default function FinalSummary({
   const [statsSending, setStatsSending] = useState(false);
   const [statsSent, setStatsSent] = useState(false);
   const [rconExecuting, setRconExecuting] = useState(null);
+  const [commendedPlayers, setCommendedPlayers] = useState({});
 
   const { finalMap, teamA = [], teamB = [], metrics, startingSideTeamB, name: roomName = 'MIX', serverIp = '', rconPassword = '', liveMatch = null, rankingSystem = 'gc', discordWebhook = '', vetoLog = [] } = room;
   const { labelA, labelB, upperA, upperB } = getTeamNames(room);
@@ -201,6 +205,34 @@ export default function FinalSummary({
     setTimeout(() => setCopiedRcon(false), 2000);
   };
 
+  const matchzyConfigUrl = typeof window !== 'undefined'
+    ? `${window.location.origin}/api/matchzy/config/${room.id || 'MIX'}`
+    : `/api/matchzy/config/${room.id || 'MIX'}`;
+  const matchzyRconCommand = `matchzy_loadmatch_url "${matchzyConfigUrl}"`;
+
+  const handleCopyMatchzy = () => {
+    if (soundEnabled) playClickSound();
+    copyText(matchzyRconCommand);
+    setCopiedMatchzy(true);
+    setTimeout(() => setCopiedMatchzy(false), 2500);
+  };
+
+  const handleDownloadMatchzyJson = () => {
+    if (soundEnabled) playClickSound();
+    window.open(`/api/matchzy/config/${room.id || 'MIX'}`, '_blank');
+  };
+
+  const handleCommend = (playerId, type) => {
+    if (soundEnabled) playReadySound();
+    setCommendedPlayers((prev) => {
+      const p = prev[playerId] || {};
+      return { ...prev, [playerId]: { ...p, [type]: (p[type] || 0) + 1 } };
+    });
+    if (onCommendPlayer) {
+      onCommendPlayer(playerId, type);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Decider Map Hero Banner */}
@@ -257,6 +289,35 @@ export default function FinalSummary({
                 <span>Gerar Card (PNG)</span>
               </button>
             )}
+
+            {/* Generate 9:16 Story Card for Instagram / WhatsApp */}
+            {onOpenStoryCard && (
+              <button
+                onClick={() => {
+                  if (soundEnabled) playClickSound();
+                  onOpenStoryCard();
+                }}
+                className="px-4 py-3 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 text-white font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-purple-600/25 active:scale-95"
+                title="Gera imagem vertical em formato 9:16 para Stories do Instagram ou Status do WhatsApp"
+              >
+                <Smartphone size={15} />
+                <span>Story (9:16)</span>
+              </button>
+            )}
+
+            {/* MatchZy 1-Click RCON Command */}
+            <button
+              onClick={handleCopyMatchzy}
+              className={`px-4 py-3 rounded-xl font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-all cursor-pointer shadow-lg active:scale-95 ${
+                copiedMatchzy
+                  ? 'bg-emerald-500 text-slate-950 shadow-emerald-500/25'
+                  : 'bg-teal-600 hover:bg-teal-500 text-white shadow-teal-600/25'
+              }`}
+              title="Copia o comando matchzy_loadmatch_url para carregar a partida no servidor dedicado automaticamente"
+            >
+              {copiedMatchzy ? <Check size={15} /> : <Zap size={15} />}
+              <span>{copiedMatchzy ? 'Comando Copiado!' : 'MatchZy 1-Click'}</span>
+            </button>
 
             {/* Post to Discord Webhook */}
             <button

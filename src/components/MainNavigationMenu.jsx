@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Trophy, Bell, Dices, Zap, Server, Layers } from 'lucide-react';
+import { Home, Trophy, Bell, Dices, Zap, Server, Layers, BookOpen, Target, Swords } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
 
 export default function MainNavigationMenu({
@@ -11,6 +11,9 @@ export default function MainNavigationMenu({
   onOpenQuickVeto,
   onOpenServersPage,
   onOpenRoomsHub,
+  onOpenTournament,
+  onOpenGrenades,
+  onOpenAimReflex,
   activeRoomsCount = 0,
   soundEnabled = true,
   className = '',
@@ -28,6 +31,30 @@ export default function MainNavigationMenu({
       action: onGoHome,
       title: 'Página Inicial do Mix Hub',
       iconColor: 'text-amber-400',
+    },
+    {
+      id: 'torneio',
+      label: 'Torneio',
+      icon: Swords,
+      action: onOpenTournament,
+      title: 'Modo Torneio Relâmpago (4 ou 8 Equipes)',
+      iconColor: 'text-purple-400',
+    },
+    {
+      id: 'granadas',
+      label: 'Granadas',
+      icon: BookOpen,
+      action: onOpenGrenades,
+      title: 'Playbook de Granadas Competitivas CS2',
+      iconColor: 'text-emerald-400',
+    },
+    {
+      id: 'mira',
+      label: 'Aquecer Mira',
+      icon: Target,
+      action: onOpenAimReflex,
+      title: 'Teste de Reflexo em ms e Grid Aim',
+      iconColor: 'text-orange-400',
     },
     {
       id: 'hall',

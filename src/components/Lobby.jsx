@@ -3,7 +3,7 @@ import GCBadge from './GCBadge';
 import FaceitBadge from './FaceitBadge';
 import PlayerAvatar from './PlayerAvatar';
 import ServerConnectBar from './ServerConnectBar';
-import { Users, Trash2, Bot, Scale, Shuffle, Shield, Flame, CheckCircle2, Crown, Check, AlertCircle, Zap, Dices, ArrowLeftRight, Lock, Globe, Share2, Layers, Copy, KeyRound, Hash, Eye, EyeOff, Sparkles, Bell } from 'lucide-react';
+import { Users, Trash2, Bot, Scale, Shuffle, Shield, Flame, CheckCircle2, Crown, Check, AlertCircle, Zap, Dices, ArrowLeftRight, Lock, Globe, Share2, Layers, Copy, KeyRound, Hash, Eye, EyeOff, Sparkles, Bell, BookOpen, Target, Trophy } from 'lucide-react';
 import { playClickSound, playReadySound } from '../utils/audio';
 import { copyText } from '../utils/clipboard';
 
@@ -21,6 +21,9 @@ export default function Lobby({
   onOpenQuickVeto,
   onOpenQuickMapRoll,
   onOpenDiscordModal,
+  onOpenGrenades,
+  onOpenAimReflex,
+  onOpenTournament,
   serverIp = '',
   onUpdateServerIp,
   rconPassword = '',
@@ -240,7 +243,7 @@ export default function Lobby({
       </div>
 
       {/* Quick Mode Shortcuts Bar */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         <div
           onClick={() => {
             if (soundEnabled) playClickSound();
@@ -282,6 +285,78 @@ export default function Lobby({
           </div>
           <span className="text-xs font-bold text-amber-400 group-hover:translate-x-1 transition-transform">➔</span>
         </div>
+
+        {/* Tactical Grenade Playbook */}
+        {onOpenGrenades && (
+          <div
+            onClick={() => {
+              if (soundEnabled) playClickSound();
+              onOpenGrenades();
+            }}
+            className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-emerald-500/50 rounded-2xl p-3.5 flex items-center justify-between cursor-pointer transition-all shadow-sm group"
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center group-hover:scale-105 transition-transform">
+                <BookOpen size={18} />
+              </div>
+              <div>
+                <h4 className="font-bold text-xs uppercase tracking-wider text-white group-hover:text-emerald-300 transition-colors">
+                  Guia de Granadas
+                </h4>
+                <p className="text-[11px] text-slate-400">Smokes e táticas de cada mapa</p>
+              </div>
+            </div>
+            <span className="text-xs font-bold text-emerald-400 group-hover:translate-x-1 transition-transform">➔</span>
+          </div>
+        )}
+
+        {/* Aim Warmup Mini-Game */}
+        {onOpenAimReflex && (
+          <div
+            onClick={() => {
+              if (soundEnabled) playClickSound();
+              onOpenAimReflex();
+            }}
+            className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-orange-500/50 rounded-2xl p-3.5 flex items-center justify-between cursor-pointer transition-all shadow-sm group"
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-orange-500/20 text-orange-400 border border-orange-500/30 flex items-center justify-center group-hover:scale-105 transition-transform">
+                <Target size={18} />
+              </div>
+              <div>
+                <h4 className="font-bold text-xs uppercase tracking-wider text-white group-hover:text-orange-300 transition-colors">
+                  Aquecer Mira & Reflexo
+                </h4>
+                <p className="text-[11px] text-slate-400">Teste em ms e treino de flick</p>
+              </div>
+            </div>
+            <span className="text-xs font-bold text-orange-400 group-hover:translate-x-1 transition-transform">➔</span>
+          </div>
+        )}
+
+        {/* Tournament Bracket Mode */}
+        {onOpenTournament && (
+          <div
+            onClick={() => {
+              if (soundEnabled) playClickSound();
+              onOpenTournament();
+            }}
+            className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-purple-500/50 rounded-2xl p-3.5 flex items-center justify-between cursor-pointer transition-all shadow-sm group sm:col-span-2 lg:col-span-1"
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-purple-500/20 text-purple-400 border border-purple-500/30 flex items-center justify-center group-hover:scale-105 transition-transform">
+                <Trophy size={18} />
+              </div>
+              <div>
+                <h4 className="font-bold text-xs uppercase tracking-wider text-white group-hover:text-purple-300 transition-colors">
+                  Modo Torneio
+                </h4>
+                <p className="text-[11px] text-slate-400">Chaveamento rápido 4 ou 8 equipes</p>
+              </div>
+            </div>
+            <span className="text-xs font-bold text-purple-400 group-hover:translate-x-1 transition-transform">➔</span>
+          </div>
+        )}
       </div>
 
       {/* Top Banner & Quick Controls */}

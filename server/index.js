@@ -12,6 +12,7 @@ import { fetchFaceitPlayer } from './faceit.js';
 import { sendDiscordWebhook, isValidDiscordWebhookUrl } from './discordWebhook.js';
 import { getLeaderboard, recordMatch } from './leaderboard.js';
 import { pingCs2Server } from './serverQuery.js';
+import { moveGuildMember, testDiscordBotVoiceChannels } from './discordVoiceMover.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -2055,6 +2056,73 @@ app.get('/api/gsi/status/:roomId', (req, res) => {
   res.json(state);
 });
 
+// MatchZy / PugSharp Tournament Config Provider (1-Click CS2 Dedicated Server Integration)
+app.get('/api/matchzy/config/:roomId', (req, res) => {
+  const roomId = req.params.roomId;
+  const room = rooms.get(roomId?.toUpperCase()) || getOrCreateRoom(roomId);
+
+  const matchFormat = room.matchFormat || 'MD1';
+  const numMaps = matchFormat === 'MD5' ? 5 : matchFormat === 'MD3' ? 3 : 1;
+
+  let maplist = [];
+  if (Array.isArray(room.drawnSeries) && room.drawnSeries.length > 0) {
+    maplist = room.drawnSeries.map((s) => s.map?.file || s.file || 'de_mirage');
+  } else if (room.finalMap?.file) {
+    maplist = [room.finalMap.file];
+  } else {
+    maplist = ['de_mirage'];
+  }
+  while (maplist.length < numMaps) maplist.push('de_mirage');
+  maplist = maplist.slice(0, numMaps);
+
+  const buildPlayers = (players) => {
+    const map = {};
+    if (Array.isArray(players)) {
+      players.forEach((p, idx) => {
+        const id = p.steamId || `BOT_${idx + 1}`;
+        map[id] = p.nick || `Jogador ${idx + 1}`;
+      });
+    }
+    return map;
+  };
+
+  const nameA = room.teamAName || room.teamA?.[0]?.nick ? `Time ${room.teamA[0].nick}` : 'Time A';
+  const nameB = room.teamBName || room.teamB?.[0]?.nick ? `Time ${room.teamB[0].nick}` : 'Time B';
+
+  const config = {
+    matchid: room.id,
+    num_maps: numMaps,
+    maplist,
+    map_sides: maplist.map(() => 'knife'),
+    players_per_team: 5,
+    min_players_to_ready: 10,
+    team1: {
+      name: nameA,
+      tag: 'TIME_A',
+      flag: 'BR',
+      players: buildPlayers(room.teamA),
+    },
+    team2: {
+      name: nameB,
+      tag: 'TIME_B',
+      flag: 'BR',
+      players: buildPlayers(room.teamB),
+    },
+    cvars: {
+      mp_overtime_enable: '1',
+      mp_overtime_maxrounds: '6',
+      mp_overtime_startmoney: '10000',
+      mp_warmuptime: '300',
+      sv_hibernate_when_empty: '0',
+      tv_enable: '1',
+      tv_record_match: '1',
+    },
+  };
+
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.json(config);
+});
+
 // Detect Host Public IP for Local Server Hosting
 app.get('/api/my-ip', (req, res) => {
   const forwarded = req.headers['x-forwarded-for'];
@@ -2163,6 +2231,37 @@ app.post('/api/discord/webhook', sensitiveLimiter, async (req, res) => {
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
+});
+
+// Discord Bot Voice Channel Verification & Mover
+app.post('/api/discord/test-voice-channel', sensitiveLimiter, async (req, res) => {
+  const { botToken, guildId, channelId } = req.body;
+  if (!botToken || !guildId || !channelId) {
+    return res.status(400).json({ error: 'Token, Guild ID e Channel ID são obrigatórios.' });
+  }
+  try {
+    const result = await testDiscordBotVoiceChannels({ botToken, guildId, channelId });
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post('/api/discord/move-members', sensitiveLimiter, async (req, res) => {
+  const { botToken, guildId, moves } = req.body;
+  if (!botToken || !guildId || !Array.isArray(moves)) {
+    return res.status(400).json({ error: 'Token, Guild ID e lista de jogadores são obrigatórios.' });
+  }
+  const results = [];
+  for (const move of moves) {
+    try {
+      await moveGuildMember({ botToken, guildId, userId: move.userId, targetChannelId: move.targetChannelId });
+      results.push({ userId: move.userId, success: true });
+    } catch (err) {
+      results.push({ userId: move.userId, success: false, error: err.message });
+    }
+  }
+  res.json({ results });
 });
 
 // 3. Valve Steam Web API (CS2 Hours, VAC Bans, Account Age)

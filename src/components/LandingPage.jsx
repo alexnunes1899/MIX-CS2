@@ -16,6 +16,9 @@ export default function LandingPage({
   onOpenDiscordModal,
   onOpenLocalHost,
   onOpenServersPage,
+  onOpenTournament,
+  onOpenGrenades,
+  onOpenAimReflex,
   onRequireSteamLogin,
   onOpenProfile,
   myProfile,
@@ -177,6 +180,9 @@ export default function LandingPage({
             onOpenQuickVeto={onOpenQuickVeto}
             onOpenServersPage={onOpenServersPage || onOpenLocalHost}
             onOpenRoomsHub={onOpenRoomsHub}
+            onOpenTournament={onOpenTournament}
+            onOpenGrenades={onOpenGrenades}
+            onOpenAimReflex={onOpenAimReflex}
             activeRoomsCount={activeRooms.length}
             soundEnabled={soundEnabled}
           />

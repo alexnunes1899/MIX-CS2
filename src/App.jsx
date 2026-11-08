@@ -24,6 +24,10 @@ import UpdateNotificationBanner from './components/UpdateNotificationBanner';
 import LeaderboardModal from './components/LeaderboardModal';
 import DiscordWebhookModal from './components/DiscordWebhookModal';
 import MatchCardModal from './components/MatchCardModal';
+import PlayerStoryCardModal from './components/PlayerStoryCardModal';
+import GrenadePlaybookModal from './components/GrenadePlaybookModal';
+import AimReflexModal from './components/AimReflexModal';
+import TournamentBracketModal from './components/TournamentBracketModal';
 import LocalHostModal from './components/LocalHostModal';
 import DedicatedServersHub from './components/DedicatedServersHub';
 import { playClickSound } from './utils/audio';
@@ -122,6 +126,10 @@ export default function App() {
   const [leaderboardOpen, setLeaderboardOpen] = useState(false);
   const [discordModalOpen, setDiscordModalOpen] = useState(false);
   const [matchCardOpen, setMatchCardOpen] = useState(false);
+  const [storyCardOpen, setStoryCardOpen] = useState(false);
+  const [grenadeModalOpen, setGrenadeModalOpen] = useState(false);
+  const [aimReflexModalOpen, setAimReflexModalOpen] = useState(false);
+  const [tournamentModalOpen, setTournamentModalOpen] = useState(false);
   const [localHostModalOpen, setLocalHostModalOpen] = useState(false);
   const [roomNotice, setRoomNotice] = useState(null);
   const [serverVersion, setServerVersion] = useState(null);
@@ -1076,6 +1084,18 @@ export default function App() {
     }
   };
 
+  // Load Tournament match into Mix Hub
+  const handleLoadTournamentTeams = ({ nameA, nameB }) => {
+    if (soundEnabled) playClickSound();
+    setRoom((prev) => ({
+      ...prev,
+      nameA,
+      nameB,
+      phase: prev.players.length >= 10 ? 'teams' : 'lobby',
+    }));
+    setTournamentModalOpen(false);
+  };
+
   // Remove player
   const handleRemovePlayer = (playerId) => {
     if (socket.connected) {
@@ -1756,6 +1776,34 @@ export default function App() {
           onSaveWebhook={handleSaveDiscordWebhook}
           soundEnabled={soundEnabled}
         />
+
+        <PlayerStoryCardModal
+          isOpen={storyCardOpen}
+          onClose={() => setStoryCardOpen(false)}
+          room={room}
+          soundEnabled={soundEnabled}
+          initialPlayer={myProfile}
+        />
+
+        <GrenadePlaybookModal
+          isOpen={grenadeModalOpen}
+          onClose={() => setGrenadeModalOpen(false)}
+          initialMap={room.finalMap?.id}
+          soundEnabled={soundEnabled}
+        />
+
+        <AimReflexModal
+          isOpen={aimReflexModalOpen}
+          onClose={() => setAimReflexModalOpen(false)}
+          soundEnabled={soundEnabled}
+        />
+
+        <TournamentBracketModal
+          isOpen={tournamentModalOpen}
+          onClose={() => setTournamentModalOpen(false)}
+          onLoadTeamsToMix={handleLoadTournamentTeams}
+          soundEnabled={soundEnabled}
+        />
       </>
     );
   }
@@ -1774,6 +1822,9 @@ export default function App() {
           onOpenLeaderboard={() => setLeaderboardOpen(true)}
           onOpenDiscordModal={() => setDiscordModalOpen(true)}
           onOpenLocalHost={() => setLocalHostModalOpen(true)}
+          onOpenTournament={() => setTournamentModalOpen(true)}
+          onOpenGrenades={() => setGrenadeModalOpen(true)}
+          onOpenAimReflex={() => setAimReflexModalOpen(true)}
           onOpenServersPage={handleOpenServersPage}
           onRequireSteamLogin={handleRequireSteamLogin}
           onOpenProfile={() => setProfileModalOpen(true)}
@@ -1907,6 +1958,34 @@ export default function App() {
           onSaveWebhook={handleSaveDiscordWebhook}
           soundEnabled={soundEnabled}
         />
+
+        <PlayerStoryCardModal
+          isOpen={storyCardOpen}
+          onClose={() => setStoryCardOpen(false)}
+          room={room}
+          soundEnabled={soundEnabled}
+          initialPlayer={myProfile}
+        />
+
+        <GrenadePlaybookModal
+          isOpen={grenadeModalOpen}
+          onClose={() => setGrenadeModalOpen(false)}
+          initialMap={room.finalMap?.id}
+          soundEnabled={soundEnabled}
+        />
+
+        <AimReflexModal
+          isOpen={aimReflexModalOpen}
+          onClose={() => setAimReflexModalOpen(false)}
+          soundEnabled={soundEnabled}
+        />
+
+        <TournamentBracketModal
+          isOpen={tournamentModalOpen}
+          onClose={() => setTournamentModalOpen(false)}
+          onLoadTeamsToMix={handleLoadTournamentTeams}
+          soundEnabled={soundEnabled}
+        />
       </>
     );
   }
@@ -1933,6 +2012,9 @@ export default function App() {
         onOpenLeaderboard={() => setLeaderboardOpen(true)}
         onOpenDiscordModal={() => setDiscordModalOpen(true)}
         onOpenLocalHost={() => setLocalHostModalOpen(true)}
+        onOpenTournament={() => setTournamentModalOpen(true)}
+        onOpenGrenades={() => setGrenadeModalOpen(true)}
+        onOpenAimReflex={() => setAimReflexModalOpen(true)}
         onOpenServersPage={handleOpenServersPage}
         onGoHome={handleGoHome}
         roomPassword={roomPassword}
@@ -1974,6 +2056,9 @@ export default function App() {
                 onOpenQuickVeto={() => setQuickVetoOpen(true)}
                 onOpenQuickMapRoll={() => setQuickMapRollOpen(true)}
                 onOpenDiscordModal={() => setDiscordModalOpen(true)}
+                onOpenGrenades={() => setGrenadeModalOpen(true)}
+                onOpenAimReflex={() => setAimReflexModalOpen(true)}
+                onOpenTournament={() => setTournamentModalOpen(true)}
                 serverIp={room.serverIp || ''}
                 onUpdateServerIp={handleUpdateServerIp}
                 rconPassword={room.rconPassword || ''}
@@ -2059,6 +2144,7 @@ export default function App() {
             onChangeServerMapRcon={handleChangeServerMapRcon}
             onExecRconCommand={handleExecRconCommand}
             onOpenMatchCard={() => setMatchCardOpen(true)}
+            onOpenStoryCard={() => setStoryCardOpen(true)}
             onOpenDiscordModal={() => setDiscordModalOpen(true)}
             onOpenGsiSetup={() => setGsiModalOpen(true)}
             onOpenHistory={() => setHistoryOpen(true)}
@@ -2157,6 +2243,7 @@ export default function App() {
         onSwitchAccount={handleSwitchSteamAccount}
         soundEnabled={soundEnabled}
         onSaveProfile={handleSaveProfile}
+        onOpenStoryCard={() => setStoryCardOpen(true)}
       />
 
       <GsiSetupModal
@@ -2211,6 +2298,39 @@ export default function App() {
         isOpen={matchCardOpen}
         onClose={() => setMatchCardOpen(false)}
         room={room}
+        soundEnabled={soundEnabled}
+      />
+
+      {/* 9:16 Instagram / WhatsApp Story Card Modal */}
+      <PlayerStoryCardModal
+        isOpen={storyCardOpen}
+        onClose={() => setStoryCardOpen(false)}
+        room={room}
+        soundEnabled={soundEnabled}
+        initialPlayer={myProfile}
+      />
+
+      {/* Tactical Grenade Playbook Modal */}
+      <GrenadePlaybookModal
+        isOpen={grenadeModalOpen}
+        onClose={() => setGrenadeModalOpen(false)}
+        initialMap={room.finalMap?.id}
+        soundEnabled={soundEnabled}
+      />
+
+      {/* Aim Warmup & Reaction Time Tester Modal */}
+      <AimReflexModal
+        isOpen={aimReflexModalOpen}
+        onClose={() => setAimReflexModalOpen(false)}
+        soundEnabled={soundEnabled}
+        onShareToChat={(text) => handleSendMessage(text)}
+      />
+
+      {/* Flash Tournament 4/8 Teams Bracket Modal */}
+      <TournamentBracketModal
+        isOpen={tournamentModalOpen}
+        onClose={() => setTournamentModalOpen(false)}
+        onLoadTeamsToMix={handleLoadTournamentTeams}
         soundEnabled={soundEnabled}
       />
 
