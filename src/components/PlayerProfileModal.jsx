@@ -218,7 +218,7 @@ export default function PlayerProfileModal({
       }}
       className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-fadeIn"
     >
-      <div className="relative w-full max-w-lg max-h-[92vh] flex flex-col bg-slate-900 border-2 border-amber-500/50 rounded-3xl shadow-2xl overflow-hidden">
+      <div className="relative w-full max-w-xl max-h-[92vh] flex flex-col bg-slate-900 border-2 border-amber-500/50 rounded-3xl shadow-2xl overflow-hidden">
         
         {/* Glow Effects */}
         <div className="absolute top-0 right-0 w-48 h-48 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -481,95 +481,112 @@ export default function PlayerProfileModal({
             </div>
           </div>
 
-          {/* Official Valve Steam Data Card */}
+          {/* Official Valve Steam Data Section */}
           {isSteamUser && (
             <div className="space-y-2.5 pt-2 border-t border-slate-800">
               <div className="flex items-center justify-between">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5 font-heading">
                   <SteamIcon className="w-3.5 h-3.5 text-[#66c0f4]" />
                   <span>Dados Oficiais da Valve (Steam)</span>
                 </h3>
                 <span className="text-[10px] font-mono text-[#66c0f4] bg-[#1b2838] px-2 py-0.5 rounded-full border border-[#66c0f4]/30">
-                  {steamStats?.source || 'Steam Web API'}
+                  {steamStats?.source || 'Steam Community'}
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
-                {/* CS2 Playtime */}
-                <div className="bg-slate-950/80 border border-slate-800 hover:border-amber-500/30 rounded-xl p-3 flex flex-col justify-between gap-1.5 transition-all">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      <Clock size={14} className="text-amber-400" />
-                      <span className="text-[11px] text-slate-400 font-bold uppercase tracking-wider">Horas no CS2</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={handleOpenEditHours}
-                        className="text-[10px] text-amber-400 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 px-1.5 py-0.5 rounded flex items-center gap-1 transition-colors cursor-pointer"
-                        title="Editar ou definir manualmente suas horas de CS2"
-                      >
-                        <Pencil size={10} />
-                        <span>{effectiveHours ? 'Editar' : 'Definir'}</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (soundEnabled) playClickSound();
-                          setShowHoursHelp(!showHoursHelp);
-                          setEditingHours(false);
-                        }}
-                        className="text-[10px] text-slate-500 hover:text-sky-400 p-0.5 transition-colors cursor-pointer"
-                        title="Ajuda sobre privacidade da Steam"
-                      >
-                        <HelpCircle size={12} />
-                      </button>
-                    </div>
+              {/* 1. FEATURED CARD: Horas de Jogo no CS2 (Spacious & Clean Layout) */}
+              <div className="bg-slate-950/80 border border-slate-800 hover:border-amber-500/40 rounded-2xl p-3 sm:p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition-all shadow-inner">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/25 flex items-center justify-center shrink-0 shadow-sm">
+                    <Clock size={18} />
                   </div>
-
-                  <div className="flex items-baseline justify-between mt-1">
-                    <strong className="text-white font-mono text-base font-black">
-                      {effectiveHours ? `${effectiveHours.toLocaleString('pt-BR')} hrs` : (
-                        <span className="text-amber-400 text-xs font-semibold">Não sincronizado</span>
-                      )}
-                    </strong>
-                    {effectiveHours && (
-                      <span className={`text-[9px] font-mono px-1.5 py-0.2 rounded border ${
-                        steamStats?.cs2Hours
-                          ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
-                          : 'text-amber-400 bg-amber-500/10 border-amber-500/20'
-                      }`}>
-                        {steamStats?.cs2Hours ? 'Steam ✓' : 'Manual'}
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 font-heading">
+                        Horas Registradas no CS2
                       </span>
-                    )}
+                      {effectiveHours && (
+                        <span className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded border ${
+                          steamStats?.cs2Hours
+                            ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30'
+                            : 'text-amber-400 bg-amber-500/10 border-amber-500/30'
+                        }`}>
+                          {steamStats?.cs2Hours ? 'Steam Oficial ✓' : 'Manual'}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-baseline gap-2 mt-0.5">
+                      <strong className="text-white font-mono text-lg sm:text-xl font-black tracking-tight whitespace-nowrap">
+                        {effectiveHours ? `${effectiveHours.toLocaleString('pt-BR')} hrs` : (
+                          <span className="text-amber-400 text-xs font-semibold">Horas não sincronizadas</span>
+                        )}
+                      </strong>
+                      <span className="text-[11px] text-slate-500 font-medium hidden sm:inline">
+                        no Counter-Strike 2
+                      </span>
+                    </div>
                   </div>
                 </div>
 
+                {/* Action Controls for Hours */}
+                <div className="flex items-center gap-1.5 self-end sm:self-center shrink-0 pt-0.5 sm:pt-0">
+                  <button
+                    type="button"
+                    onClick={handleOpenEditHours}
+                    className="text-xs font-semibold text-amber-300 hover:text-amber-200 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 px-2.5 py-1 rounded-lg flex items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95"
+                    title="Editar ou definir manualmente suas horas de CS2"
+                  >
+                    <Pencil size={11} />
+                    <span>{effectiveHours ? 'Editar Horas' : 'Definir Horas'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (soundEnabled) playClickSound();
+                      setShowHoursHelp(!showHoursHelp);
+                      setEditingHours(false);
+                    }}
+                    className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-850 text-slate-400 hover:text-sky-400 border border-slate-800 transition-colors cursor-pointer"
+                    title="Ajuda sobre privacidade da Steam"
+                  >
+                    <HelpCircle size={13} />
+                  </button>
+                </div>
+              </div>
+
+              {/* 2. SUB-GRID: Status VAC & Tempo de Steam (2 Equal Symmetrical Columns) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                 {/* VAC Ban Status */}
-                <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 flex items-center gap-2.5">
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border ${
+                <div className="bg-slate-950/80 border border-slate-800/90 rounded-xl p-2.5 sm:p-3 flex items-center gap-3">
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border shadow-sm ${
                     steamStats?.vacBanned
                       ? 'bg-rose-500/15 text-rose-400 border-rose-500/30'
-                      : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                      : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25'
                   }`}>
-                    {steamStats?.vacBanned ? <AlertTriangle size={16} /> : <ShieldCheck size={16} />}
+                    {steamStats?.vacBanned ? <AlertTriangle size={18} /> : <ShieldCheck size={18} />}
                   </div>
-                  <div>
-                    <span className="text-[10px] text-slate-400 block">Status VAC Valve</span>
-                    <strong className={`font-mono text-xs ${steamStats?.vacBanned ? 'text-rose-400' : 'text-emerald-400'}`}>
-                      {steamStats?.vacBanned ? `${steamStats.vacBansCount} Ban VAC` : 'Conta 100% Limpa'}
+                  <div className="min-w-0">
+                    <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold block truncate font-heading">
+                      Status VAC Valve
+                    </span>
+                    <strong className={`font-mono text-xs sm:text-sm font-bold block truncate ${
+                      steamStats?.vacBanned ? 'text-rose-400' : 'text-emerald-400'
+                    }`}>
+                      {steamStats?.vacBanned ? `${steamStats.vacBansCount} Ban VAC Ativo` : 'Conta 100% Limpa'}
                     </strong>
                   </div>
                 </div>
 
                 {/* Account Age */}
-                <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-2.5 flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-sky-500/10 text-sky-400 border border-sky-500/20 flex items-center justify-center shrink-0">
-                    <User size={16} />
+                <div className="bg-slate-950/80 border border-slate-800/90 rounded-xl p-2.5 sm:p-3 flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-sky-500/10 text-sky-400 border border-sky-500/25 flex items-center justify-center shrink-0 shadow-sm">
+                    <User size={18} />
                   </div>
-                  <div>
-                    <span className="text-[10px] text-slate-400 block">Tempo de Steam</span>
-                    <strong className="text-white font-mono text-xs">
+                  <div className="min-w-0">
+                    <span className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold block truncate font-heading">
+                      Tempo de Steam
+                    </span>
+                    <strong className="text-white font-mono text-xs sm:text-sm font-bold block truncate">
                       {steamStats?.accountAgeYears ? `${steamStats.accountAgeYears} anos (desde ${steamStats.createdYear})` : 'Steam Ativa'}
                     </strong>
                   </div>
