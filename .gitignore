@@ -27,4 +27,6 @@ scratch/
 .env.*
 server/data/discordBotConfig.json
 server/data/playerProfiles.json
+server/data/matchHistory.json
+server/data/leaderboard.json
 

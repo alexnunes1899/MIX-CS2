@@ -1068,6 +1068,10 @@ class DiscordBotManager {
       return { success: false, error: 'O vencedor deve ser Time A ou Time B (ex: `!vitoria A 13-9`).' };
     }
 
+    if (!mix.teamA?.players || mix.teamA.players.length === 0 || !mix.teamB?.players || mix.teamB.players.length === 0) {
+      return { success: false, error: 'Os times ainda não foram sorteados! Use `!sortear` antes de registrar o placar da partida.' };
+    }
+
     const winnerTeam = isA ? mix.teamA : mix.teamB;
     const loserTeam = isA ? mix.teamB : mix.teamA;
     const score = (scoreInput || '13-9').trim();
@@ -1162,12 +1166,14 @@ class DiscordBotManager {
       emoji: winnerTeam.players.some((w) => w.id === p.id) ? '🥇' : '🎯',
     }));
 
-    const selectMenu = new StringSelectMenuBuilder()
-      .setCustomId(`mvp_vote:${mix.id}`)
-      .setPlaceholder('⭐ Escolha o MVP da Partida...')
-      .addOptions(selectOptions);
-
-    const selectRow = new ActionRowBuilder().addComponents(selectMenu);
+    const components = [];
+    if (selectOptions.length > 0) {
+      const selectMenu = new StringSelectMenuBuilder()
+        .setCustomId(`mvp_vote:${mix.id}`)
+        .setPlaceholder('⭐ Escolha o MVP da Partida...')
+        .addOptions(selectOptions);
+      components.push(new ActionRowBuilder().addComponents(selectMenu));
+    }
 
     const finishBtn = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
@@ -1181,8 +1187,9 @@ class DiscordBotManager {
         .setEmoji('🎮')
         .setStyle(ButtonStyle.Primary)
     );
+    components.push(finishBtn);
 
-    return { success: true, embeds: [victoryEmbed], components: [selectRow, finishBtn] };
+    return { success: true, embeds: [victoryEmbed], components };
   }
 
   async finishMvpVote(mix, channel) {
@@ -2005,8 +2012,8 @@ class DiscordBotManager {
 
       // If 10 players reached, launch Ready Check!
       if (mix.players.length === 8 || mix.players.length === 9) {
-      this.notifyMissingSlots(mix, message.guild, message.channel).catch(() => {});
-    }
+        this.notifyMissingSlots(mix, interaction.guild, interaction.channel).catch(() => {});
+      }
 
     if (mix.players.length === 10) {
         this.startReadyCheck(mix, interaction.channel);
@@ -2635,7 +2642,7 @@ class DiscordBotManager {
     });
 
     if (mix.players.length === 8 || mix.players.length === 9) {
-      this.notifyMissingSlots(mix, message.guild, message.channel).catch(() => {});
+      this.notifyMissingSlots(mix, interaction.guild, interaction.channel).catch(() => {});
     }
 
     if (mix.players.length === 10) {
