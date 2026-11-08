@@ -28,6 +28,13 @@ import fs from 'fs';
 import path from 'path';
 import dgram from 'dgram';
 import { fileURLToPath } from 'url';
+import {
+  loadMatchHistory as loadUnifiedMatchHistory,
+  saveMatchHistory as saveUnifiedMatchHistory,
+  recordMatchHistoryEntry,
+  updateMatchMvp,
+  getMapImageUrl,
+} from './matchHistory.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -640,25 +647,11 @@ class DiscordBotManager {
   }
 
   loadMatchHistory() {
-    try {
-      if (fs.existsSync(MATCH_HISTORY_FILE)) {
-        const raw = fs.readFileSync(MATCH_HISTORY_FILE, 'utf8');
-        return JSON.parse(raw);
-      }
-    } catch (e) {
-      console.warn('[DISCORD BOT] Falha ao ler matchHistory.json:', e.message);
-    }
-    return [];
+    return loadUnifiedMatchHistory();
   }
 
   saveMatchHistory(matches) {
-    try {
-      const dataDir = path.dirname(MATCH_HISTORY_FILE);
-      if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-      fs.writeFileSync(MATCH_HISTORY_FILE, JSON.stringify(matches, null, 2), 'utf8');
-    } catch (e) {
-      console.error('[DISCORD BOT] Falha ao salvar matchHistory.json:', e.message);
-    }
+    return saveUnifiedMatchHistory(matches);
   }
 
   updateLeaderboardFile(profiles) {
@@ -1964,22 +1957,52 @@ class DiscordBotManager {
 
     this.savePlayerProfiles(profiles);
 
-    // Save match to match history
-    const history = this.loadMatchHistory();
+    // Save match to match history with full rich metadata
+    const parsedWinner = parseInt(String(score).split('-')[0], 10) || 13;
+    const parsedLoser = parseInt(String(score).split('-')[1], 10) || 8;
     const matchRecord = {
       id: mix.id,
+      source: 'discord',
+      platform: 'Discord Bot',
+      sourceLabel: 'Via Discord',
+      guildName: channel?.guild?.name || 'Servidor Discord Oficial',
+      guildId: channel?.guild?.id || '',
+      channelName: channel?.name ? `#${channel.name}` : '#mix-5v5',
+      channelId: channel?.id || '',
+      format: mix.format || 'MD1',
+      balancePct: mix.balancePct || 95,
+      serverConnect: mix.serverIp || this.config.serverConnect || '',
       timestamp: Date.now(),
       map: mix.veto.deciderMap?.name || 'Mirage',
+      mapImage: mix.veto.deciderMap?.image || getMapImageUrl(mix.veto.deciderMap?.name || 'Mirage'),
       winner: winnerTeam.name,
       loser: loserTeam.name,
       score,
-      declaredBy: declaredByUser.username,
-      winnerPlayers: winnerTeam.players.map((p) => ({ id: p.id, nick: p.displayName || p.username })),
-      loserPlayers: loserTeam.players.map((p) => ({ id: p.id, nick: p.displayName || p.username })),
+      scoreWinner: parsedWinner,
+      scoreLoser: parsedLoser,
+      declaredBy: declaredByUser.displayName || declaredByUser.username,
+      declaredById: declaredByUser.id,
+      winnerPlayers: winnerTeam.players.map((p, idx) => ({
+        id: p.id,
+        nick: p.displayName || p.username || `Jogador ${idx + 1}`,
+        level: p.level || 16,
+        avatar: typeof p.displayAvatarURL === 'function' ? p.displayAvatarURL() : (p.avatar || ''),
+        role: p.id === winnerTeam.captain?.id ? 'Capitão' : 'Jogador',
+      })),
+      loserPlayers: loserTeam.players.map((p, idx) => ({
+        id: p.id,
+        nick: p.displayName || p.username || `Jogador ${idx + 1}`,
+        level: p.level || 16,
+        avatar: typeof p.displayAvatarURL === 'function' ? p.displayAvatarURL() : (p.avatar || ''),
+        role: p.id === loserTeam.captain?.id ? 'Capitão' : 'Jogador',
+      })),
+      vetoBans: Array.isArray(mix.veto?.bannedMaps) ? mix.veto.bannedMaps : [],
     };
-    history.unshift(matchRecord);
-    this.saveMatchHistory(history.slice(0, 100));
+    recordMatchHistoryEntry(matchRecord);
     this.updateLeaderboardFile(profiles);
+    if (typeof this.onMatchRecorded === 'function') {
+      try { this.onMatchRecorded(matchRecord); } catch (e) {}
+    }
 
     // Check and award tier roles asynchronously to winners
     this.checkAndAwardTierRoles(channel?.guild, winnerTeam.players, profiles).catch((err) => {
@@ -2088,12 +2111,11 @@ class DiscordBotManager {
     this.updateLeaderboardFile(profiles);
 
     try {
-      const history = this.loadMatchHistory();
-      if (history.length > 0 && history[0].id === mix.id) {
-        history[0].mvpId = bestCandidateId;
-        history[0].mvpNick = prof.username || `<@${bestCandidateId}>`;
-        this.saveMatchHistory(history);
-      }
+      updateMatchMvp(mix.id, {
+        id: bestCandidateId,
+        nick: prof.username || `<@${bestCandidateId}>`,
+        votes: maxVotes,
+      });
     } catch (e) {
       console.warn('[DISCORD BOT] Falha ao atualizar MVP no histórico:', e.message);
     }

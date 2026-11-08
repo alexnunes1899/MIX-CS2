@@ -21,6 +21,12 @@ import { getLeaderboard, recordMatch } from './leaderboard.js';
 import { pingCs2Server } from './serverQuery.js';
 import { moveGuildMember, testDiscordBotVoiceChannels } from './discordVoiceMover.js';
 import { discordBotManager } from './discordBot.js';
+import {
+  getMatchHistoryState,
+  recordMatchHistoryEntry,
+  onMatchHistoryUpdated,
+  getMapImageUrl,
+} from './matchHistory.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -513,6 +519,13 @@ function dispatchAutoDiscordLobby(room) {
 io.on('connection', (socket) => {
   // Emit current server version/timestamp to client so client detects deployments instantly
   socket.emit('server_app_version', { version: BUILD_VERSION });
+
+  // Emit unified match history (Discord + Web) on connection
+  socket.emit('match_history_init', getMatchHistoryState());
+
+  socket.on('get_match_history', (filters) => {
+    socket.emit('match_history_updated', getMatchHistoryState(filters || {}));
+  });
 
   // Get active rooms list
   socket.on('get_rooms_list', () => {
@@ -1550,6 +1563,44 @@ io.on('connection', (socket) => {
       io.emit('leaderboard_updated', updated);
     }
 
+    // Save to unified persistent match history (Discord + Web)
+    const webMatchRecord = {
+      id: `WEB-${roomId.toUpperCase()}-${Date.now().toString(36).slice(-4).toUpperCase()}`,
+      source: 'web',
+      platform: 'Site Web (Sala)',
+      sourceLabel: 'Via Site Web',
+      roomId: roomId,
+      roomName: room.name || `Sala ${roomId}`,
+      timestamp: Date.now(),
+      map: room.finalMap?.name || 'Mirage',
+      mapImage: room.finalMap?.image || getMapImageUrl(room.finalMap?.name || 'Mirage'),
+      winner: numA > numB ? 'Time A' : numB > numA ? 'Time B' : 'Empate',
+      loser: numA > numB ? 'Time B' : numB > numA ? 'Time A' : 'Empate',
+      score: `${Math.max(numA, numB)}-${Math.min(numA, numB)}`,
+      scoreWinner: Math.max(numA, numB),
+      scoreLoser: Math.min(numA, numB),
+      declaredBy: 'Capitão da Sala',
+      serverConnect: room.serverIp || '',
+      winnerPlayers: (numA > numB ? room.teamA : room.teamB).map((p, idx) => ({
+        id: p.id || `p-win-${idx}`,
+        nick: p.nick || `Jogador ${idx + 1}`,
+        level: p.level || 16,
+        avatar: p.avatar || '',
+        steamId: p.steamId || '',
+        role: idx === 0 ? 'Capitão' : 'Jogador',
+      })),
+      loserPlayers: (numA > numB ? room.teamB : room.teamA).map((p, idx) => ({
+        id: p.id || `p-lose-${idx}`,
+        nick: p.nick || `Jogador ${idx + 1}`,
+        level: p.level || 16,
+        avatar: p.avatar || '',
+        steamId: p.steamId || '',
+        role: idx === 0 ? 'Capitão' : 'Jogador',
+      })),
+    };
+    recordMatchHistoryEntry(webMatchRecord);
+    io.emit('match_history_updated', getMatchHistoryState());
+
     emitRoomState(roomId, room);
   });
 
@@ -2349,6 +2400,20 @@ app.post('/api/leaderboard/record', sensitiveLimiter, (req, res) => {
   res.json({ success: true, leaderboard: updated });
 });
 
+// 3.1 Unified Match History API (Discord Bot + Web Platform)
+app.get('/api/matches', (req, res) => {
+  const { source, map, search, limit } = req.query;
+  const state = getMatchHistoryState({ source, map, search, limit: parseInt(limit, 10) || 100 });
+  res.json(state);
+});
+
+app.get('/api/matches/:id', (req, res) => {
+  const all = getMatchHistoryState({ limit: 500 }).matches;
+  const match = all.find((m) => m.id.toLowerCase() === (req.params.id || '').toLowerCase());
+  if (!match) return res.status(404).json({ error: 'Mix não encontrado.' });
+  res.json(match);
+});
+
 // 4. Discord Webhook Dispatcher
 app.post('/api/discord/webhook', sensitiveLimiter, async (req, res) => {
   const { webhookUrl, eventType, data } = req.body;
@@ -2615,6 +2680,13 @@ app.use((req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`🎮 [CS2 MIX HUB] Servidor rodando na porta ${PORT} em 0.0.0.0`);
   discordBotManager.setWebRoomsReference(rooms);
+  discordBotManager.onMatchRecorded = (match) => {
+    io.emit('match_history_updated', getMatchHistoryState());
+    io.emit('leaderboard_updated', getLeaderboard());
+  };
+  onMatchHistoryUpdated(() => {
+    io.emit('match_history_updated', getMatchHistoryState());
+  });
   if (discordBotManager.config.token || process.env.DISCORD_BOT_TOKEN) {
     discordBotManager.start().catch((err) => {
       console.warn('[DISCORD BOT] Aviso ao inicializar bot:', err.message);

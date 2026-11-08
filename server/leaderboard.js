@@ -58,6 +58,7 @@ function saveToFile() {
 loadFromFile();
 
 export function getLeaderboard() {
+  loadFromFile();
   // Sort primarily by wins desc, then winRate desc
   return [...memoryLeaderboard].sort((a, b) => {
     if (b.wins !== a.wins) return b.wins - a.wins;

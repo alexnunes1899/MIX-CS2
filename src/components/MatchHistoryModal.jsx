@@ -7,6 +7,7 @@ export default function MatchHistoryModal({
   onClose,
   history = [],
   onSaveScore,
+  onOpenGlobalHistory,
   soundEnabled,
 }) {
   const [scoreA, setScoreA] = useState('');
@@ -134,6 +135,23 @@ export default function MatchHistoryModal({
             )}
           </div>
         </div>
+
+        {onOpenGlobalHistory && (
+          <div className="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between">
+            <span className="text-[11px] text-slate-400">
+              Quer ver todos os mixes registrados no Discord e no Hub?
+            </span>
+            <button
+              onClick={() => {
+                if (soundEnabled) playClickSound();
+                onOpenGlobalHistory();
+              }}
+              className="px-3 py-1.5 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/40 text-purple-300 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+            >
+              <span>Histórico Global (Discord + Site) ➔</span>
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

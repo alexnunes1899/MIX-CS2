@@ -2263,6 +2263,10 @@ export default function App() {
         onClose={() => setHistoryOpen(false)}
         history={room.history}
         onSaveScore={handleSaveScore}
+        onOpenGlobalHistory={() => {
+          setHistoryOpen(false);
+          setLeaderboardOpen(true);
+        }}
         soundEnabled={soundEnabled}
       />
 
