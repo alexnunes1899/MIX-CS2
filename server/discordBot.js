@@ -1197,7 +1197,17 @@ class DiscordBotManager {
         .setLabel('🎮 Criar Mix 5v5')
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
-        .setLabel('🌐 Acessar Hub no Navegador')
+        .setCustomId('panel_set_level')
+        .setLabel('Meu Nível GC')
+        .setEmoji('⭐')
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId('panel_live_radar')
+        .setLabel('Radar Ao Vivo')
+        .setEmoji('📡')
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setLabel('🌐 Hub Web')
         .setStyle(ButtonStyle.Link)
         .setURL('http://localhost:3000/')
     );
@@ -2587,6 +2597,11 @@ class DiscordBotManager {
         .setEmoji('⭐')
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
+        .setCustomId(`mix_live_tracker:${mix.id}`)
+        .setLabel('Radar Ao Vivo')
+        .setEmoji('📡')
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
         .setCustomId(`mix_roulette:${mix.id}`)
         .setLabel('Roleta de Mapa')
         .setEmoji('🎲')
@@ -2805,7 +2820,12 @@ class DiscordBotManager {
 
     const row2 = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setLabel('🌐 Acompanhar Partida no Site')
+        .setCustomId(`mix_live_tracker:${mix.id}`)
+        .setLabel('Radar Ao Vivo')
+        .setEmoji('📡')
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setLabel('🌐 Acompanhar no Site')
         .setStyle(ButtonStyle.Link)
         .setURL(`http://localhost:3000/?room=${mix.id}`),
       new ButtonBuilder()
@@ -2839,6 +2859,43 @@ class DiscordBotManager {
       });
     }
 
+    // Permanent Panel GC Level Modal
+    if (customId === 'panel_set_level') {
+      const current = this.getPlayerLevel(user.id);
+      const modal = new ModalBuilder()
+        .setCustomId('modal_set_level:panel')
+        .setTitle('Nível Gamers Club (GC)');
+
+      const levelInput = new TextInputBuilder()
+        .setCustomId('gc_level_input')
+        .setLabel('Seu Nível na Gamers Club (1 a 21)')
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('Ex: 18')
+        .setValue(String(current || 16))
+        .setMinLength(1)
+        .setMaxLength(2)
+        .setRequired(true);
+
+      const actionRow = new ActionRowBuilder().addComponents(levelInput);
+      modal.addComponents(actionRow);
+      return interaction.showModal(modal);
+    }
+
+    // Permanent Panel Live Radar Trigger
+    if (customId === 'panel_live_radar') {
+      const requester = user.username || 'Jogador';
+      const embed = this.buildLiveMatchEmbed(requester);
+      const row = this.buildLiveMatchButtons(Boolean(this.lastGsiState?.player?.name));
+      const sent = await interaction.reply({
+        content: `📡 <@${user.id}> ativou o **Radar de Partida Ao Vivo**!`,
+        embeds: [embed],
+        components: [row],
+        fetchReply: true,
+      });
+      this.registerLiveTracker(sent, requester);
+      return;
+    }
+
     // Live Match Tracker Controls
     if (customId === 'live_refresh') {
       const requester = interaction.user?.username || 'Jogador';
@@ -2866,6 +2923,22 @@ class DiscordBotManager {
     }
 
     const [action, mixId, param] = customId.split(':');
+
+    // Mix Live Tracker Trigger from Lobby or Match Ready Screen
+    if (action === 'mix_live_tracker') {
+      const requester = user.username || 'Jogador';
+      const embed = this.buildLiveMatchEmbed(requester);
+      const row = this.buildLiveMatchButtons(Boolean(this.lastGsiState?.player?.name));
+      const sent = await interaction.reply({
+        content: `📡 <@${user.id}> ativou o **Radar de Partida Ao Vivo**!`,
+        embeds: [embed],
+        components: [row],
+        fetchReply: true,
+      });
+      this.registerLiveTracker(sent, requester);
+      return;
+    }
+
     const mix = this.activeMixes.get(interaction.channelId);
 
     if (!mix || mix.id !== mixId) {
@@ -3640,7 +3713,17 @@ class DiscordBotManager {
         .setLabel('🎮 Criar Mix 5v5')
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
-        .setLabel('🌐 Acessar Hub no Navegador')
+        .setCustomId('panel_set_level')
+        .setLabel('Meu Nível GC')
+        .setEmoji('⭐')
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId('panel_live_radar')
+        .setLabel('Radar Ao Vivo')
+        .setEmoji('📡')
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setLabel('🌐 Hub Web')
         .setStyle(ButtonStyle.Link)
         .setURL('http://localhost:3000/')
     );
