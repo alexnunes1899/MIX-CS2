@@ -434,20 +434,30 @@ function dispatchAutoDiscordVeto(room) {
   const sideB = room.startingSideTeamB || 'CT';
   const sideA = sideB === 'CT' ? 'TR' : 'CT';
   const creatorNick = room.creatorNick || 'Alex';
+  const nameA = room.teamAName || (room.teamA?.[0]?.nick ? `Time ${room.teamA[0].nick}` : (creatorNick ? `Time ${creatorNick}` : 'Time A'));
+  const nameB = room.teamBName || (room.teamB?.[0]?.nick ? `Time ${room.teamB[0].nick}` : 'Time B');
+  const drawnSeries = Array.isArray(room.drawnSeries) && room.drawnSeries.length > 0 ? room.drawnSeries : [];
+  const primaryMap = drawnSeries[0]?.map || room.finalMap || { name: 'Mirage', file: 'de_mirage' };
+  const firstSideA = drawnSeries[0]?.sideTimeA || sideA;
+  const firstSideB = firstSideA === 'CT' ? 'TR' : 'CT';
+
   sendDiscordWebhook({
     webhookUrl: room.discordWebhook,
     eventType: 'mix_ready',
     data: {
-      roomName: room.name || 'MIX',
-      mapName: room.finalMap?.name || 'Mirage',
-      mapFile: room.finalMap?.file || 'de_mirage',
-      mapImage: room.finalMap?.image || '',
-      mapLogo: room.finalMap?.logo || '',
+      roomName: room.name || room.id || 'MIX',
+      mapName: primaryMap.name || 'Mirage',
+      mapFile: primaryMap.file || 'de_mirage',
+      mapImage: primaryMap.image || '',
+      mapLogo: primaryMap.logo || '',
       matchFormat: room.matchFormat || 'MD1',
-      nameA: `Time ${creatorNick}`,
-      nameB: `Time Oponente`,
-      sideA,
-      sideB,
+      drawnSeries,
+      pickedMaps: room.pickedMaps || [],
+      vetoLog: room.vetoLog || [],
+      nameA,
+      nameB,
+      sideA: firstSideA,
+      sideB: firstSideB,
       teamA: room.teamA,
       teamB: room.teamB,
       metrics: room.metrics,
