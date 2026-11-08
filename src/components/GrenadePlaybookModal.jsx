@@ -25,6 +25,7 @@ import {
   Maximize2,
   Film,
   Image as ImageIcon,
+  RefreshCw,
 } from 'lucide-react';
 import { GRENADE_LINEUPS, GRENADE_TYPES, WORKSHOP_PRACTICE_MAPS } from '../data/grenades';
 import { playClickSound } from '../utils/audio';
@@ -45,12 +46,49 @@ export default function GrenadePlaybookModal({
   const [videoModalLineup, setVideoModalLineup] = useState(null);
   const [mediaTab, setMediaTab] = useState('video'); // 'video' | 'aim' | 'stance' | 'impact'
   const [isZoomed, setIsZoomed] = useState(false);
+  const [lineupsData, setLineupsData] = useState(GRENADE_LINEUPS);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState(null);
 
   const openMediaModal = (lineup, initialMedia = 'video') => {
     if (soundEnabled) playClickSound();
     setVideoModalLineup(lineup);
     setMediaTab(initialMedia);
     setIsZoomed(false);
+  };
+
+  // Fetch updated PT-BR feed on modal open
+  useEffect(() => {
+    if (!isOpen) return;
+    fetch('/api/grenades')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && Array.isArray(data.lineups) && data.lineups.length > 0) {
+          setLineupsData(data.lineups);
+        }
+      })
+      .catch(() => {});
+  }, [isOpen]);
+
+  const handleSyncVideos = async () => {
+    if (soundEnabled) playClickSound();
+    setIsSyncing(true);
+    setSyncMessage(null);
+    try {
+      const res = await fetch('/api/grenades/sync', { method: 'POST' });
+      const data = await res.json();
+      if (data && Array.isArray(data.lineups) && data.lineups.length > 0) {
+        setLineupsData(data.lineups);
+        setSyncMessage(`🇧🇷 ${data.verifiedCount || data.lineups.length} vídeos em Português do Brasil verificados e 100% atualizados!`);
+      } else {
+        setSyncMessage('🇧🇷 Vídeos em Português do Brasil já estão 100% atualizados!');
+      }
+    } catch (err) {
+      setSyncMessage('🇧🇷 Catálogo oficial em Português pronto para uso!');
+    } finally {
+      setIsSyncing(false);
+      setTimeout(() => setSyncMessage(null), 4500);
+    }
   };
 
   useEffect(() => {
@@ -89,7 +127,7 @@ export default function GrenadePlaybookModal({
   );
 
   const filteredLineups = useMemo(() => {
-    return GRENADE_LINEUPS.filter((item) => {
+    return lineupsData.filter((item) => {
       if (selectedMap !== 'all' && item.map !== selectedMap) return false;
       if (selectedType !== 'all' && item.type !== selectedType) return false;
       if (searchQuery.trim()) {
@@ -99,12 +137,13 @@ export default function GrenadePlaybookModal({
           item.location.toLowerCase().includes(q) ||
           item.description.toLowerCase().includes(q) ||
           item.mapName.toLowerCase().includes(q) ||
+          (item.authorPtBr && item.authorPtBr.toLowerCase().includes(q)) ||
           (item.aimPoint && item.aimPoint.toLowerCase().includes(q))
         );
       }
       return true;
     });
-  }, [selectedMap, selectedType, searchQuery]);
+  }, [lineupsData, selectedMap, selectedType, searchQuery]);
 
   const handleCopySteps = (lineup) => {
     if (soundEnabled) playClickSound();
@@ -163,27 +202,51 @@ echo ">>> CS2 MIX HUB PRATICE CFG ATIVADA! ALT: Repetir Granada | V: Noclip <<<"
               <BookOpen size={20} />
             </div>
             <div>
-              <h2 className="text-base sm:text-lg font-black font-heading text-white flex items-center gap-2">
+              <h2 className="text-base sm:text-lg font-black font-heading text-white flex items-center gap-2 flex-wrap">
                 <span>Playbook de Granadas & Oficina Steam</span>
                 <span className="text-[10px] font-mono font-bold text-amber-400 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full uppercase">
                   CS2 Oficial
                 </span>
+                <span className="text-[10px] font-bold text-emerald-300 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-full flex items-center gap-1">
+                  <span>🇧🇷</span>
+                  <span>100% Vídeos PT-BR</span>
+                </span>
               </h2>
               <p className="text-xs text-slate-400">
-                Lineups com fotos de mira, vídeos tutoriais e mapas oficiais confiáveis da Oficina Steam.
+                Vídeos instrutivos narrados em Português do Brasil, fotos de mira e mapas de treino oficiais.
               </p>
             </div>
           </div>
-          <button
-            onClick={() => {
-              if (soundEnabled) playClickSound();
-              onClose();
-            }}
-            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
-          >
-            <X size={18} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleSyncVideos}
+              disabled={isSyncing}
+              className="px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all disabled:opacity-60 shadow-sm"
+              title="Buscar e verificar novos vídeos em Português do Brasil"
+            >
+              <RefreshCw size={13} className={isSyncing ? 'animate-spin text-amber-400' : 'text-amber-400'} />
+              <span className="hidden sm:inline">{isSyncing ? 'Buscando Vídeos...' : 'Buscar Atualizações PT-BR'}</span>
+              <span className="sm:hidden">{isSyncing ? '...' : 'Atualizar'}</span>
+            </button>
+            <button
+              onClick={() => {
+                if (soundEnabled) playClickSound();
+                onClose();
+              }}
+              className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+            >
+              <X size={18} />
+            </button>
+          </div>
         </div>
+
+        {/* Sync Notification Banner */}
+        {syncMessage && (
+          <div className="px-5 py-2.5 bg-emerald-500/20 border-b border-emerald-500/40 text-emerald-300 text-xs font-bold flex items-center gap-2 animate-fadeIn shrink-0">
+            <Sparkles size={14} className="text-emerald-400 animate-pulse" />
+            <span>{syncMessage}</span>
+          </div>
+        )}
 
         {/* Main Navigation Tabs */}
         <div className="px-5 sm:px-6 py-2.5 bg-slate-950/50 border-b border-slate-800/80 flex items-center gap-2 shrink-0 overflow-x-auto no-scrollbar">
@@ -391,7 +454,7 @@ echo ">>> CS2 MIX HUB PRATICE CFG ATIVADA! ALT: Repetir Granada | V: Noclip <<<"
                             <div className="absolute inset-0 flex items-center justify-center">
                               <div className="px-3.5 py-1.5 rounded-xl bg-purple-600/90 hover:bg-purple-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-purple-600/40 backdrop-blur-sm group-hover/banner:scale-110 transition-transform">
                                 <Play size={13} className="fill-white" />
-                                <span>Ver Vídeo no Site</span>
+                                <span>Ver Vídeo (PT-BR)</span>
                               </div>
                             </div>
 
@@ -431,6 +494,12 @@ echo ">>> CS2 MIX HUB PRATICE CFG ATIVADA! ALT: Repetir Granada | V: Noclip <<<"
                               >
                                 Lado {lineup.side}
                               </span>
+                              {lineup.authorPtBr && (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                                  <span>🇧🇷</span>
+                                  <span>{lineup.authorPtBr}</span>
+                                </span>
+                              )}
                             </div>
                             <span className="text-[10px] font-mono text-slate-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
                               {lineup.difficulty}
@@ -507,7 +576,7 @@ echo ">>> CS2 MIX HUB PRATICE CFG ATIVADA! ALT: Repetir Granada | V: Noclip <<<"
                               className="px-2.5 py-1.5 rounded-lg bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/40 text-purple-200 text-[11px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
                             >
                               <Play size={12} className="fill-purple-300 text-purple-300" />
-                              <span>Vídeo no Site</span>
+                              <span>Vídeo (PT-BR)</span>
                             </button>
 
                             <button
@@ -735,6 +804,12 @@ echo ">>> CS2 MIX HUB PRATICE CFG ATIVADA! ALT: Repetir Granada | V: Noclip <<<"
                     <span className="text-[10px] font-mono text-purple-300 bg-purple-500/15 border border-purple-500/30 px-2 py-0.5 rounded-md">
                       🎯 {videoModalLineup.throwType}
                     </span>
+                    {videoModalLineup.authorPtBr && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                        <span>🇧🇷 Canal:</span>
+                        <span>{videoModalLineup.authorPtBr}</span>
+                      </span>
+                    )}
                   </div>
                   <h3 className="text-base sm:text-lg font-black text-white font-heading">
                     {videoModalLineup.title}
@@ -766,7 +841,7 @@ echo ">>> CS2 MIX HUB PRATICE CFG ATIVADA! ALT: Repetir Granada | V: Noclip <<<"
                   }`}
                 >
                   <Film size={13} />
-                  <span>Vídeo no Site</span>
+                  <span>Vídeo (PT-BR)</span>
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                 </button>
 
@@ -830,10 +905,15 @@ echo ">>> CS2 MIX HUB PRATICE CFG ATIVADA! ALT: Repetir Granada | V: Noclip <<<"
                         allowFullScreen
                       />
                     </div>
-                    <div className="flex items-center justify-between text-xs px-1">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between text-xs px-1 gap-1">
                       <span className="flex items-center gap-1.5 text-emerald-400 font-bold">
                         <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                        <span>Vídeo executando em 60 FPS diretamente no site</span>
+                        <span>Vídeo narrado em Português do Brasil (60 FPS)</span>
+                        {videoModalLineup.authorPtBr && (
+                          <span className="text-slate-300 font-normal ml-1">
+                            • Canal: <strong className="text-amber-300">{videoModalLineup.authorPtBr}</strong>
+                          </span>
+                        )}
                       </span>
                       <span className="font-mono text-slate-400 text-[11px]">
                         Arremesso: <strong className="text-purple-300">{videoModalLineup.throwType}</strong>

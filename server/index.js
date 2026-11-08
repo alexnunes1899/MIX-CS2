@@ -5,6 +5,7 @@ import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { fetchLiveOfficialRotation, getCurrentRotationState, ALL_MAPS_CATALOGUE } from './mapSync.js';
+import { getGrenadesState, syncGrenadesPtBr, loadSavedGrenades } from './grenadeSync.js';
 import { executeRconCommand } from './rcon.js';
 import {
   handleGsiPayload,
@@ -142,6 +143,17 @@ fetchLiveOfficialRotation()
 setInterval(() => {
   fetchLiveOfficialRotation().catch(() => {});
 }, 12 * 60 * 60 * 1000);
+
+// Live CS2 Grenade Playbook Sync (100% Brazilian Portuguese Curated Videos)
+loadSavedGrenades();
+syncGrenadesPtBr()
+  .then((state) => console.log(`[SERVER] 🇧🇷 Feed de vídeos PT-BR pronto (${state.totalLineups} lineups validados).`))
+  .catch((err) => console.warn('[SERVER] Erro na validação de vídeos PT-BR:', err.message));
+
+// Periodic background validation & refresh of PT-BR grenade videos every 6 hours
+setInterval(() => {
+  syncGrenadesPtBr().catch(() => {});
+}, 6 * 60 * 60 * 1000);
 
 const MOCK_BOTS = [
   { id: 'bot-1', nick: 'FalleN', level: 21, faceitLevel: 10, faceitElo: 2840, cs2Hours: 14800, side: 'CT', ready: true, avatar: '👑' },
@@ -1916,6 +1928,21 @@ app.post('/api/maps/sync-rotation', sensitiveLimiter, async (req, res) => {
     });
 
     res.json({ success: true, ...updatedState });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Official CS2 Grenade Playbook (100% Brazilian Portuguese Curated Videos)
+app.get('/api/grenades', (req, res) => {
+  res.json(getGrenadesState());
+});
+
+app.post('/api/grenades/sync', sensitiveLimiter, async (req, res) => {
+  try {
+    const updated = await syncGrenadesPtBr();
+    io.emit('grenades_feed_updated', updated);
+    res.json({ success: true, ...updated });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
