@@ -283,9 +283,13 @@ export default function TournamentBracketModal({
   const handleSendMatchToMix = (match) => {
     if (soundEnabled) playReadySound();
     if (onLoadTeamsToMix) {
+      const teamAObj = teams.find((t) => t.name === match.teamA);
+      const teamBObj = teams.find((t) => t.name === match.teamB);
       onLoadTeamsToMix({
         nameA: match.teamA,
         nameB: match.teamB,
+        teamAObj,
+        teamBObj,
         matchId: match.id,
       });
       onClose();

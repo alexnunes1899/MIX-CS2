@@ -17,6 +17,14 @@ import { moveGuildMember, testDiscordBotVoiceChannels } from './discordVoiceMove
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Global Error Resilience: Prevent process termination on transient network or external API errors
+process.on('unhandledRejection', (reason, promise) => {
+  console.warn('[SERVER WARN] Unhandled Rejection intercepted:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[SERVER ERROR] Uncaught Exception intercepted:', err);
+});
+
 const app = express();
 
 // Security Hardening: Disable information disclosure
@@ -1198,6 +1206,28 @@ io.on('connection', (socket) => {
       bo1Order: bo1Order === 'ABBAAB' ? 'ABBAAB' : 'ABABAB',
     });
     emitRoomState(roomId, room);
+  });
+
+  // Load Tournament Match with complete rosters (5v5)
+  socket.on('load_tournament_match', ({ roomId, nameA, nameB, teamA, teamB, matchFormat = 'MD3' }) => {
+    const room = getRoomAndTouch(roomId) || getOrCreateRoom(roomId, `${nameA} vs ${nameB}`);
+    if (!room) return;
+
+    const cleanA = sanitizeInput(nameA, 32) || 'Time A';
+    const cleanB = sanitizeInput(nameB, 32) || 'Time B';
+    room.nameA = cleanA;
+    room.nameB = cleanB;
+    room.teamAName = cleanA;
+    room.teamBName = cleanB;
+    room.matchFormat = ['MD1', 'MD3', 'MD5'].includes(matchFormat) ? matchFormat : 'MD3';
+
+    room.teamA = Array.isArray(teamA) && teamA.length > 0 ? teamA : room.teamA;
+    room.teamB = Array.isArray(teamB) && teamB.length > 0 ? teamB : room.teamB;
+    room.players = [...room.teamA, ...room.teamB];
+    room.phase = 'teams';
+
+    emitRoomState(roomId, room);
+    broadcastRoomsList();
   });
 
   // Quick Random Map Draw (Supports MD1, MD3, MD5 with 100% cryptographic reliability)

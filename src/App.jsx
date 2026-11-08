@@ -1085,14 +1085,71 @@ export default function App() {
   };
 
   // Load Tournament match into Mix Hub
-  const handleLoadTournamentTeams = ({ nameA, nameB }) => {
+  const handleLoadTournamentTeams = ({ nameA, nameB, teamAObj, teamBObj }) => {
     if (soundEnabled) playClickSound();
+
+    const cleanRoom = (roomId && roomId.trim()) ? roomId.trim() : `COPA-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    if (!roomId) {
+      setRoomId(cleanRoom);
+      const u = new URL(window.location);
+      u.searchParams.set('room', cleanRoom);
+      window.history.replaceState({}, '', u);
+    }
+
+    const formattedTeamA = (teamAObj?.players || []).map((p, i) => ({
+      id: `tourney-a-${i}-${Date.now()}`,
+      nick: p.nick,
+      level: 16,
+      avatar: p.role === 'IGL' ? '👑' : p.role === 'AWP' ? '🎯' : '⚡',
+      team: 'teamA',
+      role: p.role,
+      isCaptain: Boolean(p.isCaptain),
+    }));
+
+    const formattedTeamB = (teamBObj?.players || []).map((p, i) => ({
+      id: `tourney-b-${i}-${Date.now()}`,
+      nick: p.nick,
+      level: 16,
+      avatar: p.role === 'IGL' ? '👑' : p.role === 'AWP' ? '🎯' : '⚡',
+      team: 'teamB',
+      role: p.role,
+      isCaptain: Boolean(p.isCaptain),
+    }));
+
+    const allTourneyPlayers = [...formattedTeamA, ...formattedTeamB];
+
+    if (socket.connected) {
+      socket.emit('join_room', {
+        roomId: cleanRoom,
+        roomName: `${nameA} vs ${nameB}`,
+        createIfMissing: true,
+      });
+      socket.emit('load_tournament_match', {
+        roomId: cleanRoom,
+        nameA,
+        nameB,
+        teamA: formattedTeamA,
+        teamB: formattedTeamB,
+        matchFormat: 'MD3',
+      });
+    }
+
     setRoom((prev) => ({
       ...prev,
-      nameA,
-      nameB,
-      phase: prev.players.length >= 10 ? 'teams' : 'lobby',
+      id: cleanRoom,
+      nameA: nameA || prev.nameA || 'Time A',
+      nameB: nameB || prev.nameB || 'Time B',
+      teamAName: nameA || 'Time A',
+      teamBName: nameB || 'Time B',
+      teamA: formattedTeamA.length > 0 ? formattedTeamA : prev.teamA,
+      teamB: formattedTeamB.length > 0 ? formattedTeamB : prev.teamB,
+      players: allTourneyPlayers.length > 0 ? allTourneyPlayers : prev.players,
+      phase: allTourneyPlayers.length >= 10 ? 'teams' : (prev.players.length >= 10 ? 'teams' : 'lobby'),
     }));
+
+    if (view !== 'mix') {
+      setView('mix');
+    }
     setTournamentModalOpen(false);
   };
 
@@ -1364,23 +1421,23 @@ export default function App() {
   // Start Veto Phase directly
   const handleStartVeto = (matchFormat = 'MD1') => {
     const fmt = typeof matchFormat === 'string' && ['MD1', 'MD3', 'MD5'].includes(matchFormat) ? matchFormat : (room.matchFormat || 'MD1');
-    if (socket.connected) {
-      socket.emit('start_veto', { roomId, matchFormat: fmt });
-    } else {
-      setRoom((prev) => ({
-        ...prev,
-        phase: 'veto',
-        matchFormat: fmt,
-        bannedMaps: [],
-        pickedMaps: [],
-        vetoLog: [],
-        drawnSeries: [],
-        pendingSidePick: null,
-        currentTurn: prev.vetoFirstTeam || 'teamA',
-        finalMap: null,
-        startingSideTeamB: null,
-      }));
+    const targetId = roomId || room.id;
+    if (socket.connected && targetId) {
+      socket.emit('start_veto', { roomId: targetId, matchFormat: fmt });
     }
+    setRoom((prev) => ({
+      ...prev,
+      phase: 'veto',
+      matchFormat: fmt,
+      bannedMaps: [],
+      pickedMaps: [],
+      vetoLog: [],
+      drawnSeries: [],
+      pendingSidePick: null,
+      currentTurn: prev.vetoFirstTeam || 'teamA',
+      finalMap: null,
+      startingSideTeamB: null,
+    }));
   };
 
   // Change Veto Format (MD1 / MD3 / MD5)
@@ -1426,8 +1483,9 @@ export default function App() {
 
   // Ban or Pick Map according to Pro Veto Schedule
   const handleBanMap = (mapId) => {
-    if (socket.connected) {
-      socket.emit('ban_map', { roomId, mapId });
+    const targetId = roomId || room.id;
+    if (socket.connected && targetId) {
+      socket.emit('ban_map', { roomId: targetId, mapId });
     } else {
       setRoom((prev) => {
         if (prev.pendingSidePick) return prev;
@@ -1520,8 +1578,9 @@ export default function App() {
 
   // Side Selection (for picked map in MD3/MD5 or decider map)
   const handleSelectSide = (side) => {
-    if (socket.connected) {
-      socket.emit('select_side', { roomId, side });
+    const targetId = roomId || room.id;
+    if (socket.connected && targetId) {
+      socket.emit('select_side', { roomId: targetId, side });
     } else {
       setRoom((prev) => {
         const cleanSide = side === 'TR' ? 'TR' : side === 'KNIFE' ? 'KNIFE' : 'CT';
