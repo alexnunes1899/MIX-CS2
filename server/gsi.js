@@ -4,7 +4,12 @@
  * Updates room live score and match status in real time.
  */
 
+import fs from 'fs';
+import path from 'path';
+import { execSync } from 'child_process';
+
 const roomGsiStates = new Map();
+const playerHistoricalStats = new Map();
 
 export function handleGsiPayload(roomId, payload) {
   if (!roomId || !payload) return null;
@@ -22,6 +27,74 @@ export function handleGsiPayload(roomId, payload) {
   const bomb = roundData.bomb || 'none'; // 'planted' | 'exploded' | 'defused'
   const roundPhase = roundData.phase || 'unknown'; // 'freezetime' | 'live' | 'over'
   const winTeam = roundData.win_team || null;
+
+  // 1. Resolve raw stats from player.match_stats or payload.allplayers[player.steamid].match_stats
+  let rawStats = player.match_stats || {};
+  if (
+    (!rawStats.kills && !rawStats.score) &&
+    payload.allplayers &&
+    player.steamid &&
+    payload.allplayers[player.steamid]?.match_stats
+  ) {
+    rawStats = payload.allplayers[player.steamid].match_stats;
+  }
+
+  const pKey = player.steamid || player.name || cleanRoomId;
+  const cached = playerHistoricalStats.get(pKey) || {
+    kills: 0,
+    deaths: 0,
+    assists: 0,
+    mvps: 0,
+    score: 0,
+    kd: 0,
+  };
+
+  const incomingKills = typeof rawStats?.kills === 'number' ? rawStats.kills : 0;
+  const incomingDeaths = typeof rawStats?.deaths === 'number' ? rawStats.deaths : 0;
+  const incomingAssists = typeof rawStats?.assists === 'number' ? rawStats.assists : 0;
+  const incomingMvps = typeof rawStats?.mvps === 'number' ? rawStats.mvps : 0;
+  const incomingScore = typeof rawStats?.score === 'number' ? rawStats.score : 0;
+
+  // Reset cache if a brand new map starts in warmup
+  if (phase === 'warmup' && roundNumber === 0) {
+    playerHistoricalStats.delete(pKey);
+  }
+
+  // Preserve accumulated stats if incoming packet has zeroes during gameover/intermission or late in game
+  let finalKills = incomingKills;
+  let finalDeaths = incomingDeaths;
+  let finalAssists = incomingAssists;
+  let finalMvps = incomingMvps;
+  let finalScore = incomingScore;
+
+  if (
+    incomingKills === 0 &&
+    incomingDeaths === 0 &&
+    cached.kills > 0 &&
+    (phase === 'gameover' || phase === 'intermission' || roundNumber > 1 || scoreCT + scoreTR > 1)
+  ) {
+    finalKills = cached.kills;
+    finalDeaths = cached.deaths;
+    finalAssists = cached.assists;
+    finalMvps = cached.mvps;
+    finalScore = cached.score;
+  } else if (incomingKills > 0 || incomingDeaths > 0 || incomingScore > 0) {
+    finalKills = Math.max(incomingKills, cached.kills);
+    finalDeaths = Math.max(incomingDeaths, cached.deaths);
+    finalAssists = Math.max(incomingAssists, cached.assists);
+    finalMvps = Math.max(incomingMvps, cached.mvps);
+    finalScore = Math.max(incomingScore, cached.score);
+    playerHistoricalStats.set(pKey, {
+      kills: finalKills,
+      deaths: finalDeaths,
+      assists: finalAssists,
+      mvps: finalMvps,
+      score: finalScore,
+      kd: finalDeaths > 0 ? Number((finalKills / finalDeaths).toFixed(2)) : Number(finalKills.toFixed(2)),
+    });
+  }
+
+  const finalKd = finalDeaths > 0 ? Number((finalKills / finalDeaths).toFixed(2)) : Number(finalKills.toFixed(2));
 
   // Parse all players match statistics (Kills, Deaths, Assists, MVPs, Score, K/D)
   const allPlayersStats = [];
@@ -48,26 +121,31 @@ export function handleGsiPayload(roomId, payload) {
         kd,
       });
     });
-  } else if (player?.steamid && player?.match_stats) {
-    // Fallback: client-only GSI without allplayers
-    const stats = player.match_stats;
-    const kills = stats.kills || 0;
-    const deaths = stats.deaths || 0;
-    const assists = stats.assists || 0;
-    const mvps = stats.mvps || 0;
-    const score = stats.score || 0;
-    const kd = deaths > 0 ? Number((kills / deaths).toFixed(2)) : Number(kills.toFixed(2));
+  }
+
+  // Include individual player in allPlayersStats if missing or update if higher stats known
+  const playerInAll = allPlayersStats.find(
+    (p) => (player.steamid && p.steamId === player.steamid) || (player.name && p.name === player.name)
+  );
+  if (!playerInAll && (player.name || player.steamid)) {
     allPlayersStats.push({
-      steamId: player.steamid,
+      steamId: player.steamid || 'local_player',
       name: player.name || 'Jogador',
       team: player.team === 'CT' ? 'CT' : 'T',
-      kills,
-      deaths,
-      assists,
-      mvps,
-      score,
-      kd,
+      kills: finalKills,
+      deaths: finalDeaths,
+      assists: finalAssists,
+      mvps: finalMvps,
+      score: finalScore,
+      kd: finalKd,
     });
+  } else if (playerInAll && playerInAll.kills === 0 && finalKills > 0) {
+    playerInAll.kills = finalKills;
+    playerInAll.deaths = finalDeaths;
+    playerInAll.assists = finalAssists;
+    playerInAll.mvps = finalMvps;
+    playerInAll.score = finalScore;
+    playerInAll.kd = finalKd;
   }
 
   // Sort players by score desc, then kills desc
@@ -82,13 +160,6 @@ export function handleGsiPayload(roomId, payload) {
   let individualPlayer = null;
   if (player && (player.name || player.steamid)) {
     const pState = player.state || {};
-    const stats = player.match_stats || {};
-    const kills = typeof stats.kills === 'number' ? stats.kills : 0;
-    const deaths = typeof stats.deaths === 'number' ? stats.deaths : 0;
-    const assists = typeof stats.assists === 'number' ? stats.assists : 0;
-    const mvps = typeof stats.mvps === 'number' ? stats.mvps : 0;
-    const score = typeof stats.score === 'number' ? stats.score : 0;
-    const kd = deaths > 0 ? Number((kills / deaths).toFixed(2)) : Number(kills.toFixed(2));
 
     const weaponsList = [];
     let activeWeapon = null;
@@ -144,12 +215,12 @@ export function handleGsiPayload(roomId, payload) {
       equipValue: typeof pState.equip_value === 'number' ? pState.equip_value : 0,
       roundKills: typeof pState.round_kills === 'number' ? pState.round_kills : 0,
       roundKillHs: typeof pState.round_killhs === 'number' ? pState.round_killhs : 0,
-      kills,
-      deaths,
-      assists,
-      mvps,
-      score,
-      kd,
+      kills: finalKills,
+      deaths: finalDeaths,
+      assists: finalAssists,
+      mvps: finalMvps,
+      score: finalScore,
+      kd: finalKd,
       weapons: weaponsList,
       activeWeapon: activeWeapon || primaryWeapon || secondaryWeapon || { name: 'Faca', ammoClip: null },
       primaryWeapon,
@@ -171,7 +242,7 @@ export function handleGsiPayload(roomId, payload) {
     bomb,
     roundPhase,
     winTeam,
-    rawPlayer: player?.name ? { name: player.name, team: player.team, steamId: player.steamid, matchStats: player.match_stats } : null,
+    rawPlayer: player?.name ? { name: player.name, team: player.team, steamId: player.steamid, matchStats: rawStats } : null,
     player: individualPlayer,
     allPlayersStats,
     topFragger,
@@ -227,14 +298,15 @@ export function generateGsiConfig(serverBaseUrl, roomId) {
     "heartbeat" "2.0"
     "data"
     {
-        "provider"              "1"
-        "map"                   "1"
-        "round"                 "1"
-        "player_id"             "1"
-        "allplayers_id"         "1"
-        "player_state"          "1"
-        "player_weapons"        "1"
-        "allplayers_state"      "1"
+        "provider"               "1"
+        "map"                    "1"
+        "round"                  "1"
+        "player_id"              "1"
+        "allplayers_id"          "1"
+        "player_state"           "1"
+        "player_weapons"         "1"
+        "player_match_stats"     "1"
+        "allplayers_state"       "1"
         "allplayers_match_stats" "1"
     }
     "auth"
@@ -243,6 +315,136 @@ export function generateGsiConfig(serverBaseUrl, roomId) {
     }
 }
 `;
+}
+
+/**
+ * Finds all CS2 game\csgo\cfg directories on the host PC (Steam Registry, libraryfolders.vdf, common drives)
+ */
+export function findCs2CfgDirs() {
+  const dirs = new Set();
+  try {
+    const regOutput = execSync(
+      'powershell -NoProfile -Command "(Get-ItemProperty -Path \'HKCU:\\Software\\Valve\\Steam\' -ErrorAction SilentlyContinue).SteamPath"',
+      { encoding: 'utf8', timeout: 3000 }
+    ).trim();
+    if (regOutput) {
+      const cleanSteam = regOutput.replace(/\//g, '\\');
+      const p1 = path.join(cleanSteam, 'steamapps', 'common', 'Counter-Strike Global Offensive', 'game', 'csgo', 'cfg');
+      if (fs.existsSync(p1)) dirs.add(p1);
+
+      const vdf = path.join(cleanSteam, 'steamapps', 'libraryfolders.vdf');
+      if (fs.existsSync(vdf)) {
+        const vdfContent = fs.readFileSync(vdf, 'utf8');
+        const matches = [...vdfContent.matchAll(/"path"\s+"([^"]+)"/g)];
+        for (const m of matches) {
+          const libPath = m[1].replace(/\\\\/g, '\\').replace(/\//g, '\\');
+          const p2 = path.join(libPath, 'steamapps', 'common', 'Counter-Strike Global Offensive', 'game', 'csgo', 'cfg');
+          if (fs.existsSync(p2)) dirs.add(p2);
+        }
+      }
+    }
+  } catch (e) {
+    // Silently continue to standard drive checks
+  }
+
+  const drives = ['C', 'D', 'E', 'F', 'G', 'H', 'I'];
+  const commonSubdirs = [
+    ['Program Files (x86)', 'Steam', 'steamapps', 'common', 'Counter-Strike Global Offensive', 'game', 'csgo', 'cfg'],
+    ['Program Files', 'Steam', 'steamapps', 'common', 'Counter-Strike Global Offensive', 'game', 'csgo', 'cfg'],
+    ['Steam', 'steamapps', 'common', 'Counter-Strike Global Offensive', 'game', 'csgo', 'cfg'],
+    ['SteamLibrary', 'steamapps', 'common', 'Counter-Strike Global Offensive', 'game', 'csgo', 'cfg'],
+    ['Jogos', 'SteamLibrary', 'steamapps', 'common', 'Counter-Strike Global Offensive', 'game', 'csgo', 'cfg'],
+    ['Games', 'SteamLibrary', 'steamapps', 'common', 'Counter-Strike Global Offensive', 'game', 'csgo', 'cfg'],
+  ];
+
+  for (const drive of drives) {
+    for (const sub of commonSubdirs) {
+      const full = path.join(`${drive}:\\`, ...sub);
+      if (fs.existsSync(full)) dirs.add(full);
+    }
+  }
+
+  return Array.from(dirs);
+}
+
+/**
+ * Installs GSI directly to CS2 on the host PC in 1 click without downloading files
+ */
+export function installGsiLocally(serverBaseUrl = 'http://127.0.0.1:3000', roomId = 'MIX-PRO') {
+  let dirs = findCs2CfgDirs();
+  if (dirs.length === 0) {
+    const defaultDir = path.join(
+      'C:\\Program Files (x86)',
+      'Steam',
+      'steamapps',
+      'common',
+      'Counter-Strike Global Offensive',
+      'game',
+      'csgo',
+      'cfg'
+    );
+    try {
+      if (!fs.existsSync(defaultDir)) {
+        fs.mkdirSync(defaultDir, { recursive: true });
+      }
+      dirs = [defaultDir];
+    } catch (e) {
+      return {
+        success: false,
+        installed: false,
+        error: 'Não foi possível encontrar automaticamente a pasta do CS2. Verifique se a Steam está instalada.',
+      };
+    }
+  }
+
+  const cloudCfg = generateGsiConfig('https://mix-cs2-production.up.railway.app', roomId);
+  const localCfg = generateGsiConfig('http://127.0.0.1:3000', roomId);
+
+  const written = [];
+  for (const dir of dirs) {
+    try {
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      const mainPath = path.join(dir, 'gamestate_integration_cs2mixhub.cfg');
+      const localPath = path.join(dir, 'gamestate_integration_cs2mixhub_local.cfg');
+      fs.writeFileSync(mainPath, cloudCfg, 'utf8');
+      fs.writeFileSync(localPath, localCfg, 'utf8');
+      written.push(mainPath);
+    } catch (err) {
+      console.warn('[GSI DIRECT INSTALL WARN]:', err.message);
+    }
+  }
+
+  return {
+    success: written.length > 0,
+    installed: written.length > 0,
+    paths: written,
+    primaryPath: written[0] || null,
+    message: 'GSI instalado com sucesso diretamente no Counter-Strike 2! O CS2 já está pronto para monitorar.',
+  };
+}
+
+/**
+ * Checks if GSI CFG is installed in the CS2 folder on the host PC
+ */
+export function checkGsiInstalled() {
+  const dirs = findCs2CfgDirs();
+  for (const dir of dirs) {
+    const cfgPath = path.join(dir, 'gamestate_integration_cs2mixhub.cfg');
+    if (fs.existsSync(cfgPath)) {
+      try {
+        const content = fs.readFileSync(cfgPath, 'utf8');
+        return {
+          installed: true,
+          path: cfgPath,
+          hasMatchStats: content.includes('player_match_stats'),
+          active: true,
+        };
+      } catch (e) {
+        return { installed: true, path: cfgPath, hasMatchStats: false, active: true };
+      }
+    }
+  }
+  return { installed: false, path: null, hasMatchStats: false, active: false };
 }
 
 /**

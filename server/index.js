@@ -14,6 +14,8 @@ import {
   generateGsiConfig,
   generateGsiBatchInstaller,
   generateGsiPowerShellInstaller,
+  installGsiLocally,
+  checkGsiInstalled,
 } from './gsi.js';
 import { getSteamPlayerDetails } from './steamApi.js';
 import { fetchFaceitPlayer } from './faceit.js';
@@ -2119,6 +2121,23 @@ function processGsiDiscordNotifications(room, liveState, req) {
     }).catch((err) => console.error('[DISCORD GSI GAMEOVER ERROR]:', err.message));
   }
 }
+
+// Direct 1-Click local PC installation without downloading files
+app.post('/api/gsi/install-local', (req, res) => {
+  const roomId = (req.body?.roomId || 'MIX-PRO').trim().toUpperCase();
+  const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+  const host = req.get('host');
+  const serverBaseUrl = `${protocol}://${host}`;
+
+  const result = installGsiLocally(serverBaseUrl, roomId);
+  res.json(result);
+});
+
+// Check if GSI is installed in CS2 on the host PC
+app.get('/api/gsi/check-installed', (req, res) => {
+  const result = checkGsiInstalled();
+  res.json(result);
+});
 
 // 1. Valve CS2 Game State Integration (GSI) Webhook
 app.post('/api/gsi/:roomId', (req, res) => {

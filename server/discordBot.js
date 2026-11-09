@@ -528,6 +528,41 @@ class DiscordBotManager {
         .setTitle(`🏆 PARTIDA FINALIZADA • ${playerName.toUpperCase()}`)
         .setColor(isTie ? 0xf59e0b : 0x10b981);
 
+      // Extract best stats for player
+      let kills = typeof player.kills === 'number' ? player.kills : 0;
+      let deaths = typeof player.deaths === 'number' ? player.deaths : 0;
+      let assists = typeof player.assists === 'number' ? player.assists : 0;
+      let mvps = typeof player.mvps === 'number' ? player.mvps : 0;
+      let score = typeof player.score === 'number' ? player.score : 0;
+      let kd = player.kd;
+
+      if (kills === 0 && deaths === 0 && Array.isArray(state.allPlayersStats) && state.allPlayersStats.length > 0) {
+        const found = state.allPlayersStats.find(
+          (p) =>
+            (player.steamId && p.steamId === player.steamId) ||
+            (p.name && p.name.toLowerCase() === playerName.toLowerCase())
+        );
+        if (found && (found.kills > 0 || found.score > 0)) {
+          kills = found.kills;
+          deaths = found.deaths;
+          assists = found.assists;
+          mvps = found.mvps;
+          score = found.score;
+          kd = found.kd;
+        } else if (state.topFragger && state.topFragger.kills > 0) {
+          kills = state.topFragger.kills;
+          deaths = state.topFragger.deaths;
+          assists = state.topFragger.assists;
+          mvps = state.topFragger.mvps;
+          score = state.topFragger.score;
+          kd = state.topFragger.kd;
+        }
+      }
+
+      if (kd === undefined || kd === null) {
+        kd = deaths > 0 ? Number((kills / deaths).toFixed(2)) : Number(kills.toFixed(2));
+      }
+
       if (isExpanded) {
         embed
           .setDescription(
@@ -535,8 +570,8 @@ class DiscordBotManager {
               `🔢 **Placar Final:** 🛡️ **CT ${state.scoreCT || 0} x ${state.scoreTR || 0} TR** 💣\n` +
               `${winnerText}\n\n` +
               `📊 **Desempenho Final de ${playerName}:**\n` +
-              `🎯 **${player.kills || 0} Kills** • 💀 **${player.deaths || 0} Mortes** • 🤝 **${player.assists || 0} Assists** • ⭐ **${player.mvps || 0} MVPs**\n` +
-              `🔥 **K/D Final:** **${player.kd || 0}** • ⚡ **Pontuação:** **${player.score || 0}**`
+              `🎯 **${kills} Kills** • 💀 **${deaths} Mortes** • 🤝 **${assists} Assists** • ⭐ **${mvps} MVPs**\n` +
+              `🔥 **K/D Final:** **${kd}** • ⚡ **Pontuação:** **${score}**`
           )
           .setFooter({ text: 'CS2 Mix Hub • Partida Concluída' });
       } else {
@@ -544,7 +579,7 @@ class DiscordBotManager {
           .setDescription(
             `Partida encerrada em **${state.mapName || 'CS2'}**!\n` +
             `🔢 **Placar Final:** 🛡️ **CT ${state.scoreCT || 0} x ${state.scoreTR || 0} TR** 💣 (${winnerText})\n` +
-            `📊 **Estatísticas:** 🎯 **${player.kills || 0}K/${player.deaths || 0}D** (K/D **${player.kd || 0}**) • ⭐ **${player.mvps || 0} MVPs**`
+            `📊 **Estatísticas:** 🎯 **${kills} Kills** • 💀 **${deaths} Mortes** (K/D **${kd}**) • 🤝 **${assists}A** • ⭐ **${mvps} MVPs** • ⚡ **${score} pts**`
           )
           .setFooter({ text: '📡 Painel Discreto • Partida Concluída' });
       }

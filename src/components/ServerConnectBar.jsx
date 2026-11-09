@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Server, Copy, Check, Edit2, Play, Trash2, Key, Radio, Terminal, RefreshCw, Zap, ShieldCheck, Laptop } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Server, Copy, Check, Edit2, Play, Trash2, Key, Radio, Terminal, RefreshCw, Zap, ShieldCheck, Laptop, CheckCircle2 } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
 import { parseServerDetails } from '../utils/serverParser';
 import LocalHostModal from './LocalHostModal';
@@ -23,6 +23,14 @@ export default function ServerConnectBar({
   const [ipInput, setIpInput] = useState(serverIp || '');
   const [copied, setCopied] = useState(false);
   const [localHostOpen, setLocalHostOpen] = useState(false);
+  const [gsiInstalled, setGsiInstalled] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/gsi/check-installed')
+      .then((res) => res.json())
+      .then((data) => setGsiInstalled(Boolean(data?.installed)))
+      .catch(() => {});
+  }, []);
 
   // RCON Drawer state
   const [showRcon, setShowRcon] = useState(false);
@@ -325,11 +333,19 @@ export default function ServerConnectBar({
                     if (soundEnabled) playClickSound();
                     onOpenGsiSetup();
                   }}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-teal-500/15 hover:bg-teal-500/25 border border-teal-500/40 text-teal-300 text-xs font-bold transition-all cursor-pointer"
-                  title="Configurar Placar Automático Oficial Valve (GSI)"
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                    gsiInstalled
+                      ? 'bg-emerald-500/15 hover:bg-emerald-500/25 border-emerald-500/40 text-emerald-300'
+                      : 'bg-teal-500/15 hover:bg-teal-500/25 border-teal-500/40 text-teal-300'
+                  }`}
+                  title={gsiInstalled ? "GSI Valve instalado no seu CS2! Clique para abrir detalhes." : "Configurar Placar Automático Oficial Valve (GSI)"}
                 >
-                  <Radio size={13} className={liveMatch?.connected ? 'text-teal-400 animate-pulse' : 'text-slate-400'} />
-                  <span>Placar GSI</span>
+                  {gsiInstalled ? (
+                    <CheckCircle2 size={13} className="text-emerald-400" />
+                  ) : (
+                    <Radio size={13} className={liveMatch?.connected ? 'text-teal-400 animate-pulse' : 'text-slate-400'} />
+                  )}
+                  <span>{gsiInstalled ? 'GSI Instalado' : 'Placar GSI'}</span>
                 </button>
               )}
             </div>
@@ -362,10 +378,19 @@ export default function ServerConnectBar({
                 <button
                   type="button"
                   onClick={onOpenGsiSetup}
-                  className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-teal-500/15 border border-teal-500/30 hover:border-teal-400 text-teal-300 text-xs font-bold transition-all cursor-pointer"
+                  className={`flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                    gsiInstalled
+                      ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                      : 'bg-teal-500/15 border-teal-500/30 hover:border-teal-400 text-teal-300'
+                  }`}
+                  title={gsiInstalled ? "GSI Valve instalado no seu CS2! Clique para abrir detalhes." : "Configurar Placar Automático Oficial Valve (GSI)"}
                 >
-                  <Radio size={13} />
-                  <span>GSI Valve</span>
+                  {gsiInstalled ? (
+                    <CheckCircle2 size={13} className="text-emerald-400" />
+                  ) : (
+                    <Radio size={13} />
+                  )}
+                  <span>{gsiInstalled ? 'GSI Instalado' : 'GSI Valve'}</span>
                 </button>
               )}
             </div>

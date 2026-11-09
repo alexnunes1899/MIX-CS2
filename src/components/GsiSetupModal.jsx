@@ -15,6 +15,8 @@ import {
   Laptop,
   Zap,
   Terminal,
+  RefreshCw,
+  FolderCheck,
 } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
 import { copyText } from '../utils/clipboard';
@@ -30,10 +32,19 @@ export default function GsiSetupModal({
   const [copiedPs1, setCopiedPs1] = useState(false);
   const [gsiStatus, setGsiStatus] = useState(liveMatch || null);
   const [activeTab, setActiveTab] = useState('auto'); // 'auto' | 'firegames' | 'manual'
+  const [localInstallStatus, setLocalInstallStatus] = useState({
+    checked: false,
+    installed: false,
+    path: null,
+    hasMatchStats: false,
+    loading: false,
+    msg: null,
+  });
 
   useEffect(() => {
     if (!isOpen) return;
 
+    // Check live GSI room transmission status
     const checkStatus = () => {
       fetch(`/api/gsi/status/${encodeURIComponent(roomId)}`)
         .then((res) => res.json())
@@ -41,7 +52,24 @@ export default function GsiSetupModal({
         .catch(() => {});
     };
 
+    // Check if GSI file is already installed in CS2 folder on this PC
+    const checkInstalledOnPc = () => {
+      fetch('/api/gsi/check-installed')
+        .then((res) => res.json())
+        .then((data) => {
+          setLocalInstallStatus((prev) => ({
+            ...prev,
+            checked: true,
+            installed: Boolean(data?.installed),
+            path: data?.path || null,
+            hasMatchStats: Boolean(data?.hasMatchStats),
+          }));
+        })
+        .catch(() => {});
+    };
+
     checkStatus();
+    checkInstalledOnPc();
     const interval = setInterval(checkStatus, 3000);
     return () => clearInterval(interval);
   }, [isOpen, roomId]);
@@ -55,20 +83,21 @@ export default function GsiSetupModal({
   const cfgContent = `"CS2MixHub Integration"
 {
     "uri" "${currentHost}/api/gsi/${roomId}"
-    "timeout" "5.0"
-    "buffer"  "0.1"
-    "throttle" "0.5"
-    "heartbeat" "15.0"
+    "timeout" "3.0"
+    "buffer"  "0.05"
+    "throttle" "0.1"
+    "heartbeat" "2.0"
     "data"
     {
-        "provider"              "1"
-        "map"                   "1"
-        "round"                 "1"
-        "player_id"             "1"
-        "allplayers_id"         "1"
-        "player_state"          "1"
-        "player_weapons"        "1"
-        "allplayers_state"      "1"
+        "provider"               "1"
+        "map"                    "1"
+        "round"                  "1"
+        "player_id"              "1"
+        "allplayers_id"          "1"
+        "player_state"           "1"
+        "player_weapons"         "1"
+        "player_match_stats"     "1"
+        "allplayers_state"       "1"
         "allplayers_match_stats" "1"
     }
     "auth"
@@ -76,6 +105,41 @@ export default function GsiSetupModal({
         "token" "${roomId}"
     }
 }`;
+
+  const handleInstallDirectly = async () => {
+    if (soundEnabled) playClickSound();
+    setLocalInstallStatus((prev) => ({ ...prev, loading: true, msg: null }));
+    try {
+      const res = await fetch('/api/gsi/install-local', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomId }),
+      });
+      const data = await res.json();
+      if (data?.success) {
+        setLocalInstallStatus({
+          checked: true,
+          installed: true,
+          path: data.primaryPath || data.paths?.[0] || 'cfg',
+          hasMatchStats: true,
+          loading: false,
+          msg: { text: data.message || 'GSI instalado com sucesso no seu CS2!', type: 'success' },
+        });
+      } else {
+        setLocalInstallStatus((prev) => ({
+          ...prev,
+          loading: false,
+          msg: { text: data?.error || 'Não foi possível instalar automaticamente.', type: 'error' },
+        }));
+      }
+    } catch (err) {
+      setLocalInstallStatus((prev) => ({
+        ...prev,
+        loading: false,
+        msg: { text: 'Erro ao comunicar com o instalador local.', type: 'error' },
+      }));
+    }
+  };
 
   const handleCopy = () => {
     if (soundEnabled) playClickSound();
@@ -140,12 +204,49 @@ export default function GsiSetupModal({
               CS2 Game State Integration (GSI)
             </h2>
             <p className="text-xs text-slate-400 mt-0.5">
-              Placar automático, detecção de mapa e gravação de histórico sem intervenção humana.
+              Placar automático, kills, mortes, MVPs e armas em tempo real sem intervenção humana.
             </p>
           </div>
         </div>
 
-        {/* LIVE STATUS CARD */}
+        {/* PERSISTENT INSTALLED STATUS BADGE */}
+        {localInstallStatus.installed ? (
+          <div className="p-3.5 mb-4 rounded-2xl bg-emerald-950/70 border-2 border-emerald-500/60 shadow-lg shadow-emerald-950/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fadeIn">
+            <div className="flex items-start gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0 mt-0.5">
+                <CheckCircle2 size={18} />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <strong className="text-white text-xs font-bold font-heading">
+                    ✅ GSI Instalado no seu CS2
+                  </strong>
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/25 text-emerald-300 text-[10px] font-mono font-black uppercase">
+                    Pronto para Jogar
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-300 mt-0.5 break-all font-mono">
+                  {localInstallStatus.path || 'gamestate_integration_cs2mixhub.cfg'}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleInstallDirectly}
+              disabled={localInstallStatus.loading}
+              className="px-3.5 py-1.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 text-xs font-bold transition-all cursor-pointer shrink-0 flex items-center gap-1.5"
+            >
+              {localInstallStatus.loading ? (
+                <RefreshCw size={13} className="animate-spin" />
+              ) : (
+                <Zap size={13} />
+              )}
+              <span>Reinstalar / Atualizar</span>
+            </button>
+          </div>
+        ) : null}
+
+        {/* LIVE TRANSMISSION STATUS CARD */}
         <div className={`p-4 rounded-2xl border mb-5 transition-all ${
           gsiStatus?.connected
             ? 'bg-emerald-950/40 border-emerald-500/50 shadow-lg shadow-emerald-950/50'
@@ -272,7 +373,7 @@ export default function GsiSetupModal({
             </>
           ) : (
             <p className="text-xs text-slate-400 mt-1">
-              O CS2 ainda não transmitiu dados para a sala <strong>{roomId}</strong>. Siga os 2 passos rápidos abaixo para ativar no seu servidor da FireGames ou no seu próprio jogo!
+              O CS2 ainda não transmitiu dados para a sala <strong>{roomId}</strong>. Clique em <strong>Instalar Direto</strong> abaixo para ativar no seu jogo!
             </p>
           )}
         </div>
@@ -289,7 +390,7 @@ export default function GsiSetupModal({
             }`}
           >
             <Zap size={14} className={activeTab === 'auto' ? 'fill-slate-950' : 'text-emerald-400'} />
-            <span>1. Instalador 1-Clique PC (Mais Fácil)</span>
+            <span>1. Instalar Direto (1 Clique Sem Baixar)</span>
           </button>
 
           <button
@@ -319,7 +420,7 @@ export default function GsiSetupModal({
           </button>
         </div>
 
-        {/* TAB 1: AUTOMATED 1-CLICK INSTALLER (THE EASIEST) */}
+        {/* TAB 1: AUTOMATED 1-CLICK DIRECT INSTALLER (ZERO DOWNLOADS REQUIRED) */}
         {activeTab === 'auto' && (
           <div className="space-y-3.5 bg-gradient-to-b from-emerald-950/40 via-slate-950/80 to-slate-950 border border-emerald-500/40 rounded-2xl p-4 sm:p-5 text-xs text-slate-300 shadow-lg">
             <div className="flex items-start gap-3">
@@ -328,72 +429,89 @@ export default function GsiSetupModal({
               </div>
               <div>
                 <h4 className="font-heading font-black text-white text-sm sm:text-base flex items-center gap-2">
-                  <span>Instalação Automática em 1 Segundo (Zero Esforço)</span>
+                  <span>Instalação Direta no seu CS2 (Sem Baixar Nada)</span>
                   <span className="text-[10px] font-mono bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded font-bold uppercase">
-                    Automático
+                    1 Clique
                   </span>
                 </h4>
                 <p className="text-slate-300 mt-1 leading-relaxed">
-                  Não sabe onde fica a pasta do CS2? <strong>Não tem problema!</strong> Nosso instalador inteligente faz uma busca no seu computador, descobre a pasta exata da Steam (em qualquer HD ou SSD secundário) e coloca o arquivo no lugar certo sozinho.
+                  Basta clicar no botão verde abaixo! O sistema localiza a pasta da Steam no seu computador e instala o arquivo de monitoramento oficial da Valve direto no seu CS2 em menos de 1 segundo.
                 </p>
               </div>
             </div>
 
-            {/* Step 1 & 2 Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2">
-              <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 flex items-start gap-2.5">
-                <span className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 font-bold font-mono text-xs flex items-center justify-center shrink-0">
-                  1
-                </span>
-                <div>
-                  <strong className="text-white block">Baixe o Instalador:</strong>
-                  <span className="text-slate-400 text-[11px]">Clique no botão verde abaixo para baixar o arquivo executável <code className="text-emerald-300">.bat</code>.</span>
-                </div>
-              </div>
-
-              <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 flex items-start gap-2.5">
-                <span className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 font-bold font-mono text-xs flex items-center justify-center shrink-0">
-                  2
-                </span>
-                <div>
-                  <strong className="text-white block">Dê 2 Cliques:</strong>
-                  <span className="text-slate-400 text-[11px]">Execute o arquivo no seu Windows. Uma janela preta abrirá e confirmará <em>[OK] Instalado com sucesso</em>!</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Giant Download Button */}
+            {/* Giant 1-Click Install Button */}
             <div className="pt-2">
               <button
                 type="button"
-                onClick={handleDownloadBat}
-                className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black font-heading uppercase tracking-wider text-xs sm:text-sm shadow-xl shadow-emerald-500/30 transition-all cursor-pointer flex items-center justify-center gap-2.5 hover:scale-[1.01] active:scale-[0.99]"
+                onClick={handleInstallDirectly}
+                disabled={localInstallStatus.loading}
+                className={`w-full py-4 px-4 rounded-2xl text-slate-950 font-black font-heading uppercase tracking-wider text-xs sm:text-sm shadow-xl transition-all cursor-pointer flex items-center justify-center gap-2.5 hover:scale-[1.01] active:scale-[0.99] ${
+                  localInstallStatus.installed
+                    ? 'bg-gradient-to-r from-emerald-400 to-teal-400 hover:from-emerald-300 hover:to-teal-300 shadow-emerald-500/30'
+                    : 'bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 hover:from-emerald-400 hover:to-teal-400 shadow-emerald-500/30'
+                }`}
               >
-                <Zap size={18} className="fill-slate-950" />
-                <span>Baixar Instalador Automático de 1-Clique (.bat)</span>
-                <Download size={16} />
+                {localInstallStatus.loading ? (
+                  <>
+                    <RefreshCw size={18} className="animate-spin text-slate-950" />
+                    <span>Instalando no seu CS2 agora...</span>
+                  </>
+                ) : localInstallStatus.installed ? (
+                  <>
+                    <CheckCircle2 size={18} className="text-slate-950" />
+                    <span>✅ GSI Instalado no seu CS2! Clique para Reinstalar/Atualizar</span>
+                  </>
+                ) : (
+                  <>
+                    <Zap size={18} className="fill-slate-950 text-slate-950" />
+                    <span>⚡ Instalar Direto no Meu CS2 (1 Clique Sem Baixar)</span>
+                  </>
+                )}
               </button>
             </div>
 
-            {/* PowerShell 1-liner alternative */}
-            <div className="pt-2 border-t border-slate-900 space-y-1.5">
-              <div className="flex items-center justify-between text-[11px] text-slate-400 font-semibold">
-                <span className="flex items-center gap-1.5">
-                  <Terminal size={12} className="text-sky-400" />
-                  <span>Ou cole direto no PowerShell (Win + R ➔ powershell):</span>
-                </span>
+            {/* Feedback Message */}
+            {localInstallStatus.msg && (
+              <div
+                className={`p-3 rounded-xl border text-xs font-semibold flex items-center gap-2 animate-fadeIn ${
+                  localInstallStatus.msg.type === 'success'
+                    ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-200'
+                    : 'bg-rose-500/20 border-rose-500/50 text-rose-200'
+                }`}
+              >
+                {localInstallStatus.msg.type === 'success' ? (
+                  <Check size={16} className="text-emerald-400 shrink-0" />
+                ) : (
+                  <X size={16} className="text-rose-400 shrink-0" />
+                )}
+                <span>{localInstallStatus.msg.text}</span>
+              </div>
+            )}
+
+            {/* Secondary Option for Sending to Friends Playing Remotely */}
+            <div className="pt-3 border-t border-slate-900 space-y-2">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                Amigos jogando no PC deles?
+              </span>
+              <div className="flex flex-col sm:flex-row items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleDownloadBat}
+                  className="w-full sm:flex-1 py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-slate-600 text-slate-200 text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2"
+                  title="Baixar instalador .bat para mandar para amigos no Discord/WhatsApp"
+                >
+                  <Download size={14} className="text-emerald-400" />
+                  <span>Baixar .bat para Enviar aos Amigos</span>
+                </button>
                 <button
                   type="button"
                   onClick={handleCopyPs1}
-                  className="text-sky-400 hover:text-sky-300 text-[10px] font-bold cursor-pointer flex items-center gap-1"
+                  className="w-full sm:w-auto py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-sky-400 text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5"
                 >
-                  {copiedPs1 ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
-                  <span>{copiedPs1 ? 'Comando Copiado!' : 'Copiar Comando'}</span>
+                  {copiedPs1 ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
+                  <span>{copiedPs1 ? 'Copiado!' : 'Copiar PowerShell'}</span>
                 </button>
-              </div>
-              <div className="p-2 rounded-xl bg-slate-950 border border-slate-800 font-mono text-[11px] text-slate-300 select-all truncate">
-                <span className="text-slate-500 select-none">$ </span>
-                <span className="text-sky-300">{ps1Command}</span>
               </div>
             </div>
           </div>
@@ -499,29 +617,49 @@ export default function GsiSetupModal({
           <div className="flex items-center gap-2.5">
             <span className="text-base">📢</span>
             <p className="text-xs text-indigo-200">
-              <strong>Transmissão no Discord:</strong> O placar, vencedor de cada round (CT/TR), defuse e virada de lado são enviados ao vivo no seu canal do Discord!
+              <strong>Transmissão no Discord:</strong> O placar, vencedor de cada round (CT/TR), defuse e estatísticas (kills/mortes/MVPs) são enviados ao vivo no seu canal do Discord!
             </p>
           </div>
         </div>
 
-        {/* ACTION BUTTONS: DOWNLOAD & COPY */}
+        {/* ACTION BUTTONS: DIRECT INSTALL & BATCH */}
         <div className="mt-5 flex flex-col sm:flex-row items-center gap-3">
           <button
             type="button"
-            onClick={handleDownload}
-            className="w-full sm:flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-black font-heading uppercase tracking-wider text-xs shadow-lg shadow-emerald-500/25 transition-all cursor-pointer flex items-center justify-center gap-2"
+            onClick={handleInstallDirectly}
+            disabled={localInstallStatus.loading}
+            className="w-full sm:flex-1 py-3.5 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-black font-heading uppercase tracking-wider text-xs shadow-lg shadow-emerald-500/25 transition-all cursor-pointer flex items-center justify-center gap-2"
           >
-            <Download size={16} />
-            <span>Baixar Arquivo .cfg Pronto</span>
+            {localInstallStatus.installed ? (
+              <>
+                <CheckCircle2 size={16} />
+                <span>✅ GSI Instalado no CS2 (Clique para Reinstalar)</span>
+              </>
+            ) : (
+              <>
+                <Zap size={16} className="fill-slate-950" />
+                <span>⚡ Instalar Direto no Meu CS2 (Sem Baixar)</span>
+              </>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleDownloadBat}
+            className="w-full sm:w-auto py-3.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 font-bold uppercase tracking-wider text-xs transition-all cursor-pointer flex items-center justify-center gap-2"
+            title="Baixar arquivo .bat para passar para seus amigos"
+          >
+            <Download size={15} className="text-emerald-400" />
+            <span>Baixar .bat para Amigos</span>
           </button>
 
           <button
             type="button"
             onClick={handleCopy}
-            className="w-full sm:w-auto py-3 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 font-bold uppercase tracking-wider text-xs transition-all cursor-pointer flex items-center justify-center gap-2"
+            className="w-full sm:w-auto py-3.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 font-bold uppercase tracking-wider text-xs transition-all cursor-pointer flex items-center justify-center gap-2"
           >
-            {copied ? <Check size={16} className="text-emerald-400" /> : <Copy size={16} />}
-            <span>{copied ? 'Copiado!' : 'Copiar Conteúdo'}</span>
+            {copied ? <Check size={15} className="text-emerald-400" /> : <Copy size={15} />}
+            <span>{copied ? 'Copiado!' : 'Copiar .cfg'}</span>
           </button>
         </div>
 
