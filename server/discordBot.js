@@ -275,6 +275,7 @@ class DiscordBotManager {
     };
     // In-memory active mixes keyed by channelId
     this.activeMixes = new Map();
+    this.mixes = this.activeMixes;
     // Reference to Web Hub rooms store
     this.webRoomsRef = null;
     // Valve CS2 Game State Integration cache
@@ -1076,7 +1077,7 @@ class DiscordBotManager {
 
   async registerSlashCommands() {
     if (!this.client || !this.client.user) return;
-    const token = this.config.token.trim();
+    const token = (this.config.token || process.env.DISCORD_BOT_TOKEN || '').trim();
     const clientId = (this.client.user?.id || this.config.clientId || '').trim();
 
     const commands = [
@@ -1369,19 +1370,30 @@ class DiscordBotManager {
 
     try {
       const rest = new REST({ version: '10' }).setToken(token);
+      const bodyPayload = commands.map((c) => c.toJSON());
       console.log(`[DISCORD BOT] Registrando ${commands.length} Slash Commands...`);
 
+      // Register globally
+      await rest.put(Routes.applicationCommands(clientId), {
+        body: bodyPayload,
+      }).catch((e) => console.warn('[DISCORD BOT] Aviso registro global:', e.message));
+
+      // Also register on every connected guild for instant 0-second propagation
+      const guildIds = new Set();
       if (this.config.guildId && this.config.guildId.trim()) {
-        await rest.put(Routes.applicationGuildCommands(clientId, this.config.guildId.trim()), {
-          body: commands.map((c) => c.toJSON()),
-        });
-        console.log(`✅ [DISCORD BOT] Slash commands registrados no servidor ${this.config.guildId}!`);
-      } else {
-        await rest.put(Routes.applicationCommands(clientId), {
-          body: commands.map((c) => c.toJSON()),
-        });
-        console.log('✅ [DISCORD BOT] Slash commands registrados globalmente!');
+        guildIds.add(this.config.guildId.trim());
       }
+      if (this.client?.guilds?.cache) {
+        for (const [gId] of this.client.guilds.cache) {
+          guildIds.add(gId);
+        }
+      }
+      for (const gId of guildIds) {
+        await rest.put(Routes.applicationGuildCommands(clientId, gId), {
+          body: bodyPayload,
+        }).catch(() => {});
+      }
+      console.log(`✅ [DISCORD BOT] ${commands.length} Slash commands registrados com sucesso (${guildIds.size} servidor(es) ativo(s))!`);
     } catch (err) {
       console.warn('[DISCORD BOT] Aviso ao registrar comandos slash:', err.message);
     }
@@ -1390,7 +1402,8 @@ class DiscordBotManager {
   setupEventHandlers() {
     const readyEvent = Events.ClientReady || 'clientReady';
     this.client.on(readyEvent, () => {
-      this.client.user?.setActivity('CS2 Mix 5v5 • !mix ou /mix', { type: 0 });
+      this.client.user?.setActivity('CS2 Mix 5v5 • /mix ou @cs hub', { type: 0 });
+      this.registerSlashCommands().catch(() => {});
       this.startScheduledDealsMonitor();
     });
 
@@ -1549,6 +1562,11 @@ class DiscordBotManager {
       return this.prefixInventory(message);
     }
     if (command === 'cancelar') return this.prefixCancel(message);
+
+    // If the user mentioned the bot directly (e.g. "@cs hub" or "@cs hub oi"), always respond with the interactive panel
+    if (isMentioned) {
+      return this.prefixPainel(message);
+    }
   }
 
   async prefixCreateMix(message, customName) {
@@ -2687,9 +2705,9 @@ class DiscordBotManager {
   // ==========================================
 
   getOrCreateMix(channelId, creator, options = {}) {
-    let mix = this.activeMixes.get(channelId);
+    let mix = options.forceNew ? null : this.activeMixes.get(channelId);
     if (!mix) {
-      const mixId = `MIX-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+      const mixId = options.id || `MIX-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
       mix = {
         id: mixId,
         channelId,
@@ -2697,7 +2715,7 @@ class DiscordBotManager {
         format: options.format || 'MD1',
         creatorId: creator.id,
         creatorNick: creator.username,
-        players: [],
+        players: Array.isArray(options.players) ? options.players : [],
         phase: 'lobby', // 'lobby' | 'ready_check' | 'teams' | 'veto' | 'side_pick' | 'live'
         readyCheck: {
           active: false,
@@ -2723,6 +2741,52 @@ class DiscordBotManager {
       this.syncToWebRoom(mix);
     }
     return mix;
+  }
+
+  recoverMixFromMessage(interaction, mixId) {
+    if (!interaction?.channelId || !mixId) return null;
+    const embeds = interaction.message?.embeds || [];
+    let recoveredName = `Mix 5v5 #${mixId}`;
+    const recoveredPlayers = [];
+    const seenIds = new Set();
+
+    for (const emb of embeds) {
+      if (emb.title && emb.title.includes('•')) {
+        const parts = emb.title.split('•');
+        const candidate = parts[parts.length - 1]?.trim();
+        if (candidate && !candidate.includes('COMO MEXER')) {
+          recoveredName = candidate;
+        }
+      }
+      for (const field of emb.fields || []) {
+        if (field.name?.includes('Jogadores') || field.name === '\u200B') {
+          const matches = String(field.value || '').matchAll(/<@!?(\d+)>[^\n]*?\[Lvl\s+(\d+)/gi);
+          for (const m of matches) {
+            const pId = m[1];
+            const pLvl = parseInt(m[2], 10) || this.getPlayerLevel(pId) || 16;
+            if (pId && !seenIds.has(pId)) {
+              seenIds.add(pId);
+              const cachedUser = this.client?.users?.cache?.get(pId);
+              recoveredPlayers.push({
+                id: pId,
+                username: cachedUser?.username || `Player_${pId.slice(-4)}`,
+                displayName: cachedUser?.displayName || cachedUser?.username || `Player_${pId.slice(-4)}`,
+                avatar: cachedUser ? cachedUser.displayAvatarURL({ dynamic: true }) : null,
+                level: pLvl,
+                ready: true,
+              });
+            }
+          }
+        }
+      }
+    }
+
+    return this.getOrCreateMix(interaction.channelId, interaction.user, {
+      id: mixId,
+      name: recoveredName,
+      players: recoveredPlayers,
+      forceNew: true,
+    });
   }
 
   deleteMix(channelId) {
@@ -3347,7 +3411,7 @@ class DiscordBotManager {
     // Bagre Vote Buttons
     if (customId.startsWith('bagre_vote_start:')) {
       const mixId = customId.split(':')[1];
-      const mix = Array.from(this.mixes.values()).find((m) => m.id === mixId) || this.activeMixes?.get(interaction.channelId);
+      const mix = Array.from(this.activeMixes.values()).find((m) => m.id === mixId) || this.activeMixes?.get(interaction.channelId);
       if (!mix) return interaction.reply({ content: 'Mix não encontrado.', ephemeral: true });
       const components = bagreVoteService.buildVoteMenu(mix);
       return interaction.reply({
@@ -3359,7 +3423,7 @@ class DiscordBotManager {
 
     if (customId.startsWith('bagre_finish:')) {
       const mixId = customId.split(':')[1];
-      const mix = Array.from(this.mixes.values()).find((m) => m.id === mixId) || this.activeMixes?.get(interaction.channelId);
+      const mix = Array.from(this.activeMixes.values()).find((m) => m.id === mixId) || this.activeMixes?.get(interaction.channelId);
       if (!mix) return interaction.reply({ content: 'Mix não encontrado.', ephemeral: true });
       await bagreVoteService.finishVote(
         mix,
@@ -3426,7 +3490,7 @@ class DiscordBotManager {
       const deals = await hardwareDealsManager.getDeals({ limit: 5 });
       const embed = hardwareDealsManager.buildDealsEmbed(deals);
       const selectMenu = hardwareDealsManager.buildCategorySelectMenu();
-      const actionButtons = hardwareDealsManager.buildActionButtons(deals, { category });
+      const actionButtons = hardwareDealsManager.buildActionButtons(deals);
       return interaction.update({ embeds: [embed], components: [selectMenu, ...actionButtons] });
     }
 
@@ -3487,7 +3551,11 @@ class DiscordBotManager {
       return;
     }
 
-    const mix = this.activeMixes.get(interaction.channelId);
+    let mix = this.activeMixes.get(interaction.channelId);
+
+    if ((!mix || mix.id !== mixId) && mixId && action !== 'mix_cancel') {
+      mix = this.recoverMixFromMessage(interaction, mixId);
+    }
 
     if (!mix || mix.id !== mixId) {
       return interaction.reply({
@@ -4591,17 +4659,21 @@ class DiscordBotManager {
         console.warn(`[DISCORD BOT] Erro ao postar ofertas na guild "${guild.name}":`, err.message);
       }
     }
+    this.saveConfig({ lastDealsDropAt: Date.now() });
   }
 
   startScheduledDealsMonitor() {
     if (this.dealsMonitorInterval) clearInterval(this.dealsMonitorInterval);
 
-    // Initial instant drop: Run 8 seconds after startup
-    setTimeout(() => {
-      this.dispatchAutomaticDealsDrop('all').catch((err) => {
-        console.warn('[DISCORD BOT] Aviso no drop inicial de ofertas:', err.message);
-      });
-    }, 8000);
+    // Initial drop only if more than 45 minutes have passed since last drop (prevents duplicate spam on restarts)
+    const elapsedSinceLastDrop = Date.now() - (Number(this.config.lastDealsDropAt) || 0);
+    if (elapsedSinceLastDrop > 45 * 60 * 1000) {
+      setTimeout(() => {
+        this.dispatchAutomaticDealsDrop('all').catch((err) => {
+          console.warn('[DISCORD BOT] Aviso no drop inicial de ofertas:', err.message);
+        });
+      }, 8000);
+    }
 
     // Rotating categories across cycles
     const categoryRotation = ['cadeira_mesa', 'gpu_cpu', 'mouse_teclado', 'monitor_audio', 'ram_ssd', 'all'];
@@ -4811,9 +4883,9 @@ class DiscordBotManager {
   // ==========================================
 
   async prefixBagre(message) {
-    const mix = this.mixes.get(message.channelId) || Array.from(this.mixes.values())[0];
+    const mix = this.activeMixes.get(message.channelId) || Array.from(this.activeMixes.values())[0];
     if (!mix) {
-      return message.reply('⚠️ Nenhum mix ativo neste canal para eleger o Bagre. Crie um mix com `!mix` ou termine uma partida!');
+      return message.reply('⚠️ Nenhum mix ativo neste canal para eleger o Bagre. Crie um mix com `/mix criar` ou termine uma partida!');
     }
     const components = bagreVoteService.buildVoteMenu(mix);
     return message.reply({
@@ -4823,7 +4895,7 @@ class DiscordBotManager {
   }
 
   async cmdBagre(interaction) {
-    const mix = this.mixes.get(interaction.channelId) || Array.from(this.mixes.values())[0];
+    const mix = this.activeMixes.get(interaction.channelId) || Array.from(this.activeMixes.values())[0];
     if (!mix) {
       return interaction.reply({ content: '⚠️ Nenhum mix ativo neste canal para votar no Bagre.', ephemeral: true });
     }

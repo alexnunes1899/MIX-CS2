@@ -479,13 +479,17 @@ export default function App() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const urlRoom = params.get('room');
+    const urlKey = params.get('key') || params.get('token') || inviteKey || '';
+    const urlName = params.get('name') || '';
     const isLanding = params.get('steam_auth') === '1' || !urlRoom || view !== 'mix';
     if (!isLanding && urlRoom && socket.connected) {
       socket.emit('join_room', {
         roomId: urlRoom,
+        roomName: urlName || undefined,
         player: myProfile.nick ? myProfile : null,
         password: roomPassword || undefined,
-        inviteKey: inviteKey || undefined,
+        inviteKey: urlKey || undefined,
+        isPrivate: Boolean(urlKey),
         createIfMissing: true,
       });
     }
@@ -496,13 +500,17 @@ export default function App() {
     socket.on('connect', () => {
       // Ingressa na sala via socket apenas se o usuário estiver ativamente na visão de mix e a sala já existir no servidor
       const params = new URLSearchParams(window.location.search);
+      const urlKey = params.get('key') || params.get('token') || inviteKey || '';
+      const urlName = params.get('name') || '';
       const isLanding = params.get('steam_auth') === '1' || !params.get('room') || view !== 'mix';
       if (!isLanding && roomId) {
         socket.emit('join_room', {
           roomId,
+          roomName: urlName || undefined,
           player: myProfile.nick ? myProfile : null,
           password: roomPassword || undefined,
-          inviteKey: inviteKey || undefined,
+          inviteKey: urlKey || undefined,
+          isPrivate: Boolean(urlKey),
           createIfMissing: true,
         });
       }
@@ -649,7 +657,7 @@ export default function App() {
       socket.off('room_deleted');
       socket.off('server_app_version');
     };
-  }, [roomId, myProfile, roomPassword, view]);
+  }, [roomId, myProfile, roomPassword, inviteKey, view]);
 
   // Switch Room (Multi-room hub support with password, GC privacy & direct link)
   const handleSelectRoom = (newRoomCode, customName, rankingSystem = 'gc', serverIp = '', password = undefined, isPrivate = false, key = undefined) => {
