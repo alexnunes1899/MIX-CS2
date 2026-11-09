@@ -35,7 +35,7 @@ import {
   updateMatchMvp,
   getMapImageUrl,
 } from './matchHistory.js';
-import { hardwareDealsManager } from './hardwareDeals.js';
+import { hardwareDealsManager, CATEGORY_LABELS } from './hardwareDeals.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1256,21 +1256,25 @@ class DiscordBotManager {
 
       new SlashCommandBuilder()
         .setName('ofertas')
-        .setDescription('Busca ofertas e promoções de hardware gamer (KaBuM!, Pichau, Terabyte)')
+        .setDescription('Busca ofertas de hardware e setup gamer (KaBuM!, Pichau, Terabyte)')
         .addStringOption((opt) =>
-          opt.setName('busca').setDescription('Peça a buscar (ex: rtx 4060, ryzen 7, monitor 144hz, mouse)').setRequired(false)
+          opt.setName('busca').setDescription('Peça a buscar (ex: cadeira, mesa, mouse, teclado, rtx 4060, ryzen)').setRequired(false)
         )
         .addStringOption((opt) =>
           opt
             .setName('categoria')
-            .setDescription('Filtrar por categoria')
+            .setDescription('Filtrar por categoria de hardware ou setup')
             .setRequired(false)
             .addChoices(
               { name: 'Placas de Vídeo (GPUs)', value: 'gpu' },
               { name: 'Processadores (CPUs)', value: 'cpu' },
+              { name: 'Memórias RAM & SSDs', value: 'ram_ssd' },
+              { name: 'Placas-Mãe, Fontes & Gabinetes', value: 'placa_mae_fonte' },
               { name: 'Monitores Gamer (144Hz a 240Hz)', value: 'monitor' },
-              { name: 'SSDs NVMe e Memórias RAM', value: 'ssd_ram' },
-              { name: 'Periféricos (Mouse, Teclado, Fone)', value: 'perifericos' }
+              { name: 'Mouses & Teclados Mecânicos', value: 'mouse_teclado' },
+              { name: 'Headsets & Áudio Gamer', value: 'audio' },
+              { name: 'Cadeiras Gamer', value: 'cadeira' },
+              { name: 'Mesas Gamer & Setup', value: 'mesa' }
             )
         )
         .addStringOption((opt) =>
@@ -4394,7 +4398,10 @@ class DiscordBotManager {
 
   startScheduledDealsMonitor() {
     if (this.dealsMonitorInterval) clearInterval(this.dealsMonitorInterval);
-    // Check every 3 hours for hot deals
+    // Rotate categories across cycles (every 2-3 hours)
+    const categoryRotation = ['all', 'cadeira', 'mesa', 'gpu', 'mouse_teclado', 'cpu', 'monitor', 'ram_ssd'];
+    let rotationIndex = 0;
+
     this.dealsMonitorInterval = setInterval(async () => {
       try {
         if (!this.client || !this.client.isReady()) return;
@@ -4403,16 +4410,26 @@ class DiscordBotManager {
         const channel = await this.client.channels.fetch(this.config.dealsChannelId).catch(() => null);
         if (!channel || !channel.isTextBased()) return;
 
-        const deals = await hardwareDealsManager.getDeals({ limit: 4 });
+        const currentCat = categoryRotation[rotationIndex % categoryRotation.length];
+        rotationIndex++;
+
+        const deals = await hardwareDealsManager.getDeals({
+          category: currentCat === 'all' ? null : currentCat,
+          limit: 4,
+        });
         if (!deals || deals.length === 0) return;
 
+        const catTitle = currentCat === 'all'
+          ? '🔥 RADAR DE OFERTAS • PC GAMER & SETUP'
+          : `🔥 ALERTA DE OFERTAS • ${CATEGORY_LABELS[currentCat]?.toUpperCase() || currentCat.toUpperCase()}`;
+
         const embed = hardwareDealsManager.buildDealsEmbed(deals, {
-          title: '🔥 RADAR DE OFERTAS • PC GAMER CS2',
-          description: '⚡ **PROMOÇÕES RELÂMPAGO DO DIA!** Peças selecionadas para máximo FPS e custo-benefício nas lojas confiáveis:',
+          title: catTitle,
+          description: '⚡ **PROMOÇÕES RELÂMPAGO DO DIA!** Oportunidades verificadas em **KaBuM!**, **Pichau** e **TerabyteShop**:',
         });
         const actionButtons = hardwareDealsManager.buildActionButtons(deals);
         await channel.send({ embeds: [embed], components: actionButtons }).catch(() => {});
-        console.log(`[DISCORD BOT] Alertas de ofertas postados no canal #${channel.name}!`);
+        console.log(`[DISCORD BOT] Alertas de ofertas (${currentCat}) postados no canal #${channel.name}!`);
       } catch (err) {
         console.warn('[DISCORD BOT] Erro ao disparar alertas de ofertas:', err.message);
       }

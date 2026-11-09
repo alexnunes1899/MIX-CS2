@@ -7,6 +7,18 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DEALS_FILE = path.join(__dirname, 'data', 'hardwareDeals.json');
 
+export const CATEGORY_LABELS = {
+  gpu: 'Placa de Vídeo (GPU)',
+  cpu: 'Processador (CPU)',
+  ram_ssd: 'Memória RAM & Armazenamento SSD',
+  placa_mae_fonte: 'Placas-Mãe, Fontes & Gabinetes',
+  monitor: 'Monitor Gamer (144Hz+)',
+  mouse_teclado: 'Mouses & Teclados Mecânicos',
+  audio: 'Headsets & Microfones',
+  cadeira: 'Cadeira Gamer',
+  mesa: 'Mesa Gamer & Setup',
+};
+
 class HardwareDealsManager {
   constructor() {
     this.cachedDeals = null;
@@ -29,6 +41,22 @@ class HardwareDealsManager {
       console.warn('[HARDWARE DEALS] Falha ao carregar catálogo de ofertas:', e.message);
     }
     return { stores: {}, deals: [] };
+  }
+
+  normalizeCategory(cat) {
+    if (!cat) return null;
+    const c = cat.toLowerCase().trim();
+    if (c === 'all' || c === 'todas') return null;
+    if (c === 'gpu' || c.includes('video') || c.includes('placa de video') || c.includes('rtx') || c.includes('radeon')) return 'gpu';
+    if (c === 'cpu' || c.includes('processador') || c.includes('ryzen') || c.includes('intel')) return 'cpu';
+    if (c === 'ram' || c === 'ssd' || c.includes('memoria') || c.includes('armazenamento') || c.includes('nvme') || c.includes('ram_ssd') || c.includes('ssd_ram')) return 'ram_ssd';
+    if (c.includes('mobo') || c.includes('placa_mae') || c.includes('placa mae') || c.includes('fonte') || c.includes('cooler') || c.includes('gabinete') || c.includes('watercooler')) return 'placa_mae_fonte';
+    if (c === 'monitor' || c.includes('monitore') || c.includes('tela') || c.includes('144hz') || c.includes('240hz')) return 'monitor';
+    if (c.includes('mouse') || c.includes('teclado') || c.includes('mousepad') || c === 'mouse_teclado' || c === 'perifericos') return 'mouse_teclado';
+    if (c.includes('headset') || c.includes('fone') || c.includes('microfone') || c.includes('audio') || c.includes('mic')) return 'audio';
+    if (c.includes('cadeira') || c.includes('assento') || c.includes('ergonom')) return 'cadeira';
+    if (c.includes('mesa') || c.includes('desk') || c.includes('setup') || c.includes('moveis')) return 'mesa';
+    return c;
   }
 
   async searchKabumLive(query, limit = 4) {
@@ -71,8 +99,8 @@ class HardwareDealsManager {
           return {
             id: `kabum-${item.id}`,
             title: attr.title,
-            category: 'hardware',
-            categoryLabel: 'Hardware PC Gamer',
+            category: this.normalizeCategory(attr.menu || query) || 'hardware',
+            categoryLabel: 'Hardware & Setup PC Gamer',
             store: 'kabum',
             storeName: 'KaBuM!',
             storeBadge: '🟠 KaBuM!',
@@ -83,7 +111,7 @@ class HardwareDealsManager {
             coupon: null,
             link,
             image,
-            highlight: '⚡ Preço ao vivo direto da KaBuM!',
+            highlight: '⚡ Preço ao vivo oficial da KaBuM!',
             inStock: true,
             isLive: true,
           };
@@ -99,22 +127,33 @@ class HardwareDealsManager {
     const curated = this.loadCuratedData();
     let results = [...(curated.deals || [])];
 
+    const normCat = this.normalizeCategory(category);
+
     if (store) {
       results = results.filter((d) => d.store?.toLowerCase() === store.toLowerCase());
     }
 
-    if (category) {
-      results = results.filter((d) => d.category?.toLowerCase() === category.toLowerCase());
+    if (normCat) {
+      results = results.filter((d) => this.normalizeCategory(d.category) === normCat);
     }
 
     if (query && query.trim()) {
       const q = query.trim().toLowerCase();
       const terms = q.split(/\s+/).filter(Boolean);
 
-      const curatedMatches = results.filter((d) => {
-        const fullText = `${d.title} ${d.category} ${d.categoryLabel} ${d.highlight || ''}`.toLowerCase();
-        return terms.every((t) => fullText.includes(t));
-      });
+      const curatedMatches = results
+        .map((d) => {
+          const titleLower = d.title.toLowerCase();
+          const fullText = `${d.title} ${d.category} ${d.categoryLabel} ${d.highlight || ''}`.toLowerCase();
+          let score = 0;
+          if (terms.every((t) => titleLower.includes(t))) score += 100;
+          else if (terms.every((t) => fullText.includes(t))) score += 50;
+          else if (terms.some((t) => titleLower.includes(t))) score += 20;
+          return { deal: d, score };
+        })
+        .filter((item) => item.score >= 50)
+        .sort((a, b) => b.score - a.score)
+        .map((item) => item.deal);
 
       // Also search live on KaBuM!
       const liveKabum = await this.searchKabumLive(query, Math.min(4, limit));
@@ -128,31 +167,56 @@ class HardwareDealsManager {
         seen.add(key);
         return true;
       });
+    } else if (normCat && results.length < 3) {
+      // If category has few curated items, supplement with live search
+      const queryMap = {
+        cadeira: 'cadeira gamer',
+        mesa: 'mesa gamer',
+        mouse_teclado: 'mouse gamer',
+        audio: 'headset gamer',
+        gpu: 'placa de video rtx',
+        cpu: 'processador ryzen',
+        ram_ssd: 'ssd nvme',
+        monitor: 'monitor gamer',
+        placa_mae_fonte: 'placa mae b550',
+      };
+      const extraQuery = queryMap[normCat];
+      if (extraQuery) {
+        const liveKabum = await this.searchKabumLive(extraQuery, 3);
+        const seen = new Set(results.map((r) => r.link || r.id));
+        liveKabum.forEach((item) => {
+          if (!seen.has(item.link || item.id)) {
+            item.category = normCat;
+            results.push(item);
+            seen.add(item.link || item.id);
+          }
+        });
+      }
     }
 
     return results.slice(0, limit);
   }
 
   buildDealsEmbed(deals, options = {}) {
-    const title = options.title || '🔥 PROMOÇÕES & OFERTAS DE HARDWARE • PC GAMER CS2';
+    const title = options.title || '🔥 PROMOÇÕES & OFERTAS DE HARDWARE • PC GAMER & SETUP';
     const description =
       options.description ||
-      `Monitoramento de promoções nas melhores lojas do Brasil:\n` +
+      `Monitoramento completo de peças e setup nas lojas confiáveis do Brasil:\n` +
       `🟠 **KaBuM!** • 🔴 **Pichau Informática** • 🟢 **TerabyteShop**\n\n` +
-      `*Aumente seu FPS e estabilize suas partidas com peças confiáveis e preços reais:*`;
+      `*Aumente seu FPS e renove seu setup (Cadeiras, Mesas, Mouses, GPUs, CPUs e RAM):*`;
 
     const embed = new EmbedBuilder()
       .setTitle(title)
       .setDescription(description)
       .setColor(0x38bdf8)
       .setThumbnail('https://images.unsplash.com/photo-1587202372775-e229f172b9d7?auto=format&fit=crop&w=256&q=80')
-      .setFooter({ text: 'CS2 Mix Hub • Radar de Hardware Oficial' })
+      .setFooter({ text: 'CS2 Mix Hub • Radar Completo de Hardware & Setup' })
       .setTimestamp();
 
     if (!deals || deals.length === 0) {
       embed.addFields({
         name: '🔍 Nenhuma oferta específica encontrada',
-        value: 'Tente buscar por termos como: `rtx 4060`, `ryzen`, `monitor 144hz`, `ssd` ou use `!ofertas` para ver os destaques.',
+        value: 'Tente buscar por termos como: `cadeira`, `mesa`, `mouse`, `teclado`, `rtx 4060`, `ryzen`, `monitor` ou selecione uma categoria abaixo.',
       });
       return embed;
     }
@@ -177,7 +241,7 @@ class HardwareDealsManager {
   buildCategorySelectMenu() {
     const select = new StringSelectMenuBuilder()
       .setCustomId('hardware_category_filter')
-      .setPlaceholder('🎯 Filtrar Ofertas por Categoria...')
+      .setPlaceholder('🎯 Filtrar Ofertas por Peça ou Setup...')
       .addOptions([
         {
           label: '🔥 Melhores Ofertas (Geral)',
@@ -198,22 +262,46 @@ class HardwareDealsManager {
           emoji: '⚡',
         },
         {
+          label: 'Memórias RAM & Armazenamento SSD',
+          description: 'SSDs NVMe M.2 ultra rápidos e memórias DDR4/DDR5',
+          value: 'ram_ssd',
+          emoji: '🚀',
+        },
+        {
+          label: 'Placas-Mãe, Fontes & Gabinetes',
+          description: 'Motherboards B550/B650, fontes 80 Plus e water coolers',
+          value: 'placa_mae_fonte',
+          emoji: '🛡️',
+        },
+        {
           label: 'Monitores Gamer (144Hz a 240Hz)',
           description: 'Monitores de alta taxa de atualização para CS2',
           value: 'monitor',
           emoji: '🖥️',
         },
         {
-          label: 'SSDs NVMe e Memórias RAM',
-          description: 'Armazenamento rápido e memórias de alta frequência',
-          value: 'ssd_ram',
-          emoji: '🚀',
+          label: 'Mouses & Teclados Mecânicos',
+          description: 'Mouses ultraleves (Logitech G Pro, Razer) e teclados TKL',
+          value: 'mouse_teclado',
+          emoji: '🖱️',
         },
         {
-          label: 'Periféricos (Mouse, Teclado, Fone)',
-          description: 'Mouses ultraleves, teclados mecânicos e headsets 7.1',
-          value: 'perifericos',
+          label: 'Headsets & Áudio Gamer',
+          description: 'Headsets espaciais e microfones para Discord e CS2',
+          value: 'audio',
           emoji: '🎧',
+        },
+        {
+          label: 'Cadeiras Gamer',
+          description: 'Cadeiras ergonômicas, reclináveis e tecido respirável',
+          value: 'cadeira',
+          emoji: '💺',
+        },
+        {
+          label: 'Mesas Gamer & Setup',
+          description: 'Mesas com espaço para 2 monitores, RGB e suporte headset',
+          value: 'mesa',
+          emoji: '🪵',
         },
       ]);
 
@@ -233,7 +321,7 @@ class HardwareDealsManager {
     });
 
     topStores.forEach((d) => {
-      const label = (d.title.length > 20 ? d.title.slice(0, 18) + '...' : d.title);
+      const label = d.title.length > 20 ? d.title.slice(0, 18) + '...' : d.title;
       buttonRow.addComponents(
         new ButtonBuilder()
           .setLabel(`${d.storeBadge || '🛒'} ${label}`)
