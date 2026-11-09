@@ -63,27 +63,27 @@ export default function CaptainsDraftView({
             <div
               key={p.id}
               onClick={() => handlePick(p.id)}
-              className="bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-amber-400/80 rounded-xl p-3.5 flex items-center justify-between cursor-pointer transition-all shadow-md group"
+              className="bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-amber-400/80 rounded-xl p-3 flex items-center justify-between gap-2 cursor-pointer transition-all shadow-md group overflow-hidden"
             >
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-2.5 min-w-0 flex-1">
                 <PlayerAvatar avatar={p.avatar} nick={p.nick} size="md" />
-                <div>
-                  <h4 className="font-bold text-sm text-white group-hover:text-amber-400 transition-colors">
+                <div className="min-w-0 flex-1">
+                  <h4 className="font-bold text-sm text-white group-hover:text-amber-400 transition-colors truncate" title={p.nick}>
                     {p.nick}
                   </h4>
-                  <span className="text-[10px] text-slate-500 font-mono">
+                  <span className="text-[10px] text-slate-500 font-mono block truncate">
                     Pref: {p.side === 'CT' ? '🛡️ CT' : p.side === 'TR' ? '⚔️ TR' : 'Flex'}
                   </span>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 shrink-0">
                 {isFaceit ? (
-                  <FaceitBadge level={p.faceitLevel || (p.level <= 10 ? p.level : Math.round(p.level / 2.1)) || 5} elo={p.faceitElo} size="md" />
+                  <FaceitBadge level={p.faceitLevel || (p.level <= 10 ? p.level : Math.round(p.level / 2.1)) || 5} elo={p.faceitElo} size="sm" />
                 ) : (
-                  <GCBadge level={p.level} size="md" />
+                  <GCBadge level={p.level} size="sm" />
                 )}
-                <button className="text-xs font-bold text-amber-400 bg-amber-500/10 px-2 py-1 rounded group-hover:bg-amber-500 group-hover:text-slate-950 transition-colors">
+                <button className="text-xs font-bold text-amber-400 bg-amber-500/10 px-2 py-1 rounded group-hover:bg-amber-500 group-hover:text-slate-950 transition-colors shrink-0">
                   Escolher
                 </button>
               </div>
@@ -95,31 +95,34 @@ export default function CaptainsDraftView({
       {/* Selected Teams Roster */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         {/* Team A */}
-        <div className="bg-slate-900/90 border-2 border-sky-500/40 rounded-2xl p-4">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-            <div className="flex items-center gap-2">
-              <Shield size={18} className="text-sky-400" />
-              <h4 className="font-bold text-sm text-sky-300">{upperA} ({teamA.length}/5)</h4>
+        <div className="bg-slate-900/90 border-2 border-sky-500/40 rounded-2xl p-4 overflow-hidden">
+          <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-800">
+            <div className="flex items-center gap-2 min-w-0">
+              <Shield size={18} className="text-sky-400 shrink-0" />
+              <h4 className="font-bold text-sm text-sky-300 truncate">{upperA} ({teamA.length}/5)</h4>
             </div>
-            <span className="text-xs text-slate-400 font-mono">
+            <span className="text-xs text-slate-400 font-mono truncate">
               Capitão: <strong className="text-white">{captainA?.nick}</strong>
             </span>
           </div>
 
           <div className="divide-y divide-slate-800/60 mt-2">
             {teamA.map((p, i) => (
-              <div key={p.id} className="py-2.5 flex items-center justify-between">
-                <div className="flex items-center gap-2">
+              <div key={p.id} className="py-2.5 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0 flex-1">
                   <PlayerAvatar avatar={p.avatar} nick={p.nick} size="sm" />
-                  <span className="text-sm font-semibold text-white">
-                    {p.nick} {i === 0 && <span className="text-[10px] text-amber-400 font-mono font-bold bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20 ml-1">Capitão</span>}
+                  <span className="text-sm font-semibold text-white truncate" title={p.nick}>
+                    {p.nick}
                   </span>
+                  {i === 0 && <span className="text-[10px] text-amber-400 font-mono font-bold bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20 shrink-0">Capitão</span>}
                 </div>
-                {isFaceit ? (
-                  <FaceitBadge level={p.faceitLevel || (p.level <= 10 ? p.level : Math.round(p.level / 2.1)) || 5} elo={p.faceitElo} size="sm" />
-                ) : (
-                  <GCBadge level={p.level} size="sm" />
-                )}
+                <div className="shrink-0">
+                  {isFaceit ? (
+                    <FaceitBadge level={p.faceitLevel || (p.level <= 10 ? p.level : Math.round(p.level / 2.1)) || 5} elo={p.faceitElo} size="sm" />
+                  ) : (
+                    <GCBadge level={p.level} size="sm" />
+                  )}
+                </div>
               </div>
             ))}
             {Array.from({ length: Math.max(0, 5 - teamA.length) }).map((_, idx) => (
@@ -132,31 +135,34 @@ export default function CaptainsDraftView({
         </div>
 
         {/* Team B */}
-        <div className="bg-slate-900/90 border-2 border-amber-500/40 rounded-2xl p-4">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-            <div className="flex items-center gap-2">
-              <Flame size={18} className="text-amber-400" />
-              <h4 className="font-bold text-sm text-amber-300">{upperB} ({teamB.length}/5)</h4>
+        <div className="bg-slate-900/90 border-2 border-amber-500/40 rounded-2xl p-4 overflow-hidden">
+          <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-800">
+            <div className="flex items-center gap-2 min-w-0">
+              <Flame size={18} className="text-amber-400 shrink-0" />
+              <h4 className="font-bold text-sm text-amber-300 truncate">{upperB} ({teamB.length}/5)</h4>
             </div>
-            <span className="text-xs text-slate-400 font-mono">
+            <span className="text-xs text-slate-400 font-mono truncate">
               Capitão: <strong className="text-white">{captainB?.nick}</strong>
             </span>
           </div>
 
           <div className="divide-y divide-slate-800/60 mt-2">
             {teamB.map((p, i) => (
-              <div key={p.id} className="py-2.5 flex items-center justify-between">
-                <div className="flex items-center gap-2">
+              <div key={p.id} className="py-2.5 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0 flex-1">
                   <PlayerAvatar avatar={p.avatar} nick={p.nick} size="sm" />
-                  <span className="text-sm font-semibold text-white">
-                    {p.nick} {i === 0 && <span className="text-[10px] text-amber-400 font-mono font-bold bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20 ml-1">Capitão</span>}
+                  <span className="text-sm font-semibold text-white truncate" title={p.nick}>
+                    {p.nick}
                   </span>
+                  {i === 0 && <span className="text-[10px] text-amber-400 font-mono font-bold bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20 shrink-0">Capitão</span>}
                 </div>
-                {isFaceit ? (
-                  <FaceitBadge level={p.faceitLevel || (p.level <= 10 ? p.level : Math.round(p.level / 2.1)) || 5} elo={p.faceitElo} size="sm" />
-                ) : (
-                  <GCBadge level={p.level} size="sm" />
-                )}
+                <div className="shrink-0">
+                  {isFaceit ? (
+                    <FaceitBadge level={p.faceitLevel || (p.level <= 10 ? p.level : Math.round(p.level / 2.1)) || 5} elo={p.faceitElo} size="sm" />
+                  ) : (
+                    <GCBadge level={p.level} size="sm" />
+                  )}
+                </div>
               </div>
             ))}
             {Array.from({ length: Math.max(0, 5 - teamB.length) }).map((_, idx) => (

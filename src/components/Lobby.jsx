@@ -517,7 +517,7 @@ export default function Lobby({
           return (
             <div
               key={p.id || idx}
-              className={`relative bg-slate-900/90 border rounded-2xl p-3.5 flex flex-col justify-between transition-all group ${
+              className={`relative overflow-hidden bg-slate-900/90 border rounded-2xl p-3 flex flex-col justify-between transition-all group ${
                 p.ready
                   ? 'border-emerald-500/40 shadow-sm shadow-emerald-500/10'
                   : 'border-slate-800 hover:border-slate-700'
@@ -525,31 +525,33 @@ export default function Lobby({
             >
               {/* Ready Indicator Dot */}
               <div
-                className={`absolute top-2.5 right-2.5 w-2.5 h-2.5 rounded-full ${
+                className={`absolute top-3 right-3 w-2.5 h-2.5 rounded-full z-10 ${
                   p.ready ? 'bg-emerald-400 shadow-sm shadow-emerald-400' : 'bg-slate-700'
                 }`}
                 title={p.ready ? 'Pronto' : 'Aguardando'}
               />
 
-              {/* Admin Crown Badge */}
-              {isSlotAdmin && (
-                <div
-                  className="absolute top-2.5 left-2.5 w-5 h-5 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30"
-                  title="Administrador / Criador da Sala"
-                >
-                  <Crown size={11} />
-                </div>
-              )}
-
               {/* Top: Avatar & Player Nick */}
-              <div className="flex items-center gap-2.5 mb-3">
-                <PlayerAvatar avatar={p.avatar} size="md" />
+              <div className="flex items-center gap-2.5 mb-2.5 pr-4 min-w-0">
+                <div className="relative shrink-0">
+                  <PlayerAvatar avatar={p.avatar} size="md" />
+                  {isSlotAdmin && (
+                    <div
+                      className="absolute -top-1 -left-1 w-4 h-4 rounded-full bg-slate-950 text-amber-400 flex items-center justify-center border border-amber-400/80 shadow-md z-10"
+                      title="Administrador / Criador da Sala"
+                    >
+                      <Crown size={9} className="fill-amber-400/30" />
+                    </div>
+                  )}
+                </div>
                 <div className="min-w-0 flex-1 overflow-hidden">
-                  <span className="font-bold text-xs text-white truncate block" title={p.nick}>
-                    {p.nick}
-                  </span>
-                  <div className="flex items-center gap-1.5 mt-0.5">
-                    <span className="text-[10px] text-slate-500 font-mono">
+                  <div className="flex items-center gap-1 min-w-0">
+                    <span className="font-bold text-xs text-white truncate block" title={p.nick}>
+                      {p.nick}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                    <span className="text-[10px] text-slate-500 font-mono shrink-0">
                       Slot #{idx + 1}
                     </span>
                     {isMe && (
@@ -562,40 +564,40 @@ export default function Lobby({
               </div>
 
               {/* Middle: Badges based on selected ranking */}
-              <div className="space-y-1.5 my-2">
+              <div className="space-y-1.5 my-1.5 min-w-0">
                 {isFaceit ? (
-                  <div className="flex items-center justify-between bg-slate-950/60 p-1.5 rounded-xl border border-slate-800/80">
-                    <FaceitBadge level={p.faceitLevel} elo={p.faceitElo} size="sm" showElo={true} />
+                  <div className="flex items-center justify-between gap-1.5 bg-slate-950/60 p-1.5 rounded-xl border border-slate-800/80 min-w-0 overflow-hidden">
+                    <FaceitBadge level={p.faceitLevel} elo={p.faceitElo} size="sm" showElo={false} />
                     {p.cs2Hours ? (
-                      <span className="text-[9px] font-mono text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 font-bold" title={`${p.cs2Hours.toLocaleString('pt-BR')} horas no CS2`}>
+                      <span className="text-[9px] font-mono text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 font-bold shrink-0 truncate" title={`${p.cs2Hours.toLocaleString('pt-BR')} horas no CS2`}>
                         🕒 {p.cs2Hours.toLocaleString('pt-BR')}h
                       </span>
                     ) : (
-                      <span className="text-[9px] font-mono text-slate-500">Auto Steam</span>
+                      <span className="text-[9px] font-mono text-slate-500 truncate">Auto Steam</span>
                     )}
                   </div>
                 ) : (
-                  <div className="flex items-center justify-between bg-slate-950/60 p-1.5 rounded-xl border border-slate-800/80">
+                  <div className="flex items-center justify-between gap-1.5 bg-slate-950/60 p-1.5 rounded-xl border border-slate-800/80 min-w-0 overflow-hidden">
                     <GCBadge level={p.level} size="sm" />
                     {p.cs2Hours ? (
-                      <span className="text-[9px] font-mono text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 font-bold" title={`${p.cs2Hours.toLocaleString('pt-BR')} horas no CS2`}>
+                      <span className="text-[9px] font-mono text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 font-bold shrink-0 truncate" title={`${p.cs2Hours.toLocaleString('pt-BR')} horas no CS2`}>
                         🕒 {p.cs2Hours.toLocaleString('pt-BR')}h
                       </span>
                     ) : (
-                      <span className="text-[9px] font-mono text-slate-500">Gamers Club</span>
+                      <span className="text-[9px] font-mono text-slate-500 truncate">Gamers Club</span>
                     )}
                   </div>
                 )}
 
-                <div className="flex items-center justify-between text-[10px] text-slate-400 px-1">
-                  <span>Lado:</span>
+                <div className="flex items-center justify-between gap-1.5 bg-slate-950/60 border border-slate-800/80 rounded-xl px-2 py-1 text-[10px] text-slate-400 min-w-0">
+                  <span className="text-[9px] font-semibold text-slate-400 shrink-0">Lado:</span>
                   {isAdmin && onAdminChangeSide ? (
-                    <div className="flex items-center gap-1 bg-slate-950 border border-slate-800 rounded-md p-0.5">
+                    <div className="grid grid-cols-3 gap-0.5 bg-slate-950 border border-slate-800 rounded-lg p-0.5 flex-1 max-w-[108px] min-w-0">
                       <button
                         type="button"
                         onClick={() => onAdminChangeSide(p.id, 'CT')}
-                        className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${
-                          p.side === 'CT' ? 'bg-sky-500/20 text-sky-400 border border-sky-500/40' : 'text-slate-500 hover:text-slate-300'
+                        className={`py-0.5 rounded text-[9px] font-bold text-center transition-colors cursor-pointer ${
+                          p.side === 'CT' ? 'bg-sky-500/25 text-sky-300 border border-sky-500/40' : 'text-slate-500 hover:text-slate-300'
                         }`}
                         title="Fixar no lado CT"
                       >
@@ -604,8 +606,8 @@ export default function Lobby({
                       <button
                         type="button"
                         onClick={() => onAdminChangeSide(p.id, 'TR')}
-                        className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${
-                          p.side === 'TR' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40' : 'text-slate-500 hover:text-slate-300'
+                        className={`py-0.5 rounded text-[9px] font-bold text-center transition-colors cursor-pointer ${
+                          p.side === 'TR' ? 'bg-amber-500/25 text-amber-300 border border-amber-500/40' : 'text-slate-500 hover:text-slate-300'
                         }`}
                         title="Fixar no lado TR"
                       >
@@ -614,25 +616,25 @@ export default function Lobby({
                       <button
                         type="button"
                         onClick={() => onAdminChangeSide(p.id, 'ANY')}
-                        className={`px-1 py-0.2 rounded text-[9px] font-bold ${
-                          !p.side || p.side === 'ANY' ? 'bg-slate-800 text-slate-300' : 'text-slate-500 hover:text-slate-300'
+                        className={`py-0.5 rounded text-[9px] font-bold text-center transition-colors cursor-pointer truncate ${
+                          !p.side || p.side === 'ANY' ? 'bg-slate-800 text-slate-200 border border-slate-700' : 'text-slate-500 hover:text-slate-300'
                         }`}
-                        title="Qualquer lado (Automático)"
+                        title="Qualquer lado (Flex / Automático)"
                       >
-                        Qualquer
+                        Flex
                       </button>
                     </div>
                   ) : (
                     <span
-                      className={`font-bold font-mono px-1.5 py-0.2 rounded text-[9px] ${
+                      className={`font-bold font-mono px-1.5 py-0.5 rounded text-[9px] shrink-0 ${
                         p.side === 'CT'
                           ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30'
                           : p.side === 'TR'
                           ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                          : 'bg-slate-800 text-slate-400'
+                          : 'bg-slate-800 text-slate-300'
                       }`}
                     >
-                      {p.side || 'ANY'}
+                      {!p.side || p.side === 'ANY' ? 'Flex' : p.side}
                     </span>
                   )}
                 </div>
