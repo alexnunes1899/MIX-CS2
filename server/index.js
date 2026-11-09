@@ -30,6 +30,7 @@ import {
   onMatchHistoryUpdated,
   getMapImageUrl,
 } from './matchHistory.js';
+import { hardwareDealsManager } from './hardwareDeals.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1990,6 +1991,22 @@ app.post('/api/maps/sync-rotation', sensitiveLimiter, async (req, res) => {
 // Official CS2 Grenade Playbook (100% Brazilian Portuguese Curated Videos)
 app.get('/api/grenades', (req, res) => {
   res.json(getGrenadesState());
+});
+
+// Official PC Gamer Hardware Deals (KaBuM!, Pichau, TerabyteShop)
+app.get('/api/hardware/deals', async (req, res) => {
+  try {
+    const { category, store, query, limit } = req.query;
+    const deals = await hardwareDealsManager.getDeals({
+      category,
+      store,
+      query,
+      limit: Math.min(20, parseInt(limit, 10) || 8),
+    });
+    res.json({ success: true, count: deals.length, deals });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 app.post('/api/grenades/sync', sensitiveLimiter, async (req, res) => {

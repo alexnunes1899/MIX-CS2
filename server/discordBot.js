@@ -35,6 +35,7 @@ import {
   updateMatchMvp,
   getMapImageUrl,
 } from './matchHistory.js';
+import { hardwareDealsManager } from './hardwareDeals.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -917,6 +918,8 @@ class DiscordBotManager {
       autoMoveVoice: true,
       autoStartVetoOnFull: false,
       serverConnect: '',
+      dealsChannelId: process.env.DISCORD_DEALS_CHANNEL || '',
+      autoPostDeals: true,
     };
   }
 
@@ -1045,6 +1048,10 @@ class DiscordBotManager {
   }
 
   async stop() {
+    if (this.dealsMonitorInterval) {
+      clearInterval(this.dealsMonitorInterval);
+      this.dealsMonitorInterval = null;
+    }
     if (this.client) {
       try {
         this.client.destroy();
@@ -1247,6 +1254,47 @@ class DiscordBotManager {
             .setRequired(false)
         ),
 
+      new SlashCommandBuilder()
+        .setName('ofertas')
+        .setDescription('Busca ofertas e promoções de hardware gamer (KaBuM!, Pichau, Terabyte)')
+        .addStringOption((opt) =>
+          opt.setName('busca').setDescription('Peça a buscar (ex: rtx 4060, ryzen 7, monitor 144hz, mouse)').setRequired(false)
+        )
+        .addStringOption((opt) =>
+          opt
+            .setName('categoria')
+            .setDescription('Filtrar por categoria')
+            .setRequired(false)
+            .addChoices(
+              { name: 'Placas de Vídeo (GPUs)', value: 'gpu' },
+              { name: 'Processadores (CPUs)', value: 'cpu' },
+              { name: 'Monitores Gamer (144Hz a 240Hz)', value: 'monitor' },
+              { name: 'SSDs NVMe e Memórias RAM', value: 'ssd_ram' },
+              { name: 'Periféricos (Mouse, Teclado, Fone)', value: 'perifericos' }
+            )
+        )
+        .addStringOption((opt) =>
+          opt
+            .setName('loja')
+            .setDescription('Filtrar por loja confiável')
+            .setRequired(false)
+            .addChoices(
+              { name: '🟠 KaBuM!', value: 'kabum' },
+              { name: '🔴 Pichau Informática', value: 'pichau' },
+              { name: '🟢 TerabyteShop', value: 'terabyte' }
+            )
+        ),
+
+      new SlashCommandBuilder()
+        .setName('alertas-hardware')
+        .setDescription('Configura o canal de alertas automáticos de promoções de hardware')
+        .addChannelOption((opt) =>
+          opt.setName('canal').setDescription('Canal de texto para postar promoções').setRequired(true)
+        )
+        .addBooleanOption((opt) =>
+          opt.setName('ativar').setDescription('Ativar ou desativar postagens automáticas').setRequired(false)
+        ),
+
       new SlashCommandBuilder().setName('ajuda').setDescription('Manual completo de comandos do Bot do Mix'),
     ];
 
@@ -1274,6 +1322,7 @@ class DiscordBotManager {
     const readyEvent = Events.ClientReady || 'clientReady';
     this.client.on(readyEvent, () => {
       this.client.user?.setActivity('CS2 Mix 5v5 • !mix ou /mix', { type: 0 });
+      this.startScheduledDealsMonitor();
     });
 
     // Handle Text Messages with Prefix '!'
@@ -1403,6 +1452,9 @@ class DiscordBotManager {
       );
     }
     if (command === 'ajuda' || command === 'help') return this.prefixHelp(message);
+    if (command === 'ofertas' || command === 'hardware' || command === 'promo' || command === 'promocao' || command === 'promocoes') {
+      return this.prefixDeals(message, args.slice(1));
+    }
     if (command === 'cancelar') return this.prefixCancel(message);
   }
 
@@ -3211,6 +3263,15 @@ class DiscordBotManager {
       return;
     }
 
+    // Refresh Hardware Deals
+    if (customId === 'deals_refresh_hot') {
+      const deals = await hardwareDealsManager.getDeals({ limit: 5 });
+      const embed = hardwareDealsManager.buildDealsEmbed(deals);
+      const selectMenu = hardwareDealsManager.buildCategorySelectMenu();
+      const actionButtons = hardwareDealsManager.buildActionButtons(deals);
+      return interaction.update({ embeds: [embed], components: [selectMenu, ...actionButtons] });
+    }
+
     // Live Match Tracker Controls
     if (customId === 'live_toggle_expand') {
       const tracker = this.liveTrackers?.get(interaction.message?.id);
@@ -3766,11 +3827,24 @@ class DiscordBotManager {
     if (commandName === 'vitoria' || commandName === 'resultado') return this.cmdMatchResult(interaction);
     if (commandName === 'sub') return this.cmdSubstitute(interaction);
     if (commandName === 'cargo') return this.cmdToggleRole(interaction);
+    if (commandName === 'ofertas') return this.cmdDeals(interaction);
+    if (commandName === 'alertas-hardware') return this.cmdHardwareAlerts(interaction);
     if (commandName === 'ajuda') return this.cmdHelp(interaction);
   }
 
   async handleSelectMenuInteraction(interaction) {
     const customId = interaction.customId;
+    if (customId === 'hardware_category_filter') {
+      const selected = interaction.values[0];
+      const category = selected === 'all' ? null : selected;
+      const deals = await hardwareDealsManager.getDeals({ category, limit: 5 });
+      const embed = hardwareDealsManager.buildDealsEmbed(deals, {
+        title: selected === 'all' ? undefined : `🔥 OFERTAS DE HARDWARE • ${deals[0]?.categoryLabel || selected.toUpperCase()}`,
+      });
+      const selectMenu = hardwareDealsManager.buildCategorySelectMenu();
+      const actionButtons = hardwareDealsManager.buildActionButtons(deals);
+      return interaction.update({ embeds: [embed], components: [selectMenu, ...actionButtons] });
+    }
     if (customId.startsWith('mvp_vote')) {
       const [_, mixId] = customId.split(':');
       const mix = this.activeMixes.get(interaction.channelId);
@@ -4219,11 +4293,130 @@ class DiscordBotManager {
           `• \`!stats [@jogador]\` - Consulta estatísticas, vitórias e elo\n` +
           `• \`!smoke [mapa]\` - Lineups de granadas\n` +
           `• \`!treino\` - CFG completa de treino do CS2\n` +
-          `• \`!moeda\` - Cara ou coroa com animação`
+          `• \`!moeda\` - Cara ou coroa com animação\n` +
+          `• \`!ofertas [busca]\` ou \`/ofertas\` - Busca promoções de hardware gamer (KaBuM!, Pichau, Terabyte)`
       )
       .setFooter({ text: 'CS2 Mix Hub • eSports Competitive Engine' });
 
     return interaction.reply({ embeds: [embed], ephemeral: true });
+  }
+
+  // ==========================================
+  // HARDWARE DEALS & PROMOTIONS
+  // ==========================================
+
+  async prefixDeals(message, args = []) {
+    const sub = (args[0] || '').toLowerCase();
+
+    // 1. Configure deals channel: !ofertas canal #promocoes
+    if (sub === 'canal' || sub === 'channel') {
+      const mentionedChannel = message.mentions.channels.first();
+      const channelId = mentionedChannel ? mentionedChannel.id : (args[1] || message.channelId);
+      this.config.dealsChannelId = channelId;
+      this.config.autoPostDeals = true;
+      this.saveConfig({ dealsChannelId: channelId, autoPostDeals: true });
+      return message.reply(`✅ Canal de alertas de promoções configurado com sucesso para: <#${channelId}>! O bot publicará alertas diários de hardware.`);
+    }
+
+    // 2. Force post deals to channel: !ofertas postar
+    if (sub === 'postar' || sub === 'alerta') {
+      const targetId = this.config.dealsChannelId || message.channelId;
+      const targetChannel = message.guild?.channels?.cache?.get(targetId) || message.channel;
+      const deals = await hardwareDealsManager.getDeals({ limit: 4 });
+      const embed = hardwareDealsManager.buildDealsEmbed(deals, {
+        title: '🔥 ALERTA DE OFERTAS • PC GAMER & HARDWARE CS2',
+        description: '⚡ **PROMOÇÕES RELÂMPAGO DETECTADAS!** Confira as melhores oportunidades nas lojas confiáveis:',
+      });
+      const actionButtons = hardwareDealsManager.buildActionButtons(deals);
+      await targetChannel.send({ embeds: [embed], components: actionButtons });
+      return message.reply(`🚀 Alerta de ofertas postado com sucesso em <#${targetId}>!`);
+    }
+
+    // 3. Search query: !ofertas rtx 4060
+    if (args.length > 0) {
+      const query = args.join(' ');
+      const deals = await hardwareDealsManager.getDeals({ query, limit: 5 });
+      const embed = hardwareDealsManager.buildDealsEmbed(deals, {
+        title: `🔍 BUSCA DE HARDWARE: "${query.toUpperCase()}"`,
+        description: `Resultados encontrados nas lojas oficiais parceiras (**KaBuM!**, **Pichau**, **TerabyteShop**):`,
+      });
+      const selectMenu = hardwareDealsManager.buildCategorySelectMenu();
+      const actionButtons = hardwareDealsManager.buildActionButtons(deals);
+      return message.reply({ embeds: [embed], components: [selectMenu, ...actionButtons] });
+    }
+
+    // 4. Default hot deals
+    const deals = await hardwareDealsManager.getDeals({ limit: 5 });
+    const embed = hardwareDealsManager.buildDealsEmbed(deals);
+    const selectMenu = hardwareDealsManager.buildCategorySelectMenu();
+    const actionButtons = hardwareDealsManager.buildActionButtons(deals);
+    return message.reply({ embeds: [embed], components: [selectMenu, ...actionButtons] });
+  }
+
+  async cmdDeals(interaction) {
+    await interaction.deferReply();
+    const query = interaction.options?.getString('busca');
+    const category = interaction.options?.getString('categoria');
+    const store = interaction.options?.getString('loja');
+
+    const deals = await hardwareDealsManager.getDeals({ query, category, store, limit: 5 });
+    const title = query
+      ? `🔍 BUSCA DE HARDWARE: "${query.toUpperCase()}"`
+      : category
+      ? `🔥 OFERTAS DE HARDWARE • ${category.toUpperCase()}`
+      : undefined;
+
+    const embed = hardwareDealsManager.buildDealsEmbed(deals, { title });
+    const selectMenu = hardwareDealsManager.buildCategorySelectMenu();
+    const actionButtons = hardwareDealsManager.buildActionButtons(deals);
+
+    return interaction.editReply({ embeds: [embed], components: [selectMenu, ...actionButtons] });
+  }
+
+  async cmdHardwareAlerts(interaction) {
+    const channel = interaction.options?.getChannel('canal');
+    const activate = interaction.options?.getBoolean('ativar') ?? true;
+
+    if (!channel) {
+      return interaction.reply({ content: '⚠️ Canal inválido.', ephemeral: true });
+    }
+
+    this.config.dealsChannelId = channel.id;
+    this.config.autoPostDeals = activate;
+    this.saveConfig({ dealsChannelId: channel.id, autoPostDeals: activate });
+
+    return interaction.reply({
+      content: activate
+        ? `🔔 **Alertas de Promoções Ativados!** As melhores ofertas de hardware de **KaBuM!**, **Pichau** e **TerabyteShop** serão postadas automaticamente em <#${channel.id}>!`
+        : `🔕 Alertas automáticos de promoções foram desativados.`,
+    });
+  }
+
+  startScheduledDealsMonitor() {
+    if (this.dealsMonitorInterval) clearInterval(this.dealsMonitorInterval);
+    // Check every 3 hours for hot deals
+    this.dealsMonitorInterval = setInterval(async () => {
+      try {
+        if (!this.client || !this.client.isReady()) return;
+        if (!this.config.dealsChannelId || !this.config.autoPostDeals) return;
+
+        const channel = await this.client.channels.fetch(this.config.dealsChannelId).catch(() => null);
+        if (!channel || !channel.isTextBased()) return;
+
+        const deals = await hardwareDealsManager.getDeals({ limit: 4 });
+        if (!deals || deals.length === 0) return;
+
+        const embed = hardwareDealsManager.buildDealsEmbed(deals, {
+          title: '🔥 RADAR DE OFERTAS • PC GAMER CS2',
+          description: '⚡ **PROMOÇÕES RELÂMPAGO DO DIA!** Peças selecionadas para máximo FPS e custo-benefício nas lojas confiáveis:',
+        });
+        const actionButtons = hardwareDealsManager.buildActionButtons(deals);
+        await channel.send({ embeds: [embed], components: actionButtons }).catch(() => {});
+        console.log(`[DISCORD BOT] Alertas de ofertas postados no canal #${channel.name}!`);
+      } catch (err) {
+        console.warn('[DISCORD BOT] Erro ao disparar alertas de ofertas:', err.message);
+      }
+    }, 3 * 3600 * 1000);
   }
 }
 
