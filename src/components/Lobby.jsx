@@ -74,9 +74,6 @@ export default function Lobby({
     if (isPrivate && inviteKey) {
       url.searchParams.set('key', inviteKey);
     }
-    if (roomPassword) {
-      url.searchParams.set('pwd', roomPassword);
-    }
     copyText(url.toString());
     setCopiedInvite(true);
     setTimeout(() => setCopiedInvite(false), 2000);
@@ -87,14 +84,6 @@ export default function Lobby({
     copyText(roomId);
     setCopiedUser(true);
     setTimeout(() => setCopiedUser(false), 2000);
-  };
-
-  const handleCopyPassword = () => {
-    if (!roomPassword) return;
-    if (soundEnabled) playClickSound();
-    copyText(roomPassword);
-    setCopiedPwd(true);
-    setTimeout(() => setCopiedPwd(false), 2000);
   };
 
   const handleMyReadyToggle = () => {
@@ -121,17 +110,11 @@ export default function Lobby({
 
               {isPrivate ? (
                 <span className="text-[10px] font-bold text-purple-300 bg-purple-500/15 border border-purple-500/30 px-2 py-0.5 rounded-full flex items-center gap-1 font-mono">
-                  <Lock size={10} /> Privado
+                  <Lock size={10} /> Privado (Só via Link)
                 </span>
               ) : (
                 <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-full flex items-center gap-1 font-mono">
                   <Globe size={10} /> Mix Público
-                </span>
-              )}
-
-              {(hasPassword || roomPassword) && (
-                <span className="text-[10px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full flex items-center gap-1 font-mono">
-                  <Lock size={10} /> Senha Ativa
                 </span>
               )}
 
@@ -143,7 +126,7 @@ export default function Lobby({
             </div>
             <p className="text-[11px] text-slate-400">
               {isPrivate
-                ? 'Sala privada. Apenas convidados com o link exclusivo conseguem entrar.'
+                ? 'Sala privada sem senha. Os jogadores entram exclusivamente abrindo o Link de Convite.'
                 : 'Mix público aberto. Qualquer jogador da comunidade pode entrar pelo Hub ou pelo link.'}
             </p>
           </div>
@@ -176,69 +159,63 @@ export default function Lobby({
           </div>
         </div>
 
-        {/* Room Credentials Bar (Usuário & Senha da Sala) */}
+        {/* Room Identity & Direct Invite Link Bar (No Password Needed) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-slate-800/80">
-          {/* Room User */}
+          {/* Room Identifier */}
           <div className="bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 flex items-center justify-between">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 min-w-0">
               <Hash size={14} className="text-amber-400 shrink-0" />
-              <div>
-                <span className="text-[10px] text-slate-400 font-semibold block uppercase">Usuário da Sala (Login)</span>
-                <span className="text-xs font-mono font-bold text-white">{roomId}</span>
+              <div className="min-w-0">
+                <span className="text-[10px] text-slate-400 font-semibold block uppercase">Código Identificador</span>
+                <span className="text-xs font-mono font-bold text-white truncate block">{roomId}</span>
               </div>
             </div>
             <button
               type="button"
               onClick={handleCopyUser}
-              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer text-[10px] font-bold flex items-center gap-1"
-              title="Copiar Usuário da Sala"
+              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer text-[10px] font-bold flex items-center gap-1 shrink-0"
+              title="Copiar Código da Sala"
             >
               {copiedUser ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
               <span>{copiedUser ? 'Copiado' : 'Copiar'}</span>
             </button>
           </div>
 
-          {/* Room Password */}
-          <div className="bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <KeyRound size={14} className="text-amber-400 shrink-0" />
-              <div>
-                <span className="text-[10px] text-slate-400 font-semibold block uppercase">Senha da Sala (PIN)</span>
-                <span className="text-xs font-mono font-bold text-amber-300 tracking-wider">
-                  {roomPassword ? (showLobbyPassword ? roomPassword : '••••') : (hasPassword ? '••••' : 'Sem Senha')}
+          {/* Direct Invite Link Status */}
+          <div className="bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              {isPrivate ? (
+                <Lock size={14} className="text-purple-400 shrink-0" />
+              ) : (
+                <Globe size={14} className="text-emerald-400 shrink-0" />
+              )}
+              <div className="min-w-0">
+                <span className="text-[10px] text-slate-400 font-semibold block uppercase">Modo de Entrada</span>
+                <span className={`text-xs font-mono font-bold truncate block ${isPrivate ? 'text-purple-300' : 'text-emerald-300'}`}>
+                  {isPrivate ? 'Somente pelo Link Direto' : 'Aberto / Link Direto'}
                 </span>
               </div>
             </div>
-            <div className="flex items-center gap-1">
-              {roomPassword && (
-                <button
-                  type="button"
-                  onClick={() => setShowLobbyPassword(!showLobbyPassword)}
-                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors cursor-pointer"
-                  title={showLobbyPassword ? 'Ocultar senha' : 'Ver senha'}
-                >
-                  {showLobbyPassword ? <EyeOff size={12} /> : <Eye size={12} />}
-                </button>
-              )}
-              {roomPassword && (
-                <button
-                  type="button"
-                  onClick={handleCopyPassword}
-                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer text-[10px] font-bold flex items-center gap-1"
-                  title="Copiar Senha da Sala"
-                >
-                  {copiedPwd ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
-                  <span>{copiedPwd ? 'Copiada' : 'Copiar'}</span>
-                </button>
-              )}
-            </div>
+            <button
+              type="button"
+              onClick={handleCopyInviteLink}
+              className="p-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 hover:text-amber-200 transition-colors cursor-pointer text-[10px] font-bold flex items-center gap-1 shrink-0"
+              title="Copiar Link Direto de Convite"
+            >
+              {copiedInvite ? <Check size={12} className="text-emerald-400" /> : <Share2 size={12} />}
+              <span>{copiedInvite ? 'Link Copiado!' : 'Copiar Link'}</span>
+            </button>
           </div>
         </div>
 
         {/* Informative Note */}
         <div className="text-[11px] text-slate-400 flex items-center gap-1.5 pt-0.5">
           <Sparkles size={12} className="text-amber-400 shrink-0" />
-          <span>Amigos que clicarem no link de convite entram direto no lobby <strong>sem precisar digitar senha</strong>!</span>
+          <span>
+            {isPrivate
+              ? <>Sala privada: envie o <strong>Link de Convite</strong> para seus amigos — só entra quem abrir pelo link!</>
+              : <>Envie o <strong>Link de Convite</strong> para seus amigos entrarem direto na sala com 1 clique!</>}
+          </span>
         </div>
       </div>
 

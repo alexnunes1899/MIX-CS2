@@ -385,7 +385,7 @@ export default function App() {
 
       const cleanUrl = new URL(window.location);
       cleanUrl.searchParams.delete('steam_auth');
-      cleanUrl.searchParams.delete('room'); // Remove qualquer room residual pós-login
+      cleanUrl.searchParams.delete('room');
       cleanUrl.searchParams.delete('steamId');
       cleanUrl.searchParams.delete('nick');
       cleanUrl.searchParams.delete('avatar');
@@ -393,6 +393,25 @@ export default function App() {
       cleanUrl.searchParams.delete('faceitElo');
       cleanUrl.searchParams.delete('faceitFound');
       cleanUrl.searchParams.delete('cs2Hours');
+
+      // Se o jogador clicou em um link de convite de uma sala antes de logar na Steam, restaura a sala e o token do link
+      try {
+        const pendingRaw = sessionStorage.getItem('cs2_pending_invite');
+        if (pendingRaw) {
+          sessionStorage.removeItem('cs2_pending_invite');
+          const pending = JSON.parse(pendingRaw);
+          if (pending?.room) {
+            setRoomId(pending.room);
+            if (pending.key) setInviteKey(pending.key);
+            setView('mix');
+            cleanUrl.searchParams.set('room', pending.room);
+            if (pending.key) cleanUrl.searchParams.set('key', pending.key);
+            window.history.replaceState({}, '', cleanUrl.toString());
+            return;
+          }
+        }
+      } catch (e) {}
+
       window.history.replaceState({}, '', cleanUrl.pathname || '/');
     }
   }, []);

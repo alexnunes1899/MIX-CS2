@@ -20,8 +20,6 @@ export default function RoomsHubModal({
   const [newRoomName, setNewRoomName] = useState('');
   const [newRoomCode, setNewRoomCode] = useState('');
   const [newServerIp, setNewServerIp] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [isPrivate, setIsPrivate] = useState(false); // Default: false = Mix Público (like GC default)
   const [rankingSystem, setRankingSystem] = useState('gc'); // 'gc' | 'faceit'
   const [loading, setLoading] = useState(false);
@@ -33,18 +31,9 @@ export default function RoomsHubModal({
       // Auto-generate room credentials with creator nick (e.g. Alex -> "Time Alex", "TIME-ALEX")
       const creds = generateRoomCredentials(myProfile?.nick);
       setNewRoomCode(creds.roomUser);
-      setNewPassword(creds.roomPassword);
       setNewRoomName(creds.suggestedName);
     }
   }, [isOpen, myProfile?.nick]);
-
-  const handleGenerateAll = () => {
-    if (soundEnabled) playClickSound();
-    const creds = generateRoomCredentials(myProfile?.nick);
-    setNewRoomCode(creds.roomUser);
-    setNewPassword(creds.roomPassword);
-    setNewRoomName(creds.suggestedName);
-  };
 
   const handleGenerateUserOnly = () => {
     if (soundEnabled) playClickSound();
@@ -55,11 +44,6 @@ export default function RoomsHubModal({
     } else {
       setNewRoomName(`Mix ${user.replace('MIX-', '').replace('TIME-', '')}`);
     }
-  };
-
-  const handleGeneratePasswordOnly = () => {
-    if (soundEnabled) playClickSound();
-    setNewPassword(generateRoomPassword());
   };
 
   const fetchRooms = async () => {
@@ -101,7 +85,7 @@ export default function RoomsHubModal({
       newRoomName.trim() || defaultName,
       rankingSystem,
       newServerIp.trim(),
-      newPassword.trim(),
+      '',
       isPrivate
     );
     onClose();
@@ -285,33 +269,19 @@ export default function RoomsHubModal({
             </div>
           </div>
 
-          {/* Optional Password only for private or special rooms */}
+          {/* Direct Link Only Notice for Private Rooms (No Password Needed) */}
           {isPrivate && (
-            <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-3">
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-[10px] text-slate-400 font-semibold block uppercase">
-                  Senha da Sala (Opcional)
-                </label>
-                <span className="text-[9px] text-slate-500 font-mono">Deixe em branco para usar apenas o link</span>
+            <div className="bg-purple-950/30 border border-purple-500/30 rounded-xl p-3 flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-purple-500/20 border border-purple-500/40 text-purple-300 flex items-center justify-center shrink-0">
+                <Link2 size={15} />
               </div>
-              <div className="relative flex items-center">
-                <KeyRound size={13} className="absolute left-3 text-slate-500" />
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  placeholder="PIN opcional (Ex: 7492)"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  maxLength={20}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl pl-8 pr-9 py-2 text-xs font-mono text-white placeholder-slate-600 outline-none focus:border-amber-400"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-2.5 text-slate-500 hover:text-slate-300 cursor-pointer"
-                  title={showPassword ? 'Ocultar senha' : 'Ver senha'}
-                >
-                  {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
-                </button>
+              <div className="min-w-0">
+                <span className="text-[11px] font-bold text-purple-200 block">
+                  Entrada Somente pelo Link de Convite (Sem Senha)
+                </span>
+                <span className="text-[10px] text-slate-400 block leading-tight">
+                  Ao criar a sala, basta copiar o link e mandar para o pessoal. Só entra quem abrir pelo link.
+                </span>
               </div>
             </div>
           )}

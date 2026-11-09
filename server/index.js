@@ -273,7 +273,7 @@ function getOrCreateRoom(roomId, customName = '', rankingSystem = 'gc', serverIp
       startingSideTeamB: null,
       serverIp: serverIp ? serverIp.trim() : '',
       rconPassword: '',
-      password: (password || '').trim(),
+      password: '',
       isPrivate: Boolean(isPrivate),
       inviteKey: finalInviteKey,
       discordWebhook: '',
@@ -559,31 +559,19 @@ io.on('connection', (socket) => {
       return;
     }
     if (existingRoom) {
-      // 1. Gamers Club style Private Room check: ONLY enters via direct invite link or matching key
+      // Gamers Club style Private Room check: ONLY enters via direct invite link (key)
       if (existingRoom.isPrivate) {
         const matchesKey = cleanKey && existingRoom.inviteKey && cleanKey === existingRoom.inviteKey;
-        const matchesPassword = cleanPassword && existingRoom.password && cleanPassword === existingRoom.password;
         const isKnownPlayer = player?.id && existingRoom.players.some((p) => p.id === player.id);
         const isCreator = (socket.playerId && existingRoom.creatorId === socket.playerId) ||
                           (player?.steamId && existingRoom.creatorSteamId === player.steamId);
 
-        if (!matchesKey && !matchesPassword && !isKnownPlayer && !isCreator) {
+        if (!matchesKey && !isKnownPlayer && !isCreator) {
           socket.emit('room_auth_error', {
             roomId: cleanRoomId,
             roomName: existingRoom.name,
             error: 'private_room',
-            message: 'Esta sala é privada (estilo Gamers Club). O acesso é exclusivo via link direto de convite.',
-          });
-          return;
-        }
-      } else if (existingRoom.password) {
-        // Public room with password (if configured)
-        if (cleanPassword !== existingRoom.password) {
-          socket.emit('room_auth_error', {
-            roomId: cleanRoomId,
-            roomName: existingRoom.name,
-            error: 'wrong_password',
-            message: cleanPassword ? 'Senha incorreta para esta sala.' : 'Esta sala requer uma senha para entrar.',
+            message: 'Esta sala é privada. O acesso é permitido somente através do Link de Convite.',
           });
           return;
         }

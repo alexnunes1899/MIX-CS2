@@ -209,6 +209,14 @@ export default function PlayerForm({
 
   const handleSteamLogin = () => {
     if (soundEnabled) playClickSound();
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const pendingRoom = params.get('room');
+      const pendingKey = params.get('key') || params.get('token');
+      if (pendingRoom) {
+        sessionStorage.setItem('cs2_pending_invite', JSON.stringify({ room: pendingRoom, key: pendingKey || '' }));
+      }
+    } catch (e) {}
     window.location.href = '/api/auth/steam';
   };
 

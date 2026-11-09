@@ -52,9 +52,6 @@ export default function Header({
     if (isPrivate && inviteKey) {
       url.searchParams.set('key', inviteKey);
     }
-    if (roomPassword) {
-      url.searchParams.set('pwd', roomPassword);
-    }
     copyText(url.toString());
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -100,25 +97,13 @@ export default function Header({
                   {rankingSystem === 'faceit' ? '⚡ FACEIT' : '🛡️ GC'}
                 </span>
                 {isPrivate ? (
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border text-purple-400 bg-purple-500/15 border-purple-500/30 flex items-center gap-1 font-mono">
-                    <Lock size={10} /> Privado
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border text-purple-300 bg-purple-500/15 border-purple-500/30 flex items-center gap-1 font-mono">
+                    <Lock size={10} /> Privado (Só via Link)
                   </span>
                 ) : (
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border text-emerald-400 bg-emerald-500/15 border-emerald-500/30 flex items-center gap-1 font-mono">
                     <Globe size={10} /> Mix Público
                   </span>
-                )}
-                {(hasPassword || roomPassword) && (
-                  <button
-                    type="button"
-                    onClick={() => setShowHeaderPassword(!showHeaderPassword)}
-                    className="text-[10px] font-bold px-2 py-0.5 rounded-full border text-amber-300 bg-amber-500/15 border-amber-500/30 hover:bg-amber-500/25 flex items-center gap-1 font-mono cursor-pointer transition-colors"
-                    title={roomPassword ? 'Clique para mostrar/ocultar senha' : 'Sala protegida com senha'}
-                  >
-                    <Lock size={10} />
-                    <span>PIN: {roomPassword ? (showHeaderPassword ? roomPassword : '••••') : 'Ativo'}</span>
-                    {roomPassword && (showHeaderPassword ? <EyeOff size={10} className="opacity-70" /> : <Eye size={10} className="opacity-70" />)}
-                  </button>
                 )}
               </div>
               <p className="text-[10px] sm:text-[11px] text-slate-400 hidden sm:block">
