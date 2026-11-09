@@ -38,5 +38,25 @@
         "user_test_3"
       ]
     }
+  },
+  "clip_1794242134225_h291": {
+    "id": "clip_1794242134225_h291",
+    "url": "https://medal.tv/clip/mock-ace-dust2",
+    "title": "Ace de AWP no Meio da Mirage",
+    "authorId": "user_test_1",
+    "authorName": "Fallen",
+    "authorAvatar": "https://example.com/avatar.png",
+    "platform": "Medal.tv",
+    "platformIcon": "🎖️",
+    "createdAt": "2026-11-09T16:35:34.225Z",
+    "votes": {
+      "fire": [
+        "user_test_1",
+        "user_test_2"
+      ],
+      "bagre": [
+        "user_test_3"
+      ]
+    }
   }
 }

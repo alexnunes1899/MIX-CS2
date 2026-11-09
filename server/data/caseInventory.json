@@ -2,17 +2,29 @@
   "user_test_1": {
     "userId": "user_test_1",
     "username": "Fallen",
-    "casesOpened": 4,
-    "totalSpent": 56,
-    "totalValue": 13.46,
+    "casesOpened": 6,
+    "totalSpent": 84,
+    "totalValue": 32.92,
     "knivesUnboxed": 0,
     "bestDrop": {
-      "name": "Dual Berettas | Melondrama",
-      "price": 9.8,
-      "tier": "purple",
+      "name": "MP9 | Starlight Protector",
+      "price": 12.6,
+      "tier": "blue",
       "date": "09/11/2026"
     },
     "recentDrops": [
+      {
+        "name": "MP9 | Starlight Protector",
+        "price": 12.6,
+        "tier": "blue",
+        "wear": "Veterana de Guerra (BS)"
+      },
+      {
+        "name": "Five-SeveN | Hybrid",
+        "price": 6.86,
+        "tier": "purple",
+        "wear": "Veterana de Guerra (BS)"
+      },
       {
         "name": "MAC-10 | Ensnared",
         "price": 0.66,
@@ -30,12 +42,6 @@
         "price": 9.8,
         "tier": "purple",
         "wear": "Veterana de Guerra (BS)"
-      },
-      {
-        "name": "Nova | Dark Sigil",
-        "price": 0.9,
-        "tier": "blue",
-        "wear": "Testada em Campo (FT)"
       }
     ]
   }

@@ -86,8 +86,11 @@ class HardwareDealsManager {
             attr.discount_percentage ||
             (oldPrice > price ? Math.round(((oldPrice - price) / oldPrice) * 100) : 0);
 
-          const link = attr.product_link
-            ? `https://www.kabum.com.br/produto/${item.id}/${attr.product_link}`
+          const slug = (attr.product_link || '').replace(/^\/+/, '');
+          const link = item.id && slug
+            ? `https://www.kabum.com.br/produto/${item.id}/${slug}`
+            : item.id
+            ? `https://www.kabum.com.br/produto/${item.id}`
             : `https://www.kabum.com.br/busca?q=${clean}`;
 
           const image =
@@ -308,7 +311,7 @@ class HardwareDealsManager {
     return new ActionRowBuilder().addComponents(select);
   }
 
-  buildActionButtons(deals = []) {
+  buildActionButtons(deals = [], context = {}) {
     const rows = [];
     const buttonRow = new ActionRowBuilder();
 
@@ -334,23 +337,30 @@ class HardwareDealsManager {
       rows.push(buttonRow);
     }
 
+    const { query, category } = context;
+    const cleanQ = query && query.trim() ? query.trim() : (category ? (CATEGORY_LABELS[category] || category) : '');
+
+    const kabumUrl = cleanQ ? `https://www.kabum.com.br/busca?q=${encodeURIComponent(cleanQ)}` : 'https://www.kabum.com.br';
+    const pichauUrl = cleanQ ? `https://www.pichau.com.br/search?q=${encodeURIComponent(cleanQ)}` : 'https://www.pichau.com.br';
+    const terabyteUrl = cleanQ ? `https://www.terabyteshop.com.br/busca?busca=${encodeURIComponent(cleanQ)}` : 'https://www.terabyteshop.com.br';
+
     const navRow = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId('deals_refresh_hot')
-        .setLabel('🔄 Atualizar Ofertas')
+        .setLabel('🔄 Atualizar')
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
-        .setLabel('🟠 KaBuM!')
+        .setLabel(cleanQ ? '🟠 KaBuM! Buscar' : '🟠 KaBuM!')
         .setStyle(ButtonStyle.Link)
-        .setURL('https://www.kabum.com.br'),
+        .setURL(kabumUrl),
       new ButtonBuilder()
-        .setLabel('🔴 Pichau')
+        .setLabel(cleanQ ? '🔴 Pichau Buscar' : '🔴 Pichau')
         .setStyle(ButtonStyle.Link)
-        .setURL('https://www.pichau.com.br'),
+        .setURL(pichauUrl),
       new ButtonBuilder()
-        .setLabel('🟢 TerabyteShop')
+        .setLabel(cleanQ ? '🟢 Terabyte Buscar' : '🟢 TerabyteShop')
         .setStyle(ButtonStyle.Link)
-        .setURL('https://www.terabyteshop.com.br')
+        .setURL(terabyteUrl)
     );
     rows.push(navRow);
 

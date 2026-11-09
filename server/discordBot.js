@@ -3426,7 +3426,7 @@ class DiscordBotManager {
       const deals = await hardwareDealsManager.getDeals({ limit: 5 });
       const embed = hardwareDealsManager.buildDealsEmbed(deals);
       const selectMenu = hardwareDealsManager.buildCategorySelectMenu();
-      const actionButtons = hardwareDealsManager.buildActionButtons(deals);
+      const actionButtons = hardwareDealsManager.buildActionButtons(deals, { category });
       return interaction.update({ embeds: [embed], components: [selectMenu, ...actionButtons] });
     }
 
@@ -4008,7 +4008,7 @@ class DiscordBotManager {
         title: selected === 'all' ? undefined : `🔥 OFERTAS DE HARDWARE • ${deals[0]?.categoryLabel || selected.toUpperCase()}`,
       });
       const selectMenu = hardwareDealsManager.buildCategorySelectMenu();
-      const actionButtons = hardwareDealsManager.buildActionButtons(deals);
+      const actionButtons = hardwareDealsManager.buildActionButtons(deals, { category });
       return interaction.update({ embeds: [embed], components: [selectMenu, ...actionButtons] });
     }
     if (customId.startsWith('bagre_select')) {
@@ -4671,7 +4671,7 @@ class DiscordBotManager {
         description: `Resultados encontrados nas lojas oficiais parceiras (**KaBuM!**, **Pichau**, **TerabyteShop**):`,
       });
       const selectMenu = hardwareDealsManager.buildCategorySelectMenu();
-      const actionButtons = hardwareDealsManager.buildActionButtons(deals);
+      const actionButtons = hardwareDealsManager.buildActionButtons(deals, { query });
       return message.reply({ embeds: [embed], components: [selectMenu, ...actionButtons] });
     }
 
@@ -4698,7 +4698,7 @@ class DiscordBotManager {
 
     const embed = hardwareDealsManager.buildDealsEmbed(deals, { title });
     const selectMenu = hardwareDealsManager.buildCategorySelectMenu();
-    const actionButtons = hardwareDealsManager.buildActionButtons(deals);
+    const actionButtons = hardwareDealsManager.buildActionButtons(deals, { query, category });
 
     return interaction.editReply({ embeds: [embed], components: [selectMenu, ...actionButtons] });
   }
