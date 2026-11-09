@@ -271,6 +271,8 @@ class DiscordBotManager {
     this.webRoomsRef = null;
     // Valve CS2 Game State Integration cache
     this.lastGsiState = null;
+    // Multi-player GSI state tracking (keyed by steamId)
+    this.playersGsiStates = new Map();
     // Active Live Match Discord message trackers for real-time round-by-round auto-editing
     this.liveTrackers = new Map();
 
@@ -293,6 +295,15 @@ class DiscordBotManager {
       roomId: roomId || 'MIX-PRO',
       receivedAt: Date.now(),
     };
+
+    const steamId = liveState.player?.steamId || liveState.rawPlayer?.steamId;
+    if (steamId) {
+      this.playersGsiStates.set(steamId, {
+        ...liveState,
+        roomId: roomId || 'MIX-PRO',
+        receivedAt: Date.now(),
+      });
+    }
 
     // If match ended in CS2, automatically finalize any active mix
     if (liveState.isGameOver && liveState.phase === 'gameover') {
@@ -376,12 +387,25 @@ class DiscordBotManager {
     return embed;
   }
 
-  buildLiveMatchEmbed(requesterName = 'Jogador') {
-    const lastTime = this.lastGsiState?.receivedAt || this.lastGsiState?.lastUpdate || 0;
+  buildLiveMatchEmbed(requesterName = 'Jogador', targetPlayerQuery = null) {
+    let state = this.lastGsiState || {};
+
+    // If specific player requested by name or steamId
+    if (targetPlayerQuery && this.playersGsiStates && this.playersGsiStates.size > 0) {
+      const q = targetPlayerQuery.toLowerCase().trim();
+      for (const [sId, pState] of this.playersGsiStates.entries()) {
+        const pName = (pState.player?.name || pState.rawPlayer?.name || '').toLowerCase();
+        if (pName.includes(q) || sId === targetPlayerQuery) {
+          state = pState;
+          break;
+        }
+      }
+    }
+
+    const lastTime = state.receivedAt || state.lastUpdate || 0;
     const isOnline = Boolean(
-      this.lastGsiState && Date.now() - lastTime < 90000
+      state && Date.now() - lastTime < 90000
     );
-    const state = this.lastGsiState || {};
     const player = state.player || {};
     const playerName = player.name || state.rawPlayer?.name || requesterName || 'Jogador';
 
@@ -548,8 +572,32 @@ class DiscordBotManager {
           value: `🔥 **K/D Ratio:** **${player.kd || 0}**\n⚡ **Kills neste Round:** **${player.roundKills || 0}** (${player.roundKillHs || 0} Headshots)`,
           inline: false,
         }
-      )
-      .setFooter({ text: 'CS2 Mix Hub • Auto-Sync Ao Vivo Ativo • Atualizado automaticamente' });
+      );
+
+    // List other online players if multiple people installed the .bat
+    const otherPlayers = [];
+    if (this.playersGsiStates && this.playersGsiStates.size > 1) {
+      const now = Date.now();
+      for (const [sId, pState] of this.playersGsiStates.entries()) {
+        if (now - (pState.receivedAt || pState.lastUpdate || 0) < 90000) {
+          const otherName = pState.player?.name || pState.rawPlayer?.name;
+          if (otherName && otherName.toLowerCase() !== playerName.toLowerCase()) {
+            const side = pState.player?.team === 'CT' || pState.rawPlayer?.team === 'CT' ? 'CT' : 'TR';
+            otherPlayers.push(`**${otherName}** (${side})`);
+          }
+        }
+      }
+    }
+
+    if (otherPlayers.length > 0) {
+      embed.addFields({
+        name: '👥 Outros Jogadores com Monitoramento Ativo',
+        value: `📡 ${otherPlayers.join(' • ')}\n*(Dica: digite \`!monitorar <nome>\` para alternar de jogador)*`,
+        inline: false,
+      });
+    }
+
+    embed.setFooter({ text: 'CS2 Mix Hub • Auto-Sync Ao Vivo Ativo • Atualizado automaticamente' });
 
     return embed;
   }
@@ -576,7 +624,7 @@ class DiscordBotManager {
     return row;
   }
 
-  registerLiveTracker(messageOrReply, requesterName = 'Jogador') {
+  registerLiveTracker(messageOrReply, requesterName = 'Jogador', targetQuery = null) {
     if (!messageOrReply?.id || !messageOrReply?.channelId) return;
 
     if (this.liveTrackers) {
@@ -590,6 +638,7 @@ class DiscordBotManager {
         messageId: messageOrReply.id,
         channelId: messageOrReply.channelId,
         requester: requesterName,
+        targetQuery: targetQuery,
         startedAt: Date.now(),
         lastEditedAt: 0,
         lastSignature: '',
@@ -632,7 +681,7 @@ class DiscordBotManager {
           continue;
         }
 
-        const embed = this.buildLiveMatchEmbed(tracker.requester);
+        const embed = this.buildLiveMatchEmbed(tracker.requester, tracker.targetQuery);
         const row = this.buildLiveMatchButtons(Boolean(this.lastGsiState?.player?.name));
 
         await msg.edit({ embeds: [embed], components: [row] }).catch((e) => {
@@ -1054,15 +1103,33 @@ class DiscordBotManager {
 
       new SlashCommandBuilder()
         .setName('aovivo')
-        .setDescription('Acompanha a partida de CS2 ao vivo em tempo real (placar, lado CT/TR, vida e armas)'),
+        .setDescription('Acompanha a partida de CS2 ao vivo em tempo real (placar, lado CT/TR, vida e armas)')
+        .addStringOption((opt) =>
+          opt
+            .setName('jogador')
+            .setDescription('Nome ou SteamID do jogador para monitorar (opcional)')
+            .setRequired(false)
+        ),
 
       new SlashCommandBuilder()
         .setName('monitorar')
-        .setDescription('Monitorar Partida de CS2 ao vivo: placar, lado CT/TR, vida e armas em tempo real'),
+        .setDescription('Monitorar Partida de CS2 ao vivo: placar, lado CT/TR, vida e armas em tempo real')
+        .addStringOption((opt) =>
+          opt
+            .setName('jogador')
+            .setDescription('Nome ou SteamID do jogador para monitorar (opcional)')
+            .setRequired(false)
+        ),
 
       new SlashCommandBuilder()
         .setName('monitorar-partida')
-        .setDescription('Monitorar Partida de CS2 ao vivo: placar, lado CT/TR, vida e armas em tempo real'),
+        .setDescription('Monitorar Partida de CS2 ao vivo: placar, lado CT/TR, vida e armas em tempo real')
+        .addStringOption((opt) =>
+          opt
+            .setName('jogador')
+            .setDescription('Nome ou SteamID do jogador para monitorar (opcional)')
+            .setRequired(false)
+        ),
 
       new SlashCommandBuilder().setName('ajuda').setDescription('Manual completo de comandos do Bot do Mix'),
     ];
@@ -1452,11 +1519,12 @@ class DiscordBotManager {
       return message.reply(`⏹️ Monitoramento de partida desativado neste canal (${stopped} rastreador(es) removido(s)).`);
     }
 
+    const targetQuery = args.length > 0 ? args.join(' ') : null;
     const requester = message.author?.username || 'Jogador';
-    const embed = this.buildLiveMatchEmbed(requester);
+    const embed = this.buildLiveMatchEmbed(requester, targetQuery);
     const row = this.buildLiveMatchButtons(Boolean(this.lastGsiState?.player?.name));
     const sent = await message.reply({ embeds: [embed], components: [row] });
-    this.registerLiveTracker(sent, requester);
+    this.registerLiveTracker(sent, requester, targetQuery);
     return sent;
   }
 
@@ -3937,11 +4005,12 @@ class DiscordBotManager {
 
   async cmdLive(interaction) {
     const requester = interaction.user?.username || 'Jogador';
-    const embed = this.buildLiveMatchEmbed(requester);
+    const targetQuery = interaction.options?.getString('jogador') || null;
+    const embed = this.buildLiveMatchEmbed(requester, targetQuery);
     const row = this.buildLiveMatchButtons(Boolean(this.lastGsiState?.player?.name));
     await interaction.reply({ embeds: [embed], components: [row] });
     const sent = await interaction.fetchReply();
-    this.registerLiveTracker(sent, requester);
+    this.registerLiveTracker(sent, requester, targetQuery);
     return sent;
   }
 
