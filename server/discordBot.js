@@ -919,7 +919,9 @@ class DiscordBotManager {
       autoStartVetoOnFull: false,
       serverConnect: '',
       dealsChannelId: process.env.DISCORD_DEALS_CHANNEL || '',
+      dealsChannels: {},
       autoPostDeals: true,
+      dealsIntervalMinutes: 60,
     };
   }
 
@@ -4306,8 +4308,150 @@ class DiscordBotManager {
   }
 
   // ==========================================
-  // HARDWARE DEALS & PROMOTIONS
+  // HARDWARE DEALS & PROMOTIONS (100% AUTOMATIC)
   // ==========================================
+
+  async getOrCreateDealsChannel(guild) {
+    if (!guild) return null;
+    try {
+      // 1. Explicit configured channel for this guild
+      const customId = this.config.dealsChannels?.[guild.id] || (this.config.guildId === guild.id ? this.config.dealsChannelId : null);
+      if (customId) {
+        const customChannel = guild.channels.cache.get(customId) || await guild.channels.fetch(customId).catch(() => null);
+        if (customChannel && customChannel.isTextBased()) return customChannel;
+      }
+
+      // 2. Existing text channel with relevant name
+      const existing = guild.channels.cache.find((c) =>
+        c.isTextBased() &&
+        (c.name.includes('ofertas') || c.name.includes('promoc') || c.name.includes('hardware-deals') || c.name.includes('descontos'))
+      );
+      if (existing) {
+        this.config.dealsChannels = this.config.dealsChannels || {};
+        this.config.dealsChannels[guild.id] = existing.id;
+        this.saveConfig({ dealsChannels: this.config.dealsChannels });
+        return existing;
+      }
+
+      // 3. Create dedicated clean channel if bot has permission
+      const me = guild.members.me || await guild.members.fetchMe().catch(() => null);
+      if (me && me.permissions.has(PermissionsBitField.Flags.ManageChannels)) {
+        const created = await guild.channels.create({
+          name: '🏷️・ofertas-gamer',
+          type: ChannelType.GuildText,
+          topic: '🔥 Radar automático de promoções de hardware, periféricos, cadeiras e mesas gamer (KaBuM!, Pichau, TerabyteShop)',
+          reason: 'Canal automático para promoções de computadores gamers e setup',
+        });
+        console.log(`[DISCORD BOT] Canal #${created.name} criado com sucesso no servidor "${guild.name}"!`);
+
+        this.config.dealsChannels = this.config.dealsChannels || {};
+        this.config.dealsChannels[guild.id] = created.id;
+        this.saveConfig({ dealsChannels: this.config.dealsChannels });
+        return created;
+      }
+
+      // 4. Fallback to default channel or first text channel
+      const fallback =
+        guild.channels.cache.get(this.config.defaultChannelId) ||
+        guild.channels.cache.find((c) => c.isTextBased() && (c.name.includes('cs') || c.name === 'geral')) ||
+        guild.channels.cache.filter((c) => c.isTextBased()).first();
+
+      return fallback || null;
+    } catch (e) {
+      console.warn(`[DISCORD BOT] Falha ao obter/criar canal de ofertas na guild "${guild.name}":`, e.message);
+      return null;
+    }
+  }
+
+  async dispatchAutomaticDealsDrop(categoryType = 'all') {
+    if (!this.client || !this.client.isReady()) return;
+
+    let deals = [];
+    let title = '🔥 RADAR AUTOMÁTICO • SUPER OFERTAS GAMER';
+    let desc = '⚡ **PROMOÇÕES RELÂMPAGO DO DIA!** Oportunidades verificadas em **KaBuM!**, **Pichau** e **TerabyteShop**:';
+
+    if (categoryType === 'cadeira_mesa') {
+      const cadeiras = await hardwareDealsManager.getDeals({ category: 'cadeira', limit: 2 });
+      const mesas = await hardwareDealsManager.getDeals({ category: 'mesa', limit: 2 });
+      deals = [...cadeiras, ...mesas];
+      title = '💺🪵 ALERTA DE OFERTAS • CADEIRAS & MESAS GAMER';
+      desc = '🛋️ **CONFORTO & ERGONOMIA GAMER!** Cadeiras reclináveis e mesas reforçadas com desconto:';
+    } else if (categoryType === 'gpu_cpu') {
+      const gpus = await hardwareDealsManager.getDeals({ category: 'gpu', limit: 2 });
+      const cpus = await hardwareDealsManager.getDeals({ category: 'cpu', limit: 2 });
+      deals = [...gpus, ...cpus];
+      title = '🎮⚡ ALERTA DE OFERTAS • PLACAS DE VÍDEO & PROCESSADORES';
+      desc = '🚀 **MÁXIMO FPS NO CS2!** As melhores GPUs e processadores Ryzen/Intel com preço reduzido:';
+    } else if (categoryType === 'mouse_teclado') {
+      const mouses = await hardwareDealsManager.getDeals({ query: 'mouse gamer', limit: 2 });
+      const teclados = await hardwareDealsManager.getDeals({ query: 'teclado mecanico', limit: 2 });
+      deals = [...mouses, ...teclados];
+      title = '🖱️⌨️ ALERTA DE OFERTAS • MOUSES & TECLADOS MECÂNICOS';
+      desc = '🎯 **PRECISÃO COMPETITIVA!** Mouses ultraleves e teclados mecânicos em promoção:';
+    } else if (categoryType === 'monitor_audio') {
+      const monitores = await hardwareDealsManager.getDeals({ category: 'monitor', limit: 2 });
+      const audio = await hardwareDealsManager.getDeals({ category: 'audio', limit: 2 });
+      deals = [...monitores, ...audio];
+      title = '🖥️🎧 ALERTA DE OFERTAS • MONITORES 144Hz-240Hz & HEADSETS';
+      desc = '👀 **FLUIDEZ & ÁUDIO ESPACIAL!** Veja inimigos primeiro e escute passos com precisão:';
+    } else if (categoryType === 'ram_ssd') {
+      deals = await hardwareDealsManager.getDeals({ category: 'ram_ssd', limit: 4 });
+      title = '🚀🛡️ ALERTA DE OFERTAS • MEMÓRIAS RAM & SSDs NVMe';
+      desc = '⚡ **VELOCIDADE TOTAL!** Carregamento instantâneo de mapas e zero stuttering:';
+    } else {
+      deals = await hardwareDealsManager.getDeals({ limit: 4 });
+      title = '🔥 RADAR AUTOMÁTICO • SUPER OFERTAS PC GAMER';
+      desc = '⚡ **PROMOÇÕES RELÂMPAGO DO DIA!** Peças selecionadas com maiores descontos nas lojas confiáveis:';
+    }
+
+    if (!deals || deals.length === 0) return;
+
+    const embed = hardwareDealsManager.buildDealsEmbed(deals, { title, description: desc });
+    const selectMenu = hardwareDealsManager.buildCategorySelectMenu();
+    const actionButtons = hardwareDealsManager.buildActionButtons(deals);
+
+    for (const [guildId, guild] of this.client.guilds.cache) {
+      try {
+        const channel = await this.getOrCreateDealsChannel(guild);
+        if (!channel) continue;
+        await channel.send({ embeds: [embed], components: [selectMenu, ...actionButtons] }).catch(() => {});
+        console.log(`[DISCORD BOT] 🏷️ Ofertas automáticas (${categoryType}) postadas no canal #${channel.name} (${guild.name})!`);
+      } catch (err) {
+        console.warn(`[DISCORD BOT] Erro ao postar ofertas na guild "${guild.name}":`, err.message);
+      }
+    }
+  }
+
+  startScheduledDealsMonitor() {
+    if (this.dealsMonitorInterval) clearInterval(this.dealsMonitorInterval);
+
+    // Initial instant drop: Run 8 seconds after startup
+    setTimeout(() => {
+      this.dispatchAutomaticDealsDrop('all').catch((err) => {
+        console.warn('[DISCORD BOT] Aviso no drop inicial de ofertas:', err.message);
+      });
+    }, 8000);
+
+    // Rotating categories across cycles
+    const categoryRotation = ['cadeira_mesa', 'gpu_cpu', 'mouse_teclado', 'monitor_audio', 'ram_ssd', 'all'];
+    let rotationIndex = 0;
+
+    // Check and post automatically every 60 minutes
+    const intervalMs = (this.config.dealsIntervalMinutes || 60) * 60 * 1000;
+    this.dealsMonitorInterval = setInterval(async () => {
+      try {
+        if (!this.client || !this.client.isReady()) return;
+        if (this.config.autoPostDeals === false) return;
+
+        const currentCat = categoryRotation[rotationIndex % categoryRotation.length];
+        rotationIndex++;
+
+        await this.dispatchAutomaticDealsDrop(currentCat);
+      } catch (err) {
+        console.warn('[DISCORD BOT] Erro ao disparar alertas de ofertas:', err.message);
+      }
+    }, intervalMs);
+  }
 
   async prefixDeals(message, args = []) {
     const sub = (args[0] || '').toLowerCase();
@@ -4316,24 +4460,20 @@ class DiscordBotManager {
     if (sub === 'canal' || sub === 'channel') {
       const mentionedChannel = message.mentions.channels.first();
       const channelId = mentionedChannel ? mentionedChannel.id : (args[1] || message.channelId);
+      this.config.dealsChannels = this.config.dealsChannels || {};
+      if (message.guild?.id) {
+        this.config.dealsChannels[message.guild.id] = channelId;
+      }
       this.config.dealsChannelId = channelId;
       this.config.autoPostDeals = true;
-      this.saveConfig({ dealsChannelId: channelId, autoPostDeals: true });
+      this.saveConfig({ dealsChannels: this.config.dealsChannels, dealsChannelId: channelId, autoPostDeals: true });
       return message.reply(`✅ Canal de alertas de promoções configurado com sucesso para: <#${channelId}>! O bot publicará alertas diários de hardware.`);
     }
 
     // 2. Force post deals to channel: !ofertas postar
     if (sub === 'postar' || sub === 'alerta') {
-      const targetId = this.config.dealsChannelId || message.channelId;
-      const targetChannel = message.guild?.channels?.cache?.get(targetId) || message.channel;
-      const deals = await hardwareDealsManager.getDeals({ limit: 4 });
-      const embed = hardwareDealsManager.buildDealsEmbed(deals, {
-        title: '🔥 ALERTA DE OFERTAS • PC GAMER & HARDWARE CS2',
-        description: '⚡ **PROMOÇÕES RELÂMPAGO DETECTADAS!** Confira as melhores oportunidades nas lojas confiáveis:',
-      });
-      const actionButtons = hardwareDealsManager.buildActionButtons(deals);
-      await targetChannel.send({ embeds: [embed], components: actionButtons });
-      return message.reply(`🚀 Alerta de ofertas postado com sucesso em <#${targetId}>!`);
+      await this.dispatchAutomaticDealsDrop('all');
+      return message.reply(`🚀 Alerta de ofertas postado automaticamente em todos os canais configurados!`);
     }
 
     // 3. Search query: !ofertas rtx 4060
@@ -4385,55 +4525,19 @@ class DiscordBotManager {
       return interaction.reply({ content: '⚠️ Canal inválido.', ephemeral: true });
     }
 
+    this.config.dealsChannels = this.config.dealsChannels || {};
+    if (interaction.guildId) {
+      this.config.dealsChannels[interaction.guildId] = channel.id;
+    }
     this.config.dealsChannelId = channel.id;
     this.config.autoPostDeals = activate;
-    this.saveConfig({ dealsChannelId: channel.id, autoPostDeals: activate });
+    this.saveConfig({ dealsChannels: this.config.dealsChannels, dealsChannelId: channel.id, autoPostDeals: activate });
 
     return interaction.reply({
       content: activate
         ? `🔔 **Alertas de Promoções Ativados!** As melhores ofertas de hardware de **KaBuM!**, **Pichau** e **TerabyteShop** serão postadas automaticamente em <#${channel.id}>!`
         : `🔕 Alertas automáticos de promoções foram desativados.`,
     });
-  }
-
-  startScheduledDealsMonitor() {
-    if (this.dealsMonitorInterval) clearInterval(this.dealsMonitorInterval);
-    // Rotate categories across cycles (every 2-3 hours)
-    const categoryRotation = ['all', 'cadeira', 'mesa', 'gpu', 'mouse_teclado', 'cpu', 'monitor', 'ram_ssd'];
-    let rotationIndex = 0;
-
-    this.dealsMonitorInterval = setInterval(async () => {
-      try {
-        if (!this.client || !this.client.isReady()) return;
-        if (!this.config.dealsChannelId || !this.config.autoPostDeals) return;
-
-        const channel = await this.client.channels.fetch(this.config.dealsChannelId).catch(() => null);
-        if (!channel || !channel.isTextBased()) return;
-
-        const currentCat = categoryRotation[rotationIndex % categoryRotation.length];
-        rotationIndex++;
-
-        const deals = await hardwareDealsManager.getDeals({
-          category: currentCat === 'all' ? null : currentCat,
-          limit: 4,
-        });
-        if (!deals || deals.length === 0) return;
-
-        const catTitle = currentCat === 'all'
-          ? '🔥 RADAR DE OFERTAS • PC GAMER & SETUP'
-          : `🔥 ALERTA DE OFERTAS • ${CATEGORY_LABELS[currentCat]?.toUpperCase() || currentCat.toUpperCase()}`;
-
-        const embed = hardwareDealsManager.buildDealsEmbed(deals, {
-          title: catTitle,
-          description: '⚡ **PROMOÇÕES RELÂMPAGO DO DIA!** Oportunidades verificadas em **KaBuM!**, **Pichau** e **TerabyteShop**:',
-        });
-        const actionButtons = hardwareDealsManager.buildActionButtons(deals);
-        await channel.send({ embeds: [embed], components: actionButtons }).catch(() => {});
-        console.log(`[DISCORD BOT] Alertas de ofertas (${currentCat}) postados no canal #${channel.name}!`);
-      } catch (err) {
-        console.warn('[DISCORD BOT] Erro ao disparar alertas de ofertas:', err.message);
-      }
-    }, 3 * 3600 * 1000);
   }
 }
 
