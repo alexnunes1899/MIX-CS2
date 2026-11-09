@@ -2741,6 +2741,12 @@ app.use((req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`🎮 [CS2 MIX HUB] Servidor rodando na porta ${PORT} em 0.0.0.0`);
   discordBotManager.setWebRoomsReference(rooms);
+  discordBotManager.onRoomUpdated = (roomId, room) => {
+    if (room) {
+      emitRoomState(roomId, room);
+    }
+    broadcastRoomsList();
+  };
   discordBotManager.onMatchRecorded = (match) => {
     io.emit('match_history_updated', getMatchHistoryState());
     io.emit('leaderboard_updated', getLeaderboard());

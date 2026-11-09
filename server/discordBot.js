@@ -288,6 +288,16 @@ class DiscordBotManager {
     this.webRoomsRef = roomsRef;
   }
 
+  getPublicWebUrl(path = '') {
+    const base = (
+      this.config.publicWebUrl ||
+      process.env.PUBLIC_URL ||
+      (process.env.RAILWAY_STATIC_URL ? `https://${process.env.RAILWAY_STATIC_URL}` : 'https://mix-cs2-production.up.railway.app')
+    ).replace(/\/+$/, '');
+    const cleanPath = path ? (path.startsWith('/') ? path : `/${path}`) : '';
+    return `${base}${cleanPath}`;
+  }
+
   handleGsiEvent(roomId, liveState) {
     if (!liveState) return;
     this.lastGsiState = {
@@ -716,7 +726,7 @@ class DiscordBotManager {
       new ButtonBuilder()
         .setLabel('🌐 Hub Web')
         .setStyle(ButtonStyle.Link)
-        .setURL('http://localhost:3000/'),
+        .setURL(this.getPublicWebUrl('/')),
       new ButtonBuilder()
         .setCustomId('live_stop')
         .setLabel('⏹️ Parar')
@@ -752,7 +762,7 @@ class DiscordBotManager {
   async syncLiveTrackers(liveState) {
     if (!this.liveTrackers || this.liveTrackers.size === 0) return;
     const now = Date.now();
-    const sig = `${liveState?.roundNumber}_${liveState?.scoreCT}_${liveState?.scoreTR}_${liveState?.bomb}_${liveState?.player?.isAlive}_${liveState?.player?.health}_${liveState?.player?.roundKills}_${liveState?.player?.team}_${liveState?.phase}_${liveState?.isGameOver}`;
+    const sig = `${liveState?.roundNumber}_${liveState?.scoreCT}_${liveState?.scoreTR}_${liveState?.bomb}_${liveState?.player?.isAlive}_${liveState?.player?.health}_${liveState?.player?.kills}_${liveState?.player?.deaths}_${liveState?.player?.roundKills}_${liveState?.player?.activeWeapon?.name}_${liveState?.player?.team}_${liveState?.phase}_${liveState?.isGameOver}`;
 
     for (const [msgId, tracker] of this.liveTrackers.entries()) {
       if (now - tracker.startedAt > 2.5 * 3600 * 1000) {
@@ -787,7 +797,11 @@ class DiscordBotManager {
         const row = this.buildLiveMatchButtons(Boolean(this.lastGsiState?.player?.name), isExpanded);
 
         await msg.edit({ embeds: [embed], components: [row] }).catch((e) => {
-          console.warn('[DISCORD BOT LIVE TRACKER EDIT WARNING]:', e.message);
+          if (e.code === 10008) {
+            this.liveTrackers.delete(msgId);
+          } else {
+            console.warn('[DISCORD BOT LIVE TRACKER EDIT WARNING]:', e.message);
+          }
         });
 
         tracker.lastEditedAt = Date.now();
@@ -1290,6 +1304,10 @@ class DiscordBotManager {
             content: `❌ Ocorreu um erro interno: ${err.message}`,
             ephemeral: true,
           }).catch(() => {});
+        } else if (interaction.deferred) {
+          await interaction.editReply({
+            content: `❌ Ocorreu um erro interno: ${err.message}`,
+          }).catch(() => {});
         }
       }
     });
@@ -1436,7 +1454,7 @@ class DiscordBotManager {
       new ButtonBuilder()
         .setLabel('🌐 Hub Web')
         .setStyle(ButtonStyle.Link)
-        .setURL('http://localhost:3000/')
+        .setURL(this.getPublicWebUrl('/'))
     );
 
     return message.channel.send({ embeds: [embed], components: [row] });
@@ -1461,6 +1479,7 @@ class DiscordBotManager {
       level: this.getPlayerLevel(message.author.id),
       ready: true,
     });
+    this.syncToWebRoom(mix);
 
     if (mix.players.length === 8 || mix.players.length === 9) {
       this.notifyMissingSlots(mix, message.guild, message.channel).catch(() => {});
@@ -1482,6 +1501,10 @@ class DiscordBotManager {
     const idx = mix.players.findIndex((p) => p.id === message.author.id);
     if (idx === -1) return message.reply('⚠️ Você não está no mix.');
     mix.players.splice(idx, 1);
+    if (mix.players.length <= 7 && mix.notifiedMissing) {
+      mix.notifiedMissing.clear();
+    }
+    this.syncToWebRoom(mix);
     return message.reply(`🚪 <@${message.author.id}> saiu do mix. (${mix.players.length}/10)`);
   }
 
@@ -1532,10 +1555,8 @@ class DiscordBotManager {
   }
 
   async prefixCancel(message) {
-    const mix = this.activeMixes.get(message.channelId);
+    const mix = this.deleteMix(message.channelId);
     if (!mix) return message.reply('⚠️ Nenhum mix ativo neste canal.');
-    if (mix.readyCheck?.timer) clearTimeout(mix.readyCheck.timer);
-    this.activeMixes.delete(message.channelId);
     return message.reply(`❌ O mix **${mix.name}** foi cancelado com sucesso.`);
   }
 
@@ -1582,7 +1603,7 @@ class DiscordBotManager {
       new ButtonBuilder()
         .setLabel('🚀 Conectar no CS2')
         .setStyle(ButtonStyle.Link)
-        .setURL(`http://localhost:3000/connect?ip=${encodeURIComponent(address)}`)
+        .setURL(this.getPublicWebUrl(`/connect?ip=${encodeURIComponent(address)}`))
     );
     return message.reply({ embeds: [embed], components: [row] });
   }
@@ -1593,15 +1614,15 @@ class DiscordBotManager {
       new ButtonBuilder()
         .setLabel('⚡ Instalador 1-Clique (.bat)')
         .setStyle(ButtonStyle.Link)
-        .setURL('http://localhost:3000/api/gsi/installer/MIX-PRO'),
+        .setURL(this.getPublicWebUrl('/api/gsi/installer/MIX-PRO')),
       new ButtonBuilder()
         .setLabel('📥 Manual (.cfg)')
         .setStyle(ButtonStyle.Link)
-        .setURL('http://localhost:3000/api/gsi/cfg/MIX-PRO'),
+        .setURL(this.getPublicWebUrl('/api/gsi/cfg/MIX-PRO')),
       new ButtonBuilder()
         .setLabel('🌐 Ver Partida no Hub Web')
         .setStyle(ButtonStyle.Link)
-        .setURL('http://localhost:3000/')
+        .setURL(this.getPublicWebUrl('/'))
     );
     return message.reply({ embeds: [embed], components: [row] });
   }
@@ -2375,8 +2396,14 @@ class DiscordBotManager {
 
   async notifyMissingSlots(mix, guild, channel) {
     if (!guild || !channel) return;
-    const missing = 10 - mix.players.length;
+    const missing = 10 - (mix.players?.length || 0);
     if (missing !== 1 && missing !== 2) return;
+
+    if (!mix.notifiedMissing) {
+      mix.notifiedMissing = new Set();
+    }
+    if (mix.notifiedMissing.has(missing)) return;
+    mix.notifiedMissing.add(missing);
 
     try {
       const role = guild.roles.cache.find(
@@ -2534,6 +2561,23 @@ class DiscordBotManager {
         createdAt: Date.now(),
       };
       this.activeMixes.set(channelId, mix);
+      this.syncToWebRoom(mix);
+    }
+    return mix;
+  }
+
+  deleteMix(channelId) {
+    const mix = this.activeMixes.get(channelId);
+    if (!mix) return null;
+    if (mix.readyCheck?.timer) clearTimeout(mix.readyCheck.timer);
+    this.activeMixes.delete(channelId);
+    if (this.webRoomsRef && mix.id) {
+      this.webRoomsRef.delete(mix.id);
+      if (typeof this.onRoomUpdated === 'function') {
+        try {
+          this.onRoomUpdated(mix.id, null);
+        } catch (_) {}
+      }
     }
     return mix;
   }
@@ -2581,46 +2625,56 @@ class DiscordBotManager {
     if (!this.webRoomsRef) return null;
     try {
       const roomId = mix.id;
+      const existing = this.webRoomsRef.get(roomId) || {};
       const room = {
+        ...existing,
         id: roomId,
         name: mix.name,
         createdAt: mix.createdAt || Date.now(),
         lastActivity: Date.now(),
         creatorId: mix.creatorId,
         creatorNick: mix.creatorNick,
+        source: 'discord',
+        sourceLabel: 'Via Discord',
         phase: mix.phase === 'live' ? 'match' : 'lobby',
-        players: mix.players.map((p) => ({
+        players: (mix.players || []).map((p) => ({
           id: p.id,
           nick: p.displayName || p.username,
           avatar: p.avatar,
           level: p.level || 16,
-          side: mix.teamA.players.some((a) => a.id === p.id) ? mix.teamA.side : mix.teamB.side,
+          side: (mix.teamA?.players || []).some((a) => a.id === p.id) ? (mix.teamA?.side || 'CT') : (mix.teamB?.side || 'TR'),
           ready: true,
         })),
-        teamA: mix.teamA.players.map((p) => ({
+        teamA: (mix.teamA?.players || []).map((p) => ({
           id: p.id,
           nick: p.displayName || p.username,
           avatar: p.avatar,
           level: p.level || 16,
-          side: mix.teamA.side,
+          side: mix.teamA?.side || 'CT',
         })),
-        teamB: mix.teamB.players.map((p) => ({
+        teamB: (mix.teamB?.players || []).map((p) => ({
           id: p.id,
           nick: p.displayName || p.username,
           avatar: p.avatar,
           level: p.level || 16,
-          side: mix.teamB.side,
+          side: mix.teamB?.side || 'TR',
         })),
-        teamAName: mix.teamA.name,
-        teamBName: mix.teamB.name,
-        finalMap: mix.veto.deciderMap
+        teamAName: mix.teamA?.name || 'Time A',
+        teamBName: mix.teamB?.name || 'Time B',
+        finalMap: mix.veto?.deciderMap
           ? { name: mix.veto.deciderMap.name, file: mix.veto.deciderMap.id }
           : null,
         serverIp: mix.serverIp || this.config.serverConnect || '',
         matchFormat: mix.format || 'MD1',
       };
       this.webRoomsRef.set(roomId, room);
-      console.log(`🌐 [DISCORD BOT] Sala ${roomId} sincronizada com o Hub Web!`);
+      if (typeof this.onRoomUpdated === 'function') {
+        try {
+          this.onRoomUpdated(roomId, room);
+        } catch (callErr) {
+          console.warn('[DISCORD BOT] Erro ao chamar onRoomUpdated:', callErr.message);
+        }
+      }
       return room;
     } catch (e) {
       console.warn('[DISCORD BOT] Erro ao sincronizar sala web:', e.message);
@@ -3059,7 +3113,7 @@ class DiscordBotManager {
         new ButtonBuilder()
           .setLabel('🚀 Conectar Direto no CS2')
           .setStyle(ButtonStyle.Link)
-          .setURL(`http://localhost:3000/connect?ip=${encodeURIComponent(cleanIp)}`)
+          .setURL(this.getPublicWebUrl(`/connect?ip=${encodeURIComponent(cleanIp)}`))
       );
     }
 
@@ -3088,7 +3142,7 @@ class DiscordBotManager {
       new ButtonBuilder()
         .setLabel('🌐 Acompanhar no Site')
         .setStyle(ButtonStyle.Link)
-        .setURL(`http://localhost:3000/?room=${mix.id}`),
+        .setURL(this.getPublicWebUrl(`/?room=${mix.id}`)),
       new ButtonBuilder()
         .setCustomId('panel_create_mix')
         .setLabel('🎮 Novo Mix')
@@ -3249,13 +3303,14 @@ class DiscordBotManager {
         level: userLvl,
         ready: true,
       });
+      this.syncToWebRoom(mix);
 
       // If 10 players reached, launch Ready Check!
       if (mix.players.length === 8 || mix.players.length === 9) {
         this.notifyMissingSlots(mix, interaction.guild, interaction.channel).catch(() => {});
       }
 
-    if (mix.players.length === 10) {
+      if (mix.players.length === 10) {
         this.startReadyCheck(mix, interaction.channel);
         const embed = this.buildReadyCheckEmbed(mix);
         const components = this.buildReadyCheckButtons(mix);
@@ -3339,6 +3394,11 @@ class DiscordBotManager {
         mix.readyCheck.confirmed.delete(user.id);
       }
 
+      if (mix.players.length <= 7 && mix.notifiedMissing) {
+        mix.notifiedMissing.clear();
+      }
+      this.syncToWebRoom(mix);
+
       if (mix.phase === 'ready_check') {
         if (mix.readyCheck?.timer) clearTimeout(mix.readyCheck.timer);
         mix.phase = 'lobby';
@@ -3419,6 +3479,7 @@ class DiscordBotManager {
       if (veto.remainingMaps.length === 1) {
         veto.deciderMap = veto.remainingMaps[0];
         mix.phase = 'side_pick';
+        this.syncToWebRoom(mix);
 
         const embed = new EmbedBuilder()
           .setTitle(`🛡️ ESCOLHA DE LADO • ${veto.deciderMap.name.toUpperCase()}`)
@@ -3591,8 +3652,7 @@ class DiscordBotManager {
           ephemeral: true,
         });
       }
-      if (mix.readyCheck?.timer) clearTimeout(mix.readyCheck.timer);
-      this.activeMixes.delete(interaction.channelId);
+      this.deleteMix(interaction.channelId);
       return interaction.update({
         content: `❌ O mix **${mix.name}** foi cancelado por <@${user.id}>.`,
         embeds: [],
@@ -3749,6 +3809,7 @@ class DiscordBotManager {
         const p = mix.players.find((pl) => pl.id === interaction.user.id);
         if (p) {
           p.level = parsed;
+          this.syncToWebRoom(mix);
           const embed = this.buildLobbyEmbed(mix);
           const components = this.buildLobbyButtons(mix);
           if (mix.phase === 'lobby' && interaction.message) {
@@ -3886,6 +3947,7 @@ class DiscordBotManager {
       level: this.getPlayerLevel(interaction.user.id),
       ready: true,
     });
+    this.syncToWebRoom(mix);
 
     if (mix.players.length === 8 || mix.players.length === 9) {
       this.notifyMissingSlots(mix, interaction.guild, interaction.channel).catch(() => {});
@@ -3907,6 +3969,10 @@ class DiscordBotManager {
     const idx = mix.players.findIndex((p) => p.id === interaction.user.id);
     if (idx === -1) return interaction.reply({ content: '⚠️ Você não está no mix.', ephemeral: true });
     mix.players.splice(idx, 1);
+    if (mix.players.length <= 7 && mix.notifiedMissing) {
+      mix.notifiedMissing.clear();
+    }
+    this.syncToWebRoom(mix);
     return interaction.reply({ content: `🚪 <@${interaction.user.id}> saiu do mix. (${mix.players.length}/10)` });
   }
 
@@ -3959,10 +4025,8 @@ class DiscordBotManager {
   }
 
   async cmdCancelMix(interaction) {
-    const mix = this.activeMixes.get(interaction.channelId);
+    const mix = this.deleteMix(interaction.channelId);
     if (!mix) return interaction.reply({ content: '⚠️ Nenhum mix ativo neste canal.', ephemeral: true });
-    if (mix.readyCheck?.timer) clearTimeout(mix.readyCheck.timer);
-    this.activeMixes.delete(interaction.channelId);
     return interaction.reply({ content: `❌ O mix **${mix.name}** foi cancelado com sucesso.` });
   }
 
@@ -4000,7 +4064,7 @@ class DiscordBotManager {
       new ButtonBuilder()
         .setLabel('🌐 Hub Web')
         .setStyle(ButtonStyle.Link)
-        .setURL('http://localhost:3000/')
+        .setURL(this.getPublicWebUrl('/'))
     );
 
     await interaction.reply({
@@ -4095,7 +4159,7 @@ class DiscordBotManager {
       new ButtonBuilder()
         .setLabel('🚀 Conectar no CS2')
         .setStyle(ButtonStyle.Link)
-        .setURL(`http://localhost:3000/connect?ip=${encodeURIComponent(address)}`)
+        .setURL(this.getPublicWebUrl(`/connect?ip=${encodeURIComponent(address)}`))
     );
     return interaction.editReply({ embeds: [embed], components: [row] });
   }
@@ -4106,15 +4170,15 @@ class DiscordBotManager {
       new ButtonBuilder()
         .setLabel('⚡ Instalador 1-Clique (.bat)')
         .setStyle(ButtonStyle.Link)
-        .setURL('http://localhost:3000/api/gsi/installer/MIX-PRO'),
+        .setURL(this.getPublicWebUrl('/api/gsi/installer/MIX-PRO')),
       new ButtonBuilder()
         .setLabel('📥 Manual (.cfg)')
         .setStyle(ButtonStyle.Link)
-        .setURL('http://localhost:3000/api/gsi/cfg/MIX-PRO'),
+        .setURL(this.getPublicWebUrl('/api/gsi/cfg/MIX-PRO')),
       new ButtonBuilder()
         .setLabel('🌐 Ver Partida no Hub Web')
         .setStyle(ButtonStyle.Link)
-        .setURL('http://localhost:3000/')
+        .setURL(this.getPublicWebUrl('/'))
     );
     return interaction.reply({ embeds: [embed], components: [row] });
   }
