@@ -387,7 +387,7 @@ class DiscordBotManager {
     return embed;
   }
 
-  buildLiveMatchEmbed(requesterName = 'Jogador', targetPlayerQuery = null) {
+  buildLiveMatchEmbed(requesterName = 'Jogador', targetPlayerQuery = null, isExpanded = false) {
     let state = this.lastGsiState || {};
 
     // If specific player requested by name or steamId
@@ -414,39 +414,50 @@ class DiscordBotManager {
     if (!isOnline || (!player.name && !state.rawPlayer?.name)) {
       embed
         .setTitle('📡 MONITORAR PARTIDA • AGUARDANDO CS2')
-        .setDescription(
-          `⏳ **Monitoramento ativado com sucesso! Aguardando início da partida no CS2...**\n\n` +
-            `O bot está em modo de escuta ativa. **Assim que você conectar no servidor e o round começar, este card será atualizado automaticamente em tempo real!**\n\n` +
-            `Seus amigos já podem deixar este card aberto no Discord ou no Hub Web para acompanhar:\n` +
-            `• 🛡️ / 💣 **Lado da Equipe:** CT ou TR (com mudança de cores)\n` +
-            `• 🔢 **Placar da Partida:** Contagem de rounds e round atual\n` +
-            `• ❤️ **Sua Vida (HP):** Barra gráfica dinâmica atualizada em tempo real\n` +
-            `• 🛡️ **Proteção:** Colete leve, capacete ou sem colete\n` +
-            `• 🔫 **Armamento:** Arma ativa em mãos e munição exata\n` +
-            `• 💣 **Granadas & Utilitários:** Smokes, flashes e molotovs no inventário\n` +
-            `• 💰 **Economia ($):** Dinheiro atual e valor de equipamento\n` +
-            `• 📊 **Desempenho:** Kills, Mortes, Assists, MVPs e K/D\n` +
-            `• 🚨 **C4 Status:** Avisos ao vivo de bomba armada ou defusada`
-        )
-        .addFields(
-          {
-            name: '📡 Status do Monitoramento',
-            value: '🟢 **Monitoramento Ativo** (Auto-Sync Ligado)',
-            inline: true,
-          },
-          {
-            name: '🕹️ Solicitado por',
-            value: `**${requesterName}**`,
-            inline: true,
-          },
-          {
-            name: '⚙️ Arquivo GSI',
-            value: '`gamestate_integration_cs2mixhub.cfg`',
-            inline: true,
-          }
-        )
-        .setColor(0x6366f1)
-        .setFooter({ text: 'CS2 Mix Hub • Monitorar Partida • Atualização Automática no 1º Round' });
+        .setColor(0x6366f1);
+
+      if (isExpanded) {
+        embed
+          .setDescription(
+            `⏳ **Monitoramento ativado com sucesso! Aguardando início da partida no CS2...**\n\n` +
+              `O bot está em modo de escuta ativa. **Assim que você conectar no servidor e o round começar, este card será atualizado automaticamente em tempo real!**\n\n` +
+              `Seus amigos já podem deixar este card aberto no Discord ou no Hub Web para acompanhar:\n` +
+              `• 🛡️ / 💣 **Lado da Equipe:** CT ou TR (com mudança de cores)\n` +
+              `• 🔢 **Placar da Partida:** Contagem de rounds e round atual\n` +
+              `• ❤️ **Sua Vida (HP):** Barra gráfica dinâmica atualizada em tempo real\n` +
+              `• 🛡️ **Proteção:** Colete leve, capacete ou sem colete\n` +
+              `• 🔫 **Armamento:** Arma ativa em mãos e munição exata\n` +
+              `• 💣 **Granadas & Utilitários:** Smokes, flashes e molotovs no inventário\n` +
+              `• 💰 **Economia ($):** Dinheiro atual e valor de equipamento\n` +
+              `• 📊 **Desempenho:** Kills, Mortes, Assists, MVPs e K/D\n` +
+              `• 🚨 **C4 Status:** Avisos ao vivo de bomba armada ou defusada`
+          )
+          .addFields(
+            {
+              name: '📡 Status do Monitoramento',
+              value: '🟢 **Monitoramento Ativo** (Auto-Sync Ligado)',
+              inline: true,
+            },
+            {
+              name: '🕹️ Solicitado por',
+              value: `**${requesterName}**`,
+              inline: true,
+            },
+            {
+              name: '⚙️ Arquivo GSI',
+              value: '`gamestate_integration_cs2mixhub.cfg`',
+              inline: true,
+            }
+          )
+          .setFooter({ text: 'CS2 Mix Hub • Modo Expandido • Atualização Automática no 1º Round' });
+      } else {
+        embed
+          .setDescription(
+            `⏳ **Monitoramento ativado com sucesso!** Aguardando início da partida no CS2 de **${playerName}**...\n` +
+            `*Assim que entrar no servidor, este card será atualizado automaticamente em tempo real.*`
+          )
+          .setFooter({ text: '📡 Painel Discreto • Clique em "Ver Detalhes (+)" para expandir' });
+      }
       return embed;
     }
 
@@ -455,36 +466,47 @@ class DiscordBotManager {
     if (isInMenu) {
       embed
         .setTitle(`🎮 CS2 CONECTADO • ${playerName.toUpperCase()} NO MENU`)
-        .setColor(0x10b981)
-        .setDescription(
-          `🟢 **CS2 Detectado e Conectado com Sucesso!**\n\n` +
-            `O jogador **${playerName}** está com o Counter-Strike 2 aberto no **Menu Principal**.\n\n` +
-            `📡 **O monitoramento em tempo real já está sincronizado!**\n` +
-            `Assim que você entrar em um servidor (seja casual, competitivo ou servidor de mix) e o round começar, este card mudará automaticamente para exibir:\n` +
-            `• 🗺️ Mapa e Lado da equipe (CT ou TR)\n` +
-            `• 🔢 Placar do jogo e contagem de rounds\n` +
-            `• ❤️ Barra gráfica de vida (HP) e colete\n` +
-            `• 🔫 Armas equipadas, munição e granadas\n` +
-            `• 💣 Status da C4 em tempo real`
-        )
-        .addFields(
-          {
-            name: '🟢 Status da Conexão',
-            value: '✅ **GSI CS2 Ativo e Recebendo Dados**',
-            inline: true,
-          },
-          {
-            name: '🕹️ Jogador',
-            value: `**${playerName}**`,
-            inline: true,
-          },
-          {
-            name: '⚡ Auto-Sync',
-            value: '🔄 **Atualização a cada 2.5s**',
-            inline: true,
-          }
-        )
-        .setFooter({ text: 'CS2 Mix Hub • Conectado • Atualização Automática ao Iniciar a Partida' });
+        .setColor(0x10b981);
+
+      if (isExpanded) {
+        embed
+          .setDescription(
+            `🟢 **CS2 Detectado e Conectado com Sucesso!**\n\n` +
+              `O jogador **${playerName}** está com o Counter-Strike 2 aberto no **Menu Principal**.\n\n` +
+              `📡 **O monitoramento em tempo real já está sincronizado!**\n` +
+              `Assim que você entrar em um servidor (seja casual, competitivo ou servidor de mix) e o round começar, este card mudará automaticamente para exibir:\n` +
+              `• 🗺️ Mapa e Lado da equipe (CT ou TR)\n` +
+              `• 🔢 Placar do jogo e contagem de rounds\n` +
+              `• ❤️ Barra gráfica de vida (HP) e colete\n` +
+              `• 🔫 Armas equipadas, munição e granadas\n` +
+              `• 💣 Status da C4 em tempo real`
+          )
+          .addFields(
+            {
+              name: '🟢 Status da Conexão',
+              value: '✅ **GSI CS2 Ativo e Recebendo Dados**',
+              inline: true,
+            },
+            {
+              name: '🕹️ Jogador',
+              value: `**${playerName}**`,
+              inline: true,
+            },
+            {
+              name: '⚡ Auto-Sync',
+              value: '🔄 **Atualização a cada 2.5s**',
+              inline: true,
+            }
+          )
+          .setFooter({ text: 'CS2 Mix Hub • Modo Expandido • Conectado' });
+      } else {
+        embed
+          .setDescription(
+            `🟢 **CS2 Conectado!** O jogador **${playerName}** está no Menu Principal do jogo.\n` +
+            `*O monitoramento atualizará sozinho assim que a partida começar.*`
+          )
+          .setFooter({ text: '📡 Painel Discreto • Clique em "Ver Detalhes (+)" para expandir' });
+      }
       return embed;
     }
 
@@ -499,16 +521,28 @@ class DiscordBotManager {
 
       embed
         .setTitle(`🏆 PARTIDA FINALIZADA • ${playerName.toUpperCase()}`)
-        .setColor(isTie ? 0xf59e0b : 0x10b981)
-        .setDescription(
-          `Partida concluída no mapa **${state.mapName || 'CS2'}**!\n\n` +
-            `🔢 **Placar Final:** 🛡️ **CT ${state.scoreCT || 0} x ${state.scoreTR || 0} TR** 💣\n` +
-            `${winnerText}\n\n` +
-            `📊 **Desempenho Final de ${playerName}:**\n` +
-            `🎯 **${player.kills || 0} Kills** • 💀 **${player.deaths || 0} Mortes** • 🤝 **${player.assists || 0} Assists** • ⭐ **${player.mvps || 0} MVPs**\n` +
-            `🔥 **K/D Final:** **${player.kd || 0}** • ⚡ **Pontuação:** **${player.score || 0}**`
-        )
-        .setFooter({ text: 'CS2 Mix Hub • Partida Concluída' });
+        .setColor(isTie ? 0xf59e0b : 0x10b981);
+
+      if (isExpanded) {
+        embed
+          .setDescription(
+            `Partida concluída no mapa **${state.mapName || 'CS2'}**!\n\n` +
+              `🔢 **Placar Final:** 🛡️ **CT ${state.scoreCT || 0} x ${state.scoreTR || 0} TR** 💣\n` +
+              `${winnerText}\n\n` +
+              `📊 **Desempenho Final de ${playerName}:**\n` +
+              `🎯 **${player.kills || 0} Kills** • 💀 **${player.deaths || 0} Mortes** • 🤝 **${player.assists || 0} Assists** • ⭐ **${player.mvps || 0} MVPs**\n` +
+              `🔥 **K/D Final:** **${player.kd || 0}** • ⚡ **Pontuação:** **${player.score || 0}**`
+          )
+          .setFooter({ text: 'CS2 Mix Hub • Partida Concluída' });
+      } else {
+        embed
+          .setDescription(
+            `Partida encerrada em **${state.mapName || 'CS2'}**!\n` +
+            `🔢 **Placar Final:** 🛡️ **CT ${state.scoreCT || 0} x ${state.scoreTR || 0} TR** 💣 (${winnerText})\n` +
+            `📊 **Estatísticas:** 🎯 **${player.kills || 0}K/${player.deaths || 0}D** (K/D **${player.kd || 0}**) • ⭐ **${player.mvps || 0} MVPs**`
+          )
+          .setFooter({ text: '📡 Painel Discreto • Partida Concluída' });
+      }
       return embed;
     }
 
@@ -536,6 +570,33 @@ class DiscordBotManager {
         : '';
     const nadesText = (player.grenades || []).length > 0 ? player.grenades.join(', ') : 'Nenhum';
 
+    if (!isExpanded) {
+      // ==========================================
+      // MODO DISCRETO / COMPACTO (PAINEL PEQUENO)
+      // ==========================================
+      const hpBadge = player.isAlive ? `❤️ **${player.health} HP**` : '💀 **ELIMINADO**';
+      const armorShort = player.hasHelmet ? `🛡️ ${player.armor}%+Cap.` : player.armor > 0 ? `🛡️ ${player.armor}%` : '❌ Sem Colete';
+      const weaponShort = `🔫 **${weaponName}** ${ammoText}`.trim();
+      const moneyShort = `💰 **$${player.money || 0}**`;
+      const kdaShort = `🎯 **${player.kills || 0}K/${player.deaths || 0}D** (K/D **${player.kd || 0}**) • ⭐ **${player.mvps || 0}**`;
+      const nadesShort = (player.grenades || []).length > 0 ? `💣 ${(player.grenades || []).join(', ')}` : '';
+
+      embed
+        .setTitle(`🔴 AO VIVO • ${playerName.toUpperCase()} [${isCt ? 'CT' : 'TR'}] • ${state.mapName || 'CS2'} • CT ${state.scoreCT || 0} x ${state.scoreTR || 0} TR (R${state.roundNumber || 1})`)
+        .setColor(sideColor)
+        .setDescription(
+          `${hpBadge} • ${armorShort} • ${weaponShort}\n` +
+          `${moneyShort} • ${kdaShort}${nadesShort ? ` • ${nadesShort}` : ''}\n` +
+          `⏱️ **Situação:** ${bombStatusText}`
+        )
+        .setFooter({ text: '📡 Painel Discreto • Clique em "Ver Detalhes (+)" para expandir' });
+
+      return embed;
+    }
+
+    // ==========================================
+    // MODO DETALHADO / EXPANDIDO
+    // ==========================================
     embed
       .setTitle(`🔴 AO VIVO • ${playerName.toUpperCase()} NO CS2`)
       .setColor(sideColor)
@@ -597,28 +658,28 @@ class DiscordBotManager {
       });
     }
 
-    embed.setFooter({ text: 'CS2 Mix Hub • Auto-Sync Ao Vivo Ativo • Atualizado automaticamente' });
+    embed.setFooter({ text: 'CS2 Mix Hub • Modo Expandido • Clique em "Modo Compacto" para recolher' });
 
     return embed;
   }
 
-  buildLiveMatchButtons(isOnline = false) {
+  buildLiveMatchButtons(isOnline = false, isExpanded = false) {
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setLabel('🌐 Acompanhar no Hub Web')
+        .setCustomId('live_toggle_expand')
+        .setLabel(isExpanded ? '🔽 Modo Compacto' : '🔍 Ver Detalhes (+)')
+        .setStyle(isExpanded ? ButtonStyle.Secondary : ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId('live_refresh')
+        .setLabel('🔄 Atualizar')
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setLabel('🌐 Hub Web')
         .setStyle(ButtonStyle.Link)
         .setURL('http://localhost:3000/'),
       new ButtonBuilder()
-        .setCustomId('live_refresh')
-        .setLabel('🔄 Atualizar Agora')
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setLabel('⚡ Instalar 1-Clique (.bat)')
-        .setStyle(ButtonStyle.Link)
-        .setURL('http://localhost:3000/api/gsi/installer/MIX-PRO'),
-      new ButtonBuilder()
         .setCustomId('live_stop')
-        .setLabel('⏹️ Parar Monitoramento')
+        .setLabel('⏹️ Parar')
         .setStyle(ButtonStyle.Danger)
     );
     return row;
@@ -3056,12 +3117,26 @@ class DiscordBotManager {
     }
 
     // Live Match Tracker Controls
+    if (customId === 'live_toggle_expand') {
+      const tracker = this.liveTrackers?.get(interaction.message?.id);
+      const isExpanded = tracker ? !tracker.isExpanded : true;
+      if (tracker) {
+        tracker.isExpanded = isExpanded;
+      }
+      const requester = interaction.user?.username || tracker?.requester || 'Jogador';
+      const embed = this.buildLiveMatchEmbed(requester, tracker?.targetQuery, isExpanded);
+      const row = this.buildLiveMatchButtons(Boolean(this.lastGsiState?.player?.name), isExpanded);
+      return interaction.update({ embeds: [embed], components: [row] });
+    }
+
     if (customId === 'live_refresh') {
-      const requester = interaction.user?.username || 'Jogador';
-      const embed = this.buildLiveMatchEmbed(requester);
-      const row = this.buildLiveMatchButtons(Boolean(this.lastGsiState?.player?.name));
+      const tracker = this.liveTrackers?.get(interaction.message?.id);
+      const requester = interaction.user?.username || tracker?.requester || 'Jogador';
+      const isExpanded = tracker ? Boolean(tracker.isExpanded) : false;
+      const embed = this.buildLiveMatchEmbed(requester, tracker?.targetQuery, isExpanded);
+      const row = this.buildLiveMatchButtons(Boolean(this.lastGsiState?.player?.name), isExpanded);
       if (interaction.message?.id) {
-        this.registerLiveTracker(interaction.message, requester);
+        this.registerLiveTracker(interaction.message, requester, tracker?.targetQuery, isExpanded);
       }
       return interaction.update({ embeds: [embed], components: [row] });
     }
