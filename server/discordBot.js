@@ -273,6 +273,13 @@ class DiscordBotManager {
     this.lastGsiState = null;
     // Active Live Match Discord message trackers for real-time round-by-round auto-editing
     this.liveTrackers = new Map();
+
+    // Auto-sync live trackers periodically every 2.5 seconds
+    setInterval(() => {
+      if (this.liveTrackers && this.liveTrackers.size > 0 && this.lastGsiState) {
+        this.syncLiveTrackers(this.lastGsiState).catch(() => {});
+      }
+    }, 2500);
   }
 
   setWebRoomsReference(roomsRef) {
@@ -370,15 +377,17 @@ class DiscordBotManager {
   }
 
   buildLiveMatchEmbed(requesterName = 'Jogador') {
+    const lastTime = this.lastGsiState?.receivedAt || this.lastGsiState?.lastUpdate || 0;
     const isOnline = Boolean(
-      this.lastGsiState && Date.now() - (this.lastGsiState.receivedAt || 0) < 60000
+      this.lastGsiState && Date.now() - lastTime < 90000
     );
     const state = this.lastGsiState || {};
     const player = state.player || {};
+    const playerName = player.name || state.rawPlayer?.name || requesterName || 'Jogador';
 
     const embed = new EmbedBuilder().setTimestamp();
 
-    if (!isOnline || !player.name) {
+    if (!isOnline || (!player.name && !state.rawPlayer?.name)) {
       embed
         .setTitle('📡 MONITORAR PARTIDA • AGUARDANDO CS2')
         .setDescription(
@@ -427,13 +436,13 @@ class DiscordBotManager {
         : '💣 **VITÓRIA DOS TERRORISTAS (TR)!**';
 
       embed
-        .setTitle(`🏆 PARTIDA FINALIZADA • ${player.name?.toUpperCase() || 'CS2'}`)
+        .setTitle(`🏆 PARTIDA FINALIZADA • ${playerName.toUpperCase()}`)
         .setColor(isTie ? 0xf59e0b : 0x10b981)
         .setDescription(
           `Partida concluída no mapa **${state.mapName || 'CS2'}**!\n\n` +
             `🔢 **Placar Final:** 🛡️ **CT ${state.scoreCT || 0} x ${state.scoreTR || 0} TR** 💣\n` +
             `${winnerText}\n\n` +
-            `📊 **Desempenho Final de ${player.name}:**\n` +
+            `📊 **Desempenho Final de ${playerName}:**\n` +
             `🎯 **${player.kills || 0} Kills** • 💀 **${player.deaths || 0} Mortes** • 🤝 **${player.assists || 0} Assists** • ⭐ **${player.mvps || 0} MVPs**\n` +
             `🔥 **K/D Final:** **${player.kd || 0}** • ⚡ **Pontuação:** **${player.score || 0}**`
         )
@@ -441,7 +450,7 @@ class DiscordBotManager {
       return embed;
     }
 
-    const isCt = player.team === 'CT';
+    const isCt = (player.team === 'CT' || state.rawPlayer?.team === 'CT');
     const sideBadge = isCt ? '🛡️ **Counter-Terrorists (CT)**' : '💣 **Terrorists (TR)**';
     const sideColor = isCt ? 0x38bdf8 : 0xf59e0b;
     const healthBar = player.isAlive
@@ -466,10 +475,10 @@ class DiscordBotManager {
     const nadesText = (player.grenades || []).length > 0 ? player.grenades.join(', ') : 'Nenhum';
 
     embed
-      .setTitle(`🔴 AO VIVO • ${player.name.toUpperCase()} NO CS2`)
+      .setTitle(`🔴 AO VIVO • ${playerName.toUpperCase()} NO CS2`)
       .setColor(sideColor)
       .setDescription(
-        `Acompanhe a partida em tempo real diretamente do CS2 de **${player.name}**:\n\n` +
+        `Acompanhe a partida em tempo real diretamente do CS2 de **${playerName}**:\n\n` +
           `🗺️ **Mapa:** **${state.mapName || 'Mirage'}** • *Fase: ${state.phase || 'live'}*\n` +
           `⚖️ **Lado que está jogando:** ${sideBadge}\n` +
           `🔢 **Placar da Partida:** 🛡️ **CT ${state.scoreCT || 0} x ${state.scoreTR || 0} TR** 💣 (Round **${state.roundNumber || 1}**)\n` +
@@ -1009,6 +1018,14 @@ class DiscordBotManager {
         .setName('aovivo')
         .setDescription('Acompanha a partida de CS2 ao vivo em tempo real (placar, lado CT/TR, vida e armas)'),
 
+      new SlashCommandBuilder()
+        .setName('monitorar')
+        .setDescription('Monitorar Partida de CS2 ao vivo: placar, lado CT/TR, vida e armas em tempo real'),
+
+      new SlashCommandBuilder()
+        .setName('monitorar-partida')
+        .setDescription('Monitorar Partida de CS2 ao vivo: placar, lado CT/TR, vida e armas em tempo real'),
+
       new SlashCommandBuilder().setName('ajuda').setDescription('Manual completo de comandos do Bot do Mix'),
     ];
 
@@ -1125,7 +1142,16 @@ class DiscordBotManager {
     if (command === 'mapas' || command === 'mapstats') return this.prefixMapStats(message);
     if (command === 'status-server' || command === 'status-servidor') return this.prefixServerStatus(message, args.slice(1));
     if (command === 'gsi') return this.prefixGsi(message);
-    if (command === 'aovivo' || command === 'live' || command === 'partida' || command === 'hud') return this.prefixLive(message, args.slice(1));
+    if (
+      command === 'aovivo' ||
+      command === 'live' ||
+      command === 'partida' ||
+      command === 'hud' ||
+      command === 'monitorar' ||
+      command === 'monitor' ||
+      command === 'monitorar-partida' ||
+      command === 'radar'
+    ) return this.prefixLive(message, args.slice(1));
     if (command === 'vitoria' || command === 'resultado' || command === 'ganhador') return this.prefixMatchResult(message, args.slice(1));
     if (command === 'sub' || command === 'substituto' || command === 'reserva') return this.prefixSubstitute(message, args.slice(1));
     if (command === 'cargo' || command === 'notificar' || command === 'notificacao') return this.prefixToggleRole(message);
@@ -3454,7 +3480,7 @@ class DiscordBotManager {
     if (commandName === 'mapas') return this.cmdMapStats(interaction);
     if (commandName === 'status-servidor') return this.cmdServerStatus(interaction);
     if (commandName === 'gsi') return this.cmdGsi(interaction);
-    if (commandName === 'aovivo') return this.cmdLive(interaction);
+    if (commandName === 'aovivo' || commandName === 'monitorar' || commandName === 'monitorar-partida') return this.cmdLive(interaction);
     if (commandName === 'vitoria' || commandName === 'resultado') return this.cmdMatchResult(interaction);
     if (commandName === 'sub') return this.cmdSubstitute(interaction);
     if (commandName === 'cargo') return this.cmdToggleRole(interaction);

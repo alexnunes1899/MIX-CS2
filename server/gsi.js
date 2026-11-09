@@ -183,6 +183,15 @@ export function handleGsiPayload(roomId, payload) {
   return liveState;
 }
 
+export function setGsiState(roomId, liveState) {
+  if (!roomId || !liveState) return;
+  const clean = roomId.trim().toUpperCase();
+  roomGsiStates.set(clean, {
+    ...liveState,
+    lastUpdate: liveState.lastUpdate || Date.now(),
+  });
+}
+
 export function getGsiState(roomId) {
   if (!roomId) return { connected: false };
   const clean = roomId.trim().toUpperCase();

@@ -10,6 +10,7 @@ import { executeRconCommand } from './rcon.js';
 import {
   handleGsiPayload,
   getGsiState,
+  setGsiState,
   generateGsiConfig,
   generateGsiBatchInstaller,
   generateGsiPowerShellInstaller,
@@ -2125,52 +2126,53 @@ app.post('/api/gsi/:roomId', (req, res) => {
   const room = getRoomAndTouch(roomId);
 
   const liveState = handleGsiPayload(roomId, req.body);
-  if (room && liveState) {
-    room.liveMatch = liveState;
-
-    // Broadcast GSI real-time event to everyone in this room
-    io.to(roomId).emit('gsi_update', liveState);
-
-    // Dispara notificações automáticas de round, C4 e vitória no Discord
-    processGsiDiscordNotifications(room, liveState, req);
-
-    // Repassa evento ao Bot do Discord para encerramento e monitoramento automático
+  if (liveState) {
+    // ALWAYS forward live telemetry to Discord Bot Manager & Broadcast globally
     discordBotManager.handleGsiEvent(roomId, liveState);
+    io.emit('gsi_update', liveState);
 
-    // If game ended, record score automatically in history
-    if (liveState.isGameOver && liveState.phase === 'gameover') {
-      const matchKey = `${liveState.mapName}-${liveState.scoreCT}-${liveState.scoreTR}`;
-      const lastMatch = room.history[0];
-      if (!lastMatch || lastMatch.key !== matchKey) {
-        room.history.unshift({
-          id: `match-gsi-${Date.now()}`,
-          key: matchKey,
-          date: new Date().toLocaleDateString('pt-BR'),
-          time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-          map: liveState.mapName,
-          scoreA: liveState.scoreCT,
-          scoreB: liveState.scoreTR,
-          winner: liveState.scoreCT > liveState.scoreTR ? 'Time CT' : liveState.scoreTR > liveState.scoreCT ? 'Time TR' : 'Empate',
-          source: 'Valve CS2 GSI',
-        });
-        if (room.history.length > 20) room.history.pop();
-        const isCtWinner = liveState.scoreCT > liveState.scoreTR;
-        const winners = isCtWinner ? (room.teamA || []) : (room.teamB || []);
-        const losers = isCtWinner ? (room.teamB || []) : (room.teamA || []);
-        if (winners.length > 0 || losers.length > 0) {
-          try {
-            recordMatch({
-              winners,
-              losers,
-              map: liveState.mapName,
-              scoreWinners: Math.max(liveState.scoreCT, liveState.scoreTR),
-              scoreLosers: Math.min(liveState.scoreCT, liveState.scoreTR),
-            });
-          } catch (err) {
-            console.warn('[LEADERBOARD GSI RECORD ERROR]:', err.message);
+    if (room) {
+      room.liveMatch = liveState;
+      io.to(roomId).emit('gsi_update', liveState);
+
+      // Dispara notificações automáticas de round, C4 e vitória no Discord
+      processGsiDiscordNotifications(room, liveState, req);
+
+      // If game ended, record score automatically in history
+      if (liveState.isGameOver && liveState.phase === 'gameover') {
+        const matchKey = `${liveState.mapName}-${liveState.scoreCT}-${liveState.scoreTR}`;
+        const lastMatch = room.history[0];
+        if (!lastMatch || lastMatch.key !== matchKey) {
+          room.history.unshift({
+            id: `match-gsi-${Date.now()}`,
+            key: matchKey,
+            date: new Date().toLocaleDateString('pt-BR'),
+            time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+            map: liveState.mapName,
+            scoreA: liveState.scoreCT,
+            scoreB: liveState.scoreTR,
+            winner: liveState.scoreCT > liveState.scoreTR ? 'Time CT' : liveState.scoreTR > liveState.scoreCT ? 'Time TR' : 'Empate',
+            source: 'Valve CS2 GSI',
+          });
+          if (room.history.length > 20) room.history.pop();
+          const isCtWinner = liveState.scoreCT > liveState.scoreTR;
+          const winners = isCtWinner ? (room.teamA || []) : (room.teamB || []);
+          const losers = isCtWinner ? (room.teamB || []) : (room.teamA || []);
+          if (winners.length > 0 || losers.length > 0) {
+            try {
+              recordMatch({
+                winners,
+                losers,
+                map: liveState.mapName,
+                scoreWinners: Math.max(liveState.scoreCT, liveState.scoreTR),
+                scoreLosers: Math.min(liveState.scoreCT, liveState.scoreTR),
+              });
+            } catch (err) {
+              console.warn('[LEADERBOARD GSI RECORD ERROR]:', err.message);
+            }
           }
+          emitRoomState(roomId, room);
         }
-        emitRoomState(roomId, room);
       }
     }
   }
@@ -2183,15 +2185,48 @@ app.post('/api/gsi', (req, res) => {
   const token = (req.body?.auth?.token || 'MIX-PRO').trim().toUpperCase();
   const liveState = handleGsiPayload(token, req.body);
   if (liveState) {
+    discordBotManager.handleGsiEvent(token, liveState);
+    io.emit('gsi_update', liveState);
     rooms.forEach((room) => {
       room.liveMatch = liveState;
       io.to(room.id).emit('gsi_update', liveState);
       processGsiDiscordNotifications(room, liveState, req);
     });
-    discordBotManager.handleGsiEvent(token, liveState);
   }
   res.json({ success: true });
 });
+
+// Cloud GSI Relay: Automatically bridges GSI telemetry from Railway if local server is active
+const CLOUD_GSI_URL = process.env.CLOUD_GSI_URL || 'https://mix-cs2-production.up.railway.app/api/gsi/status/MIX-PRO';
+let lastCloudGsiSync = 0;
+
+async function syncCloudGsiBridge() {
+  // If we already received fresh local GSI in the last 4 seconds, don't query cloud
+  if (discordBotManager.lastGsiState && Date.now() - (discordBotManager.lastGsiState.receivedAt || 0) < 4000) {
+    return;
+  }
+  try {
+    const res = await fetch(CLOUD_GSI_URL, { signal: AbortSignal.timeout(3000) });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.connected && data.lastUpdate && data.lastUpdate > lastCloudGsiSync) {
+        lastCloudGsiSync = data.lastUpdate;
+        const liveState = {
+          ...data,
+          receivedAt: Date.now(),
+        };
+        setGsiState('MIX-PRO', liveState);
+        discordBotManager.handleGsiEvent('MIX-PRO', liveState);
+        io.emit('gsi_update', liveState);
+      }
+    }
+  } catch (err) {
+    // Silently continue if cloud is unreachable
+  }
+}
+
+// Background sync every 2.5 seconds
+setInterval(syncCloudGsiBridge, 2500);
 
 // Download ready-to-use CS2 .cfg for FireGames or local client
 app.get('/api/gsi/cfg/:roomId', (req, res) => {
@@ -2234,6 +2269,13 @@ app.get('/api/gsi/installer/ps1/:roomId', (req, res) => {
 // Check GSI connection status for a room
 app.get('/api/gsi/status/:roomId', (req, res) => {
   const state = getGsiState(req.params.roomId);
+  if (!state.connected && discordBotManager.lastGsiState && Date.now() - (discordBotManager.lastGsiState.receivedAt || 0) < 60000) {
+    return res.json({
+      connected: true,
+      lastUpdate: discordBotManager.lastGsiState.receivedAt || Date.now(),
+      ...discordBotManager.lastGsiState,
+    });
+  }
   res.json(state);
 });
 
