@@ -426,6 +426,44 @@ class DiscordBotManager {
       return embed;
     }
 
+    const isInMenu = (player.activity === 'menu' || state.activity === 'menu' || !state.mapName || state.mapName === 'Indefinido' || state.phase === 'unknown');
+
+    if (isInMenu) {
+      embed
+        .setTitle(`🎮 CS2 CONECTADO • ${playerName.toUpperCase()} NO MENU`)
+        .setColor(0x10b981)
+        .setDescription(
+          `🟢 **CS2 Detectado e Conectado com Sucesso!**\n\n` +
+            `O jogador **${playerName}** está com o Counter-Strike 2 aberto no **Menu Principal**.\n\n` +
+            `📡 **O monitoramento em tempo real já está sincronizado!**\n` +
+            `Assim que você entrar em um servidor (seja casual, competitivo ou servidor de mix) e o round começar, este card mudará automaticamente para exibir:\n` +
+            `• 🗺️ Mapa e Lado da equipe (CT ou TR)\n` +
+            `• 🔢 Placar do jogo e contagem de rounds\n` +
+            `• ❤️ Barra gráfica de vida (HP) e colete\n` +
+            `• 🔫 Armas equipadas, munição e granadas\n` +
+            `• 💣 Status da C4 em tempo real`
+        )
+        .addFields(
+          {
+            name: '🟢 Status da Conexão',
+            value: '✅ **GSI CS2 Ativo e Recebendo Dados**',
+            inline: true,
+          },
+          {
+            name: '🕹️ Jogador',
+            value: `**${playerName}**`,
+            inline: true,
+          },
+          {
+            name: '⚡ Auto-Sync',
+            value: '🔄 **Atualização a cada 2.5s**',
+            inline: true,
+          }
+        )
+        .setFooter({ text: 'CS2 Mix Hub • Conectado • Atualização Automática ao Iniciar a Partida' });
+      return embed;
+    }
+
     if (state.isGameOver) {
       const isCtWinner = (state.scoreCT || 0) > (state.scoreTR || 0);
       const isTie = (state.scoreCT || 0) === (state.scoreTR || 0);
