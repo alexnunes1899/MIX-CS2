@@ -1837,7 +1837,70 @@ app.get('/api/version', (req, res) => {
 
 // Serve frontend build with strict anti-caching for HTML and high-performance caching for hashed assets
 const distPath = path.join(__dirname, '..', 'dist');
+
+function escapeHtmlAttr(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function serveDynamicIndexHtml(req, res) {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, proxy-revalidate, max-age=0');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Surrogate-Control', 'no-store');
+
+  const indexPath = path.join(distPath, 'index.html');
+  try {
+    let html = fs.readFileSync(indexPath, 'utf8');
+    const rawRoom = sanitizeInput(req.query.room || '', 24).toUpperCase();
+
+    if (rawRoom) {
+      const activeRoom = rooms.get(rawRoom);
+      const queryName = sanitizeInput(req.query.name || '', 50);
+      const roomTitle = activeRoom?.name || queryName || `Mix ${rawRoom}`;
+      const playerCount = activeRoom?.players?.length || 0;
+      const remaining = Math.max(0, 10 - playerCount);
+      const rankLabel = (activeRoom?.rankingSystem || req.query.rank) === 'faceit' ? 'FACEIT' : 'Gamers Club';
+
+      const ogTitle = playerCount > 0
+        ? `🔥 Convite Mix CS2: ${roomTitle} (${playerCount}/10 na sala) — Bora fechar o 5v5!`
+        : `🔥 Convite Mix CS2: ${roomTitle} (#${rawRoom}) — Bora fechar o 5v5!`;
+
+      const ogDesc = playerCount > 0 && remaining > 0
+        ? `Você foi chamado para a sala "${roomTitle}" (#${rawRoom} • ${rankLabel})! Faltam ${remaining} vagas para fechar o Mix 5v5. Clique para entrar direto na sala!`
+        : `Você foi chamado para a sala "${roomTitle}" (#${rawRoom} • ${rankLabel})! Clique para entrar direto no lobby em tempo real, sortear os times e fazer o Pick & Ban de mapas!`;
+
+      const safeTitle = escapeHtmlAttr(ogTitle);
+      const safeDesc = escapeHtmlAttr(ogDesc);
+
+      html = html
+        .replace(/<title>.*?<\/title>/i, `<title>${safeTitle}</title>`)
+        .replace(/<meta\s+property="og:title"\s+content=".*?"\s*\/?>/i, `<meta property="og:title" content="${safeTitle}" />`)
+        .replace(/<meta\s+property="og:description"\s+content=".*?"\s*\/?>/i, `<meta property="og:description" content="${safeDesc}" />`)
+        .replace(/<meta\s+name="twitter:title"\s+content=".*?"\s*\/?>/i, `<meta name="twitter:title" content="${safeTitle}" />`)
+        .replace(/<meta\s+name="twitter:description"\s+content=".*?"\s*\/?>/i, `<meta name="twitter:description" content="${safeDesc}" />`);
+    }
+
+    return res.status(200).type('html').send(html);
+  } catch (err) {
+    return res.status(200).send(`
+      <html>
+        <body style="background:#090d16;color:#f1f5f9;font-family:sans-serif;text-align:center;padding:50px;">
+          <h1>CS2 Mix Hub Backend Running!</h1>
+          <p>Port: ${PORT}</p>
+        </body>
+      </html>
+    `);
+  }
+}
+
+app.get('/', serveDynamicIndexHtml);
+
 app.use(express.static(distPath, {
+  index: false,
   etag: false,
   lastModified: false,
   setHeaders: (res, filePath) => {
@@ -2782,22 +2845,7 @@ app.get('/api/faceit/:steamId', async (req, res) => {
 });
 
 app.use((req, res) => {
-  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, proxy-revalidate, max-age=0');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
-  res.setHeader('Surrogate-Control', 'no-store');
-  res.sendFile(path.join(distPath, 'index.html'), (err) => {
-    if (err) {
-      res.status(200).send(`
-        <html>
-          <body style="background:#090d16;color:#f1f5f9;font-family:sans-serif;text-align:center;padding:50px;">
-            <h1>CS2 Mix Hub Backend Running!</h1>
-            <p>Port: ${PORT}</p>
-          </body>
-        </html>
-      `);
-    }
-  });
+  return serveDynamicIndexHtml(req, res);
 });
 
 server.listen(PORT, '0.0.0.0', () => {

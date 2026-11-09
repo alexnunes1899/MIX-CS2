@@ -5,7 +5,7 @@ import PlayerAvatar from './PlayerAvatar';
 import ServerConnectBar from './ServerConnectBar';
 import { Users, Trash2, Bot, Scale, Shuffle, Shield, Flame, CheckCircle2, Crown, Check, AlertCircle, Zap, Dices, ArrowLeftRight, Lock, Globe, Share2, Layers, Copy, KeyRound, Hash, Eye, EyeOff, Sparkles, Bell, BookOpen, Target, Trophy, Server } from 'lucide-react';
 import { playClickSound, playReadySound } from '../utils/audio';
-import { copyText } from '../utils/clipboard';
+import { copyText, buildRoomInviteData } from '../utils/clipboard';
 
 export default function Lobby({
   players = [],
@@ -69,12 +69,16 @@ export default function Lobby({
 
   const handleCopyInviteLink = () => {
     if (soundEnabled) playClickSound();
-    const url = new URL(window.location.origin);
-    url.searchParams.set('room', roomId);
-    if (isPrivate && inviteKey) {
-      url.searchParams.set('key', inviteKey);
-    }
-    copyText(url.toString());
+    const { inviteText } = buildRoomInviteData({
+      roomId,
+      roomName,
+      isPrivate,
+      inviteKey,
+      rankingSystem,
+      playerCount: players.length,
+      maxSlots,
+    });
+    copyText(inviteText);
     setCopiedInvite(true);
     setTimeout(() => setCopiedInvite(false), 2000);
   };

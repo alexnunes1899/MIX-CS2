@@ -341,6 +341,17 @@ export default function App() {
     unassignedPlayers: [],
   });
 
+  // Update browser tab title dynamically with room name and player count
+  useEffect(() => {
+    if (view === 'mix' && roomId) {
+      const rName = room?.name || `Mix ${roomId}`;
+      const pCount = room?.players?.length || 0;
+      document.title = `🔥 ${rName} (${pCount}/10) — Bora pro Mix CS2!`;
+    } else {
+      document.title = 'CS2 Mix Hub | Sorteador GC & Pick/Ban';
+    }
+  }, [view, roomId, room?.name, room?.players?.length]);
+
   const isAdmin = Boolean(
     myProfile && (
       (room.adminId && room.adminId === myProfile.id) ||
@@ -2103,6 +2114,7 @@ export default function App() {
         roomName={room.name}
         phase={room.phase}
         rankingSystem={room.rankingSystem || 'gc'}
+        playerCount={room.players?.length || 0}
         serverIp={room.serverIp || ''}
         myProfile={myProfile}
         onOpenProfile={() => setProfileModalOpen(true)}

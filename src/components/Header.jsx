@@ -6,13 +6,14 @@ import MainNavigationMenu from './MainNavigationMenu';
 import MixHubLogo from './MixHubLogo';
 import { playClickSound } from '../utils/audio';
 import { parseServerDetails } from '../utils/serverParser';
-import { copyText } from '../utils/clipboard';
+import { copyText, buildRoomInviteData } from '../utils/clipboard';
 
 export default function Header({
   roomId,
   roomName,
   phase,
   rankingSystem = 'gc',
+  playerCount = 0,
   serverIp = '',
   myProfile,
   onOpenProfile,
@@ -47,12 +48,15 @@ export default function Header({
 
   const copyInviteLink = () => {
     if (soundEnabled) playClickSound();
-    const url = new URL(window.location.origin);
-    url.searchParams.set('room', roomId);
-    if (isPrivate && inviteKey) {
-      url.searchParams.set('key', inviteKey);
-    }
-    copyText(url.toString());
+    const { inviteText } = buildRoomInviteData({
+      roomId,
+      roomName,
+      isPrivate,
+      inviteKey,
+      rankingSystem,
+      playerCount,
+    });
+    copyText(inviteText);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
