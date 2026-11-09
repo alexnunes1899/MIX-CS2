@@ -276,12 +276,12 @@ class DiscordBotManager {
     // Active Live Match Discord message trackers for real-time round-by-round auto-editing
     this.liveTrackers = new Map();
 
-    // Auto-sync live trackers periodically every 2.5 seconds
+    // Auto-sync live trackers periodically every 1.0 second (real-time Discord rate)
     setInterval(() => {
       if (this.liveTrackers && this.liveTrackers.size > 0 && this.lastGsiState) {
         this.syncLiveTrackers(this.lastGsiState).catch(() => {});
       }
-    }, 2500);
+    }, 1000);
   }
 
   setWebRoomsReference(roomsRef) {
@@ -303,6 +303,11 @@ class DiscordBotManager {
         roomId: roomId || 'MIX-PRO',
         receivedAt: Date.now(),
       });
+    }
+
+    // Instantly sync active Discord message trackers in real time
+    if (this.liveTrackers && this.liveTrackers.size > 0) {
+      this.syncLiveTrackers(this.lastGsiState).catch(() => {});
     }
 
     // If match ended in CS2, automatically finalize any active mix
@@ -724,7 +729,7 @@ class DiscordBotManager {
         continue;
       }
 
-      if (now - tracker.lastEditedAt < 4000) continue;
+      if (now - tracker.lastEditedAt < 1000) continue;
       if (tracker.lastSignature === sig && tracker.state !== 'waiting') continue;
 
       try {
@@ -742,8 +747,9 @@ class DiscordBotManager {
           continue;
         }
 
-        const embed = this.buildLiveMatchEmbed(tracker.requester, tracker.targetQuery);
-        const row = this.buildLiveMatchButtons(Boolean(this.lastGsiState?.player?.name));
+        const isExpanded = Boolean(tracker.isExpanded);
+        const embed = this.buildLiveMatchEmbed(tracker.requester, tracker.targetQuery, isExpanded);
+        const row = this.buildLiveMatchButtons(Boolean(this.lastGsiState?.player?.name), isExpanded);
 
         await msg.edit({ embeds: [embed], components: [row] }).catch((e) => {
           console.warn('[DISCORD BOT LIVE TRACKER EDIT WARNING]:', e.message);

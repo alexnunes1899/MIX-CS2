@@ -221,10 +221,10 @@ export function generateGsiConfig(serverBaseUrl, roomId) {
   return `"CS2MixHub Integration"
 {
     "uri" "${targetUri}"
-    "timeout" "5.0"
-    "buffer"  "0.1"
-    "throttle" "0.5"
-    "heartbeat" "15.0"
+    "timeout" "3.0"
+    "buffer"  "0.05"
+    "throttle" "0.1"
+    "heartbeat" "2.0"
     "data"
     {
         "provider"              "1"

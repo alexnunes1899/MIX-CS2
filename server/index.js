@@ -2201,12 +2201,12 @@ const CLOUD_GSI_URL = process.env.CLOUD_GSI_URL || 'https://mix-cs2-production.u
 let lastCloudGsiSync = 0;
 
 async function syncCloudGsiBridge() {
-  // If we already received fresh local GSI in the last 4 seconds, don't query cloud
-  if (discordBotManager.lastGsiState && Date.now() - (discordBotManager.lastGsiState.receivedAt || 0) < 4000) {
+  // If we already received fresh local GSI in the last 1.5 seconds, don't query cloud
+  if (discordBotManager.lastGsiState && Date.now() - (discordBotManager.lastGsiState.receivedAt || 0) < 1500) {
     return;
   }
   try {
-    const res = await fetch(CLOUD_GSI_URL, { signal: AbortSignal.timeout(3000) });
+    const res = await fetch(CLOUD_GSI_URL, { signal: AbortSignal.timeout(1500) });
     if (res.ok) {
       const data = await res.json();
       if (data && data.connected && data.lastUpdate && data.lastUpdate > lastCloudGsiSync) {
@@ -2225,8 +2225,8 @@ async function syncCloudGsiBridge() {
   }
 }
 
-// Background sync every 2.5 seconds
-setInterval(syncCloudGsiBridge, 2500);
+// Background sync every 750 milliseconds (sub-second ultra low latency)
+setInterval(syncCloudGsiBridge, 750);
 
 // Download ready-to-use CS2 .cfg for FireGames or local client
 app.get('/api/gsi/cfg/:roomId', (req, res) => {
