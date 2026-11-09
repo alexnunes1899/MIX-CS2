@@ -1,5 +1,6 @@
 import express from 'express';
 import http from 'http';
+import fs from 'fs';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import path from 'path';
@@ -1886,14 +1887,8 @@ function serveDynamicIndexHtml(req, res) {
 
     return res.status(200).type('html').send(html);
   } catch (err) {
-    return res.status(200).send(`
-      <html>
-        <body style="background:#090d16;color:#f1f5f9;font-family:sans-serif;text-align:center;padding:50px;">
-          <h1>CS2 Mix Hub Backend Running!</h1>
-          <p>Port: ${PORT}</p>
-        </body>
-      </html>
-    `);
+    console.warn('[SERVER] Fallback sendFile index.html:', err.message);
+    return res.sendFile(indexPath);
   }
 }
 
