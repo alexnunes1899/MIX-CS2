@@ -36,6 +36,13 @@ import {
   getMapImageUrl,
 } from './matchHistory.js';
 import { hardwareDealsManager, CATEGORY_LABELS } from './hardwareDeals.js';
+import { SteamScannerService } from './steamScanner.js';
+import { cs2NewsRadar } from './cs2NewsRadar.js';
+import { proMatchesAgenda } from './proMatchesAgenda.js';
+import { freeGamesRadar } from './freeGamesRadar.js';
+import { cs2CaseSimulator } from './cs2CaseSimulator.js';
+import { communityClips } from './communityClips.js';
+import { bagreVoteService } from './bagreVote.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1301,6 +1308,62 @@ class DiscordBotManager {
           opt.setName('ativar').setDescription('Ativar ou desativar postagens automáticas').setRequired(false)
         ),
 
+      new SlashCommandBuilder()
+        .setName('steam')
+        .setDescription('Scanner Steam & Anti-Smurf: Horas de CS2, VAC bans e integridade da conta')
+        .addStringOption((opt) =>
+          opt.setName('perfil').setDescription('Link do perfil, SteamID64 ou Vanity URL (ex: gaules ou 7656119...)').setRequired(true)
+        ),
+
+      new SlashCommandBuilder()
+        .setName('patchnotes')
+        .setDescription('Últimas notas de atualização e patches oficiais do CS2 lançados pela Valve'),
+
+      new SlashCommandBuilder()
+        .setName('att')
+        .setDescription('Atalho rápido para as notas de atualização oficiais do CS2 pela Valve'),
+
+      new SlashCommandBuilder()
+        .setName('pro')
+        .setDescription('Agenda de jogos dos times brasileiros de CS2 (FURIA, MIBR, paiN, Imperial)'),
+
+      new SlashCommandBuilder()
+        .setName('jogos')
+        .setDescription('Agenda e horários de jogos dos times brasileiros de CS2 (FURIA, MIBR, paiN)'),
+
+      new SlashCommandBuilder()
+        .setName('bagre')
+        .setDescription('Inicia ou consulta a votação do Bagre da Partida (o jogador que mais pinou no mix)'),
+
+      new SlashCommandBuilder()
+        .setName('jogosgratis')
+        .setDescription('Radar de jogos para PC gratuitos para resgatar na Epic Games Store e Steam'),
+
+      new SlashCommandBuilder()
+        .setName('clip')
+        .setDescription('Envia um clipe de jogada no canal com votação da comunidade')
+        .addStringOption((opt) => opt.setName('link').setDescription('Link do clipe (Medal.tv, Twitch, YouTube, etc)').setRequired(true))
+        .addStringOption((opt) => opt.setName('titulo').setDescription('Título ou descrição da jogada (opcional)').setRequired(false)),
+
+      new SlashCommandBuilder()
+        .setName('caixa')
+        .setDescription('Simulador oficial de abertura de caixas de CS2 com odds reais da Valve')
+        .addStringOption((opt) =>
+          opt
+            .setName('caixa')
+            .setDescription('Escolha a caixa para abrir')
+            .setRequired(false)
+            .addChoices(
+              { name: '⚡ Caixa Quilowatt (Kilowatt)', value: 'kilowatt' },
+              { name: '🌙 Sonhos e Pesadelos (Dreams & Nightmares)', value: 'dreams' },
+              { name: '💥 Caixa Coice (Recoil)', value: 'recoil' }
+            )
+        ),
+
+      new SlashCommandBuilder()
+        .setName('inventario')
+        .setDescription('Consulta seu inventário de skins, lucro/prejuízo e facas abertas no simulador'),
+
       new SlashCommandBuilder().setName('ajuda').setDescription('Manual completo de comandos do Bot do Mix'),
     ];
 
@@ -1460,6 +1523,30 @@ class DiscordBotManager {
     if (command === 'ajuda' || command === 'help') return this.prefixHelp(message);
     if (command === 'ofertas' || command === 'hardware' || command === 'promo' || command === 'promocao' || command === 'promocoes') {
       return this.prefixDeals(message, args.slice(1));
+    }
+    if (command === 'steam' || command === 'antismurf' || command === 'smurf') {
+      return this.prefixSteam(message, args.slice(1).join(' '));
+    }
+    if (command === 'att' || command === 'patchnotes' || command === 'update' || command === 'atualizacao' || command === 'patch') {
+      return this.prefixPatchNotes(message);
+    }
+    if (command === 'pro' || command === 'jogos' || command === 'agenda' || command === 'hltv') {
+      return this.prefixProMatches(message);
+    }
+    if (command === 'bagre' || command === 'bagredomix') {
+      return this.prefixBagre(message);
+    }
+    if (command === 'jogosgratis' || command === 'freegames' || command === 'jogosfree' || command === 'epic') {
+      return this.prefixFreeGames(message);
+    }
+    if (command === 'clip' || command === 'clipe' || command === 'highlight' || command === 'jogada') {
+      return this.prefixClip(message, args.slice(1));
+    }
+    if (command === 'caixa' || command === 'case' || command === 'abrir') {
+      return this.prefixCase(message, args[1]);
+    }
+    if (command === 'inventario' || command === 'inv') {
+      return this.prefixInventory(message);
     }
     if (command === 'cancelar') return this.prefixCancel(message);
   }
@@ -1874,7 +1961,16 @@ class DiscordBotManager {
           `• \`!smoke [mapa]\` — Lineups de granadas e smokes táticas\n` +
           `• \`!treino\` — CFG completa de treino para console do CS2\n` +
           `• \`!moeda\` — Sorteio de cara ou coroa para desempates rápidos\n` +
-          `• \`!servidor [ip:porta]\` — Define ou consulta o IP do servidor CS2`
+          `• \`!servidor [ip:porta]\` — Define ou consulta o IP do servidor CS2\n` +
+          `• \`!steam [link/id]\` — Scanner Steam & Anti-Smurf (horas CS2, VAC bans, idade da conta)\n` +
+          `• \`!att\` ou \`!patchnotes\` — Últimas notas de atualização oficiais do CS2 pela Valve\n` +
+          `• \`!pro\` ou \`!jogos\` — Agenda dos times BR (FURIA, MIBR, paiN) com horário BRT e Gaules\n` +
+          `• \`!bagre\` — Votação bem-humorada do Bagre da Partida (o jogador que mais pinou no mix)\n` +
+          `• \`!jogosgratis\` — Radar de jogos grátis para PC da semana (Epic Games & Steam)\n` +
+          `• \`!clip [link]\` — Envia clipes de jogadas da comunidade com votação interativa\n` +
+          `• \`!caixa [nome]\` — Simulador de abertura de caixas de CS2 com odds reais da Valve\n` +
+          `• \`!inventario\` — Consulta seu inventário de caixas e melhor drop\n` +
+          `• \`!ofertas [busca]\` — Radar de promoções gamer (KaBuM!, Pichau, Terabyte: GPU, CPU, mesas, cadeiras)`
       )
       .setFooter({ text: 'CS2 Mix Hub • Powered by Discord.js' });
     return message.reply({ embeds: [embed] });
@@ -2379,9 +2475,14 @@ class DiscordBotManager {
     const finishBtn = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId(`mvp_finish:${mix.id}`)
-        .setLabel('Encerrar Votação e Declarar MVP')
+        .setLabel('Encerrar MVP')
         .setEmoji('👑')
         .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId(`bagre_vote_start:${mix.id}`)
+        .setLabel('Votar no Bagre do Mix')
+        .setEmoji('🐟')
+        .setStyle(ButtonStyle.Danger),
       new ButtonBuilder()
         .setCustomId('panel_create_mix')
         .setLabel('Jogar Outro Mix')
@@ -3219,6 +3320,57 @@ class DiscordBotManager {
     const customId = interaction.customId;
     const user = interaction.user;
 
+    // Community Clip Voting
+    if (customId.startsWith('clip_vote_fire_') || customId.startsWith('clip_vote_bagre_')) {
+      const isFire = customId.startsWith('clip_vote_fire_');
+      const clipId = customId.replace(isFire ? 'clip_vote_fire_' : 'clip_vote_bagre_', '');
+      const updated = communityClips.voteClip(clipId, user.id, isFire ? 'fire' : 'bagre');
+      if (updated) {
+        const { embeds, components } = communityClips.buildEmbed(updated);
+        return interaction.update({ embeds, components });
+      }
+      return interaction.reply({ content: 'Clipe não encontrado.', ephemeral: true });
+    }
+
+    // CS2 Case Simulator Buttons
+    if (customId.startsWith('case_open_')) {
+      const caseId = customId.replace('case_open_', '');
+      const drop = cs2CaseSimulator.openCase(caseId, user);
+      const { embeds, components } = cs2CaseSimulator.buildEmbed(drop);
+      return interaction.reply({ embeds, components });
+    }
+    if (customId === 'case_inventory') {
+      const { embeds, components } = cs2CaseSimulator.buildInventoryEmbed(user);
+      return interaction.reply({ embeds, components, ephemeral: true });
+    }
+
+    // Bagre Vote Buttons
+    if (customId.startsWith('bagre_vote_start:')) {
+      const mixId = customId.split(':')[1];
+      const mix = Array.from(this.mixes.values()).find((m) => m.id === mixId) || this.activeMixes?.get(interaction.channelId);
+      if (!mix) return interaction.reply({ content: 'Mix não encontrado.', ephemeral: true });
+      const components = bagreVoteService.buildVoteMenu(mix);
+      return interaction.reply({
+        content: `🐟 **VOTAÇÃO DE BAGRE DA PARTIDA!** (${mix.name})\nSelecione no menu abaixo quem mais entregou:`,
+        components,
+        ephemeral: true,
+      });
+    }
+
+    if (customId.startsWith('bagre_finish:')) {
+      const mixId = customId.split(':')[1];
+      const mix = Array.from(this.mixes.values()).find((m) => m.id === mixId) || this.activeMixes?.get(interaction.channelId);
+      if (!mix) return interaction.reply({ content: 'Mix não encontrado.', ephemeral: true });
+      await bagreVoteService.finishVote(
+        mix,
+        interaction.channel,
+        interaction.guild,
+        this.loadPlayerProfiles(),
+        (p) => this.savePlayerProfiles(p)
+      );
+      return interaction.reply({ content: '✅ Votação de Bagre encerrada e coroada!', ephemeral: true });
+    }
+
     // Permanent Panel Trigger
     if (customId === 'panel_create_mix') {
       const mix = this.getOrCreateMix(interaction.channelId, user, { name: `Mix 5v5 de ${user.username}` });
@@ -3835,6 +3987,14 @@ class DiscordBotManager {
     if (commandName === 'cargo') return this.cmdToggleRole(interaction);
     if (commandName === 'ofertas') return this.cmdDeals(interaction);
     if (commandName === 'alertas-hardware') return this.cmdHardwareAlerts(interaction);
+    if (commandName === 'steam') return this.cmdSteam(interaction);
+    if (commandName === 'patchnotes' || commandName === 'att') return this.cmdPatchNotes(interaction);
+    if (commandName === 'pro' || commandName === 'jogos') return this.cmdProMatches(interaction);
+    if (commandName === 'bagre') return this.cmdBagre(interaction);
+    if (commandName === 'jogosgratis' || commandName === 'freegames') return this.cmdFreeGames(interaction);
+    if (commandName === 'clip') return this.cmdClip(interaction);
+    if (commandName === 'caixa') return this.cmdCase(interaction);
+    if (commandName === 'inventario') return this.cmdInventory(interaction);
     if (commandName === 'ajuda') return this.cmdHelp(interaction);
   }
 
@@ -3850,6 +4010,17 @@ class DiscordBotManager {
       const selectMenu = hardwareDealsManager.buildCategorySelectMenu();
       const actionButtons = hardwareDealsManager.buildActionButtons(deals);
       return interaction.update({ embeds: [embed], components: [selectMenu, ...actionButtons] });
+    }
+    if (customId.startsWith('bagre_select')) {
+      const [_, mixId] = customId.split(':');
+      const selectedId = interaction.values?.[0];
+      if (selectedId && selectedId !== 'none') {
+        bagreVoteService.castVote(mixId, interaction.user.id, selectedId);
+        return interaction.reply({
+          content: `🐟 Seu voto de **Bagre do Mix** para <@${selectedId}> foi computado com sucesso!`,
+          ephemeral: true,
+        });
+      }
     }
     if (customId.startsWith('mvp_vote')) {
       const [_, mixId] = customId.split(':');
@@ -4447,6 +4618,21 @@ class DiscordBotManager {
         rotationIndex++;
 
         await this.dispatchAutomaticDealsDrop(currentCat);
+
+        // Check for new official CS2 patch updates from Valve
+        try {
+          const patch = await cs2NewsRadar.fetchLatestPatch();
+          if (patch && patch.isNew) {
+            const { embeds, components } = cs2NewsRadar.buildEmbed(patch);
+            for (const [, guild] of this.client.guilds.cache) {
+              const channel = await this.getOrCreateDealsChannel(guild);
+              if (channel) {
+                await channel.send({ content: '🚨 **NOVA ATUALIZAÇÃO OFICIAL DO CS2 LANÇADA PELA VALVE!**', embeds, components }).catch(() => {});
+              }
+            }
+            cs2NewsRadar.saveState(patch.gid);
+          }
+        } catch (e) {}
       } catch (err) {
         console.warn('[DISCORD BOT] Erro ao disparar alertas de ofertas:', err.message);
       }
@@ -4538,6 +4724,207 @@ class DiscordBotManager {
         ? `🔔 **Alertas de Promoções Ativados!** As melhores ofertas de hardware de **KaBuM!**, **Pichau** e **TerabyteShop** serão postadas automaticamente em <#${channel.id}>!`
         : `🔕 Alertas automáticos de promoções foram desativados.`,
     });
+  }
+
+  // ==========================================
+  // STEAM SCANNER & ANTI-SMURF
+  // ==========================================
+
+  async prefixSteam(message, input) {
+    if (!input || !input.trim()) {
+      return message.reply('⚠️ Forneça o link ou ID da conta Steam! Exemplo: `!steam gaules` ou `!steam 76561198012345678`');
+    }
+    try {
+      const scanData = await SteamScannerService.scanProfile(input.trim());
+      const { embeds, components } = SteamScannerService.buildEmbed(scanData);
+      return message.reply({ embeds, components });
+    } catch (err) {
+      return message.reply(`❌ ${err.message}`);
+    }
+  }
+
+  async cmdSteam(interaction) {
+    await interaction.deferReply();
+    const input = interaction.options.getString('perfil');
+    try {
+      const scanData = await SteamScannerService.scanProfile(input.trim());
+      const { embeds, components } = SteamScannerService.buildEmbed(scanData);
+      return interaction.editReply({ embeds, components });
+    } catch (err) {
+      return interaction.editReply({ content: `❌ ${err.message}` });
+    }
+  }
+
+  // ==========================================
+  // CS2 VALVE PATCH NOTES & UPDATE RADAR
+  // ==========================================
+
+  async prefixPatchNotes(message) {
+    try {
+      const patchData = await cs2NewsRadar.fetchLatestPatch();
+      if (!patchData) return message.reply('⚠️ Nenhuma nota de atualização recente encontrada.');
+      const { embeds, components } = cs2NewsRadar.buildEmbed(patchData);
+      return message.reply({ embeds, components });
+    } catch (err) {
+      return message.reply(`❌ Erro ao consultar notas de atualização: ${err.message}`);
+    }
+  }
+
+  async cmdPatchNotes(interaction) {
+    await interaction.deferReply();
+    try {
+      const patchData = await cs2NewsRadar.fetchLatestPatch();
+      if (!patchData) return interaction.editReply({ content: '⚠️ Nenhuma nota de atualização recente encontrada.' });
+      const { embeds, components } = cs2NewsRadar.buildEmbed(patchData);
+      return interaction.editReply({ embeds, components });
+    } catch (err) {
+      return interaction.editReply({ content: `❌ Erro ao consultar notas de atualização: ${err.message}` });
+    }
+  }
+
+  // ==========================================
+  // PRO MATCHES & HLTV BR ESPORTS AGENDA
+  // ==========================================
+
+  async prefixProMatches(message) {
+    try {
+      const matches = await proMatchesAgenda.getUpcomingMatches();
+      const { embeds, components } = proMatchesAgenda.buildEmbed(matches);
+      return message.reply({ embeds, components });
+    } catch (err) {
+      return message.reply(`❌ Erro ao consultar agenda de jogos pro: ${err.message}`);
+    }
+  }
+
+  async cmdProMatches(interaction) {
+    try {
+      const matches = await proMatchesAgenda.getUpcomingMatches();
+      const { embeds, components } = proMatchesAgenda.buildEmbed(matches);
+      return interaction.reply({ embeds, components });
+    } catch (err) {
+      return interaction.reply({ content: `❌ Erro ao consultar agenda: ${err.message}`, ephemeral: true });
+    }
+  }
+
+  // ==========================================
+  // "BAGRE DA PARTIDA" / ANTI-MVP HUMOR VOTE
+  // ==========================================
+
+  async prefixBagre(message) {
+    const mix = this.mixes.get(message.channelId) || Array.from(this.mixes.values())[0];
+    if (!mix) {
+      return message.reply('⚠️ Nenhum mix ativo neste canal para eleger o Bagre. Crie um mix com `!mix` ou termine uma partida!');
+    }
+    const components = bagreVoteService.buildVoteMenu(mix);
+    return message.reply({
+      content: `🐟 **VOTAÇÃO DE BAGRE DA PARTIDA!** (${mix.name})\nVote no jogador que mais pinou ou entregou a rodada:`,
+      components,
+    });
+  }
+
+  async cmdBagre(interaction) {
+    const mix = this.mixes.get(interaction.channelId) || Array.from(this.mixes.values())[0];
+    if (!mix) {
+      return interaction.reply({ content: '⚠️ Nenhum mix ativo neste canal para votar no Bagre.', ephemeral: true });
+    }
+    const components = bagreVoteService.buildVoteMenu(mix);
+    return interaction.reply({
+      content: `🐟 **VOTAÇÃO DE BAGRE DA PARTIDA!** (${mix.name})\nVote no jogador que mais pinou ou entregou a rodada:`,
+      components,
+      ephemeral: true,
+    });
+  }
+
+  // ==========================================
+  // FREE PC GAMES RADAR (EPIC GAMES & STEAM)
+  // ==========================================
+
+  async prefixFreeGames(message) {
+    try {
+      const data = await freeGamesRadar.getAllFreeGames();
+      const { embeds, components } = freeGamesRadar.buildEmbed(data);
+      return message.reply({ embeds, components });
+    } catch (err) {
+      return message.reply(`❌ Erro ao consultar jogos gratuitos: ${err.message}`);
+    }
+  }
+
+  async cmdFreeGames(interaction) {
+    await interaction.deferReply();
+    try {
+      const data = await freeGamesRadar.getAllFreeGames();
+      const { embeds, components } = freeGamesRadar.buildEmbed(data);
+      return interaction.editReply({ embeds, components });
+    } catch (err) {
+      return interaction.editReply({ content: `❌ Erro ao consultar jogos gratuitos: ${err.message}` });
+    }
+  }
+
+  // ==========================================
+  // COMMUNITY CLIPS & HIGHLIGHTS SHOWCASE
+  // ==========================================
+
+  async prefixClip(message, args) {
+    const url = args[0];
+    const title = args.slice(1).join(' ');
+    if (!url || !/^https?:\/\//i.test(url)) {
+      return message.reply('⚠️ Envie um link válido de clipe! Ex: `!clip https://medal.tv/... Ace de AWP na B`');
+    }
+    try {
+      const clip = communityClips.submitClip(message.author, url, title);
+      const { embeds, components } = communityClips.buildEmbed(clip);
+      return message.channel.send({
+        content: `🎥 **Novo clipe da comunidade enviado por <@${message.author.id}>!**`,
+        embeds,
+        components,
+      });
+    } catch (err) {
+      return message.reply(`❌ ${err.message}`);
+    }
+  }
+
+  async cmdClip(interaction) {
+    const url = interaction.options.getString('link');
+    const title = interaction.options.getString('titulo') || '';
+    try {
+      const clip = communityClips.submitClip(interaction.user, url, title);
+      const { embeds, components } = communityClips.buildEmbed(clip);
+      return interaction.reply({
+        content: `🎥 **Novo clipe da comunidade enviado por <@${interaction.user.id}>!**`,
+        embeds,
+        components,
+      });
+    } catch (err) {
+      return interaction.reply({ content: `❌ ${err.message}`, ephemeral: true });
+    }
+  }
+
+  // ==========================================
+  // CS2 CASE OPENING SIMULATOR
+  // ==========================================
+
+  async prefixCase(message, caseName) {
+    const selected = (caseName || 'kilowatt').toLowerCase();
+    const drop = cs2CaseSimulator.openCase(selected, message.author);
+    const { embeds, components } = cs2CaseSimulator.buildEmbed(drop);
+    return message.reply({ embeds, components });
+  }
+
+  async prefixInventory(message) {
+    const { embeds, components } = cs2CaseSimulator.buildInventoryEmbed(message.author);
+    return message.reply({ embeds, components });
+  }
+
+  async cmdCase(interaction) {
+    const caseName = interaction.options.getString('caixa') || 'kilowatt';
+    const drop = cs2CaseSimulator.openCase(caseName, interaction.user);
+    const { embeds, components } = cs2CaseSimulator.buildEmbed(drop);
+    return interaction.reply({ embeds, components });
+  }
+
+  async cmdInventory(interaction) {
+    const { embeds, components } = cs2CaseSimulator.buildInventoryEmbed(interaction.user);
+    return interaction.reply({ embeds, components, ephemeral: true });
   }
 }
 

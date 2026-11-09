@@ -1,0 +1,42 @@
+{
+  "user_test_1": {
+    "userId": "user_test_1",
+    "username": "Fallen",
+    "casesOpened": 4,
+    "totalSpent": 56,
+    "totalValue": 13.46,
+    "knivesUnboxed": 0,
+    "bestDrop": {
+      "name": "Dual Berettas | Melondrama",
+      "price": 9.8,
+      "tier": "purple",
+      "date": "09/11/2026"
+    },
+    "recentDrops": [
+      {
+        "name": "MAC-10 | Ensnared",
+        "price": 0.66,
+        "tier": "blue",
+        "wear": "Veterana de Guerra (BS)"
+      },
+      {
+        "name": "SSG 08 | Dezastre",
+        "price": 2.1,
+        "tier": "blue",
+        "wear": "Testada em Campo (FT)"
+      },
+      {
+        "name": "Dual Berettas | Melondrama",
+        "price": 9.8,
+        "tier": "purple",
+        "wear": "Veterana de Guerra (BS)"
+      },
+      {
+        "name": "Nova | Dark Sigil",
+        "price": 0.9,
+        "tier": "blue",
+        "wear": "Testada em Campo (FT)"
+      }
+    ]
+  }
+}

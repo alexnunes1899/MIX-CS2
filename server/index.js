@@ -31,6 +31,11 @@ import {
   getMapImageUrl,
 } from './matchHistory.js';
 import { hardwareDealsManager } from './hardwareDeals.js';
+import { SteamScannerService } from './steamScanner.js';
+import { cs2NewsRadar } from './cs2NewsRadar.js';
+import { proMatchesAgenda } from './proMatchesAgenda.js';
+import { freeGamesRadar } from './freeGamesRadar.js';
+import { communityClips } from './communityClips.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -2004,6 +2009,58 @@ app.get('/api/hardware/deals', async (req, res) => {
       limit: Math.min(20, parseInt(limit, 10) || 8),
     });
     res.json({ success: true, count: deals.length, deals });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Official Valve CS2 Release Notes & Updates
+app.get('/api/cs2/patchnotes', async (req, res) => {
+  try {
+    const patch = await cs2NewsRadar.fetchLatestPatch();
+    res.json({ success: true, patch });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Esports Pro Matches Agenda (FURIA, MIBR, paiN, Imperial)
+app.get('/api/esports/pro-matches', async (req, res) => {
+  try {
+    const matches = await proMatchesAgenda.getUpcomingMatches();
+    res.json({ success: true, count: matches.length, matches });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Free PC Games Radar (Epic Games Store & Steam)
+app.get('/api/games/free', async (req, res) => {
+  try {
+    const data = await freeGamesRadar.getAllFreeGames();
+    res.json({ success: true, data });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Steam Profile & Anti-Smurf Scanner API
+app.get('/api/steam/scan', async (req, res) => {
+  try {
+    const { query } = req.query;
+    if (!query) return res.status(400).json({ success: false, error: 'Parâmetro query é obrigatório' });
+    const scan = await SteamScannerService.scanProfile(query);
+    res.json({ success: true, scan });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// Community Clips Showcase
+app.get('/api/community/clips', (req, res) => {
+  try {
+    const list = Array.from(communityClips.clips.values());
+    res.json({ success: true, count: list.length, clips: list });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
