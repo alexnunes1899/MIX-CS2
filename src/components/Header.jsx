@@ -19,6 +19,7 @@ export default function Header({
   onDeleteRoom,
   soundEnabled,
   setSoundEnabled,
+  onToggleSound,
   activeRoomsCount = 0,
   onOpenRoomsHub,
   onOpenHistory,
@@ -194,13 +195,27 @@ export default function Header({
               </button>
             )}
 
-            {/* Sound Toggle */}
+            {/* Sound Toggle (Silenciar / Ativar Sons) */}
             <button
-              onClick={() => setSoundEnabled(!soundEnabled)}
-              className="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors border border-slate-700/50 cursor-pointer"
-              title={soundEnabled ? 'Silenciar Sons' : 'Ativar Sons'}
+              onClick={() => {
+                if (onToggleSound) onToggleSound();
+                else if (setSoundEnabled) setSoundEnabled(!soundEnabled);
+              }}
+              className={`px-2.5 py-1.5 rounded-xl transition-all cursor-pointer border flex items-center gap-1.5 shadow-sm active:scale-95 ${
+                soundEnabled
+                  ? 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border-emerald-500/40'
+                  : 'bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white border-slate-700/60'
+              }`}
+              title={soundEnabled ? 'Sons Ativados (Clique para silenciar o site)' : 'Sons Silenciados (Clique para ativar efeitos sonoros)'}
             >
-              {soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+              {soundEnabled ? (
+                <Volume2 size={16} className="text-emerald-400" />
+              ) : (
+                <VolumeX size={16} className="text-slate-400" />
+              )}
+              <span className="hidden sm:inline text-[11px] font-bold">
+                {soundEnabled ? 'Som Ativo' : 'Sem Som'}
+              </span>
             </button>
 
             {/* Delete Room Button (Admin) */}

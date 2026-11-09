@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Sparkles, Swords, Dices, Shield, Flame, Users, Layers, Zap, Trophy, ArrowRight, ExternalLink, Hash, CheckCircle2, Monitor, RefreshCw, Globe, Laptop, Server, Home, Bell, Bot, ShieldCheck, Check } from 'lucide-react';
+import { Play, Sparkles, Swords, Dices, Shield, Flame, Users, Layers, Zap, Trophy, ArrowRight, ExternalLink, Hash, CheckCircle2, Monitor, RefreshCw, Globe, Laptop, Server, Home, Bell, Bot, ShieldCheck, Check, Volume2, VolumeX } from 'lucide-react';
 import { ACTIVE_DUTY_MAPS, EXTRA_CS2_MAPS } from '../data/maps';
 import PlayerAvatar from './PlayerAvatar';
 import SteamIcon from './SteamIcon';
@@ -24,6 +24,7 @@ export default function LandingPage({
   onOpenProfile,
   myProfile,
   soundEnabled,
+  onToggleSound,
   officialRotation,
   syncingRotation,
   onSyncOfficialRotation,
@@ -130,6 +131,27 @@ export default function LandingPage({
 
             {/* Steam & Direct Action */}
             <div className="flex items-center gap-2.5">
+              {/* Sound Toggle (Silenciar / Ativar Sons) */}
+              <button
+                type="button"
+                onClick={onToggleSound}
+                className={`px-2.5 py-1.5 rounded-xl transition-all cursor-pointer border flex items-center gap-1.5 shadow-sm active:scale-95 ${
+                  soundEnabled
+                    ? 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border-emerald-500/40'
+                    : 'bg-slate-900/90 hover:bg-slate-800 text-slate-400 hover:text-white border-slate-700/60'
+                }`}
+                title={soundEnabled ? 'Sons Ativados (Clique para silenciar o site)' : 'Sons Silenciados (Clique para ativar efeitos sonoros)'}
+              >
+                {soundEnabled ? (
+                  <Volume2 size={16} className="text-emerald-400" />
+                ) : (
+                  <VolumeX size={16} className="text-slate-400" />
+                )}
+                <span className="hidden sm:inline text-[11px] font-bold">
+                  {soundEnabled ? 'Som Ativo' : 'Sem Som'}
+                </span>
+              </button>
+
               {isSteamLogged ? (
                 <button
                   type="button"

@@ -33,6 +33,8 @@ import {
   Trophy,
   Dices,
   Bell,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
 import { parseServerDetails } from '../utils/serverParser';
@@ -59,6 +61,7 @@ export default function DedicatedServersHub({
   onOpenProfile,
   activeRoomsCount = 0,
   soundEnabled,
+  onToggleSound,
   myProfile,
 }) {
   const [activeTab, setActiveTab] = useState(() => {
@@ -413,8 +416,29 @@ pause
               </span>
             </div>
 
-            {/* Right: Active Room Server Badge */}
+            {/* Right: Active Room Server Badge & Sound Toggle */}
             <div className="flex items-center gap-2">
+              {/* Sound Toggle (Silenciar / Ativar Sons) */}
+              <button
+                type="button"
+                onClick={onToggleSound}
+                className={`px-2.5 py-1.5 rounded-xl transition-all cursor-pointer border flex items-center gap-1.5 shadow-sm active:scale-95 ${
+                  soundEnabled
+                    ? 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border-emerald-500/40'
+                    : 'bg-slate-900/90 hover:bg-slate-800 text-slate-400 hover:text-white border-slate-700/60'
+                }`}
+                title={soundEnabled ? 'Sons Ativados (Clique para silenciar o site)' : 'Sons Silenciados (Clique para ativar efeitos sonoros)'}
+              >
+                {soundEnabled ? (
+                  <Volume2 size={16} className="text-emerald-400" />
+                ) : (
+                  <VolumeX size={16} className="text-slate-400" />
+                )}
+                <span className="hidden sm:inline text-[11px] font-bold">
+                  {soundEnabled ? 'Som Ativo' : 'Sem Som'}
+                </span>
+              </button>
+
               {currentServerIp ? (
                 <div className="flex items-center gap-2 bg-slate-950 border border-emerald-500/40 rounded-xl px-3 py-1 text-xs font-mono">
                   <span className="text-slate-500 text-[10px]">SERVIDOR ATUAL:</span>

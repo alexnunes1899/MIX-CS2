@@ -30,7 +30,7 @@ import AimReflexModal from './components/AimReflexModal';
 import TournamentBracketModal from './components/TournamentBracketModal';
 import LocalHostModal from './components/LocalHostModal';
 import DedicatedServersHub from './components/DedicatedServersHub';
-import { playClickSound } from './utils/audio';
+import { playClickSound, setSoundEnabledGlobal, isSoundEnabled } from './utils/audio';
 import { recordMatchResult } from './utils/playerStats';
 import { ACTIVE_DUTY_MAPS, OFFICIAL_ACTIVE_DUTY, EXTRA_CS2_MAPS } from './data/maps';
 import { balanceTeams, shuffleTeams, calculateMetricsForTeams } from './utils/balance';
@@ -75,7 +75,17 @@ export default function App() {
     return 'mix';
   });
 
-  const [soundEnabled, setSoundEnabled] = useState(true);
+  // Som desativado por padrão conforme solicitação, com persistência no localStorage
+  const [soundEnabled, setSoundEnabled] = useState(() => isSoundEnabled());
+
+  const handleToggleSound = () => {
+    setSoundEnabled((prev) => {
+      const next = !prev;
+      setSoundEnabledGlobal(next);
+      return next;
+    });
+  };
+
   const [socketConnected, setSocketConnected] = useState(socket.connected);
 
   useEffect(() => {
@@ -1778,6 +1788,7 @@ export default function App() {
           onOpenProfile={() => setProfileModalOpen(true)}
           activeRoomsCount={activeRoomsCount}
           soundEnabled={soundEnabled}
+          onToggleSound={handleToggleSound}
           myProfile={myProfile}
         />
 
@@ -1903,6 +1914,7 @@ export default function App() {
           onOpenProfile={() => setProfileModalOpen(true)}
           myProfile={myProfile}
           soundEnabled={soundEnabled}
+          onToggleSound={handleToggleSound}
           officialRotation={officialRotation}
           syncingRotation={syncingRotation}
           onSyncOfficialRotation={handleSyncOfficialRotation}
@@ -2077,7 +2089,8 @@ export default function App() {
         onOpenProfile={() => setProfileModalOpen(true)}
         onDeleteRoom={handleDeleteRoom}
         soundEnabled={soundEnabled}
-        setSoundEnabled={setSoundEnabled}
+        setSoundEnabled={handleToggleSound}
+        onToggleSound={handleToggleSound}
         activeRoomsCount={activeRoomsCount}
         onOpenRoomsHub={() => setRoomsHubOpen(true)}
         onOpenHistory={() => setHistoryOpen(true)}

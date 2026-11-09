@@ -1,7 +1,35 @@
 // Web Audio API sound effects generator
 let audioCtx = null;
 
+// Sound state: MUTED by default per user request.
+// Can be toggled on/off and persisted in localStorage ('cs2_sound_enabled').
+let soundMuted = true;
+
+try {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    const stored = window.localStorage.getItem('cs2_sound_enabled');
+    // Default is MUTED (false) unless user explicitly turned it ON ('true')
+    soundMuted = stored !== 'true';
+  }
+} catch (e) {
+  soundMuted = true;
+}
+
+export function isSoundEnabled() {
+  return !soundMuted;
+}
+
+export function setSoundEnabledGlobal(enabled) {
+  soundMuted = !enabled;
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem('cs2_sound_enabled', enabled ? 'true' : 'false');
+    }
+  } catch (e) {}
+}
+
 function getAudioContext() {
+  if (soundMuted) return null;
   if (!audioCtx) {
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     if (AudioContext) {
@@ -15,6 +43,7 @@ function getAudioContext() {
 }
 
 export function playClickSound() {
+  if (soundMuted) return;
   const ctx = getAudioContext();
   if (!ctx) return;
   const osc = ctx.createOscillator();
@@ -35,6 +64,7 @@ export function playClickSound() {
 }
 
 export function playReadySound() {
+  if (soundMuted) return;
   const ctx = getAudioContext();
   if (!ctx) return;
   const osc = ctx.createOscillator();
@@ -55,6 +85,7 @@ export function playReadySound() {
 }
 
 export function playCoinSound() {
+  if (soundMuted) return;
   const ctx = getAudioContext();
   if (!ctx) return;
 
@@ -79,6 +110,7 @@ export function playCoinSound() {
 export const playCoinFlipSound = playCoinSound;
 
 export function playRouletteTick() {
+  if (soundMuted) return;
   const ctx = getAudioContext();
   if (!ctx) return;
 
@@ -100,6 +132,7 @@ export function playRouletteTick() {
 }
 
 export function playChatPop() {
+  if (soundMuted) return;
   const ctx = getAudioContext();
   if (!ctx) return;
 
@@ -121,6 +154,7 @@ export function playChatPop() {
 }
 
 export function playBanSound() {
+  if (soundMuted) return;
   const ctx = getAudioContext();
   if (!ctx) return;
 
@@ -142,6 +176,7 @@ export function playBanSound() {
 }
 
 export function playPickSound() {
+  if (soundMuted) return;
   const ctx = getAudioContext();
   if (!ctx) return;
 
@@ -164,6 +199,7 @@ export function playPickSound() {
 }
 
 export function playFanfare() {
+  if (soundMuted) return;
   const ctx = getAudioContext();
   if (!ctx) return;
 
