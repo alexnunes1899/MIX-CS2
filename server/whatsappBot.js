@@ -316,8 +316,7 @@ class WhatsAppBotManager {
       `• *!sair* — Libera sua vaga\n` +
       `• *!lvl <1-21>* — Salva seu nível GC direto no chat (ex: *!lvl 18*)\n` +
       `• *!sortear* — Sorteia os times balanceados pelo Snake-Draft\n` +
-      `• *!ip* — Exibe o IP do servidor CS2 e botão Steam 1-Clique\n` +
-      `• *!enquete* — Envia a enquete com botões de rádio para votar\n\n` +
+      `• *!ip* — Exibe o IP do servidor CS2 e botão Steam 1-Clique\n\n` +
       `🌐 Acompanhe ao vivo pelo navegador: ${roomUrl}`;
 
     return this.replyMessage(from, statusText, msg);
@@ -722,9 +721,7 @@ class WhatsAppBotManager {
       const mix = this.createMixFromWhatsApp(senderPhone, senderName);
       mix.players[0].level = creatorLvl;
       const notice = `🎉 *NOVO MIX 5v5 ABERTO COM SUCESSO!*\n👑 *Capitão:* *${senderName}* [Lvl ${creatorLvl} GC] criou a sala!`;
-      const res = await this.sendLobbyStatus(from, msg, mix, notice);
-      this.sendActionPoll(from, mix).catch(() => {});
-      return res;
+      return await this.sendLobbyStatus(from, msg, mix, notice);
     }
 
     // 2. IP DO SERVIDOR CS2 & CONEXÃO STEAM 1-CLIQUE (!ip, !servidor, !connect)
@@ -1071,33 +1068,25 @@ class WhatsAppBotManager {
       return this.replyMessage(from, text, msg);
     }
 
-    // 10. ENQUETE INTERATIVA DE AÇÕES (!enquete, !botoes, !painel)
-    if (cmd === '!enquete' || cmd === '!botoes' || cmd === '!painel') {
-      const activeData = this.getActiveMix();
-      const mix = activeData?.mix || { name: 'Mix 5v5', players: [] };
-      return this.sendActionPoll(from, mix);
-    }
-
-    // 11. AJUDA E GUIA DE COMANDOS (!ajuda, !help, !comandos)
+    // 10. AJUDA E GUIA DE COMANDOS (!ajuda, !help, !comandos)
     if (cmd === '!ajuda' || cmd === '!help' || cmd === '!comandos') {
       const profileUrl = this.getPublicUrl(`/perfil?phone=${senderPhone}`);
       const helpText =
         `🤖 *COMANDOS OFICIAIS DO CS2 MIX HUB NO WHATSAPP*\n\n` +
         `• *!mix* — Cria um novo lobby 5v5 ou exibe a fila atual\n` +
-        `• *!entrar* — Entra na fila do mix ativo\n` +
+        `• *!entrar* — Entra na fila do mix ativo (ou *!entrar <nível>*)\n` +
         `• *!sair* — Sai da fila e libera sua vaga\n` +
         `• *!sortear* — Sorteia os times A (CT) e B (TR) pelo Snake-Draft GC\n` +
         `• *!ip* — Envia o IP do servidor CS2 e o link Steam 1-Clique\n` +
         `• *!lvl <1-21>* — Salva seu nível Gamers Club permanente (ex: *!lvl 18*)\n` +
-        `• *!perfil* — Link para abrir os botões interativos de nível GC (1 a 21)\n` +
-        `• *!enquete* — Envia a enquete com botões de rádio para votar\n` +
+        `• *!perfil* — Link para abrir a tela com botões de nível GC (1 a 21)\n` +
         `• *!fila* — Exibe a lista dos 10 jogadores confirmados\n` +
         `• *!cancelar* — Cancela a partida atual para reiniciar\n\n` +
-        `🔘 *Ações por Reação (1 Toque):*\n` +
+        `🔘 *Ações por Reação (1 Toque no chat):*\n` +
         `• 👍 Reagir para entrar no mix\n` +
         `• 🚪 Reagir para sair da fila\n` +
         `• ⚔️ Reagir para sortear os times\n\n` +
-        `⭐ *Seu Perfil Web:* ${profileUrl}\n` +
+        `⭐ *Seu Perfil com Botões:* ${profileUrl}\n` +
         `🌐 *Hub Geral:* ${this.getPublicUrl()}`;
 
       return this.replyMessage(from, helpText, msg);
