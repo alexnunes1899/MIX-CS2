@@ -1742,11 +1742,16 @@ class DiscordBotManager {
     const tutorialEmbed = this.buildMixTutorialEmbed();
     const embed = this.buildLobbyEmbed(mix);
     const components = this.buildLobbyButtons(mix);
-    return message.channel.send({
+    const sent = await message.channel.send({
       content: `🎮 <@${user.id}> criou um novo **Lobby de Mix CS2 5v5**!`,
       embeds: [tutorialEmbed, embed],
       components,
     });
+    if (sent) {
+      mix.lobbyMessageId = sent.id;
+      mix.channelId = message.channelId;
+    }
+    return sent;
   }
 
   async prefixPainel(message) {
@@ -1794,12 +1799,25 @@ class DiscordBotManager {
     if (!mix && this.activeMixes.size > 0) {
       mix = Array.from(this.activeMixes.values())[0];
     }
+    if (!mix && this.webRoomsRef && this.webRoomsRef.size > 0) {
+      for (const r of this.webRoomsRef.values()) {
+        if (r && r.phase !== 'finished' && r.phase !== 'cancelled') {
+          mix = r;
+          break;
+        }
+      }
+    }
     if (!mix) {
       return message.reply('ℹ️ Nenhum mix ativo no momento. Use `!mix` ou `/mix criar` para abrir um!');
     }
     const embed = this.buildLobbyEmbed(mix);
     const components = this.buildLobbyButtons(mix);
-    return message.channel.send({ embeds: [embed], components });
+    const sent = await message.channel.send({ embeds: [embed], components });
+    if (sent) {
+      mix.lobbyMessageId = sent.id;
+      mix.channelId = message.channelId;
+    }
+    return sent;
   }
 
   async updateLobbyInChannels(mix) {
@@ -1808,7 +1826,23 @@ class DiscordBotManager {
       const embed = this.buildLobbyEmbed(mix);
       const components = this.buildLobbyButtons(mix);
 
-      if (mix.channelId && mix.lobbyMessageId) {
+      // 1. Atualiza mensagens nos canais registrados em activeMixes
+      if (this.activeMixes && this.activeMixes.size > 0) {
+        for (const m of this.activeMixes.values()) {
+          if (m && m.channelId && m.lobbyMessageId && (m.id === mix.id || m.phase === 'lobby')) {
+            const channel = await this.client.channels.fetch(m.channelId).catch(() => null);
+            if (channel && channel.isTextBased()) {
+              const msg = await channel.messages.fetch(m.lobbyMessageId).catch(() => null);
+              if (msg) {
+                await msg.edit({ embeds: [embed], components }).catch(() => {});
+              }
+            }
+          }
+        }
+      }
+
+      // 2. Atualiza diretamente se o próprio mix tiver channelId e lobbyMessageId
+      if (mix.channelId && mix.lobbyMessageId && mix.channelId !== 'whatsapp-mix') {
         const channel = await this.client.channels.fetch(mix.channelId).catch(() => null);
         if (channel && channel.isTextBased()) {
           const msg = await channel.messages.fetch(mix.lobbyMessageId).catch(() => null);
@@ -3906,11 +3940,17 @@ class DiscordBotManager {
       const tutorialEmbed = this.buildMixTutorialEmbed();
       const embed = this.buildLobbyEmbed(mix);
       const components = this.buildLobbyButtons(mix);
-      return interaction.reply({
+      const reply = await interaction.reply({
         content: `🎮 <@${user.id}> abriu um novo **Lobby de Mix CS2**!`,
         embeds: [tutorialEmbed, embed],
         components,
+        fetchReply: true,
       });
+      if (reply) {
+        mix.lobbyMessageId = reply.id;
+        mix.channelId = interaction.channelId;
+      }
+      return reply;
     }
 
     // Permanent Panel GC Level Modal
@@ -5273,11 +5313,17 @@ class DiscordBotManager {
     const embed = this.buildLobbyEmbed(mix);
     const components = this.buildLobbyButtons(mix);
 
-    return interaction.reply({
+    const reply = await interaction.reply({
       content: `🎮 <@${interaction.user.id}> criou um novo **Lobby de Mix CS2 5v5**!`,
       embeds: [tutorialEmbed, embed],
       components,
+      fetchReply: true,
     });
+    if (reply) {
+      mix.lobbyMessageId = reply.id;
+      mix.channelId = interaction.channelId;
+    }
+    return reply;
   }
 
   async cmdJoinMix(interaction) {
@@ -5388,12 +5434,29 @@ class DiscordBotManager {
   }
 
   async cmdStatus(interaction) {
-    const mix = this.activeMixes.get(interaction.channelId);
+    let mix = this.activeMixes.get(interaction.channelId);
+    if (!mix && this.activeMixes.size > 0) {
+      mix = Array.from(this.activeMixes.values())[0];
+    }
+    if (!mix && this.webRoomsRef && this.webRoomsRef.size > 0) {
+      for (const r of this.webRoomsRef.values()) {
+        if (r && r.phase !== 'finished' && r.phase !== 'cancelled') {
+          mix = r;
+          break;
+        }
+      }
+    }
     if (!mix) {
-      return interaction.reply({ content: 'ℹ️ Nenhum mix ativo neste canal. Crie um com `/mix criar`!', ephemeral: true });
+      return interaction.reply({ content: 'ℹ️ Nenhum mix ativo no momento. Crie um com `/mix criar` ou digite `!mix`!', ephemeral: true });
     }
     const embed = this.buildLobbyEmbed(mix);
-    return interaction.reply({ embeds: [embed], ephemeral: true });
+    const components = this.buildLobbyButtons(mix);
+    const reply = await interaction.reply({ embeds: [embed], components, fetchReply: true });
+    if (reply) {
+      mix.lobbyMessageId = reply.id;
+      mix.channelId = interaction.channelId;
+    }
+    return reply;
   }
 
   async cmdCancelMix(interaction) {

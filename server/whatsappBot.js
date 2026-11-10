@@ -170,9 +170,7 @@ class WhatsAppBotManager {
     if (this.discordBotRef) {
       if (!this.discordBotRef.activeMixes) this.discordBotRef.activeMixes = new Map();
       this.discordBotRef.activeMixes.set(defaultChannelId, newMix);
-      if (typeof this.discordBotRef.syncToWebRoom === 'function') {
-        this.discordBotRef.syncToWebRoom(newMix);
-      }
+      this.notifyDiscordLobbyUpdate(newMix);
     }
 
     // 2. Sync to Web Rooms map
@@ -209,6 +207,20 @@ class WhatsAppBotManager {
     }
 
     return newMix;
+  }
+
+  notifyDiscordLobbyUpdate(mix) {
+    if (!this.discordBotRef || !mix) return;
+    try {
+      if (typeof this.discordBotRef.syncToWebRoom === 'function') {
+        this.discordBotRef.syncToWebRoom(mix);
+      }
+      if (typeof this.discordBotRef.updateLobbyInChannels === 'function') {
+        this.discordBotRef.updateLobbyInChannels(mix);
+      }
+    } catch (e) {
+      console.warn('[WHATSAPP] Falha ao sincronizar lobby com Discord:', e.message);
+    }
   }
 
   balanceTeamsLocal(mix) {
@@ -534,15 +546,21 @@ class WhatsAppBotManager {
   async replyMessage(from, text, msg = null) {
     if (!this.sock) return false;
     try {
+      let res;
       // In groups, only quote if participant is present and not sent by me
       if (msg && !msg.key?.fromMe && msg.key?.participant) {
-        return await this.sock.sendMessage(from, { text }, { quoted: msg });
+        res = await this.sock.sendMessage(from, { text }, { quoted: msg });
+      } else {
+        res = await this.sock.sendMessage(from, { text });
       }
-      return await this.sock.sendMessage(from, { text });
+      console.log(`📤 [WHATSAPP ENVIADO] Mensagem enviada para ${from}`);
+      return res;
     } catch (err) {
       console.warn(`[WHATSAPP] Falha no reply com quoted: ${err.message}. Enviando direto.`);
       try {
-        return await this.sock.sendMessage(from, { text });
+        const res = await this.sock.sendMessage(from, { text });
+        console.log(`📤 [WHATSAPP ENVIADO] Mensagem enviada direto para ${from}`);
+        return res;
       } catch (err2) {
         console.error(`[WHATSAPP] Erro ao enviar mensagem: ${err2.message}`);
         return false;
@@ -788,9 +806,7 @@ class WhatsAppBotManager {
         const found = mix.players?.find(p => p.id === profileKey || p.phone === senderPhone);
         if (found) {
           found.level = parsed;
-          if (activeData.source === 'discord' && typeof this.discordBotRef?.syncToWebRoom === 'function') {
-            this.discordBotRef.syncToWebRoom(mix);
-          }
+          this.notifyDiscordLobbyUpdate(mix);
           const notice = `⭐ *NÍVEL ATUALIZADO NA FILA:* *${senderName}* atualizou seu perfil para *Lvl ${parsed} GC* (${badge})!`;
           return this.sendLobbyStatus(from, msg, mix, notice);
         } else if (mix.players?.length < 10) {
@@ -807,14 +823,13 @@ class WhatsAppBotManager {
             ready: true,
           };
           mix.players.push(newPlayer);
-          if (activeData.source === 'discord' && typeof this.discordBotRef?.syncToWebRoom === 'function') {
-            this.discordBotRef.syncToWebRoom(mix);
-          } else if (this.webRoomsRef && mix.id) {
+          if (this.webRoomsRef && mix.id) {
             const room = this.webRoomsRef.get(mix.id);
             if (room && Array.isArray(room.players)) {
               room.players.push({ id: profileKey, nick: senderName, level: parsed, ready: true });
             }
           }
+          this.notifyDiscordLobbyUpdate(mix);
           const notice = `🎉 *NÍVEL DEFINIDO E VAGA GARANTIDA!*\n*${senderName}* definiu seu nível como *Lvl ${parsed} GC* (${badge}) e entrou na fila!`;
           return this.sendLobbyStatus(from, msg, mix, notice);
         }
@@ -913,9 +928,7 @@ class WhatsAppBotManager {
       };
 
       mix.players.push(newPlayer);
-      if (activeData.source === 'discord' && typeof this.discordBotRef?.syncToWebRoom === 'function') {
-        this.discordBotRef.syncToWebRoom(mix);
-      } else if (this.webRoomsRef && mix.id) {
+      if (this.webRoomsRef && mix.id) {
         const room = this.webRoomsRef.get(mix.id);
         if (room && Array.isArray(room.players)) {
           room.players.push({
@@ -926,6 +939,7 @@ class WhatsAppBotManager {
           });
         }
       }
+      this.notifyDiscordLobbyUpdate(mix);
 
       const count = mix.players.length;
       const notice = `✅ *VAGA CONFIRMADA:* *${senderName}* [Lvl ${savedLevel} GC] entrou na fila! (${count}/10 vagas ocupadas)`;
@@ -950,15 +964,14 @@ class WhatsAppBotManager {
       }
 
       const removed = mix.players.splice(idx, 1)[0];
-      if (activeData.source === 'discord' && typeof this.discordBotRef?.syncToWebRoom === 'function') {
-        this.discordBotRef.syncToWebRoom(mix);
-      } else if (this.webRoomsRef && mix.id) {
+      if (this.webRoomsRef && mix.id) {
         const room = this.webRoomsRef.get(mix.id);
         if (room && Array.isArray(room.players)) {
           const rIdx = room.players.findIndex(p => p.id === profileKey);
           if (rIdx !== -1) room.players.splice(rIdx, 1);
         }
       }
+      this.notifyDiscordLobbyUpdate(mix);
 
       const count = mix.players.length;
       const notice = `🚪 *VAGA LIBERADA:* *${removed?.nick || senderName}* saiu da fila (${count}/10 vagas ocupadas).`;
@@ -994,9 +1007,7 @@ class WhatsAppBotManager {
 
       mix.phase = 'teams';
 
-      if (activeData.source === 'discord' && typeof this.discordBotRef?.syncToWebRoom === 'function') {
-        this.discordBotRef.syncToWebRoom(mix);
-      } else if (this.webRoomsRef && mix.id) {
+      if (this.webRoomsRef && mix.id) {
         const room = this.webRoomsRef.get(mix.id);
         if (room) {
           room.teamA = mix.teamA;
@@ -1004,6 +1015,7 @@ class WhatsAppBotManager {
           room.phase = 'teams';
         }
       }
+      this.notifyDiscordLobbyUpdate(mix);
 
       const listA = (mix.teamA?.players || []).map((p, idx) => `${idx === 0 ? '👑 ' : ''}*${p.nick || p.username}* [Lvl ${p.level || 16}]`).join('\n• ');
       const listB = (mix.teamB?.players || []).map((p, idx) => `${idx === 0 ? '👑 ' : ''}*${p.nick || p.username}* [Lvl ${p.level || 16}]`).join('\n• ');
