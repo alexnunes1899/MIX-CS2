@@ -56,6 +56,9 @@ const PROFILES_FILE = path.join(DATA_DIR, 'playerProfiles.json');
 const MATCH_HISTORY_FILE = path.join(DATA_DIR, 'matchHistory.json');
 const LEADERBOARD_FILE = path.join(DATA_DIR, 'leaderboard.json');
 
+// Validates numeric Discord Snowflake ID (17 to 20 digits)
+export const isSnowflake = (id) => typeof id === 'string' && /^\d{17,20}$/.test(id);
+
 // Default Active Duty Maps for Pick & Ban with official CDN images
 const OFFICIAL_MAPS = [
   {
@@ -1677,7 +1680,7 @@ class DiscordBotManager {
     if (command === 'smoke' || command === 'granada' || command === 'lineup') return this.prefixGrenade(message, args.slice(1).join(' '));
     if (command === 'treino' || command === 'cfg' || command === 'praticar') return this.prefixTreino(message);
     if (command === 'moeda' || command === 'coinflip' || command === 'flip') return this.prefixCoinflip(message);
-    if (command === 'ping' || command === 'bot' || command === 'status') return this.prefixPing(message);
+    if (command === 'ping' || command === 'bot' || command === 'uptime') return this.prefixPing(message);
     if (command === 'servidor') {
       if (subArg === 'status') {
         return this.prefixServerStatus(message, args.slice(2));
@@ -2314,7 +2317,8 @@ class DiscordBotManager {
       const medal = medals[i] || `**#${i + 1}**`;
       const mvpBadge = p.mvps > 0 ? ` • ⭐ **${p.mvps}x MVP**` : '';
       const streakBadge = p.streak >= 2 ? ` • 🔥 **${p.streak} Win Streak**` : '';
-      return `${medal} <@${p.id}> — **${p.wins}V** / ${p.losses}D (\`${p.winRate}%\` Win Rate)${mvpBadge}${streakBadge} • \`Lvl ${p.level} GC\``;
+      const userTag = isSnowflake(p.id) ? `<@${p.id}>` : `**${p.username}** 💬`;
+      return `${medal} ${userTag} — **${p.wins}V** / ${p.losses}D (\`${p.winRate}%\` Win Rate)${mvpBadge}${streakBadge} • \`Lvl ${p.level} GC\``;
     });
 
     return new EmbedBuilder()
@@ -2565,6 +2569,7 @@ class DiscordBotManager {
       if (!canManageRoles) return [];
 
       for (const p of players) {
+        if (!p || !p.id || !isSnowflake(p.id)) continue;
         const prof = profiles[p.id];
         if (!prof) continue;
         const wins = prof.wins || 0;
@@ -2618,10 +2623,10 @@ class DiscordBotManager {
     }
 
     const totalPlayers = (mix.teamA.players.length || 0) + (mix.teamB.players.length || 0);
-    if (totalPlayers !== 10) {
+    if (totalPlayers < 2) {
       return {
         success: false,
-        error: `⚠️ Este mix possui apenas **${totalPlayers}/10 jogadores** (${mix.teamA.players.length} no Time A e ${mix.teamB.players.length} no Time B)!\nO histórico oficial registra exclusivamente partidas completas de **10 jogadores (5v5)** que foram finalizadas para não poluir o histórico.`,
+        error: `⚠️ Este mix possui apenas **${totalPlayers} jogador(es)**!\nPara registrar uma partida no histórico oficial, é necessário haver pelo menos 2 jogadores divididos entre os times.`,
       };
     }
 
@@ -2754,19 +2759,24 @@ class DiscordBotManager {
     });
 
     // Build victory embed with crowned MVP
+    const mvpUserTag = computedMvp
+      ? (isSnowflake(computedMvp.id) ? `<@${computedMvp.id}>` : `**${computedMvp.nick || computedMvp.username}** 💬`)
+      : '';
     const mvpDescription = computedMvp
-      ? `\n\n👑 **MVP DA PARTIDA ELEITO:** <@${computedMvp.id}>\n` +
+      ? `\n\n👑 **MVP DA PARTIDA ELEITO:** ${mvpUserTag}\n` +
         `⭐ **Estatísticas:** 🎯 **${computedMvp.kills} Kills** • 💀 **${computedMvp.deaths} Mortes** (K/D **${computedMvp.kd}**) • ⭐ **${computedMvp.mvps} MVPs de Round** • 📊 Rating **${computedMvp.rating}**\n` +
         `🏆 *Eleito automaticamente com o melhor desempenho da partida pelas estatísticas!*`
       : '';
 
+    const declaredTag = isSnowflake(declaredByUser.id) ? `<@${declaredByUser.id}>` : `**${declaredByUser.username || declaredByUser.displayName}**`;
+
     const victoryEmbed = new EmbedBuilder()
       .setTitle(`🏆 VITÓRIA DO ${winnerTeam.name.toUpperCase()}! • PLACAR ${score}`)
       .setDescription(
-        `A partida foi encerrada e as estatísticas de todos os 10 jogadores foram atualizadas no **Ranking Geral**!\n\n` +
+        `A partida foi encerrada e as estatísticas de todos os jogadores foram atualizadas no **Ranking Geral**!\n\n` +
         `🗺️ **Mapa:** **${resolvedMap}**\n` +
         `⚔️ **Resultado Oficial:** **${winnerTeam.name}** venceu por **${score}**!\n` +
-        `👑 **Declarado por:** <@${declaredByUser.id}>` +
+        `👑 **Declarado por:** ${declaredTag}` +
         mvpDescription
       )
       .setColor(0x22c55e)
@@ -2782,12 +2792,12 @@ class DiscordBotManager {
           : []),
         {
           name: `🥇 Campeões • ${winnerTeam.name} (+1 Vitória)`,
-          value: winnerTeam.players.map((p) => `👑 <@${p.id}> \`[Lvl ${p.level || 16}]\``).join('\n') || '*Sem jogadores*',
+          value: winnerTeam.players.map((p) => `👑 ${isSnowflake(p.id) ? `<@${p.id}>` : `**${p.username || 'Jogador'}** 💬`} \`[Lvl ${p.level || 16}]\``).join('\n') || '*Sem jogadores*',
           inline: true,
         },
         {
           name: `🥈 Vice-Campeões • ${loserTeam.name}`,
-          value: loserTeam.players.map((p) => `💀 <@${p.id}> \`[Lvl ${p.level || 16}]\``).join('\n') || '*Sem jogadores*',
+          value: loserTeam.players.map((p) => `💀 ${isSnowflake(p.id) ? `<@${p.id}>` : `**${p.username || 'Jogador'}** 💬`} \`[Lvl ${p.level || 16}]\``).join('\n') || '*Sem jogadores*',
           inline: true,
         }
       )
@@ -3023,6 +3033,32 @@ class DiscordBotManager {
   // ==========================================
   // MIX MANAGEMENT & ENGINE
   // ==========================================
+
+  resolveMixFromInteraction(interaction, customId = null) {
+    const rawId = customId || (interaction && interaction.customId) || '';
+    const targetMixId = rawId.includes(':') ? rawId.split(':')[1] : null;
+
+    if (targetMixId) {
+      if (this.activeMixes.has(targetMixId)) return this.activeMixes.get(targetMixId);
+      const byId = Array.from(this.activeMixes.values()).find((m) => m.id === targetMixId);
+      if (byId) return byId;
+      if (this.webRoomsRef && this.webRoomsRef.has(targetMixId)) return this.webRoomsRef.get(targetMixId);
+    }
+
+    if (interaction && interaction.channelId && this.activeMixes.has(interaction.channelId)) {
+      return this.activeMixes.get(interaction.channelId);
+    }
+
+    if (this.activeMixes.size > 0) {
+      return Array.from(this.activeMixes.values())[0];
+    }
+
+    if (this.webRoomsRef && this.webRoomsRef.size > 0) {
+      return Array.from(this.webRoomsRef.values())[0];
+    }
+
+    return null;
+  }
 
   getOrCreateMix(channelId, creator, options = {}) {
     let mix = options.forceNew ? null : this.activeMixes.get(channelId);
@@ -3689,7 +3725,7 @@ class DiscordBotManager {
       .join('\n') || '*Nenhum*';
 
     const bannedList = veto.bannedMaps
-      .map((b) => `❌ ~~${b.map.name}~~ (Banido por <@${b.by}>)`)
+      .map((b) => `❌ ~~${b.map.name}~~ (Banido por ${isSnowflake(b.by) ? `<@${b.by}>` : '💬 **WhatsApp**'})`)
       .join('\n') || '*Nenhum mapa banido ainda*';
 
     const embed = new EmbedBuilder()
@@ -3707,9 +3743,13 @@ class DiscordBotManager {
       );
       if (veto.deciderMap.image) embed.setImage(veto.deciderMap.image);
     } else {
+      const turnCapTag = isSnowflake(turnCaptain?.id)
+        ? `<@${turnCaptain?.id}>`
+        : (turnCaptain ? `💬 **${turnCaptain.displayName || turnCaptain.nick || turnCaptain.name || turnCaptain.username || 'Capitão'}**` : (isSnowflake(mix.creatorId) ? `<@${mix.creatorId}>` : '💬 **Capitão**'));
+
       embed.setDescription(
         `Formato: **${mix.format}** • Rotação Oficial Valve\n\n` +
-          `👉 **Vez de Banir:** <@${turnCaptain?.id || mix.creatorId}> (${turnTeamName})`
+          `👉 **Vez de Banir:** ${turnCapTag} (${turnTeamName})`
       );
     }
 
@@ -3782,12 +3822,12 @@ class DiscordBotManager {
       .addFields(
         {
           name: `🛡️ ${mix.teamA.name} (${mix.teamA.side})`,
-          value: mix.teamA.players.map((p) => `${p.id === mix.teamA.captain?.id ? '👑 **Capitão:** ' : '• '}<@${p.id}> \`[Lvl ${p.level || 16} GC]\``).join('\n') || '*Sem jogadores*',
+          value: mix.teamA.players.map((p) => `${p.id === mix.teamA.captain?.id ? '👑 **Capitão:** ' : '• '}${isSnowflake(p.id) ? `<@${p.id}>` : `**${p.displayName || p.nick || p.name || p.username}** 💬`} \`[Lvl ${p.level || 16} GC]\``).join('\n') || '*Sem jogadores*',
           inline: true,
         },
         {
           name: `🔥 ${mix.teamB.name} (${mix.teamB.side})`,
-          value: mix.teamB.players.map((p) => `${p.id === mix.teamB.captain?.id ? '👑 **Capitão:** ' : '• '}<@${p.id}> \`[Lvl ${p.level || 16} GC]\``).join('\n') || '*Sem jogadores*',
+          value: mix.teamB.players.map((p) => `${p.id === mix.teamB.captain?.id ? '👑 **Capitão:** ' : '• '}${isSnowflake(p.id) ? `<@${p.id}>` : `**${p.displayName || p.nick || p.name || p.username}** 💬`} \`[Lvl ${p.level || 16} GC]\``).join('\n') || '*Sem jogadores*',
           inline: true,
         }
       )
@@ -4268,11 +4308,16 @@ class DiscordBotManager {
       const veto = mix.veto;
 
       const currentCaptain = veto.currentTurn === 'teamA' ? mix.teamA.captain : mix.teamB.captain;
-      const isAllowed = user.id === currentCaptain?.id || user.id === mix.creatorId;
+      const isWaCaptain = String(currentCaptain?.id).startsWith('wa_');
+      const isCurrentTeam = (veto.currentTurn === 'teamA' ? mix.teamA.players : mix.teamB.players).some((p) => p.id === user.id);
+      const isAllowed = user.id === currentCaptain?.id || user.id === mix.creatorId || (isWaCaptain && isCurrentTeam);
 
       if (!isAllowed) {
+        const capTag = isSnowflake(currentCaptain?.id)
+          ? `<@${currentCaptain?.id}>`
+          : `**${currentCaptain?.displayName || currentCaptain?.nick || currentCaptain?.name || currentCaptain?.username || 'Capitão'}** (WhatsApp)`;
         return interaction.reply({
-          content: `🚫 Não é a sua vez! Apenas o Capitão <@${currentCaptain?.id}> pode banir agora.`,
+          content: `🚫 Não é a sua vez! Apenas o Capitão ${capTag} pode banir agora.`,
           ephemeral: true,
         });
       }
@@ -4297,11 +4342,15 @@ class DiscordBotManager {
         mix.phase = 'side_pick';
         this.syncToWebRoom(mix);
 
+        const capBTag = isSnowflake(mix.teamB.captain?.id)
+          ? `<@${mix.teamB.captain?.id}>`
+          : (mix.teamB.captain ? `💬 **${mix.teamB.captain.displayName || mix.teamB.captain.nick || mix.teamB.captain.name || 'Capitão'}** [WhatsApp]` : `<@${mix.creatorId}>`);
+
         const embed = new EmbedBuilder()
           .setTitle(`🛡️ ESCOLHA DE LADO • ${veto.deciderMap.name.toUpperCase()}`)
           .setDescription(
             `🗺️ O mapa decisivo da partida é **${veto.deciderMap.emoji} ${veto.deciderMap.name}** (\`${veto.deciderMap.id}\`)!\n\n` +
-            `👉 Vez do Capitão do **${mix.teamB.name}** (<@${mix.teamB.captain?.id || mix.creatorId}>):\n` +
+            `👉 Vez do Capitão do **${mix.teamB.name}** (${capBTag}):\n` +
             `Escolha em qual lado sua equipe deseja começar a partida!`
           )
           .setColor(0x38bdf8)
@@ -4340,11 +4389,16 @@ class DiscordBotManager {
       const oppSide = chosenSide === 'CT' ? 'TR' : 'CT';
 
       const captainB = mix.teamB.captain || mix.players[1] || mix.players[0];
-      const isAllowed = user.id === captainB?.id || user.id === mix.creatorId;
+      const isWaCaptain = String(captainB?.id).startsWith('wa_');
+      const isTeamBMember = (mix.teamB.players || []).some((p) => p.id === user.id);
+      const isAllowed = user.id === captainB?.id || user.id === mix.creatorId || (isWaCaptain && isTeamBMember);
 
       if (!isAllowed) {
+        const capTag = isSnowflake(captainB?.id)
+          ? `<@${captainB?.id}>`
+          : `**${captainB?.displayName || captainB?.nick || captainB?.name || 'Capitão'}** (WhatsApp)`;
         return interaction.reply({
-          content: `🚫 Apenas o Capitão <@${captainB?.id}> pode escolher o lado!`,
+          content: `🚫 Apenas o Capitão ${capTag} pode escolher o lado!`,
           ephemeral: true,
         });
       }
@@ -4656,7 +4710,7 @@ class DiscordBotManager {
               PermissionsBitField.Flags.ManageChannels,
             ],
           },
-          ...(mix.teamA.players || []).map((p) => ({
+          ...(mix.teamA.players || []).filter((p) => isSnowflake(p.id)).map((p) => ({
             id: p.id,
             allow: [
               PermissionsBitField.Flags.ViewChannel,
@@ -4689,7 +4743,7 @@ class DiscordBotManager {
               PermissionsBitField.Flags.ManageChannels,
             ],
           },
-          ...(mix.teamB.players || []).map((p) => ({
+          ...(mix.teamB.players || []).filter((p) => isSnowflake(p.id)).map((p) => ({
             id: p.id,
             allow: [
               PermissionsBitField.Flags.ViewChannel,
@@ -4715,6 +4769,9 @@ class DiscordBotManager {
     const errors = [];
 
     const movePlayer = async (p, targetChannel, teamLetter) => {
+      if (!p || !isSnowflake(p.id)) {
+        return; // WhatsApp/Web player, skip Discord voice fetch
+      }
       try {
         const member = await guild.members.fetch(p.id).catch(() => null);
         if (!member) {
@@ -4757,7 +4814,7 @@ class DiscordBotManager {
 
     if (notInVoice.length > 0) {
       msg += `\n⚠️ **${notInVoice.length} jogador(es) não estão conectados em nenhuma call de voz:**\n`;
-      msg += notInVoice.map((item) => `• <@${item.p.id}> (${item.teamLetter === 'A' ? 'Time A' : 'Time B'})`).join('\n');
+      msg += notInVoice.map((item) => `• ${isSnowflake(item.p.id) ? `<@${item.p.id}>` : `**${item.p.displayName || item.p.username}**`} (${item.teamLetter === 'A' ? 'Time A' : 'Time B'})`).join('\n');
       msg += `\n\n👉 *Entrem em qualquer canal de voz do servidor e cliquem novamente no botão **[📞 Mover para Calls]** para o bot puxar vocês automaticamente!*`;
     }
 
@@ -4809,7 +4866,7 @@ class DiscordBotManager {
 
     let movedCount = 0;
     const allPlayers = [...(mix.teamA?.players || []), ...(mix.teamB?.players || []), ...(mix.players || [])];
-    const uniqueIds = [...new Set(allPlayers.map((p) => p.id))];
+    const uniqueIds = [...new Set(allPlayers.map((p) => p.id))].filter(isSnowflake);
 
     for (const playerId of uniqueIds) {
       try {
@@ -4979,8 +5036,7 @@ class DiscordBotManager {
       }
     }
     if (customId.startsWith('mvp_vote')) {
-      const [_, mixId] = customId.split(':');
-      const mix = this.activeMixes.get(interaction.channelId);
+      const mix = this.resolveMixFromInteraction(interaction, customId);
       if (!mix || !mix.mvpVote?.active) {
         return interaction.reply({ content: '⚠️ Esta votação de MVP já foi encerrada.', ephemeral: true });
       }
@@ -5023,7 +5079,7 @@ class DiscordBotManager {
         username: interaction.user.username,
       });
 
-      const mix = this.activeMixes.get(interaction.channelId);
+      const mix = this.resolveMixFromInteraction(interaction, customId);
       if (mix) {
         const p = mix.players.find((pl) => pl.id === interaction.user.id);
         if (p) {
@@ -5059,7 +5115,7 @@ class DiscordBotManager {
         username: interaction.user.username,
       });
 
-      const mix = this.activeMixes.get(interaction.channelId);
+      const mix = this.resolveMixFromInteraction(interaction, customId);
       const badge = parsed >= 20 ? '👑 Lvl 20+' : parsed >= 18 ? '🏆 Lvl 18-19' : parsed >= 14 ? '🥇 Lvl 14-17' : '🥈 Lvl 1-13';
 
       if (!mix) {
@@ -5134,7 +5190,7 @@ class DiscordBotManager {
       try {
         map = interaction.fields.getTextInputValue('map_input') || '';
       } catch (_) {}
-      const mix = this.activeMixes.get(interaction.channelId);
+      const mix = this.resolveMixFromInteraction(interaction, customId);
       if (!mix) {
         return interaction.reply({ content: '⚠️ Nenhum mix ativo encontrado neste canal.', ephemeral: true });
       }
@@ -5148,7 +5204,7 @@ class DiscordBotManager {
     if (customId.startsWith('modal_mix_sub')) {
       const outNick = interaction.fields.getTextInputValue('sub_out');
       const inNick = interaction.fields.getTextInputValue('sub_in');
-      const mix = this.activeMixes.get(interaction.channelId);
+      const mix = this.resolveMixFromInteraction(interaction, customId);
       if (!mix) {
         return interaction.reply({ content: '⚠️ Nenhum mix ativo encontrado neste canal.', ephemeral: true });
       }
@@ -5167,10 +5223,7 @@ class DiscordBotManager {
         });
       }
 
-      const mixId = customId.includes(':') ? customId.split(':')[1] : '';
-      const mix =
-        (mixId ? Array.from(this.activeMixes.values()).find((m) => m.id === mixId) : null) ||
-        this.activeMixes.get(interaction.channelId);
+      const mix = this.resolveMixFromInteraction(interaction, customId);
 
       if (mix) {
         mix.serverIp = cleanIp;
