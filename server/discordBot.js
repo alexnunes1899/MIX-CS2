@@ -1678,9 +1678,15 @@ class DiscordBotManager {
       }
       const ip = args.slice(1).join(' ').trim();
       if (ip) {
-        this.config.serverConnect = ip;
-        this.saveConfig({ serverConnect: ip });
-        return message.reply(`✅ Servidor CS2 configurado com sucesso para os mixes: \`${ip}\``);
+        const clean = ip.replace(/^connect\s+/i, '').trim();
+        this.config.serverConnect = clean;
+        this.saveConfig({ serverConnect: clean });
+        const mix = this.activeMixes.get(message.channelId);
+        if (mix) {
+          mix.serverIp = clean;
+          this.syncToWebRoom(mix);
+        }
+        return message.reply(`✅ Servidor CS2 configurado com sucesso para os mixes: \`${clean}\``);
       }
       return message.reply(
         this.config.serverConnect
@@ -3239,6 +3245,117 @@ class DiscordBotManager {
     ];
   }
 
+  async startAutomaticLiveMonitoring(mix, channel, guild) {
+    if (!channel || !mix) return;
+
+    try {
+      // 1. Send live match tracker message & register it in Discord message tracker engine
+      const embed = this.buildLiveMatchEmbed('Sistema CS2 Mix Hub', null, true, mix);
+      const row = this.buildLiveMatchButtons(Boolean(this.lastGsiState?.player?.name), true);
+
+      const monitorMsg = await channel.send({
+        content: `📡 **MONITORAMENTO AUTOMÁTICO INICIADO!** O bot está acompanhando a partida em tempo real:`,
+        embeds: [embed],
+        components: [row],
+      }).catch((err) => {
+        console.warn('[BOT] Erro ao enviar embed de monitoramento automático:', err.message);
+        return null;
+      });
+
+      if (monitorMsg) {
+        this.registerLiveTracker(monitorMsg, 'Sistema CS2 Mix Hub', null, true);
+      }
+
+      // 2. Check if Server IP is defined. If missing, prompt players in chat with 1-click modal button
+      const currentIp = (mix.serverIp || this.config.serverConnect || '').trim();
+      if (!currentIp) {
+        const ipEmbed = new EmbedBuilder()
+          .setColor(0xeab308)
+          .setTitle('⚠️ IP do Servidor CS2 Não Definido')
+          .setDescription(
+            `Para que os 10 jogadores possam conectar com 1 clique (Steam Direct) e o bot possa exibir o ping e status do servidor, informe o IP agora!\n\n` +
+            `👉 Clique no botão abaixo para preencher ou digite: \`!servidor <ip:porta>\``
+          );
+
+        const ipRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId(`mix_set_ip:${mix.id}`)
+            .setLabel('⚙️ Definir IP do Servidor')
+            .setStyle(ButtonStyle.Primary)
+            .setEmoji('⚙️')
+        );
+
+        await channel.send({ embeds: [ipEmbed], components: [ipRow] }).catch(() => {});
+      }
+
+      // 3. Check if Valve GSI signal is currently received from any player's PC
+      const isGsiActive = Boolean(
+        this.lastGsiState &&
+        (Date.now() - (this.lastGsiState.receivedAt || 0) < 60000) &&
+        this.lastGsiState.player?.name
+      );
+
+      const domain = this.config.webUrl || 'https://mix-cs2-production.up.railway.app';
+      const roomId = mix.id || 'MIX-PRO';
+      const installerUrl = `${domain}/api/gsi/installer/${roomId}`;
+      const cfgUrl = `${domain}/api/gsi/cfg/${roomId}`;
+
+      if (!isGsiActive) {
+        const gsiAlertEmbed = new EmbedBuilder()
+          .setColor(0xf97316)
+          .setTitle('📡 Aguardando Sinal GSI dos Jogadores (Vida & Dinheiro em Tempo Real)')
+          .setDescription(
+            `Nenhum computador de jogador está enviando telemetria do CS2 no momento.\n\n` +
+            `Para o bot atualizar automaticamente o **placar**, a **vida (HP)**, o **dinheiro ($)** e as **kills** de cada jogador rodada a rodada, basta **1 jogador** da partida ter o GSI ativado!\n\n` +
+            `⚡ **Instalação Rápida em 1 Clique (Automática):**\n` +
+            `Clique no botão abaixo para baixar o instalador automático (\`.bat\`) e execute-o. Ele localiza a pasta do seu CS2 e instala tudo sozinho!`
+          );
+
+        const gsiButtonsRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setLabel('⚡ Instalar GSI (1-Clique .bat)')
+            .setStyle(ButtonStyle.Link)
+            .setURL(installerUrl),
+          new ButtonBuilder()
+            .setLabel('📥 Baixar gamestate_integration.cfg')
+            .setStyle(ButtonStyle.Link)
+            .setURL(cfgUrl),
+          new ButtonBuilder()
+            .setCustomId('gsi_help_info')
+            .setLabel('❓ Como Funciona?')
+            .setStyle(ButtonStyle.Secondary)
+        );
+
+        await channel.send({ embeds: [gsiAlertEmbed], components: [gsiButtonsRow] }).catch(() => {});
+
+        // 4. Follow-up check after 35 seconds to notify if connected or re-prompt captains
+        setTimeout(async () => {
+          try {
+            const activeNow = Boolean(
+              this.lastGsiState &&
+              (Date.now() - (this.lastGsiState.receivedAt || 0) < 60000) &&
+              this.lastGsiState.player?.name
+            );
+
+            if (!activeNow && mix.phase === 'live') {
+              const capA = mix.teamA?.captain?.id ? `<@${mix.teamA.captain.id}>` : 'Time A';
+              const capB = mix.teamB?.captain?.id ? `<@${mix.teamB.captain.id}>` : 'Time B';
+              await channel.send({
+                content: `⚠️ **Aviso GSI**: Ainda não detectamos sinal do CS2 de nenhum jogador. ${capA} e ${capB}, peçam para alguém da partida rodar o instalador de 1-Clique acima para ativar o radar e estatísticas automáticas!`,
+              }).catch(() => {});
+            } else if (activeNow && mix.phase === 'live') {
+              await channel.send({
+                content: `✅ **Sinal GSI detectado com sucesso!** O bot agora está recebendo vida, dinheiro e rounds diretamente do CS2! 🎯`,
+              }).catch(() => {});
+            }
+          } catch (_) {}
+        }, 35000);
+      }
+    } catch (err) {
+      console.warn('[BOT] Erro ao executar startAutomaticLiveMonitoring:', err);
+    }
+  }
+
   buildMixTutorialEmbed() {
     return new EmbedBuilder()
       .setTitle('📖 GUIA RÁPIDO DO CS2 MIX HUB • COMO MEXER NO BOT')
@@ -3640,6 +3757,37 @@ class DiscordBotManager {
         return interaction.update({ embeds, components });
       }
       return interaction.reply({ content: 'Clipe não encontrado.', ephemeral: true });
+    }
+
+    // Mix Set IP Modal Trigger
+    if (customId.startsWith('mix_set_ip:') || customId === 'mix_set_ip') {
+      const mixId = customId.includes(':') ? customId.split(':')[1] : '';
+      const modal = new ModalBuilder()
+        .setCustomId(`modal_set_ip:${mixId}`)
+        .setTitle('⚙️ Definir IP do Servidor CS2');
+
+      const ipInput = new TextInputBuilder()
+        .setCustomId('server_ip_input')
+        .setLabel('Endereço IP:Porta do Servidor')
+        .setPlaceholder('Ex: 177.54.152.82:27015 ou connect 177.54.152.82:27015')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true);
+
+      modal.addComponents(new ActionRowBuilder().addComponents(ipInput));
+      return interaction.showModal(modal);
+    }
+
+    // GSI Help Information Button
+    if (customId === 'gsi_help_info') {
+      return interaction.reply({
+        content:
+          `ℹ️ **O que é Valve GSI e como funciona?**\n\n` +
+          `• O **Game State Integration (GSI)** é um recurso nativo e oficial da Valve no CS2 que transmite eventos do jogo em tempo real (vida, colete, dinheiro, kills, rounds, bombas).\n` +
+          `• **Basta 1 jogador** da partida estar conectado com o GSI ativo para todo o servidor/Discord e o Hub Web acompanharem o radar e estatísticas ao vivo!\n` +
+          `• O arquivo de configuração (\`gamestate_integration_cs2mixhub.cfg\`) fica salvo na pasta do seu CS2: \`.../steamapps/common/Counter-Strike Global Offensive/game/csgo/cfg\`.\n` +
+          `• O **Instalador de 1-Clique (\`.bat\`)** localiza a sua pasta da Steam e instala tudo automaticamente em 2 segundos — sem programas externos e 100% oficial pela Valve!`,
+        ephemeral: true,
+      });
     }
 
     // CS2 Case Simulator Buttons
@@ -4098,11 +4246,17 @@ class DiscordBotManager {
       const finalEmbed = this.buildMatchReadyEmbed(mix);
       const components = this.buildMatchReadyButtons(mix);
 
-      return interaction.update({
+      await interaction.update({
         content: `🔥 **PARTIDA PRONTA PARA COMEÇAR!** GL & HF!`,
         embeds: [finalEmbed],
         components,
       });
+
+      // INICIAR MONITORAMENTO AUTOMÁTICO EM TEMPO REAL
+      this.startAutomaticLiveMonitoring(mix, interaction.channel, interaction.guild).catch((err) => {
+        console.warn('[BOT] Erro ao iniciar monitoramento automático:', err.message);
+      });
+      return;
     }
 
     // 8. ROULETTE
@@ -4120,11 +4274,17 @@ class DiscordBotManager {
       const embed = this.buildMatchReadyEmbed(mix);
       const components = this.buildMatchReadyButtons(mix);
 
-      return interaction.update({
+      await interaction.update({
         content: `🎲 **MAPA DEFINIDO PELA ROLETA!** GL & HF!`,
         embeds: [embed],
         components,
       });
+
+      // INICIAR MONITORAMENTO AUTOMÁTICO EM TEMPO REAL
+      this.startAutomaticLiveMonitoring(mix, interaction.channel, interaction.guild).catch((err) => {
+        console.warn('[BOT] Erro ao iniciar monitoramento automático:', err.message);
+      });
+      return;
     }
 
     // 9. VOICE MOVER
@@ -4878,6 +5038,46 @@ class DiscordBotManager {
       }
       const res = await this.executeSubstitute(mix, outNick, inNick, interaction.guild, interaction.channel);
       return interaction.reply({ content: res.message, ephemeral: !res.success });
+    }
+
+    if (customId.startsWith('modal_set_ip')) {
+      const rawIp = interaction.fields.getTextInputValue('server_ip_input');
+      const cleanIp = (rawIp || '').replace(/^connect\s+/i, '').trim();
+
+      if (!cleanIp || !cleanIp.includes(':')) {
+        return interaction.reply({
+          content: '⚠️ Formato de IP inválido! Use o formato `ip:porta`, por exemplo: `177.54.152.82:27015`.',
+          ephemeral: true,
+        });
+      }
+
+      const mixId = customId.includes(':') ? customId.split(':')[1] : '';
+      const mix =
+        (mixId ? Array.from(this.activeMixes.values()).find((m) => m.id === mixId) : null) ||
+        this.activeMixes.get(interaction.channelId);
+
+      if (mix) {
+        mix.serverIp = cleanIp;
+        this.syncToWebRoom(mix);
+      }
+      this.config.serverConnect = cleanIp;
+      this.saveConfig({ serverConnect: cleanIp });
+
+      const connectUrl = this.getPublicWebUrl(`/connect?ip=${encodeURIComponent(cleanIp)}`);
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setLabel('🚀 Conectar Direto no CS2')
+          .setStyle(ButtonStyle.Link)
+          .setURL(connectUrl)
+      );
+
+      return interaction.reply({
+        content:
+          `✅ **IP do Servidor CS2 Definido com Sucesso por <@${interaction.user.id}>!**\n\n` +
+          `🌐 **Endereço:** \`connect ${cleanIp}\`\n\n` +
+          `Clique no botão abaixo ou use o console do CS2 (\`~\`) para entrar no servidor!`,
+        components: [row],
+      });
     }
   }
 

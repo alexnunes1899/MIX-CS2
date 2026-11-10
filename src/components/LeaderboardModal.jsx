@@ -164,8 +164,16 @@ export default function LeaderboardModal({
 
   const top3 = sortedPlayers.slice(0, 3);
 
-  // Filter matches
+  // Filter matches - strictly 10 players and finalized
   const filteredMatches = matches.filter((m) => {
+    const has10Players =
+      Array.isArray(m.winnerPlayers) &&
+      Array.isArray(m.loserPlayers) &&
+      m.winnerPlayers.length === 5 &&
+      m.loserPlayers.length === 5;
+    const isFinalized = Boolean(m.score && m.winner);
+    if (!has10Players || !isFinalized) return false;
+
     if (matchSourceFilter !== 'all' && m.source !== matchSourceFilter) return false;
     if (matchMapFilter !== 'all') {
       const qMap = matchMapFilter.toLowerCase().replace('de_', '');
