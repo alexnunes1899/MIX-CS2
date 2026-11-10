@@ -2999,82 +2999,19 @@ server.listen(PORT, '0.0.0.0', () => {
     io.emit('match_history_updated', getMatchHistoryState());
   });
 
-  const isCloudEnv = Boolean(
-    process.env.RAILWAY_ENVIRONMENT ||
-    process.env.RAILWAY_PROJECT_ID ||
-    process.env.RAILWAY_STATIC_URL
-  );
-  const cloudBaseUrl = 'https://mix-cs2-production.up.railway.app';
-
-  const ensureBotOnlineWithCloudFailover = async () => {
+  const ensureBotOnline = async () => {
     const hasLocalToken = Boolean(discordBotManager.config.token || process.env.DISCORD_BOT_TOKEN);
     if (!hasLocalToken) return;
 
-    if (isCloudEnv) {
-      if (!discordBotManager.getStatus().running) {
-        await discordBotManager.start().catch((err) => {
-          console.warn('[DISCORD BOT] Aviso ao inicializar bot na nuvem:', err.message);
-        });
-      }
-      return;
-    }
-
-    // Local instance: check if Production Cloud (Railway) is running the Discord Bot 24/7
-    try {
-      const statusRes = await fetch(`${cloudBaseUrl}/api/discord/bot/status`, {
-        signal: AbortSignal.timeout(5000),
-      });
-      if (statusRes.ok) {
-        const cloudStatus = await statusRes.json();
-        if (cloudStatus && cloudStatus.running) {
-          // Cloud is actively running the bot! Avoid dual-instance Discord Gateway conflict
-          if (discordBotManager.getStatus().running) {
-            console.log('☁️ [DISCORD BOT] Bot ativo na nuvem (Railway 24/7). Desativando instância local duplicada para evitar conflito.');
-            await discordBotManager.stop();
-          }
-          return;
-        }
-
-        // Cloud is online but its bot is stopped (e.g. after container redeploy): auto-provision Cloud!
-        console.log('☁️ [DISCORD BOT] Sincronizando e ativando Bot 24/7 no servidor de produção (Railway)...');
-        await fetch(`${cloudBaseUrl}/api/discord/bot/config`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ...discordBotManager.config,
-            lastDealsDropAt: discordBotManager.config.lastDealsDropAt || Date.now(),
-          }),
-          signal: AbortSignal.timeout(6000),
-        });
-        const startRes = await fetch(`${cloudBaseUrl}/api/discord/bot/start`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          signal: AbortSignal.timeout(10000),
-        });
-        if (startRes.ok) {
-          const startData = await startRes.json();
-          if (startData && startData.success) {
-            console.log(`✅ [DISCORD BOT] Bot ativado 24/7 na nuvem (Railway) como ${startData.tag}!`);
-            if (discordBotManager.getStatus().running) {
-              await discordBotManager.stop();
-            }
-            return;
-          }
-        }
-      }
-    } catch (_) {
-      // Cloud unreachable -> fallback to local bot instance
-    }
-
     if (!discordBotManager.getStatus().running) {
       await discordBotManager.start().catch((err) => {
-        console.warn('[DISCORD BOT] Aviso ao inicializar bot local (failover):', err.message);
+        console.warn('[DISCORD BOT] Aviso ao inicializar bot local:', err.message);
       });
     }
   };
 
-  ensureBotOnlineWithCloudFailover();
-  setInterval(ensureBotOnlineWithCloudFailover, 25000);
+  ensureBotOnline();
+  setInterval(ensureBotOnline, 30000);
 
   // Initialize WhatsApp Bot Integration with store references
   whatsappBot.setStoreRefs(discordBotManager, rooms);
