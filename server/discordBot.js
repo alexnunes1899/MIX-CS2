@@ -4133,6 +4133,78 @@ class DiscordBotManager {
     }
 
     const { channelA, channelB } = resolved;
+
+    // Apply exclusive private permissions for each team (Only Team A players access Call/Chat A, only Team B access B)
+    try {
+      if (channelA && channelA.manageable) {
+        const overwritesA = [
+          {
+            id: guild.id, // @everyone: cannot connect or send messages
+            deny: [PermissionsBitField.Flags.Connect, PermissionsBitField.Flags.SendMessages],
+            allow: [PermissionsBitField.Flags.ViewChannel],
+          },
+          {
+            id: this.client.user.id,
+            allow: [
+              PermissionsBitField.Flags.ViewChannel,
+              PermissionsBitField.Flags.Connect,
+              PermissionsBitField.Flags.Speak,
+              PermissionsBitField.Flags.MoveMembers,
+              PermissionsBitField.Flags.ManageChannels,
+            ],
+          },
+          ...(mix.teamA.players || []).map((p) => ({
+            id: p.id,
+            allow: [
+              PermissionsBitField.Flags.ViewChannel,
+              PermissionsBitField.Flags.Connect,
+              PermissionsBitField.Flags.Speak,
+              PermissionsBitField.Flags.SendMessages,
+              PermissionsBitField.Flags.ReadMessageHistory,
+            ],
+          })),
+        ];
+        await channelA.permissionOverwrites.set(overwritesA).catch((e) => {
+          console.warn('[VOICE OVERWRITES] Time A:', e.message);
+        });
+      }
+
+      if (channelB && channelB.manageable) {
+        const overwritesB = [
+          {
+            id: guild.id, // @everyone: cannot connect or send messages
+            deny: [PermissionsBitField.Flags.Connect, PermissionsBitField.Flags.SendMessages],
+            allow: [PermissionsBitField.Flags.ViewChannel],
+          },
+          {
+            id: this.client.user.id,
+            allow: [
+              PermissionsBitField.Flags.ViewChannel,
+              PermissionsBitField.Flags.Connect,
+              PermissionsBitField.Flags.Speak,
+              PermissionsBitField.Flags.MoveMembers,
+              PermissionsBitField.Flags.ManageChannels,
+            ],
+          },
+          ...(mix.teamB.players || []).map((p) => ({
+            id: p.id,
+            allow: [
+              PermissionsBitField.Flags.ViewChannel,
+              PermissionsBitField.Flags.Connect,
+              PermissionsBitField.Flags.Speak,
+              PermissionsBitField.Flags.SendMessages,
+              PermissionsBitField.Flags.ReadMessageHistory,
+            ],
+          })),
+        ];
+        await channelB.permissionOverwrites.set(overwritesB).catch((e) => {
+          console.warn('[VOICE OVERWRITES] Time B:', e.message);
+        });
+      }
+    } catch (err) {
+      console.warn('[VOICE MOVER] Falha ao configurar permissões exclusivas das calls:', err.message);
+    }
+
     let movedCount = 0;
     const movedA = [];
     const movedB = [];
@@ -4248,10 +4320,53 @@ class DiscordBotManager {
       } catch (_) {}
     }
 
+    await this.resetVoicePermissions(guild);
+
     return {
       success: true,
-      message: `🔊 **${movedCount} jogador(es)** foram movidos de volta para o canal <#${lobbyChannel.id}>!`,
+      message: `🔊 **${movedCount} jogador(es)** foram movidos de volta para o canal <#${lobbyChannel.id}>!\n🔓 Permissões das calls dos times foram liberadas.`,
     };
+  }
+
+  async resetVoicePermissions(guild) {
+    if (!guild) return;
+    try {
+      const guildVoice = this.config.guildVoiceChannels?.[guild.id] || {};
+      if (guildVoice.teamAVoiceId) {
+        const cA = await guild.channels.fetch(guildVoice.teamAVoiceId).catch(() => null);
+        if (cA && cA.manageable) {
+          await cA.permissionOverwrites.set([
+            {
+              id: guild.id,
+              allow: [
+                PermissionsBitField.Flags.ViewChannel,
+                PermissionsBitField.Flags.Connect,
+                PermissionsBitField.Flags.Speak,
+                PermissionsBitField.Flags.SendMessages,
+              ],
+            },
+          ]).catch(() => {});
+        }
+      }
+      if (guildVoice.teamBVoiceId) {
+        const cB = await guild.channels.fetch(guildVoice.teamBVoiceId).catch(() => null);
+        if (cB && cB.manageable) {
+          await cB.permissionOverwrites.set([
+            {
+              id: guild.id,
+              allow: [
+                PermissionsBitField.Flags.ViewChannel,
+                PermissionsBitField.Flags.Connect,
+                PermissionsBitField.Flags.Speak,
+                PermissionsBitField.Flags.SendMessages,
+              ],
+            },
+          ]).catch(() => {});
+        }
+      }
+    } catch (err) {
+      console.warn('[VOICE RESET] Falha ao restaurar permissões:', err.message);
+    }
   }
 
   // ==========================================
