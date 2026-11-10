@@ -38,6 +38,8 @@ import { cs2NewsRadar } from './cs2NewsRadar.js';
 import { proMatchesAgenda } from './proMatchesAgenda.js';
 import { freeGamesRadar } from './freeGamesRadar.js';
 import { communityClips } from './communityClips.js';
+import { whatsappBot } from './whatsappBot.js';
+import { renderWhatsAppAdminHtml } from './whatsappHtml.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -701,6 +703,15 @@ io.on('connection', (socket) => {
     }
 
     dispatchAutoDiscordLobby(room);
+
+    // WhatsApp Group Notifications
+    if (room.players.length === 1 && !room._waCreatedNotified) {
+      room._waCreatedNotified = true;
+      whatsappBot.notifyMixCreated(room).catch(() => {});
+    } else if (room.players.length === 8 || room.players.length === 9) {
+      whatsappBot.notifyMissingSlots(room).catch(() => {});
+    }
+
     emitRoomState(cleanRoomId, room);
     broadcastRoomsList();
   });
@@ -1616,6 +1627,12 @@ io.on('connection', (socket) => {
     if (room.teamA?.length === 5 && room.teamB?.length === 5) {
       recordMatchHistoryEntry(webMatchRecord);
       io.emit('match_history_updated', getMatchHistoryState());
+      whatsappBot.notifyMatchFinished(room, {
+        score: webMatchRecord.score,
+        winner: webMatchRecord.winner,
+        map: webMatchRecord.map,
+        mvp: webMatchRecord.mvpNick,
+      }).catch(() => {});
     }
 
     emitRoomState(roomId, room);
@@ -1970,6 +1987,77 @@ app.get(['/connect', '/join-cs2'], (req, res) => {
   </script>
 </body>
 </html>`);
+});
+
+// ==========================================
+// WHATSAPP BOT MANAGEMENT & API
+// ==========================================
+app.get('/whatsapp', (req, res) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.status(200).type('html').send(renderWhatsAppAdminHtml());
+});
+
+app.get('/api/whatsapp/status', (req, res) => {
+  res.json(whatsappBot.getStatus());
+});
+
+app.get('/api/whatsapp/groups', async (req, res) => {
+  try {
+    const groups = await whatsappBot.fetchGroups();
+    res.json(groups);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/whatsapp/pair-code', async (req, res) => {
+  const { phoneNumber } = req.body || {};
+  try {
+    const code = await whatsappBot.requestPairingCode(phoneNumber);
+    res.json({ success: true, code });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/whatsapp/config', (req, res) => {
+  const updated = whatsappBot.saveConfig(req.body);
+  res.json({ success: true, config: updated });
+});
+
+app.post('/api/whatsapp/test', async (req, res) => {
+  try {
+    const ok = await whatsappBot.sendMessageToGroup(
+      `🚀 *CS2 MIX HUB • TESTE DE NOTIFICAÇÃO*\n\n` +
+      `O bot foi integrado e está conectado com sucesso no WhatsApp!\n` +
+      `As notificações automáticas de criação de mix, vagas restantes, times e placares serão enviadas aqui! 🎯`
+    );
+    if (ok) {
+      res.json({ success: true });
+    } else {
+      res.status(400).json({ success: false, error: 'Falha ao enviar mensagem. Verifique se o grupo foi salvo e se o bot está conectado.' });
+    }
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/whatsapp/connect', async (req, res) => {
+  try {
+    await whatsappBot.connect();
+    res.json({ success: true, status: whatsappBot.status });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/whatsapp/logout', async (req, res) => {
+  try {
+    await whatsappBot.logout();
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // Get active rooms (runs inactivity cleanup first)
@@ -2963,6 +3051,11 @@ server.listen(PORT, '0.0.0.0', () => {
 
   ensureBotOnlineWithCloudFailover();
   setInterval(ensureBotOnlineWithCloudFailover, 25000);
+
+  // Initialize WhatsApp Bot Integration
+  whatsappBot.initialize().catch((err) => {
+    console.warn('[WHATSAPP] Erro ao inicializar bot:', err.message);
+  });
 });
 
 // Graceful shutdown for Railway & container orchestrators

@@ -37,6 +37,7 @@ import {
   normalizeMapName,
 } from './matchHistory.js';
 import { hardwareDealsManager, CATEGORY_LABELS } from './hardwareDeals.js';
+import { whatsappBot } from './whatsappBot.js';
 import { SteamScannerService } from './steamScanner.js';
 import { cs2NewsRadar } from './cs2NewsRadar.js';
 import { proMatchesAgenda } from './proMatchesAgenda.js';
@@ -2653,6 +2654,12 @@ class DiscordBotManager {
     if (typeof this.onMatchRecorded === 'function') {
       try { this.onMatchRecorded(matchRecord); } catch (e) {}
     }
+    whatsappBot.notifyMatchFinished(mix, {
+      score,
+      winner: winnerTeam.name || (winner === 'A' ? 'Time A' : 'Time B'),
+      map: resolvedMap,
+      mvp: null,
+    }).catch(() => {});
 
     // Check and award tier roles asynchronously to winners
     this.checkAndAwardTierRoles(channel?.guild, winnerTeam.players, profiles).catch((err) => {
@@ -2833,6 +2840,7 @@ class DiscordBotManager {
       const msg = `📢 ${roleMention}**FALTA(M) APENAS ${missing} ${plural} PARA FECHAR O MIX 5v5!**\n` +
         `👉 Quem vai jogar? Clique no botão verde **\`[➕ Entrar]\`** ou digite \`!entrar\` agora!`;
       await channel.send(msg);
+      whatsappBot.notifyMissingSlots(mix).catch(() => {});
     } catch (e) {
       console.warn('[DISCORD BOT] Falha ao notificar vagas:', e.message);
     }
@@ -2981,6 +2989,7 @@ class DiscordBotManager {
       };
       this.activeMixes.set(channelId, mix);
       this.syncToWebRoom(mix);
+      whatsappBot.notifyMixCreated(mix).catch(() => {});
     }
     return mix;
   }
@@ -3265,6 +3274,9 @@ class DiscordBotManager {
       if (monitorMsg) {
         this.registerLiveTracker(monitorMsg, 'Sistema CS2 Mix Hub', null, true);
       }
+
+      // Dispatch WhatsApp Group notification
+      whatsappBot.notifyMatchReady(mix).catch(() => {});
 
       // 2. Check if Server IP is defined. If missing, prompt players in chat with 1-click modal button
       const currentIp = (mix.serverIp || this.config.serverConnect || '').trim();

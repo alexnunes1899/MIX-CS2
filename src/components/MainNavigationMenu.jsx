@@ -10,6 +10,7 @@ import {
   BookOpen,
   Target,
   Swords,
+  MessageCircle,
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react';
@@ -153,6 +154,14 @@ export default function MainNavigationMenu({
       action: onOpenDiscordModal,
       title: 'Bot e Alertas Oficiais no Discord',
       iconColor: 'text-indigo-400',
+    },
+    {
+      id: 'whatsapp',
+      label: 'WhatsApp',
+      icon: MessageCircle,
+      action: () => window.open('/whatsapp', '_blank'),
+      title: 'Bot do WhatsApp para Grupos (Avisos de Mix)',
+      iconColor: 'text-emerald-400',
     },
   ];
 
