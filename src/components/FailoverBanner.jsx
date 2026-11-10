@@ -91,39 +91,9 @@ export default function FailoverBanner({ roomId = 'MIX-PRO', roomPassword = '', 
 
   if (dismissed) return null;
 
-  // CASE 1: Running on Local Backup Server (PC)
+  // When running locally on the user's PC, localhost is the primary server.
   if (isLocalHost) {
-    return (
-      <div className="bg-slate-900/95 border-b border-emerald-500/30 px-4 py-1.5 text-xs text-slate-300 flex items-center justify-between shadow-md backdrop-blur">
-        <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span className="font-bold text-emerald-400">Servidor Local de Backup Ativo</span>
-          <span className="text-slate-500 hidden sm:inline">•</span>
-          <span className="text-slate-400 hidden sm:inline">Executando no seu computador (localhost:3000)</span>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {onlineAvailable ? (
-            <a
-              href={`https://mix-cs2-production.up.railway.app/?room=${encodeURIComponent(roomId)}`}
-              className="px-2.5 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500 hover:text-slate-950 font-bold transition-all text-[11px]"
-            >
-              🌐 Servidor Online Voltou (Ir para Nuvem)
-            </a>
-          ) : (
-            <button
-              onClick={checkOnlineProduction}
-              className="text-slate-400 hover:text-amber-300 text-[11px] underline cursor-pointer"
-            >
-              Verificar se o servidor online voltou
-            </button>
-          )}
-          <button onClick={() => setDismissed(true)} className="text-slate-500 hover:text-white p-0.5 cursor-pointer">
-            <X size={14} />
-          </button>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   // CASE 2: Online Server is Disconnected / Down

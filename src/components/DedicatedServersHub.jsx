@@ -378,82 +378,95 @@ pause
   return (
     <div className="min-h-screen bg-[#070a12] text-slate-100 flex flex-col font-sans selection:bg-emerald-500/30 selection:text-emerald-300">
       
-      {/* Top Navbar — Menu de Início Sempre Visível */}
-      <header className="border-b border-slate-800 bg-[#0c1220]/95 backdrop-blur-xl sticky top-0 z-40 shadow-xl">
-        <div className="max-w-7xl mx-auto px-3 sm:px-5 py-2.5 sm:py-3 space-y-2.5">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            
-            {/* Left: Logo & Back */}
-            <div className="flex items-center gap-3">
-              <div
-                className="flex items-center gap-2.5 cursor-pointer group"
-                onClick={onGoHome}
-              >
-                <MixHubLogo className="w-9 h-9" />
-                <div>
-                  <span className="text-base font-bold font-heading tracking-wider text-white group-hover:text-amber-400 transition-colors">
-                    MIX HUB
-                  </span>
-                </div>
+      {/* Top Navbar — Menu Único Profissional Padrão FACEIT / HLTV */}
+      <header className="border-b border-slate-800/80 bg-[#070b15]/95 backdrop-blur-xl sticky top-0 z-40 shadow-2xl">
+        <div className="max-w-7xl mx-auto px-3 sm:px-5 h-16 sm:h-20 flex items-center justify-between gap-3">
+          
+          {/* 1. Left: Logo & Back Action */}
+          <div className="flex items-center gap-3 shrink-0">
+            <div
+              className="flex items-center gap-2.5 cursor-pointer group select-none"
+              onClick={onGoHome}
+            >
+              <MixHubLogo className="w-9 h-9 sm:w-10 sm:h-10" />
+              <div>
+                <span className="text-base sm:text-lg font-bold font-heading tracking-wider text-white group-hover:text-amber-400 transition-colors">
+                  MIX HUB
+                </span>
+                <span className="hidden sm:inline-block ml-2 text-emerald-400 text-[10px] font-black px-2 py-0.5 rounded-md bg-emerald-500/10 border border-emerald-500/30 font-mono">
+                  SERVIDORES
+                </span>
               </div>
-
-              {roomId && onGoToRoom && (
-                <button
-                  type="button"
-                  onClick={() => onGoToRoom(roomId)}
-                  className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95"
-                >
-                  <ArrowLeft size={14} />
-                  <span>Voltar para o Mix ({roomId})</span>
-                </button>
-              )}
             </div>
 
-            {/* Center: Title Pill */}
-            <div className="hidden md:flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-xs font-extrabold uppercase tracking-widest text-emerald-400 font-mono">
-                Central Oficial de Servidores CS2
-              </span>
-            </div>
-
-            {/* Right: Active Room Server Badge & Sound Toggle */}
-            <div className="flex items-center gap-2">
-              {/* Sound Toggle (Silenciar / Ativar Sons) */}
+            {roomId && onGoToRoom && (
               <button
                 type="button"
-                onClick={onToggleSound}
-                className={`px-2.5 py-1.5 rounded-xl transition-all cursor-pointer border flex items-center gap-1.5 shadow-sm active:scale-95 ${
-                  soundEnabled
-                    ? 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border-emerald-500/40'
-                    : 'bg-slate-900/90 hover:bg-slate-800 text-slate-400 hover:text-white border-slate-700/60'
-                }`}
-                title={soundEnabled ? 'Sons Ativados (Clique para silenciar o site)' : 'Sons Silenciados (Clique para ativar efeitos sonoros)'}
+                onClick={() => onGoToRoom(roomId)}
+                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95 shrink-0"
               >
-                {soundEnabled ? (
-                  <Volume2 size={16} className="text-emerald-400" />
-                ) : (
-                  <VolumeX size={16} className="text-slate-400" />
-                )}
-                <span className="hidden sm:inline text-[11px] font-bold">
-                  {soundEnabled ? 'Som Ativo' : 'Sem Som'}
-                </span>
+                <ArrowLeft size={14} />
+                <span className="hidden sm:inline">Voltar para o Mix ({roomId})</span>
+                <span className="sm:hidden">Voltar</span>
               </button>
-
-              {currentServerIp ? (
-                <div className="flex items-center gap-2 bg-slate-950 border border-emerald-500/40 rounded-xl px-3 py-1 text-xs font-mono">
-                  <span className="text-slate-500 text-[10px]">SERVIDOR ATUAL:</span>
-                  <strong className="text-emerald-400">{currentServerIp}</strong>
-                </div>
-              ) : (
-                <div className="text-[11px] font-mono text-slate-500 bg-slate-950 px-2.5 py-1 rounded-xl border border-slate-800">
-                  Nenhum servidor vinculado à sala
-                </div>
-              )}
-            </div>
+            )}
           </div>
 
-          {/* ROW 2: MENU DE INÍCIO — CENTRALIZADO E COM DESIGN ESPORTS UNIFICADO */}
+          {/* 2. Center: Sleek Responsive Menu (Zero Wrap) */}
+          <div className="hidden md:flex items-center justify-center flex-1 min-w-0 px-2">
+            <MainNavigationMenu
+              activeTab="servers"
+              onGoHome={onGoHome}
+              onOpenLeaderboard={onOpenLeaderboard}
+              onOpenDiscordModal={onOpenDiscordModal}
+              onOpenWhatsAppModal={onOpenWhatsAppModal}
+              onOpenQuickMapRoll={onOpenQuickMapRoll}
+              onOpenQuickVeto={onOpenQuickVeto}
+              onOpenServersPage={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+              onOpenRoomsHub={onOpenRoomsHub}
+              onOpenTournament={onOpenTournament}
+              onOpenGrenades={onOpenGrenades}
+              onOpenAimReflex={onOpenAimReflex}
+              activeRoomsCount={activeRoomsCount}
+              soundEnabled={soundEnabled}
+            />
+          </div>
+
+          {/* 3. Right: Active Room Server Badge & Sound Toggle */}
+          <div className="flex items-center gap-2 shrink-0">
+            {currentServerIp && (
+              <div className="hidden lg:flex items-center gap-2 bg-slate-950 border border-emerald-500/40 rounded-xl px-2.5 py-1 text-xs font-mono">
+                <span className="text-slate-500 text-[10px]">IP:</span>
+                <strong className="text-emerald-400">{currentServerIp}</strong>
+              </div>
+            )}
+
+            {/* Sound Toggle */}
+            <button
+              type="button"
+              onClick={onToggleSound}
+              className={`p-2 sm:px-2.5 sm:py-1.5 rounded-xl transition-all cursor-pointer border flex items-center gap-1.5 shadow-sm active:scale-95 ${
+                soundEnabled
+                  ? 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border-emerald-500/40'
+                  : 'bg-slate-900/90 hover:bg-slate-800 text-slate-400 hover:text-white border-slate-700/60'
+              }`}
+              title={soundEnabled ? 'Sons Ativados' : 'Sons Silenciados'}
+            >
+              {soundEnabled ? (
+                <Volume2 size={16} className="text-emerald-400" />
+              ) : (
+                <VolumeX size={16} className="text-slate-400" />
+              )}
+              <span className="hidden xl:inline text-[11px] font-bold">
+                {soundEnabled ? 'Som Ativo' : 'Sem Som'}
+              </span>
+            </button>
+          </div>
+
+        </div>
+
+        {/* Mobile Navigation Bar (< 768px) */}
+        <div className="md:hidden border-t border-slate-800/80 px-2 py-1.5 bg-[#070b15]/98 flex items-center justify-center">
           <MainNavigationMenu
             activeTab="servers"
             onGoHome={onGoHome}

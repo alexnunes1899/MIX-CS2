@@ -13,6 +13,7 @@ import {
   MessageCircle,
   ChevronDown,
   Sparkles,
+  MoreHorizontal,
 } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
 
@@ -32,10 +33,13 @@ export default function MainNavigationMenu({
   activeRoomsCount = 0,
   soundEnabled = true,
   className = '',
+  includeBrandIntegrations = false,
 }) {
   const [tacticsOpen, setTacticsOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const tacticsRef = useRef(null);
+  const moreRef = useRef(null);
   const mobileRef = useRef(null);
 
   // Close dropdowns on outside click
@@ -43,6 +47,9 @@ export default function MainNavigationMenu({
     const handleOutsideClick = (e) => {
       if (tacticsRef.current && !tacticsRef.current.contains(e.target)) {
         setTacticsOpen(false);
+      }
+      if (moreRef.current && !moreRef.current.contains(e.target)) {
+        setMoreOpen(false);
       }
       if (mobileRef.current && !mobileRef.current.contains(e.target)) {
         setMobileMenuOpen(false);
@@ -56,6 +63,7 @@ export default function MainNavigationMenu({
     if (soundEnabled) playClickSound();
     if (action) action();
     setTacticsOpen(false);
+    setMoreOpen(false);
     setMobileMenuOpen(false);
   };
 
@@ -67,6 +75,7 @@ export default function MainNavigationMenu({
       window.open('/whatsapp', '_blank');
     }
     setMobileMenuOpen(false);
+    setMoreOpen(false);
   };
 
   const isTacticsActive = ['granadas', 'mira', 'roleta'].includes(activeTab);
@@ -76,51 +85,63 @@ export default function MainNavigationMenu({
     {
       id: 'inicio',
       label: 'Início',
+      shortLabel: 'Início',
       icon: Home,
       action: onGoHome,
       title: 'Página Inicial do CS2 Mix Hub',
       iconColor: 'text-amber-400',
+      visibility: 'always',
     },
     {
       id: 'salas',
       label: 'Salas',
+      shortLabel: 'Salas',
       icon: Layers,
       action: onOpenRoomsHub,
       title: 'Salas e Lobbies da Comunidade',
       iconColor: 'text-sky-400',
       badge: activeRoomsCount,
+      visibility: 'always',
     },
     {
       id: 'veto',
       label: 'Pick & Ban',
+      shortLabel: 'Veto',
       icon: Zap,
       action: onOpenQuickVeto,
       title: 'Pick & Ban Oficial CS2 (MD1, MD3, MD5)',
       iconColor: 'text-amber-400',
+      visibility: 'always',
     },
     {
       id: 'torneio',
       label: 'Torneio',
+      shortLabel: 'Torneio',
       icon: Swords,
       action: onOpenTournament,
       title: 'Modo Torneio & Chaveamento Profissional',
       iconColor: 'text-purple-400',
+      visibility: 'xl', // visible on xl (>= 1280px), in Mais ▾ on < 1280px
     },
     {
       id: 'servers',
       label: 'Servidores',
+      shortLabel: 'Servers',
       icon: Server,
       action: onOpenServersPage,
       title: 'Servidores Dedicados, LAN 0ms e Radmin VPN',
       iconColor: 'text-emerald-400',
+      visibility: 'xl', // visible on xl (>= 1280px), in Mais ▾ on < 1280px
     },
     {
       id: 'hall',
       label: 'Ranking',
+      shortLabel: 'Rank',
       icon: Trophy,
       action: onOpenLeaderboard,
       title: 'Hall da Fama e Estatísticas dos Jogadores',
       iconColor: 'text-amber-400',
+      visibility: 'always',
     },
   ];
 
@@ -153,18 +174,19 @@ export default function MainNavigationMenu({
   ];
 
   return (
-    <div className={`relative flex items-center justify-center w-full group ${className}`}>
+    <div className={`relative flex items-center justify-center shrink-0 ${className}`}>
       {/* Outer Shell: Clean, unified renowned esports navigation rail */}
       <nav
         aria-label="Menu Principal"
-        className="flex items-center gap-1 sm:gap-1.5 p-1 sm:p-1.5 bg-[#070b15]/95 backdrop-blur-xl border border-slate-800/90 hover:border-slate-700/80 rounded-2xl shadow-2xl transition-all max-w-full"
+        className="flex items-center gap-1 p-1 bg-[#070b15]/95 backdrop-blur-xl border border-slate-800/90 hover:border-slate-700/80 rounded-2xl shadow-xl transition-all shrink-0 whitespace-nowrap"
       >
-        {/* DESKTOP VIEW (>= 768px): Structured Esports Grid */}
-        <div className="hidden md:flex items-center gap-1 sm:gap-1.5 flex-wrap justify-center">
-          {/* 1. Core Primary Game Tabs */}
+        {/* DESKTOP / LAPTOP VIEW (>= 768px): Strictly ZERO WRAP Responsive Rail */}
+        <div className="hidden md:flex items-center gap-1 flex-nowrap justify-center shrink-0 whitespace-nowrap">
+          {/* Primary Game Tabs */}
           {primaryTabs.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
+            const visibilityClass = item.visibility === 'xl' ? 'hidden xl:flex' : 'flex';
 
             return (
               <button
@@ -172,7 +194,7 @@ export default function MainNavigationMenu({
                 type="button"
                 onClick={() => handleClick(item.action)}
                 title={item.title}
-                className={`relative px-2.5 lg:px-3 py-1.5 lg:py-2 rounded-xl text-xs lg:text-[13px] font-bold tracking-tight transition-all cursor-pointer shrink-0 select-none flex items-center gap-1.5 ${
+                className={`relative px-2 xl:px-2.5 py-1.5 rounded-xl text-xs xl:text-[13px] font-bold tracking-tight transition-all cursor-pointer shrink-0 select-none whitespace-nowrap items-center gap-1.5 ${visibilityClass} ${
                   isActive
                     ? 'bg-gradient-to-r from-amber-500/25 to-amber-600/15 text-amber-300 border border-amber-500/50 shadow-sm shadow-amber-500/20 font-black'
                     : 'text-slate-300 hover:text-white hover:bg-slate-800/70 border border-transparent hover:border-slate-700/60'
@@ -182,11 +204,12 @@ export default function MainNavigationMenu({
                   size={14}
                   className={`${isActive ? 'text-amber-300' : item.iconColor} shrink-0 transition-transform group-hover:scale-110`}
                 />
-                <span>{item.label}</span>
+                <span className="hidden xl:inline whitespace-nowrap">{item.label}</span>
+                <span className="xl:hidden whitespace-nowrap">{item.shortLabel}</span>
 
                 {item.badge !== undefined && (
                   <span
-                    className={`text-[10px] font-mono font-black px-1.5 py-0.2 rounded-full border ${
+                    className={`text-[10px] font-mono font-black px-1.5 py-0.2 rounded-full border shrink-0 ${
                       item.badge > 0
                         ? 'bg-emerald-500/25 text-emerald-300 border-emerald-500/50 shadow-sm shadow-emerald-500/20 animate-pulse'
                         : 'bg-slate-800/80 text-slate-400 border-slate-700'
@@ -199,26 +222,27 @@ export default function MainNavigationMenu({
             );
           })}
 
-          {/* 2. Grouped "Treino & Táticas ▾" Dropdown (Free up space & clean layout) */}
-          <div className="relative" ref={tacticsRef}>
+          {/* Tactics & Practice Dropdown */}
+          <div className="relative shrink-0" ref={tacticsRef}>
             <button
               type="button"
               onClick={() => {
                 if (soundEnabled) playClickSound();
                 setTacticsOpen(!tacticsOpen);
+                setMoreOpen(false);
               }}
-              className={`px-2.5 lg:px-3 py-1.5 lg:py-2 rounded-xl text-xs lg:text-[13px] font-bold tracking-tight transition-all cursor-pointer shrink-0 select-none flex items-center gap-1.5 ${
+              className={`px-2 xl:px-2.5 py-1.5 rounded-xl text-xs xl:text-[13px] font-bold tracking-tight transition-all cursor-pointer shrink-0 select-none whitespace-nowrap flex items-center gap-1.5 ${
                 isTacticsActive || tacticsOpen
                   ? 'bg-teal-500/20 text-teal-300 border border-teal-500/40 shadow-sm shadow-teal-500/20'
                   : 'text-slate-300 hover:text-white hover:bg-slate-800/70 border border-transparent hover:border-slate-700/60'
               }`}
-              title="Ferramentas de treino: Granadas CS2, Aquecer Mira e Roleta"
+              title="Ferramentas táticas: Granadas CS2, Aquecer Mira e Roleta"
             >
               <BookOpen size={14} className="text-teal-400 shrink-0" />
-              <span>Treino & Táticas</span>
+              <span className="whitespace-nowrap">Treino</span>
               <ChevronDown
                 size={12}
-                className={`text-slate-400 transition-transform duration-200 ${tacticsOpen ? 'rotate-180' : ''}`}
+                className={`text-slate-400 transition-transform duration-200 shrink-0 ${tacticsOpen ? 'rotate-180' : ''}`}
               />
             </button>
 
@@ -257,44 +281,97 @@ export default function MainNavigationMenu({
             )}
           </div>
 
-          {/* 3. Hairline Divider */}
-          <div className="h-5 w-px bg-slate-800 mx-1 shrink-0" />
-
-          {/* 4. Community & Integrations Hub (Distinct High-Profile Brand Badges) */}
-          <div className="flex items-center gap-1.5">
-            {/* Discord Bot Button */}
+          {/* Overflow "Mais ▾" Dropdown for Medium Screens (< 1280px) */}
+          <div className="relative xl:hidden shrink-0" ref={moreRef}>
             <button
               type="button"
-              onClick={() => handleClick(onOpenDiscordModal)}
-              title="Bot e Alertas Oficiais no Discord"
-              className="px-2.5 lg:px-3 py-1.5 lg:py-2 rounded-xl text-xs lg:text-[13px] font-bold tracking-tight transition-all cursor-pointer shrink-0 select-none flex items-center gap-1.5 bg-[#5865F2]/15 hover:bg-[#5865F2]/25 text-[#7983f5] hover:text-white border border-[#5865F2]/30 hover:border-[#5865F2]/60 shadow-sm shadow-[#5865F2]/10"
+              onClick={() => {
+                if (soundEnabled) playClickSound();
+                setMoreOpen(!moreOpen);
+                setTacticsOpen(false);
+              }}
+              className={`px-2 py-1.5 rounded-xl text-xs font-bold tracking-tight transition-all cursor-pointer shrink-0 select-none whitespace-nowrap flex items-center gap-1 ${
+                moreOpen
+                  ? 'bg-slate-800 text-white border border-slate-700 shadow-sm'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800/70 border border-transparent hover:border-slate-700/60'
+              }`}
+              title="Mais recursos"
             >
-              <Bell size={14} className="text-[#5865F2]" />
-              <span>Discord</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-[#5865F2] animate-pulse" />
+              <MoreHorizontal size={14} className="text-slate-400 shrink-0" />
+              <span>Mais</span>
+              <ChevronDown
+                size={12}
+                className={`text-slate-400 transition-transform duration-200 shrink-0 ${moreOpen ? 'rotate-180' : ''}`}
+              />
             </button>
 
-            {/* WhatsApp Bot Button */}
-            <button
-              type="button"
-              onClick={handleWhatsAppClick}
-              title="Bot do WhatsApp para Grupos (Avisos de Mix & Comandos)"
-              className="px-2.5 lg:px-3 py-1.5 lg:py-2 rounded-xl text-xs lg:text-[13px] font-bold tracking-tight transition-all cursor-pointer shrink-0 select-none flex items-center gap-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 hover:text-white border border-emerald-500/30 hover:border-emerald-500/60 shadow-sm shadow-emerald-500/10"
-            >
-              <MessageCircle size={14} className="text-emerald-400" />
-              <span>WhatsApp</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            </button>
+            {/* Overflow Dropdown */}
+            {moreOpen && (
+              <div className="absolute top-full right-0 mt-2 w-56 bg-[#0a101d] border border-slate-700/80 rounded-2xl p-1.5 shadow-2xl backdrop-blur-xl z-50 animate-fadeIn space-y-1">
+                <div className="px-3 py-1.5 text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800/80">
+                  Mais Recursos CS2
+                </div>
+
+                {/* Torneio (hidden on < 1280px) */}
+                <button
+                  type="button"
+                  onClick={() => handleClick(onOpenTournament)}
+                  className="w-full p-2 rounded-xl text-left text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-800/80 flex items-center gap-2 cursor-pointer"
+                >
+                  <Swords size={14} className="text-purple-400" />
+                  <span>Torneio & Chaveamento</span>
+                </button>
+
+                {/* Servidores (hidden on < 1280px) */}
+                <button
+                  type="button"
+                  onClick={() => handleClick(onOpenServersPage)}
+                  className="w-full p-2 rounded-xl text-left text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-800/80 flex items-center gap-2 cursor-pointer"
+                >
+                  <Server size={14} className="text-emerald-400" />
+                  <span>Servidores & LAN 0ms</span>
+                </button>
+              </div>
+            )}
           </div>
+
+          {/* Optional Standalone Brand Integrations (Only if explicitly enabled) */}
+          {includeBrandIntegrations && (
+            <>
+              <div className="h-5 w-px bg-slate-800 mx-1 shrink-0" />
+              <div className="flex items-center gap-1 shrink-0 whitespace-nowrap">
+                <button
+                  type="button"
+                  onClick={() => handleClick(onOpenDiscordModal)}
+                  title="Bot e Notificações Oficiais no Discord"
+                  className="px-2 xl:px-2.5 py-1.5 rounded-xl text-xs xl:text-[13px] font-bold tracking-tight transition-all cursor-pointer shrink-0 select-none flex items-center gap-1.5 bg-[#5865F2]/15 hover:bg-[#5865F2]/25 text-[#7983f5] hover:text-white border border-[#5865F2]/30 hover:border-[#5865F2]/60 shadow-sm shadow-[#5865F2]/10"
+                >
+                  <Bell size={14} className="text-[#5865F2]" />
+                  <span className="hidden xl:inline">Discord</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#5865F2] animate-pulse" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleWhatsAppClick}
+                  title="Bot do WhatsApp para Grupos (Avisos de Mix & Comandos)"
+                  className="px-2 xl:px-2.5 py-1.5 rounded-xl text-xs xl:text-[13px] font-bold tracking-tight transition-all cursor-pointer shrink-0 select-none flex items-center gap-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 hover:text-white border border-emerald-500/30 hover:border-emerald-500/60 shadow-sm shadow-emerald-500/10"
+                >
+                  <MessageCircle size={14} className="text-emerald-400" />
+                  <span className="hidden xl:inline">WhatsApp</span>
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                </button>
+              </div>
+            </>
+          )}
         </div>
 
-        {/* MOBILE VIEW (< 768px): Compact Bar + Unified "Mais ▾" Drawer */}
+        {/* MOBILE VIEW (< 768px): Streamlined Touch Bar + Unified Drawer */}
         <div className="flex md:hidden items-center justify-between w-full gap-1 px-1">
-          {/* High Priority Quick Tabs */}
           <button
             type="button"
             onClick={() => handleClick(onGoHome)}
-            className={`px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 ${
+            className={`px-2 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 ${
               activeTab === 'inicio' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50' : 'text-slate-300'
             }`}
           >
@@ -305,7 +382,7 @@ export default function MainNavigationMenu({
           <button
             type="button"
             onClick={() => handleClick(onOpenRoomsHub)}
-            className={`px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 relative ${
+            className={`px-2 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 relative ${
               activeTab === 'salas' ? 'bg-sky-500/20 text-sky-300 border border-sky-500/50' : 'text-slate-300'
             }`}
           >
@@ -319,7 +396,7 @@ export default function MainNavigationMenu({
           <button
             type="button"
             onClick={() => handleClick(onOpenQuickVeto)}
-            className={`px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 ${
+            className={`px-2 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 ${
               activeTab === 'veto' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50' : 'text-slate-300'
             }`}
           >
@@ -330,7 +407,7 @@ export default function MainNavigationMenu({
           <button
             type="button"
             onClick={() => handleClick(onOpenLeaderboard)}
-            className={`px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 ${
+            className={`px-2 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 ${
               activeTab === 'hall' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50' : 'text-slate-300'
             }`}
           >
@@ -353,7 +430,11 @@ export default function MainNavigationMenu({
             </button>
 
             {mobileMenuOpen && (
-              <div className="absolute top-full right-0 mt-2 w-56 bg-[#0a101d] border border-slate-800 rounded-2xl p-2 shadow-2xl backdrop-blur-xl z-50 space-y-1 animate-fadeIn">
+              <div className="absolute top-full right-0 mt-2 w-60 bg-[#0a101d] border border-slate-700 rounded-2xl p-2 shadow-2xl backdrop-blur-xl z-50 space-y-1 animate-fadeIn">
+                <div className="px-2 py-1 text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800">
+                  Ferramentas & Modos
+                </div>
+
                 <button
                   type="button"
                   onClick={() => handleClick(onOpenTournament)}
@@ -369,7 +450,7 @@ export default function MainNavigationMenu({
                   className="w-full p-2 rounded-xl text-left text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-800 flex items-center gap-2"
                 >
                   <Server size={14} className="text-emerald-400" />
-                  <span>Servidores & LAN</span>
+                  <span>Servidores & LAN 0ms</span>
                 </button>
 
                 <button
@@ -400,6 +481,10 @@ export default function MainNavigationMenu({
                 </button>
 
                 <div className="h-px bg-slate-800 my-1" />
+
+                <div className="px-2 py-1 text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400">
+                  Comunidade & Bots
+                </div>
 
                 <button
                   type="button"

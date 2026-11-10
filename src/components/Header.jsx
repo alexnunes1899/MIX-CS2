@@ -79,21 +79,21 @@ export default function Header({
   };
 
   return (
-    <header className="border-b border-slate-800 bg-[#0c1220] sticky top-0 z-40 shadow-xl">
-      <div className="max-w-7xl mx-auto px-3 sm:px-5 py-2.5 sm:py-3 space-y-2.5">
+    <header className="border-b border-slate-800 bg-[#0c1220]/95 backdrop-blur-xl sticky top-0 z-40 shadow-xl">
+      <div className="max-w-7xl mx-auto px-3 sm:px-5 py-2 space-y-2">
         
-        {/* ROW 1: Room Identity & Quick Utility Actions */}
+        {/* ROW 1: Room Identity, Center Match Phase Stepper & Utility Actions */}
         <div className="flex items-center justify-between gap-3 flex-wrap">
           {/* Left: Logo & Room Details */}
-          <div className="flex items-center gap-3">
-            <MixHubLogo className="w-10 h-10" />
+          <div className="flex items-center gap-3 shrink-0">
+            <MixHubLogo className="w-9 h-9 sm:w-10 sm:h-10" />
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-base sm:text-lg font-black font-heading tracking-wide text-white">
+                <h1 className="text-sm sm:text-base font-black font-heading tracking-wide text-white">
                   {roomName || 'MIX HUB'}
                 </h1>
                 <span
-                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                  className={`text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full border ${
                     rankingSystem === 'faceit'
                       ? 'text-orange-400 bg-orange-500/10 border-orange-500/30'
                       : 'text-amber-400 bg-amber-500/10 border-amber-500/30'
@@ -102,28 +102,52 @@ export default function Header({
                   {rankingSystem === 'faceit' ? '⚡ FACEIT' : '🛡️ GC'}
                 </span>
                 {isPrivate ? (
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border text-purple-300 bg-purple-500/15 border-purple-500/30 flex items-center gap-1 font-mono">
-                    <Lock size={10} /> Privado (Só via Link)
+                  <span className="text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full border text-purple-300 bg-purple-500/15 border-purple-500/30 flex items-center gap-1 font-mono">
+                    <Lock size={10} /> Privado
                   </span>
                 ) : (
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border text-emerald-400 bg-emerald-500/15 border-emerald-500/30 flex items-center gap-1 font-mono">
+                  <span className="text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full border text-emerald-400 bg-emerald-500/15 border-emerald-500/30 flex items-center gap-1 font-mono">
                     <Globe size={10} /> Mix Público
                   </span>
                 )}
               </div>
-              <p className="text-[10px] sm:text-[11px] text-slate-400 hidden sm:block">
-                {rankingSystem === 'faceit' ? 'Balanceamento por Nível FACEIT & Pick/Ban' : 'Balanceamento por Nível Gamers Club & Pick/Ban'}
-              </p>
             </div>
           </div>
 
+          {/* Center: Match Phase Stepper (Sleek eSports Breadcrumb) */}
+          <div className="hidden lg:flex items-center justify-center gap-1.5 px-3 py-1 rounded-xl bg-slate-900/80 border border-slate-800/80 shadow-inner">
+            {steps.map((st, idx) => {
+              const status = getStepStatus(st.id);
+              const Icon = st.icon;
+              return (
+                <div key={st.id} className="flex items-center gap-1.5">
+                  <div
+                    className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-[11px] font-bold transition-colors ${
+                      status === 'active'
+                        ? 'bg-amber-500/25 text-amber-300 border border-amber-500/50 shadow-sm shadow-amber-500/20'
+                        : status === 'completed'
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                        : 'text-slate-500'
+                    }`}
+                  >
+                    <Icon size={12} />
+                    <span>{st.label}</span>
+                  </div>
+                  {idx < steps.length - 1 && (
+                    <span className="text-slate-700 text-xs font-bold">›</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
           {/* Right: Steam Profile, Server Pill, Share Invite & Sound Controls */}
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap shrink-0">
             {/* Quick Server Action if Configured */}
             {parsedServer.isValid && (
-              <div className="hidden lg:flex items-center gap-1.5 bg-slate-900 border border-emerald-500/30 rounded-xl p-1 pl-2.5 shadow-inner">
+              <div className="hidden xl:flex items-center gap-1.5 bg-slate-900 border border-emerald-500/30 rounded-xl p-1 pl-2.5 shadow-inner">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="text-[11px] font-mono text-emerald-400 font-bold truncate max-w-[130px]" title={parsedServer.ip}>
+                <span className="text-[11px] font-mono text-emerald-400 font-bold truncate max-w-[120px]" title={parsedServer.ip}>
                   {parsedServer.ip}
                 </span>
                 <button
@@ -139,19 +163,10 @@ export default function Header({
                   {copiedServer ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
                   <span>{copiedServer ? 'Copiado' : 'Connect'}</span>
                 </button>
-                {parsedServer.steamUrl && (
-                  <a
-                    href={parsedServer.steamUrl}
-                    className="px-2 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-[10px] flex items-center gap-1 shadow-sm transition-colors cursor-pointer"
-                    title="Conectar automaticamente ao CS2"
-                  >
-                    <Play size={10} fill="currentColor" /> CS2
-                  </a>
-                )}
               </div>
             )}
 
-            {/* Room Code, PIN & Invite button */}
+            {/* Room Code & Invite button */}
             <div className="flex items-center bg-slate-900/90 border border-slate-800 rounded-xl p-1 pl-2.5 shadow-inner">
               <div className="text-xs mr-2 font-mono flex items-center gap-1.5">
                 <span className="text-slate-500 text-[10px] font-semibold">SALA:</span>{' '}
@@ -159,10 +174,10 @@ export default function Header({
               </div>
               <button
                 onClick={copyInviteLink}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 font-bold text-xs uppercase tracking-wider transition-all shadow-md shadow-amber-500/20 cursor-pointer active:scale-95"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 font-bold text-xs uppercase tracking-wider transition-all shadow-md shadow-amber-500/20 cursor-pointer active:scale-95"
                 title="Copiar link de convite com acesso direto sem senha"
               >
-                {copied ? <Check size={14} className="text-slate-950" /> : <Share2 size={14} />}
+                {copied ? <Check size={13} className="text-slate-950" /> : <Share2 size={13} />}
                 <span>{copied ? 'Copiado!' : 'Convidar'}</span>
               </button>
             </div>
@@ -174,37 +189,37 @@ export default function Header({
                   if (soundEnabled) playClickSound();
                   if (onOpenProfile) onOpenProfile();
                 }}
-                className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-white border border-emerald-500/30 hover:border-emerald-500/60 text-xs font-semibold transition-all cursor-pointer shadow-sm group"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-white border border-emerald-500/30 hover:border-emerald-500/60 text-xs font-semibold transition-all cursor-pointer shadow-sm group"
                 title="Ver meu perfil, estatísticas e gerenciar conta Steam"
               >
                 <PlayerAvatar avatar={myProfile.avatar} nick={myProfile.nick} size="sm" />
                 <span className="truncate max-w-[85px] hidden sm:inline font-bold">{myProfile.nick}</span>
-                <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1.5 py-0.2 rounded font-mono">
+                <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1.5 py-0.2 rounded font-mono hidden sm:inline">
                   Stats
                 </span>
               </button>
             )}
 
-            {/* Sound Toggle (Silenciar / Ativar Sons) */}
+            {/* Sound Toggle */}
             <button
               onClick={() => {
                 if (onToggleSound) onToggleSound();
                 else if (setSoundEnabled) setSoundEnabled(!soundEnabled);
               }}
-              className={`px-2.5 py-1.5 rounded-xl transition-all cursor-pointer border flex items-center gap-1.5 shadow-sm active:scale-95 ${
+              className={`p-1.5 sm:px-2.5 sm:py-1 rounded-xl transition-all cursor-pointer border flex items-center gap-1.5 shadow-sm active:scale-95 ${
                 soundEnabled
                   ? 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border-emerald-500/40'
                   : 'bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white border-slate-700/60'
               }`}
-              title={soundEnabled ? 'Sons Ativados (Clique para silenciar o site)' : 'Sons Silenciados (Clique para ativar efeitos sonoros)'}
+              title={soundEnabled ? 'Sons Ativados' : 'Sons Silenciados'}
             >
               {soundEnabled ? (
-                <Volume2 size={16} className="text-emerald-400" />
+                <Volume2 size={15} className="text-emerald-400" />
               ) : (
-                <VolumeX size={16} className="text-slate-400" />
+                <VolumeX size={15} className="text-slate-400" />
               )}
-              <span className="hidden sm:inline text-[11px] font-bold">
-                {soundEnabled ? 'Som Ativo' : 'Sem Som'}
+              <span className="hidden xl:inline text-[11px] font-bold">
+                {soundEnabled ? 'Som' : 'Mudo'}
               </span>
             </button>
 
@@ -214,10 +229,10 @@ export default function Header({
                 if (soundEnabled) playClickSound();
                 setDeleteConfirmOpen(true);
               }}
-              className="p-2 rounded-xl bg-red-500/10 hover:bg-red-500/25 border border-red-500/30 text-red-400 hover:text-red-300 transition-colors cursor-pointer"
+              className="p-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/25 border border-red-500/30 text-red-400 hover:text-red-300 transition-colors cursor-pointer"
               title="Excluir permanentemente esta sala de mix"
             >
-              <Trash2 size={16} />
+              <Trash2 size={15} />
             </button>
           </div>
         </div>
@@ -240,15 +255,15 @@ export default function Header({
           soundEnabled={soundEnabled}
         />
 
-        {/* ROW 3: Compact Phase Stepper */}
-        <div className="hidden sm:flex items-center justify-center gap-2 pt-1 border-t border-slate-800/40">
+        {/* Mobile Phase Stepper (< 1024px) */}
+        <div className="flex lg:hidden items-center justify-center gap-1.5 pt-1 border-t border-slate-800/40">
           {steps.map((st, idx) => {
             const status = getStepStatus(st.id);
             const Icon = st.icon;
             return (
-              <div key={st.id} className="flex items-center gap-2">
+              <div key={st.id} className="flex items-center gap-1">
                 <div
-                  className={`flex items-center gap-1.5 px-3 py-0.5 rounded-full text-[11px] font-semibold transition-colors ${
+                  className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold transition-colors ${
                     status === 'active'
                       ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50'
                       : status === 'completed'
@@ -256,7 +271,7 @@ export default function Header({
                       : 'bg-slate-800/50 text-slate-500 border border-slate-700/30'
                   }`}
                 >
-                  <Icon size={12} />
+                  <Icon size={11} />
                   <span>{st.label}</span>
                 </div>
                 {idx < steps.length - 1 && (
@@ -266,7 +281,6 @@ export default function Header({
             );
           })}
         </div>
-
       </div>
 
       {/* Delete Room Confirmation Modal */}

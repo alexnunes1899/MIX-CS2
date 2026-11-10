@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Sparkles, Swords, Dices, Shield, Flame, Users, Layers, Zap, Trophy, ArrowRight, ExternalLink, Hash, CheckCircle2, Monitor, RefreshCw, Globe, Laptop, Server, Home, Bell, Bot, ShieldCheck, Check, Volume2, VolumeX } from 'lucide-react';
+import { Play, Sparkles, Swords, Dices, Shield, Flame, Users, Layers, Zap, Trophy, ArrowRight, ExternalLink, Hash, CheckCircle2, Monitor, RefreshCw, Globe, Laptop, Server, Home, Bell, Bot, ShieldCheck, Check, Volume2, VolumeX, MessageCircle } from 'lucide-react';
 import { ACTIVE_DUTY_MAPS, EXTRA_CS2_MAPS } from '../data/maps';
 import PlayerAvatar from './PlayerAvatar';
 import SteamIcon from './SteamIcon';
@@ -88,110 +88,157 @@ export default function LandingPage({
   return (
     <div className="min-h-screen bg-[#070a12] text-slate-100 flex flex-col font-sans selection:bg-amber-500/30 selection:text-amber-300">
       
-      {/* Top Navbar — Menu de Início Sempre Visível */}
-      <header className="border-b border-slate-800 bg-[#0c1220]/95 backdrop-blur-xl sticky top-0 z-40 shadow-xl">
-        <div className="max-w-7xl mx-auto px-3 sm:px-5 py-2.5 sm:py-3 space-y-2.5">
+      {/* Top Navbar — Menu Único Profissional Padrão FACEIT / HLTV */}
+      <header className="border-b border-slate-800/80 bg-[#070b15]/95 backdrop-blur-xl sticky top-0 z-40 shadow-2xl">
+        <div className="max-w-7xl mx-auto px-3 sm:px-5 h-16 sm:h-20 flex items-center justify-between gap-3">
           
-          {/* ROW 1: Logo, Quick Anchors & Steam / Criar Mix */}
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            {/* Logo with CS2 Icon */}
-            <div
-              className="flex items-center gap-3 cursor-pointer group"
-              onClick={() => {
-                if (soundEnabled) playClickSound();
-                if (onGoHome) onGoHome();
-                else window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
-            >
-              <div className="relative">
-                <MixHubLogo className="w-10 h-10" />
-                <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-[#0c1220] animate-pulse" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-lg font-bold font-heading tracking-wider text-white group-hover:text-amber-400 transition-colors">
-                    MIX HUB
-                  </span>
-                  <span className="text-amber-400 text-[10px] font-black px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/30 font-mono">
-                    GC EDITION
-                  </span>
-                </div>
-                <p className="text-[10px] text-slate-400 font-mono tracking-tight">PLATAFORMA COMPETITIVA 5V5</p>
-              </div>
+          {/* 1. Left: Brand Identity */}
+          <div
+            className="flex items-center gap-2.5 sm:gap-3 cursor-pointer group shrink-0 select-none whitespace-nowrap"
+            onClick={() => {
+              if (soundEnabled) playClickSound();
+              if (onGoHome) onGoHome();
+              else window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
+          >
+            <div className="relative shrink-0">
+              <MixHubLogo className="w-9 h-9 sm:w-10 sm:h-10 shrink-0" />
+              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-[#070b15] animate-pulse" />
             </div>
-
-            {/* Quick Section Links */}
-            <div className="hidden xl:flex items-center gap-5 text-xs font-semibold uppercase tracking-wider text-slate-300">
-              <a href="#mapas" className="hover:text-amber-400 transition-colors flex items-center gap-1.5">
-                <span>Mapas Oficiais</span>
-              </a>
-              <a href="#recursos" className="hover:text-amber-400 transition-colors">
-                <span>Recursos</span>
-              </a>
-            </div>
-
-            {/* Steam & Direct Action */}
-            <div className="flex items-center gap-2.5">
-              {/* Sound Toggle (Silenciar / Ativar Sons) */}
-              <button
-                type="button"
-                onClick={onToggleSound}
-                className={`px-2.5 py-1.5 rounded-xl transition-all cursor-pointer border flex items-center gap-1.5 shadow-sm active:scale-95 ${
-                  soundEnabled
-                    ? 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border-emerald-500/40'
-                    : 'bg-slate-900/90 hover:bg-slate-800 text-slate-400 hover:text-white border-slate-700/60'
-                }`}
-                title={soundEnabled ? 'Sons Ativados (Clique para silenciar o site)' : 'Sons Silenciados (Clique para ativar efeitos sonoros)'}
-              >
-                {soundEnabled ? (
-                  <Volume2 size={16} className="text-emerald-400" />
-                ) : (
-                  <VolumeX size={16} className="text-slate-400" />
-                )}
-                <span className="hidden sm:inline text-[11px] font-bold">
-                  {soundEnabled ? 'Som Ativo' : 'Sem Som'}
+            <div className="shrink-0">
+              <div className="flex items-center gap-1.5 shrink-0 whitespace-nowrap">
+                <span className="text-base sm:text-lg font-bold font-heading tracking-wider text-white group-hover:text-amber-400 transition-colors">
+                  MIX HUB
                 </span>
-              </button>
-
-              {isSteamLogged ? (
-                <button
-                  type="button"
-                  onClick={() => onOpenProfile && onOpenProfile()}
-                  title="Abrir meu perfil e estatísticas Steam"
-                  className="flex items-center gap-2 bg-slate-900 hover:bg-slate-800 border border-emerald-500/40 hover:border-emerald-400 rounded-xl px-2.5 py-1.5 shadow-sm transition-all cursor-pointer group"
-                >
-                  <PlayerAvatar avatar={myProfile.avatar} nick={myProfile.nick} size="sm" />
-                  <span className="text-xs font-bold text-white hidden sm:inline group-hover:text-amber-400 transition-colors">
-                    {myProfile.nick}
-                  </span>
-                  <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1.5 py-0.5 rounded group-hover:bg-emerald-500/25">
-                    Stats
-                  </span>
-                </button>
-              ) : (
-                <a
-                  href="/api/auth/steam"
-                  className="flex items-center gap-2 px-3 py-2 rounded-xl bg-gradient-to-r from-[#171a21] to-[#1b2838] hover:from-[#1b2838] hover:to-[#2a475e] border border-[#66c0f4]/40 hover:border-[#66c0f4] text-white text-xs font-bold transition-all shadow-md group cursor-pointer"
-                >
-                  <SteamIcon className="w-4 h-4 text-[#66c0f4] group-hover:scale-110 transition-transform" />
-                  <span>Login Steam</span>
-                </a>
-              )}
-
-              <button
-                onClick={() => {
-                  if (soundEnabled) playClickSound();
-                  onOpenRoomsHub();
-                }}
-                className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs uppercase tracking-wider transition-all shadow-lg shadow-amber-500/25 cursor-pointer flex items-center gap-1.5 active:scale-95"
-              >
-                <Play size={13} fill="currentColor" />
-                <span>Criar Mix</span>
-              </button>
+                <span className="text-amber-400 text-[9px] sm:text-[10px] font-black px-1.5 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/30 font-mono">
+                  GC
+                </span>
+              </div>
+              <p className="text-[10px] text-slate-400 font-mono tracking-tight hidden sm:block">5V5 COMPETITIVO</p>
             </div>
           </div>
 
-          {/* ROW 2: MENU DE INÍCIO — CENTRALIZADO E COM DESIGN ESPORTS UNIFICADO */}
+          {/* 2. Center: Sleek Responsive Menu (Zero Wrap on >= 1024px) */}
+          <div className="hidden lg:flex items-center justify-center shrink-0">
+            <MainNavigationMenu
+              activeTab="inicio"
+              onGoHome={() => {
+                if (onGoHome) onGoHome();
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+              }}
+              onOpenLeaderboard={onOpenLeaderboard}
+              onOpenDiscordModal={onOpenDiscordModal}
+              onOpenWhatsAppModal={onOpenWhatsAppModal}
+              onOpenQuickMapRoll={onOpenQuickMapRoll}
+              onOpenQuickVeto={onOpenQuickVeto}
+              onOpenServersPage={onOpenServersPage || onOpenLocalHost}
+              onOpenRoomsHub={onOpenRoomsHub}
+              onOpenTournament={onOpenTournament}
+              onOpenGrenades={onOpenGrenades}
+              onOpenAimReflex={onOpenAimReflex}
+              activeRoomsCount={activeRooms.length}
+              soundEnabled={soundEnabled}
+            />
+          </div>
+
+          {/* 3. Right: Discord, WhatsApp, Audio Toggle, Steam Login & Criar Mix CTA */}
+          <div className="flex items-center gap-1 sm:gap-1.5 xl:gap-2 shrink-0 whitespace-nowrap">
+            {/* Discord Bot Button */}
+            <button
+              type="button"
+              onClick={() => {
+                if (soundEnabled) playClickSound();
+                if (onOpenDiscordModal) onOpenDiscordModal();
+              }}
+              title="Bot e Notificações Oficiais no Discord"
+              className="p-1.5 xl:px-2.5 xl:py-1.5 rounded-xl text-xs font-bold tracking-tight transition-all cursor-pointer select-none flex items-center gap-1.5 bg-[#5865F2]/15 hover:bg-[#5865F2]/25 text-[#7983f5] hover:text-white border border-[#5865F2]/30 hover:border-[#5865F2]/60 shadow-sm shadow-[#5865F2]/10 active:scale-95 shrink-0"
+            >
+              <Bell size={14} className="text-[#5865F2] shrink-0" />
+              <span className="hidden xl:inline">Discord</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-[#5865F2] animate-pulse shrink-0" />
+            </button>
+
+            {/* WhatsApp Bot Button */}
+            <button
+              type="button"
+              onClick={() => {
+                if (soundEnabled) playClickSound();
+                if (onOpenWhatsAppModal) onOpenWhatsAppModal();
+                else window.open('/whatsapp', '_blank');
+              }}
+              title="Bot do WhatsApp para Grupos (Avisos de Mix & Comandos)"
+              className="p-1.5 xl:px-2.5 xl:py-1.5 rounded-xl text-xs font-bold tracking-tight transition-all cursor-pointer select-none flex items-center gap-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 hover:text-white border border-emerald-500/30 hover:border-emerald-500/60 shadow-sm shadow-emerald-500/10 active:scale-95 shrink-0"
+            >
+              <MessageCircle size={14} className="text-emerald-400 shrink-0" />
+              <span className="hidden xl:inline">WhatsApp</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+            </button>
+
+            {/* Hairline Divider */}
+            <div className="h-4 w-px bg-slate-800 hidden sm:block mx-0.5 shrink-0" />
+
+            {/* Sound Toggle (hidden on small mobile to give breathing room) */}
+            <button
+              type="button"
+              onClick={onToggleSound}
+              className={`p-1.5 xl:p-2 rounded-xl transition-all cursor-pointer border hidden sm:flex items-center gap-1.5 shadow-sm active:scale-95 shrink-0 ${
+                soundEnabled
+                  ? 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border-emerald-500/40'
+                  : 'bg-slate-900/90 hover:bg-slate-800 text-slate-400 hover:text-white border-slate-700/60'
+              }`}
+              title={soundEnabled ? 'Sons Ativados' : 'Sons Silenciados'}
+            >
+              {soundEnabled ? (
+                <Volume2 size={15} className="text-emerald-400 shrink-0" />
+              ) : (
+                <VolumeX size={15} className="text-slate-400 shrink-0" />
+              )}
+            </button>
+
+            {/* Steam Login / Stats */}
+            {isSteamLogged ? (
+              <button
+                type="button"
+                onClick={() => onOpenProfile && onOpenProfile()}
+                title="Abrir meu perfil e estatísticas Steam"
+                className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 border border-emerald-500/40 hover:border-emerald-400 rounded-xl px-2 py-1.5 shadow-sm transition-all cursor-pointer group shrink-0"
+              >
+                <PlayerAvatar avatar={myProfile.avatar} nick={myProfile.nick} size="sm" />
+                <span className="text-xs font-bold text-white hidden xl:inline group-hover:text-amber-400 transition-colors truncate max-w-[70px]">
+                  {myProfile.nick}
+                </span>
+                <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1 py-0.2 rounded group-hover:bg-emerald-500/25 font-mono hidden sm:inline shrink-0">
+                  Stats
+                </span>
+              </button>
+            ) : (
+              <a
+                href="/api/auth/steam"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-[#171a21] to-[#1b2838] hover:from-[#1b2838] hover:to-[#2a475e] border border-[#66c0f4]/40 hover:border-[#66c0f4] text-white text-xs font-bold transition-all shadow-md group cursor-pointer shrink-0"
+              >
+                <SteamIcon className="w-4 h-4 text-[#66c0f4] group-hover:scale-110 transition-transform shrink-0" />
+                <span className="hidden xl:inline">Steam</span>
+              </a>
+            )}
+
+            {/* Criar Mix CTA */}
+            <button
+              onClick={() => {
+                if (soundEnabled) playClickSound();
+                onOpenRoomsHub();
+              }}
+              className="px-2.5 py-1.5 sm:px-3 sm:py-1.5 xl:px-4 xl:py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs uppercase tracking-wider transition-all shadow-lg shadow-amber-500/25 cursor-pointer flex items-center gap-1.5 active:scale-95 shrink-0"
+            >
+              <Play size={12} fill="currentColor" className="shrink-0" />
+              <span className="hidden sm:inline">Criar Mix</span>
+              <span className="sm:hidden">Mix</span>
+            </button>
+          </div>
+
+        </div>
+
+        {/* Mobile / Tablet Touch Navigation Bar (< 1024px) */}
+        <div className="lg:hidden border-t border-slate-800/80 px-2 py-1.5 bg-[#070b15]/98 flex items-center justify-center w-full">
           <MainNavigationMenu
             activeTab="inicio"
             onGoHome={() => {
@@ -211,12 +258,11 @@ export default function LandingPage({
             activeRoomsCount={activeRooms.length}
             soundEnabled={soundEnabled}
           />
-
         </div>
       </header>
 
       {/* Hero Section */}
-      <section className="relative overflow-hidden pt-16 pb-20 px-4 text-center">
+      <section className="relative overflow-hidden pt-10 sm:pt-14 pb-16 px-4 text-center">
         {/* Ambient Glows */}
         <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[350px] bg-amber-500/10 rounded-full blur-[140px] pointer-events-none" />
         <div className="absolute top-1/3 left-1/4 w-[350px] h-[250px] bg-sky-500/10 rounded-full blur-[120px] pointer-events-none" />
