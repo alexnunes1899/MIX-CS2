@@ -17,6 +17,9 @@ import {
   Bell,
   Sparkles,
   Info,
+  Search,
+  Link2,
+  CheckCheck,
 } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
 import { copyText } from '../utils/clipboard';
@@ -53,6 +56,14 @@ export default function WhatsAppModal({ isOpen, onClose, soundEnabled = true }) 
   const [activeTab, setActiveTab] = useState('qr'); // 'qr' | 'pairing' | 'commands' | 'config'
   const [copiedCommand, setCopiedCommand] = useState(null);
 
+  // Group selection & configuration state
+  const [groupSearch, setGroupSearch] = useState('');
+  const [manualInput, setManualInput] = useState('');
+  const [resolvingManual, setResolvingManual] = useState(false);
+  const [manualError, setManualError] = useState(null);
+  const [groupSuccess, setGroupSuccess] = useState(false);
+  const [refreshingGroups, setRefreshingGroups] = useState(false);
+
   // Poll status while modal is open
   const fetchStatus = async () => {
     try {
@@ -60,7 +71,7 @@ export default function WhatsAppModal({ isOpen, onClose, soundEnabled = true }) 
       if (res.ok) {
         const data = await res.json();
         setStatusData(data);
-        if (data.config?.targetGroupId && !selectedGroupId) {
+        if (data.config?.targetGroupId) {
           setSelectedGroupId(data.config.targetGroupId);
         }
       }
@@ -68,15 +79,22 @@ export default function WhatsAppModal({ isOpen, onClose, soundEnabled = true }) 
   };
 
   const fetchGroups = async () => {
+    setRefreshingGroups(true);
     try {
       const res = await fetch('/api/whatsapp/groups');
       if (res.ok) {
         const data = await res.json();
-        if (data.groups && Array.isArray(data.groups)) {
-          setGroups(data.groups);
-        }
+        const list = Array.isArray(data)
+          ? data
+          : data?.groups && Array.isArray(data.groups)
+          ? data.groups
+          : [];
+        setGroups(list);
       }
-    } catch (_) {}
+    } catch (_) {
+    } finally {
+      setRefreshingGroups(false);
+    }
   };
 
   useEffect(() => {
@@ -87,6 +105,12 @@ export default function WhatsAppModal({ isOpen, onClose, soundEnabled = true }) 
     return () => clearInterval(interval);
   }, [isOpen]);
 
+  useEffect(() => {
+    if (isOpen) {
+      fetchGroups();
+    }
+  }, [isOpen, activeTab, statusData.status]);
+
   if (!isOpen) return null;
 
   const handleStartConnect = async () => {
@@ -95,6 +119,7 @@ export default function WhatsAppModal({ isOpen, onClose, soundEnabled = true }) 
     try {
       await fetch('/api/whatsapp/connect', { method: 'POST' });
       await fetchStatus();
+      await fetchGroups();
     } catch (_) {}
     setConnecting(false);
   };
@@ -127,21 +152,73 @@ export default function WhatsAppModal({ isOpen, onClose, soundEnabled = true }) 
     setPairingLoading(false);
   };
 
-  const handleSaveGroup = async (groupId) => {
+  const handleSaveGroup = async (groupId, customName = null) => {
+    if (!groupId) return;
     if (soundEnabled) playClickSound();
     const group = groups.find((g) => g.id === groupId);
+    const groupName = customName || group?.subject || groupId;
     try {
       await fetch('/api/whatsapp/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           targetGroupId: groupId,
-          targetGroupName: group?.subject || groupId,
+          targetGroupName: groupName,
         }),
       });
       setSelectedGroupId(groupId);
+      setGroupSuccess(true);
+      setTimeout(() => setGroupSuccess(false), 3500);
       await fetchStatus();
     } catch (_) {}
+  };
+
+  const handleUnlinkGroup = async () => {
+    if (soundEnabled) playClickSound();
+    try {
+      await fetch('/api/whatsapp/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          targetGroupId: '',
+          targetGroupName: '',
+        }),
+      });
+      setSelectedGroupId('');
+      setGroupSuccess(true);
+      setTimeout(() => setGroupSuccess(false), 3000);
+      await fetchStatus();
+    } catch (_) {}
+  };
+
+  const handleManualGroupSubmit = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (!manualInput.trim()) return;
+    if (soundEnabled) playClickSound();
+    setResolvingManual(true);
+    setManualError(null);
+    try {
+      const res = await fetch('/api/whatsapp/resolve-group', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input: manualInput.trim() }),
+      });
+      const data = await res.json();
+      if (data.success && data.group?.id) {
+        await handleSaveGroup(data.group.id, data.group.subject);
+        setManualInput('');
+        await fetchGroups();
+      } else {
+        // Fallback: save direct input as groupId
+        await handleSaveGroup(manualInput.trim(), 'Grupo WhatsApp');
+        setManualInput('');
+      }
+    } catch (err) {
+      await handleSaveGroup(manualInput.trim(), 'Grupo WhatsApp');
+      setManualInput('');
+    } finally {
+      setResolvingManual(false);
+    }
   };
 
   const handleToggleNotify = async (key) => {
@@ -563,47 +640,151 @@ export default function WhatsAppModal({ isOpen, onClose, soundEnabled = true }) 
         {/* TAB 3: CONFIGURAÇÃO DE GRUPO E ALERTAS */}
         {activeTab === 'config' && (
           <div className="space-y-4">
+            {/* Feedback alert on save */}
+            {groupSuccess && (
+              <div className="p-3 rounded-xl bg-emerald-950/90 border border-emerald-500 text-emerald-200 text-xs flex items-center gap-2 animate-fadeIn">
+                <CheckCircle2 size={15} className="text-emerald-400 shrink-0" />
+                <span>Configuração de grupo salva com sucesso no sistema!</span>
+              </div>
+            )}
+
+            {/* Currently Active Group Badge */}
+            {statusData.config?.targetGroupId ? (
+              <div className="p-3.5 rounded-2xl bg-emerald-950/30 border border-emerald-500/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md shadow-emerald-950/20">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center shrink-0">
+                    <CheckCheck size={20} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-black uppercase tracking-wider text-emerald-300">
+                        Grupo Oficial Vinculado
+                      </span>
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-emerald-500/20 text-emerald-200">
+                        Ativo
+                      </span>
+                    </div>
+                    <div className="text-sm font-bold text-white mt-0.5">
+                      {statusData.config.targetGroupName || statusData.config.targetGroupId}
+                    </div>
+                    <div className="text-[10px] text-slate-400 font-mono mt-0.5 truncate max-w-sm">
+                      ID: {statusData.config.targetGroupId}
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleUnlinkGroup}
+                  className="px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 text-xs font-bold transition cursor-pointer self-end sm:self-center"
+                >
+                  Trocar / Desvincular
+                </button>
+              </div>
+            ) : null}
+
             {/* Group Selector */}
             <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-3">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
                   <Users size={14} className="text-emerald-400" />
-                  <span>Grupo do WhatsApp do Mix</span>
+                  <span>Escolher Grupo da Lista ({groups.length} disponíveis)</span>
                 </label>
                 <button
                   type="button"
                   onClick={fetchGroups}
-                  className="text-[11px] text-emerald-400 hover:underline flex items-center gap-1 cursor-pointer font-bold"
+                  disabled={refreshingGroups}
+                  className="text-[11px] text-emerald-400 hover:text-emerald-300 flex items-center gap-1.5 cursor-pointer font-bold transition disabled:opacity-50"
                 >
-                  <RefreshCw size={11} /> Atualizar Lista
+                  <RefreshCw size={11} className={refreshingGroups ? 'animate-spin' : ''} />
+                  <span>{refreshingGroups ? 'Buscando...' : 'Atualizar Lista'}</span>
                 </button>
               </div>
+
+              {groups.length > 4 && (
+                <div className="relative">
+                  <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                  <input
+                    type="text"
+                    value={groupSearch}
+                    onChange={(e) => setGroupSearch(e.target.value)}
+                    placeholder="Pesquisar grupo por nome..."
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              )}
 
               {groups.length > 0 ? (
                 <div className="space-y-2">
                   <select
                     value={selectedGroupId}
                     onChange={(e) => handleSaveGroup(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 cursor-pointer"
                   >
                     <option value="">Selecione o grupo onde o bot enviará as mensagens...</option>
-                    {groups.map((g) => (
-                      <option key={g.id} value={g.id}>
-                        {g.subject || g.id} ({g.size || 0} membros)
-                      </option>
-                    ))}
+                    {groups
+                      .filter((g) => {
+                        if (!groupSearch.trim()) return true;
+                        const term = groupSearch.toLowerCase();
+                        return (
+                          (g.subject && g.subject.toLowerCase().includes(term)) ||
+                          (g.id && g.id.toLowerCase().includes(term))
+                        );
+                      })
+                      .map((g) => (
+                        <option key={g.id} value={g.id}>
+                          {g.subject || g.id} ({g.size || 0} membros)
+                        </option>
+                      ))}
                   </select>
                   <p className="text-[11px] text-slate-400">
-                    O bot precisa estar adicionado ao grupo no WhatsApp para que ele apareça na lista acima.
+                    O bot lista todos os grupos onde ele é membro no WhatsApp. Selecione o grupo desejado acima.
                   </p>
                 </div>
               ) : (
-                <div className="text-xs text-slate-400 p-3 rounded-xl bg-slate-950/60 border border-slate-800/80">
-                  {isConnected
-                    ? 'Nenhum grupo encontrado ainda. Certifique-se de que o bot foi adicionado a pelo menos um grupo no WhatsApp e clique em "Atualizar Lista".'
-                    : 'Conecte o bot primeiro para carregar a lista de grupos disponíveis.'}
+                <div className="text-xs text-slate-400 p-3.5 rounded-xl bg-slate-950/60 border border-slate-800/80 space-y-2">
+                  <div className="flex items-center gap-2 text-amber-300 font-bold">
+                    <AlertCircle size={14} />
+                    <span>Nenhum grupo detectado automaticamente ainda</span>
+                  </div>
+                  <p className="text-[11px] text-slate-300 leading-relaxed">
+                    1. Certifique-se de que o número do bot foi adicionado como membro no seu grupo do WhatsApp.<br />
+                    2. Clique em <strong>"Atualizar Lista"</strong> acima, ou veja as opções de vinculação rápida abaixo!
+                  </p>
                 </div>
               )}
+
+              {/* Manual Link or ID Input */}
+              <div className="pt-2 border-t border-slate-800/80 space-y-2">
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-300">
+                  <Link2 size={13} className="text-teal-400" />
+                  <span>Ou vincular por Link de Convite ou ID:</span>
+                </div>
+                <form onSubmit={handleManualGroupSubmit} className="flex gap-2">
+                  <input
+                    type="text"
+                    value={manualInput}
+                    onChange={(e) => setManualInput(e.target.value)}
+                    placeholder="Ex: https://chat.whatsapp.com/... ou 1203630...@g.us"
+                    className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                  />
+                  <button
+                    type="submit"
+                    disabled={resolvingManual || !manualInput.trim()}
+                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold text-xs transition cursor-pointer flex items-center gap-1.5 shrink-0"
+                  >
+                    {resolvingManual ? <RefreshCw size={12} className="animate-spin" /> : <Check size={12} />}
+                    <span>Vincular</span>
+                  </button>
+                </form>
+              </div>
+
+              {/* Pro Tip Card */}
+              <div className="p-3 rounded-xl bg-gradient-to-r from-emerald-950/30 to-teal-950/30 border border-emerald-500/30 flex items-start gap-2.5">
+                <Sparkles size={16} className="text-emerald-400 shrink-0 mt-0.5" />
+                <div className="text-xs text-slate-300 leading-relaxed">
+                  <strong className="text-emerald-300">Dica Prática:</strong> Você também pode abrir o grupo no WhatsApp pelo celular e enviar a mensagem <code className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-200 font-mono font-bold">!ativar</code>. O bot vinculará aquele grupo no mesmo instante!
+                </div>
+              </div>
             </div>
 
             {/* Notification Checkboxes */}

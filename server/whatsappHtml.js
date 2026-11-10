@@ -386,7 +386,8 @@ export function renderWhatsAppAdminHtml() {
       try {
         const res = await fetch('/api/whatsapp/groups');
         if (!res.ok) return;
-        const groups = await res.json();
+        const resData = await res.json();
+        const groups = Array.isArray(resData) ? resData : (resData?.groups || []);
         const select = document.getElementById('group-select');
         select.innerHTML = '';
 

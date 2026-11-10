@@ -18,6 +18,7 @@ const AUTH_DIR = path.join(DATA_DIR, 'whatsapp_auth');
 const CONFIG_PATH = path.join(DATA_DIR, 'whatsappConfig.json');
 const CONFIG_DEFAULT_PATH = path.join(DATA_DIR, 'whatsappConfig.default.json');
 const PROFILES_PATH = path.join(DATA_DIR, 'playerProfiles.json');
+const GROUPS_PATH = path.join(DATA_DIR, 'whatsappGroups.json');
 
 class WhatsAppBotManager {
   constructor() {
@@ -34,11 +35,38 @@ class WhatsAppBotManager {
     this.isConnecting = false;
     this.discordBotRef = null;
     this.webRoomsRef = null;
+    this.loadCachedGroups();
   }
 
   setStoreRefs(discordBot, webRooms) {
     if (discordBot) this.discordBotRef = discordBot;
     if (webRooms) this.webRoomsRef = webRooms;
+  }
+
+  loadCachedGroups() {
+    try {
+      if (fs.existsSync(GROUPS_PATH)) {
+        const raw = fs.readFileSync(GROUPS_PATH, 'utf8');
+        const list = JSON.parse(raw);
+        if (Array.isArray(list)) {
+          for (const item of list) {
+            if (item && item.id) {
+              this.groups.set(item.id, item);
+            }
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
+  saveCachedGroups() {
+    try {
+      if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+      const list = Array.from(this.groups.values());
+      fs.writeFileSync(GROUPS_PATH, JSON.stringify(list, null, 2), 'utf8');
+    } catch (e) {
+      console.warn('[WHATSAPP] Falha ao salvar grupos em cache:', e.message);
+    }
   }
 
   loadPlayerProfiles() {
@@ -222,8 +250,11 @@ class WhatsAppBotManager {
 
           console.log(`✅ [WHATSAPP] Conectado com sucesso como: ${this.user.name} (${phone})`);
 
-          // Fetch participating groups in background
+          // Fetch participating groups in background with retries to allow state sync
           this.fetchGroups().catch(() => {});
+          setTimeout(() => this.fetchGroups().catch(() => {}), 2000);
+          setTimeout(() => this.fetchGroups().catch(() => {}), 6000);
+          setTimeout(() => this.fetchGroups().catch(() => {}), 15000);
         }
       });
 
@@ -263,6 +294,70 @@ class WhatsAppBotManager {
     const senderPhone = senderJid.replace(/\D/g, '');
     const senderName = msg.pushName || `Jogador_${senderPhone.slice(-4)}`;
     const lower = clean.toLowerCase();
+
+    // Auto-discover and cache group when receiving messages
+    if (from.endsWith('@g.us') && !this.groups.has(from) && this.sock) {
+      this.sock.groupMetadata(from).then((meta) => {
+        if (meta) {
+          this.groups.set(from, {
+            id: from,
+            subject: meta.subject || 'Grupo CS2',
+            size: meta.participants?.length || 0,
+            desc: meta.desc || '',
+          });
+          this.saveCachedGroups();
+        }
+      }).catch(() => {});
+    }
+
+    // 0. ATIVAR / VINCULAR GRUPO DIRETAMENTE PELO WHATSAPP
+    if (
+      from.endsWith('@g.us') &&
+      (lower === '!ativar' ||
+        lower === '!vincular' ||
+        lower === '!mix grupo' ||
+        lower === '!mix ativar' ||
+        lower === '!setgroup')
+    ) {
+      let groupName = 'Grupo CS2';
+      try {
+        if (this.sock) {
+          const meta = await this.sock.groupMetadata(from);
+          if (meta && meta.subject) groupName = meta.subject;
+        }
+      } catch (_) {}
+
+      this.saveConfig({
+        targetGroupId: from,
+        targetGroupName: groupName,
+      });
+
+      this.groups.set(from, {
+        id: from,
+        subject: groupName,
+        size: 0,
+        desc: '',
+      });
+      this.saveCachedGroups();
+
+      const activateMsg =
+        `🎯 *CS2 MIX HUB • GRUPO VINCULADO COM SUCESSO!*\n\n` +
+        `Este grupo (*${groupName}*) foi definido como o canal oficial de avisos e comandos do Mix!\n\n` +
+        `📢 *O que será enviado aqui automaticamente:*\n` +
+        `• Convocação ao criar novo mix\n` +
+        `• Alerta de vagas restantes (8/10 e 9/10)\n` +
+        `• Escalação de times, capitães e mapa sorteado\n` +
+        `• IP do servidor com botão Steam 1-Clique\n` +
+        `• Placar final e MVP da partida com estatísticas\n\n` +
+        `🎮 *Comandos rápidos disponíveis:*\n` +
+        `• *!fila* - Ver jogadores na fila e times\n` +
+        `• *!entrar* - Entrar na fila do mix ativo\n` +
+        `• *!sair* - Sair da fila\n` +
+        `• *!ip* - Obter o IP de conexão do CS2\n` +
+        `• *!lvl 15* - Salvar seu nível Gamers Club`;
+
+      return this.sock.sendMessage(from, { text: activateMsg }, { quoted: msg }).catch(() => {});
+    }
 
     // 1. IP DO SERVIDOR CS2 & CONEXÃO STEAM 1-CLIQUE
     if (lower === '!ip' || lower === '!servidor' || lower === '!connect' || lower === '!server') {
@@ -487,27 +582,84 @@ class WhatsAppBotManager {
     }
   }
 
-  async fetchGroups() {
-    if (!this.sock || this.status !== 'connected') return [];
+  async fetchGroups(force = false) {
+    if (!this.sock || this.status !== 'connected') {
+      return Array.from(this.groups.values());
+    }
     try {
       const groupData = await this.sock.groupFetchAllParticipating();
-      this.groups.clear();
-      const list = [];
-      for (const [id, g] of Object.entries(groupData)) {
-        const item = {
-          id,
-          subject: g.subject || 'Grupo sem nome',
-          size: g.participants?.length || 0,
-          desc: g.desc || '',
-        };
-        this.groups.set(id, item);
-        list.push(item);
+      if (groupData && typeof groupData === 'object') {
+        const list = [];
+        for (const [id, g] of Object.entries(groupData)) {
+          const item = {
+            id,
+            subject: g.subject || 'Grupo sem nome',
+            size: g.participants?.length || 0,
+            desc: g.desc || '',
+          };
+          this.groups.set(id, item);
+          list.push(item);
+        }
+        this.saveCachedGroups();
+        return list;
       }
-      return list;
+      return Array.from(this.groups.values());
     } catch (e) {
       console.warn('[WHATSAPP] Falha ao listar grupos:', e.message);
       return Array.from(this.groups.values());
     }
+  }
+
+  async resolveGroupFromInput(input) {
+    if (!input || typeof input !== 'string') return null;
+    const trimmed = input.trim();
+
+    // 1. If it's a JID directly: 120363023456@g.us
+    if (trimmed.endsWith('@g.us')) {
+      const existing = this.groups.get(trimmed);
+      let subject = existing?.subject || 'Grupo CS2';
+      if (!existing && this.sock && this.status === 'connected') {
+        try {
+          const meta = await this.sock.groupMetadata(trimmed);
+          if (meta?.subject) subject = meta.subject;
+        } catch (_) {}
+      }
+      const item = { id: trimmed, subject, size: existing?.size || 0, desc: '' };
+      this.groups.set(trimmed, item);
+      this.saveCachedGroups();
+      return item;
+    }
+
+    // 2. If it's an invite link: https://chat.whatsapp.com/XXXXX
+    const match = trimmed.match(/chat\.whatsapp\.com\/([A-Za-z0-9_-]+)/i);
+    if (match && match[1] && this.sock && this.status === 'connected') {
+      try {
+        const info = await this.sock.groupGetInviteInfo(match[1]);
+        if (info && info.id) {
+          const jid = info.id.includes('@g.us') ? info.id : `${info.id}@g.us`;
+          const item = {
+            id: jid,
+            subject: info.subject || 'Grupo CS2',
+            size: info.size || info.participants?.length || 0,
+            desc: info.desc || '',
+          };
+          this.groups.set(jid, item);
+          this.saveCachedGroups();
+          return item;
+        }
+      } catch (e) {
+        console.warn('[WHATSAPP] Erro ao resolver link de convite:', e.message);
+      }
+    }
+
+    // 3. Match by name from cached groups
+    for (const g of this.groups.values()) {
+      if (g.subject.toLowerCase().includes(trimmed.toLowerCase())) {
+        return g;
+      }
+    }
+
+    return null;
   }
 
   async sendMessageToGroup(text, targetJid = null, mentions = []) {

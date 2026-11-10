@@ -2034,6 +2034,20 @@ app.get('/api/whatsapp/groups', async (req, res) => {
   }
 });
 
+app.post('/api/whatsapp/resolve-group', async (req, res) => {
+  const { input } = req.body || {};
+  try {
+    const group = await whatsappBot.resolveGroupFromInput(input);
+    if (group) {
+      res.json({ success: true, group });
+    } else {
+      res.status(404).json({ success: false, error: 'Grupo não encontrado ou link inválido.' });
+    }
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 app.post('/api/whatsapp/pair-code', async (req, res) => {
   const { phoneNumber } = req.body || {};
   try {
