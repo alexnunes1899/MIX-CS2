@@ -1372,6 +1372,31 @@ class DiscordBotManager {
         .setName('inventario')
         .setDescription('Consulta seu inventário de skins, lucro/prejuízo e facas abertas no simulador'),
 
+      new SlashCommandBuilder()
+        .setName('calls')
+        .setDescription('Configura ou move os jogadores do mix para as calls de voz oficiais Time A e Time B')
+        .addChannelOption((opt) =>
+          opt
+            .setName('time_a')
+            .setDescription('Selecione o canal de voz oficial do Time A')
+            .addChannelTypes(ChannelType.GuildVoice)
+            .setRequired(false)
+        )
+        .addChannelOption((opt) =>
+          opt
+            .setName('time_b')
+            .setDescription('Selecione o canal de voz oficial do Time B')
+            .addChannelTypes(ChannelType.GuildVoice)
+            .setRequired(false)
+        )
+        .addChannelOption((opt) =>
+          opt
+            .setName('lobby')
+            .setDescription('Selecione o canal de voz do Lobby / Geral')
+            .addChannelTypes(ChannelType.GuildVoice)
+            .setRequired(false)
+        ),
+
       new SlashCommandBuilder().setName('ajuda').setDescription('Manual completo de comandos do Bot do Mix'),
     ];
 
@@ -2518,6 +2543,11 @@ class DiscordBotManager {
         .setLabel('Encerrar MVP Agora (60s)')
         .setEmoji('👑')
         .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId(`mix_voice_lobby:${mix.id}`)
+        .setLabel('Voltar para o Geral')
+        .setEmoji('🔊')
+        .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId(`bagre_vote_start:${mix.id}`)
         .setLabel('Votar no Bagre do Mix')
@@ -3835,7 +3865,7 @@ class DiscordBotManager {
       this.syncToWebRoom(mix);
 
       if (this.config.autoMoveVoice) {
-        this.executeVoiceMover(interaction.guild, mix).catch(() => {});
+        this.executeVoiceMover(interaction.guild, mix, interaction.channel).catch(() => {});
       }
 
       const finalEmbed = this.buildMatchReadyEmbed(mix);
@@ -3856,6 +3886,10 @@ class DiscordBotManager {
       mix.phase = 'live';
       this.syncToWebRoom(mix);
 
+      if (this.config.autoMoveVoice) {
+        this.executeVoiceMover(interaction.guild, mix, interaction.channel).catch(() => {});
+      }
+
       const embed = this.buildMatchReadyEmbed(mix);
       const components = this.buildMatchReadyButtons(mix);
 
@@ -3868,8 +3902,13 @@ class DiscordBotManager {
 
     // 9. VOICE MOVER
     if (action === 'mix_voice') {
-      const result = await this.executeVoiceMover(interaction.guild, mix);
-      return interaction.reply({ content: result.message, ephemeral: true });
+      const result = await this.executeVoiceMover(interaction.guild, mix, interaction.channel);
+      return interaction.reply({ content: result.message, ephemeral: false });
+    }
+
+    if (action === 'mix_voice_lobby') {
+      const result = await this.executeVoiceReturnToLobby(interaction.guild, mix);
+      return interaction.reply({ content: result.message, ephemeral: false });
     }
 
     // 10. DECLARE MATCH RESULT (MODAL)
@@ -3969,40 +4008,249 @@ class DiscordBotManager {
     }
   }
 
-  async executeVoiceMover(guild, mix) {
+  async resolveVoiceChannelsForGuild(guild, contextChannel = null) {
+    if (!guild) return null;
+
+    if (!this.config.guildVoiceChannels) {
+      this.config.guildVoiceChannels = {};
+    }
+
+    const guildVoice = this.config.guildVoiceChannels[guild.id] || {};
+    let channelA = null;
+    let channelB = null;
+
+    // 1. Check if configured IDs exist in the guild
+    if (guildVoice.teamAVoiceId) {
+      channelA = await guild.channels.fetch(guildVoice.teamAVoiceId).catch(() => null);
+    }
+    if (guildVoice.teamBVoiceId) {
+      channelB = await guild.channels.fetch(guildVoice.teamBVoiceId).catch(() => null);
+    }
+
+    // Fallback to legacy global config if not found in per-guild config
+    if (!channelA && this.config.teamAVoiceId) {
+      channelA = await guild.channels.fetch(this.config.teamAVoiceId).catch(() => null);
+    }
+    if (!channelB && this.config.teamBVoiceId) {
+      channelB = await guild.channels.fetch(this.config.teamBVoiceId).catch(() => null);
+    }
+
+    // 2. Search existing channels in this guild by name pattern if missing
+    if (!channelA || !channelB) {
+      try {
+        const channels = await guild.channels.fetch();
+        const voiceChannels = channels.filter((c) => c && c.type === ChannelType.GuildVoice);
+
+        if (!channelA) {
+          channelA =
+            voiceChannels.find((c) => /^(🔊\s*)?(time\s*a|team\s*a|call\s*a|mix\s*a)/i.test(c.name)) || null;
+        }
+
+        if (!channelB) {
+          channelB =
+            voiceChannels.find((c) => /^(🔊\s*)?(time\s*b|team\s*b|call\s*b|mix\s*b)/i.test(c.name)) || null;
+        }
+      } catch (err) {
+        console.warn(`[VOICE RESOLVER] Erro ao buscar canais no servidor ${guild.name}:`, err.message);
+      }
+    }
+
+    // 3. If still missing, AUTO-CREATE THEM in the server!
+    const me = await guild.members.fetchMe().catch(() => null);
+    const canManage = me && me.permissions.has(PermissionsBitField.Flags.ManageChannels);
+
+    if ((!channelA || !channelB) && canManage) {
+      try {
+        let parentCategoryId = contextChannel?.parentId || guildVoice.categoryId || null;
+        if (!parentCategoryId) {
+          const channels = await guild.channels.fetch();
+          const existingCat = channels.find(
+            (c) => c && c.type === ChannelType.GuildCategory && /cs2 mix hub|calls do mix/i.test(c.name)
+          );
+          if (existingCat) {
+            parentCategoryId = existingCat.id;
+          } else {
+            const newCat = await guild.channels.create({
+              name: '🏆 CS2 MIX HUB',
+              type: ChannelType.GuildCategory,
+            });
+            parentCategoryId = newCat.id;
+          }
+        }
+
+        if (!channelA) {
+          channelA = await guild.channels.create({
+            name: '🔊 Time A (Mix CS2)',
+            type: ChannelType.GuildVoice,
+            parent: parentCategoryId,
+            userLimit: 5,
+          });
+          console.log(`[VOICE MOVER] Canal Time A criado em ${guild.name} (ID: ${channelA.id})`);
+        }
+
+        if (!channelB) {
+          channelB = await guild.channels.create({
+            name: '🔊 Time B (Mix CS2)',
+            type: ChannelType.GuildVoice,
+            parent: parentCategoryId,
+            userLimit: 5,
+          });
+          console.log(`[VOICE MOVER] Canal Time B criado em ${guild.name} (ID: ${channelB.id})`);
+        }
+      } catch (err) {
+        console.warn(`[VOICE MOVER] Falha ao auto-criar canais de voz em ${guild.name}:`, err.message);
+      }
+    }
+
+    // 4. Save the resolved channels in config for this guild
+    if (channelA && channelB) {
+      this.config.guildVoiceChannels[guild.id] = {
+        teamAVoiceId: channelA.id,
+        teamBVoiceId: channelB.id,
+        categoryId: channelA.parentId || guildVoice.categoryId || '',
+      };
+      if (!this.config.teamAVoiceId) this.config.teamAVoiceId = channelA.id;
+      if (!this.config.teamBVoiceId) this.config.teamBVoiceId = channelB.id;
+      this.saveConfig({
+        guildVoiceChannels: this.config.guildVoiceChannels,
+        teamAVoiceId: this.config.teamAVoiceId,
+        teamBVoiceId: this.config.teamBVoiceId,
+      });
+    }
+
+    return { channelA, channelB };
+  }
+
+  async executeVoiceMover(guild, mix, contextChannel = null) {
     if (!guild) return { success: false, message: 'Servidor não encontrado.' };
 
-    const teamAVoiceId = this.config.teamAVoiceId;
-    const teamBVoiceId = this.config.teamBVoiceId;
-
-    if (!teamAVoiceId || !teamBVoiceId) {
+    const resolved = await this.resolveVoiceChannelsForGuild(guild, contextChannel);
+    if (!resolved || !resolved.channelA || !resolved.channelB) {
       return {
         success: false,
-        message: '⚠️ IDs dos canais de voz Time A e Time B não foram configurados no bot.',
+        message: '⚠️ Não foi possível encontrar ou criar os canais de voz **Time A** e **Time B**. Verifique se o bot possui a permissão de **Gerenciar Canais** ou configure os canais manualmente com `/calls`.',
       };
     }
 
+    const { channelA, channelB } = resolved;
     let movedCount = 0;
-    const movePlayer = async (playerId, channelId) => {
+    const movedA = [];
+    const movedB = [];
+    const notInVoice = [];
+    const errors = [];
+
+    const movePlayer = async (p, targetChannel, teamLetter) => {
       try {
-        const member = await guild.members.fetch(playerId).catch(() => null);
-        if (member && member.voice && member.voice.channelId) {
-          await member.voice.setChannel(channelId);
-          movedCount++;
+        const member = await guild.members.fetch(p.id).catch(() => null);
+        if (!member) {
+          errors.push(`Membro <@${p.id}> não encontrado no servidor.`);
+          return;
+        }
+
+        if (member.voice && member.voice.channelId) {
+          if (member.voice.channelId === targetChannel.id) {
+            if (teamLetter === 'A') movedA.push(member);
+            else movedB.push(member);
+            movedCount++;
+          } else {
+            await member.voice.setChannel(targetChannel.id);
+            if (teamLetter === 'A') movedA.push(member);
+            else movedB.push(member);
+            movedCount++;
+          }
+        } else {
+          notInVoice.push({ p, teamLetter });
         }
       } catch (e) {
-        console.warn(`[VOICE MOVER] Falha ao mover membro ${playerId}:`, e.message);
+        console.warn(`[VOICE MOVER] Falha ao mover membro ${p.id}:`, e.message);
+        errors.push(`<@${p.id}>: ${e.message}`);
       }
     };
 
     const promises = [];
-    (mix.teamA.players || []).forEach((p) => promises.push(movePlayer(p.id, teamAVoiceId)));
-    (mix.teamB.players || []).forEach((p) => promises.push(movePlayer(p.id, teamBVoiceId)));
+    (mix.teamA.players || []).forEach((p) => promises.push(movePlayer(p, channelA, 'A')));
+    (mix.teamB.players || []).forEach((p) => promises.push(movePlayer(p, channelB, 'B')));
 
     await Promise.all(promises);
+
+    let msg = '';
+    if (movedCount > 0) {
+      msg += `✅ **${movedCount} jogador(es) nas calls de voz oficiais:**\n`;
+      msg += `• **Time A:** <#${channelA.id}> (${movedA.length}/5)\n`;
+      msg += `• **Time B:** <#${channelB.id}> (${movedB.length}/5)\n`;
+    }
+
+    if (notInVoice.length > 0) {
+      msg += `\n⚠️ **${notInVoice.length} jogador(es) não estão conectados em nenhuma call de voz:**\n`;
+      msg += notInVoice.map((item) => `• <@${item.p.id}> (${item.teamLetter === 'A' ? 'Time A' : 'Time B'})`).join('\n');
+      msg += `\n\n👉 *Entrem em qualquer canal de voz do servidor e cliquem novamente no botão **[📞 Mover para Calls]** para o bot puxar vocês automaticamente!*`;
+    }
+
+    if (movedCount === 0 && notInVoice.length > 0) {
+      msg = `⚠️ **Nenhum jogador dos times está conectado em canal de voz no momento!**\n\n`;
+      msg += `As calls oficiais da partida estão prontas:\n`;
+      msg += `• **Time A:** <#${channelA.id}>\n`;
+      msg += `• **Time B:** <#${channelB.id}>\n\n`;
+      msg += `👉 Entrem em qualquer canal de voz do servidor e cliquem em **[📞 Mover para Calls]** para serem transferidos automaticamente!`;
+    }
+
     return {
       success: true,
-      message: `✅ **${movedCount} jogador(es)** foram movidos para as suas respectivas calls de voz!`,
+      movedCount,
+      channelA,
+      channelB,
+      message: msg,
+    };
+  }
+
+  async executeVoiceReturnToLobby(guild, mix) {
+    if (!guild) return { success: false, message: 'Servidor não encontrado.' };
+
+    let lobbyChannel = null;
+    const guildVoice = this.config.guildVoiceChannels?.[guild.id] || {};
+
+    if (guildVoice.lobbyVoiceId) {
+      lobbyChannel = await guild.channels.fetch(guildVoice.lobbyVoiceId).catch(() => null);
+    }
+    if (!lobbyChannel && this.config.lobbyVoiceId) {
+      lobbyChannel = await guild.channels.fetch(this.config.lobbyVoiceId).catch(() => null);
+    }
+
+    if (!lobbyChannel) {
+      try {
+        const channels = await guild.channels.fetch();
+        const voiceChannels = channels.filter((c) => c && c.type === ChannelType.GuildVoice);
+        lobbyChannel =
+          voiceChannels.find((c) => /^(geral|lobby|cszin|counter\s*strike)/i.test(c.name)) || null;
+      } catch (_) {}
+    }
+
+    if (!lobbyChannel) {
+      return {
+        success: false,
+        message: '⚠️ Canal de voz do Lobby/Geral não foi encontrado no servidor.',
+      };
+    }
+
+    let movedCount = 0;
+    const allPlayers = [...(mix.teamA?.players || []), ...(mix.teamB?.players || []), ...(mix.players || [])];
+    const uniqueIds = [...new Set(allPlayers.map((p) => p.id))];
+
+    for (const playerId of uniqueIds) {
+      try {
+        const member = await guild.members.fetch(playerId).catch(() => null);
+        if (member && member.voice && member.voice.channelId) {
+          if (member.voice.channelId !== lobbyChannel.id) {
+            await member.voice.setChannel(lobbyChannel.id);
+            movedCount++;
+          }
+        }
+      } catch (_) {}
+    }
+
+    return {
+      success: true,
+      message: `🔊 **${movedCount} jogador(es)** foram movidos de volta para o canal <#${lobbyChannel.id}>!`,
     };
   }
 
@@ -4027,6 +4275,7 @@ class DiscordBotManager {
 
     if (commandName === 'painel') return this.cmdSendPermanentPanel(interaction);
     if (commandName === 'roleta') return this.cmdRoulette(interaction);
+    if (commandName === 'calls') return this.cmdCalls(interaction);
     if (commandName === 'stats') {
       const user = interaction.options.getUser('jogador') || interaction.user;
       const embed = this.buildUserStatsEmbed(user);
@@ -4239,6 +4488,57 @@ class DiscordBotManager {
     }
     const res = await this.toggleMixRole(interaction.guild, interaction.member);
     return interaction.reply({ content: res.message, ephemeral: true });
+  }
+
+  async cmdCalls(interaction) {
+    if (!interaction.guild) {
+      return interaction.reply({ content: '⚠️ Este comando só pode ser usado em um servidor.', ephemeral: true });
+    }
+
+    const timeA = interaction.options.getChannel('time_a');
+    const timeB = interaction.options.getChannel('time_b');
+    const lobby = interaction.options.getChannel('lobby');
+
+    if (timeA || timeB || lobby) {
+      if (!this.config.guildVoiceChannels) this.config.guildVoiceChannels = {};
+      const current = this.config.guildVoiceChannels[interaction.guildId] || {};
+      if (timeA) current.teamAVoiceId = timeA.id;
+      if (timeB) current.teamBVoiceId = timeB.id;
+      if (lobby) current.lobbyVoiceId = lobby.id;
+      this.config.guildVoiceChannels[interaction.guildId] = current;
+      this.saveConfig({ guildVoiceChannels: this.config.guildVoiceChannels });
+
+      return interaction.reply({
+        content: `✅ **Canais de voz configurados para este servidor:**\n` +
+          `• **Time A:** ${current.teamAVoiceId ? `<#${current.teamAVoiceId}>` : '*Não alterado*'}\n` +
+          `• **Time B:** ${current.teamBVoiceId ? `<#${current.teamBVoiceId}>` : '*Não alterado*'}\n` +
+          `• **Lobby Geral:** ${current.lobbyVoiceId ? `<#${current.lobbyVoiceId}>` : '*Não alterado*'}\n\n` +
+          `Os sorteios e o botão **[📞 Mover para Calls]** usarão estes canais automaticamente!`,
+        ephemeral: false,
+      });
+    }
+
+    const mix = this.activeMixes.get(interaction.channelId);
+    if (mix && (mix.teamA?.players?.length > 0 || mix.teamB?.players?.length > 0)) {
+      await interaction.deferReply();
+      const res = await this.executeVoiceMover(interaction.guild, mix, interaction.channel);
+      return interaction.editReply({ content: res.message });
+    }
+
+    await interaction.deferReply({ ephemeral: true });
+    const resolved = await this.resolveVoiceChannelsForGuild(interaction.guild, interaction.channel);
+    if (!resolved || !resolved.channelA || !resolved.channelB) {
+      return interaction.editReply({
+        content: `⚠️ Não foi possível encontrar ou criar as calls no servidor. Verifique se o bot tem permissão de **Gerenciar Canais**.`,
+      });
+    }
+
+    return interaction.editReply({
+      content: `📞 **Canais de Voz Oficiais do Servidor:**\n` +
+        `• **Time A:** <#${resolved.channelA.id}>\n` +
+        `• **Time B:** <#${resolved.channelB.id}>\n\n` +
+        `✅ As calls estão 100% configuradas e prontas para receber os jogadores nos mixes!`,
+    });
   }
 
   async cmdSetLevel(interaction) {
