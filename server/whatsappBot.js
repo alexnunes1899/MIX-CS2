@@ -275,7 +275,7 @@ class WhatsAppBotManager {
       `• Digite *!ip* para ver o servidor e conectar\n\n` +
       `👉 Ou acesse pelo navegador: ${publicUrl}`;
 
-    return this.sock.sendMessage(from, { text: statusText }, { quoted: msg }).catch(() => {});
+    return this.replyMessage(from, statusText, msg);
   }
 
   loadConfig() {
@@ -419,12 +419,11 @@ class WhatsAppBotManager {
         }
       });
 
-      // Simple commands listener for group chats
+      // Simple commands listener for group chats & direct messages
       this.sock.ev.on('messages.upsert', async (chatUpdate) => {
         try {
-          if (!chatUpdate?.messages || chatUpdate.type !== 'notify') return;
+          if (!chatUpdate?.messages || !Array.isArray(chatUpdate.messages)) return;
           for (const msg of chatUpdate.messages) {
-            if (msg.key.fromMe) continue;
             await this.handleIncomingMessage(msg);
           }
         } catch (e) {
@@ -439,6 +438,25 @@ class WhatsAppBotManager {
     }
   }
 
+  async replyMessage(from, text, msg = null) {
+    if (!this.sock) return false;
+    try {
+      // In groups, only quote if participant is present and not sent by me
+      if (msg && !msg.key?.fromMe && msg.key?.participant) {
+        return await this.sock.sendMessage(from, { text }, { quoted: msg });
+      }
+      return await this.sock.sendMessage(from, { text });
+    } catch (err) {
+      console.warn(`[WHATSAPP] Falha no reply com quoted: ${err.message}. Enviando direto.`);
+      try {
+        return await this.sock.sendMessage(from, { text });
+      } catch (err2) {
+        console.error(`[WHATSAPP] Erro ao enviar mensagem: ${err2.message}`);
+        return false;
+      }
+    }
+  }
+
   async handleIncomingMessage(msg) {
     const from = msg.key.remoteJid;
     if (!from) return;
@@ -446,15 +464,28 @@ class WhatsAppBotManager {
     const rawText =
       msg.message?.conversation ||
       msg.message?.extendedTextMessage?.text ||
+      msg.message?.imageMessage?.caption ||
+      msg.message?.videoMessage?.caption ||
       '';
 
     const clean = rawText.trim();
     if (!clean) return;
 
-    const senderJid = msg.key.participant || from;
-    const senderPhone = senderJid.replace(/\D/g, '');
-    const senderName = msg.pushName || `Jogador_${senderPhone.slice(-4)}`;
+    // Se a mensagem foi enviada pelo dono do bot (fromMe),
+    // SÓ processamos se começar com '!' (comando de controle digitado pelo dono).
+    // Isso evita qualquer loop com respostas automáticas do bot.
+    if (msg.key?.fromMe && !clean.startsWith('!')) return;
+
+    const senderJid = msg.key.fromMe
+      ? (this.sock.user?.id || from)
+      : (msg.key.participant || from);
+    const senderPhone = senderJid.replace(/\D/g, '').split(':')[0] || this.user?.phone || '';
+    const senderName = msg.key.fromMe
+      ? (this.user?.name || 'Alex Nunes')
+      : (msg.pushName || `Jogador_${senderPhone.slice(-4)}`);
     const lower = clean.toLowerCase();
+
+    console.log(`💬 [WHATSAPP MSG] De ${senderName} (${senderPhone}) em ${from}: "${clean}"`);
 
     // Auto-discover and cache group when receiving messages
     if (from.endsWith('@g.us') && !this.groups.has(from) && this.sock) {
@@ -517,7 +548,7 @@ class WhatsAppBotManager {
         `• *!ip* - Obter o IP de conexão do CS2\n` +
         `• *!lvl 15* - Salvar seu nível Gamers Club`;
 
-      return this.sock.sendMessage(from, { text: activateMsg }, { quoted: msg }).catch(() => {});
+      return this.replyMessage(from, activateMsg, msg);
     }
 
     // Normalização inteligente de comandos e suporte ao prefixo !mix <subcomando>
@@ -551,9 +582,11 @@ class WhatsAppBotManager {
       // Se já houver um mix ativo em andamento
       if (activeData && activeData.mix && activeData.mix.phase !== 'cancelled' && activeData.mix.phase !== 'finished') {
         if (cmd === '!criar') {
-          return this.sock.sendMessage(from, {
-            text: `⚠️ *Já existe um mix em andamento no momento!* (${activeData.mix.name || activeData.mix.id})\n\nDigite *!fila* para ver os jogadores ou *!cancelar* se desejar reiniciar a fila.`
-          }, { quoted: msg }).catch(() => {});
+          return this.replyMessage(
+            from,
+            `⚠️ *Já existe um mix em andamento no momento!* (${activeData.mix.name || activeData.mix.id})\n\nDigite *!fila* para ver os jogadores ou *!cancelar* se desejar reiniciar a fila.`,
+            msg
+          );
         }
         return this.sendLobbyStatus(from, msg, activeData.mix);
       }
@@ -583,7 +616,7 @@ class WhatsAppBotManager {
         `• Digite *!ip* para ver o IP do servidor CS2\n\n` +
         `👉 Acompanhe ao vivo pelo navegador: ${publicUrl}`;
 
-      return this.sock.sendMessage(from, { text: createMsg }, { quoted: msg }).catch(() => {});
+      return this.replyMessage(from, createMsg, msg);
     }
 
     // 2. IP DO SERVIDOR CS2 & CONEXÃO STEAM 1-CLIQUE (!ip, !servidor, !connect)
@@ -594,9 +627,11 @@ class WhatsAppBotManager {
       const publicUrl = this.getPublicUrl();
 
       if (!ip) {
-        return this.sock.sendMessage(from, {
-          text: `⚠️ *Nenhum IP de servidor CS2 configurado no momento.*\n\nDefina o IP pelo site (${publicUrl}) ou no Discord com \`!servidor <ip:porta>\`.`
-        }, { quoted: msg }).catch(() => {});
+        return this.replyMessage(
+          from,
+          `⚠️ *Nenhum IP de servidor CS2 configurado no momento.*\n\nDefina o IP pelo site (${publicUrl}) ou no Discord com \`!servidor <ip:porta>\`.`,
+          msg
+        );
       }
 
       const cleanIp = ip.replace(/^connect\s+/i, '');
@@ -609,7 +644,7 @@ class WhatsAppBotManager {
         `👉 ${steamConnectUrl}\n\n` +
         `_(Basta tocar no link acima para abrir o Counter-Strike 2 automaticamente!)_`;
 
-      return this.sock.sendMessage(from, { text: ipText }, { quoted: msg }).catch(() => {});
+      return this.replyMessage(from, ipText, msg);
     }
 
     // 3. SALVAR NÍVEL GAMERS CLUB (!lvl, !gc, !level, !nivel)
@@ -618,9 +653,11 @@ class WhatsAppBotManager {
       const parsed = parseInt(parts[1] || cmd.replace(/\D/g, ''), 10);
 
       if (isNaN(parsed) || parsed < 1 || parsed > 21) {
-        return this.sock.sendMessage(from, {
-          text: `⚠️ *Nível inválido!*\nDigite um número de *1 a 21* correspondente ao seu nível na Gamers Club.\n\nExemplo: *!lvl 16*`
-        }, { quoted: msg }).catch(() => {});
+        return this.replyMessage(
+          from,
+          `⚠️ *Nível inválido!*\nDigite um número de *1 a 21* correspondente ao seu nível na Gamers Club.\n\nExemplo: *!lvl 16*`,
+          msg
+        );
       }
 
       const profileKey = `wa_${senderPhone}`;
@@ -642,12 +679,14 @@ class WhatsAppBotManager {
 
       const badge = parsed >= 20 ? '👑 Lvl 20+' : parsed >= 18 ? '🏆 Lvl 18-19' : parsed >= 14 ? '🥇 Lvl 14-17' : '🥈 Lvl 1-13';
 
-      return this.sock.sendMessage(from, {
-        text: `✅ *Nível Gamers Club Salvo com Sucesso!*\n\n` +
+      return this.replyMessage(
+        from,
+        `✅ *Nível Gamers Club Salvo com Sucesso!*\n\n` +
           `👤 *Jogador:* ${senderName}\n` +
           `⭐ *Nível GC:* *Lvl ${parsed}* (${badge})\n\n` +
-          `Seu nível está salvo no sistema e garantirá que o sorteio forme times equilibrados!`
-      }, { quoted: msg }).catch(() => {});
+          `Seu nível está salvo no sistema e garantirá que o sorteio forme times equilibrados!`,
+        msg
+      );
     }
 
     // 4. MOSTRAR FILA / JOGADORES / STATUS DO LOBBY (!fila, !status, !jogadores, !players)
@@ -655,9 +694,11 @@ class WhatsAppBotManager {
       const activeData = this.getActiveMix();
       if (!activeData || !activeData.mix || activeData.mix.phase === 'cancelled' || activeData.mix.phase === 'finished') {
         const publicUrl = this.getPublicUrl();
-        return this.sock.sendMessage(from, {
-          text: `ℹ️ *Nenhum mix aberto no momento!*\n\nDigite *!mix* para criar um novo lobby 5v5 agora mesmo, ou acesse pelo navegador:\n👉 ${publicUrl}`
-        }, { quoted: msg }).catch(() => {});
+        return this.replyMessage(
+          from,
+          `ℹ️ *Nenhum mix aberto no momento!*\n\nDigite *!mix* para criar um novo lobby 5v5 agora mesmo, ou acesse pelo navegador:\n👉 ${publicUrl}`,
+          msg
+        );
       }
 
       return this.sendLobbyStatus(from, msg, activeData.mix);
@@ -667,9 +708,11 @@ class WhatsAppBotManager {
     if (cmd === '!entrar' || cmd === '!jogar' || cmd === '!join') {
       const activeData = this.getActiveMix();
       if (!activeData || !activeData.mix || activeData.mix.phase === 'cancelled' || activeData.mix.phase === 'finished') {
-        return this.sock.sendMessage(from, {
-          text: `⚠️ *Não há nenhum mix aberto no momento.*\n\nDigite *!mix* para criar um novo lobby 5v5 agora mesmo!`
-        }, { quoted: msg }).catch(() => {});
+        return this.replyMessage(
+          from,
+          `⚠️ *Não há nenhum mix aberto no momento.*\n\nDigite *!mix* para criar um novo lobby 5v5 agora mesmo!`,
+          msg
+        );
       }
 
       const mix = activeData.mix;
@@ -677,16 +720,16 @@ class WhatsAppBotManager {
       const savedLevel = this.getPlayerLevel(profileKey);
 
       if (mix.players?.length >= 10) {
-        return this.sock.sendMessage(from, {
-          text: `⚠️ *O lobby acabou de lotar (10/10 jogadores)!* Fique atento para o próximo mix.`
-        }, { quoted: msg }).catch(() => {});
+        return this.replyMessage(
+          from,
+          `⚠️ *O lobby acabou de lotar (10/10 jogadores)!* Fique atento para o próximo mix.`,
+          msg
+        );
       }
 
       const alreadyIn = mix.players?.some(p => p.id === profileKey || p.phone === senderPhone || p.nick === senderName);
       if (alreadyIn) {
-        return this.sock.sendMessage(from, {
-          text: `ℹ️ Você já está confirmado nesta partida!`
-        }, { quoted: msg }).catch(() => {});
+        return this.replyMessage(from, `ℹ️ Você já está confirmado nesta partida!`, msg);
       }
 
       const newPlayer = {
@@ -722,7 +765,7 @@ class WhatsAppBotManager {
         reply += `\n\n💡 *Dica:* Digite *!lvl <1 a 21>* para salvar seu nível real da Gamers Club e equilibrar os times!`;
       }
 
-      await this.sock.sendMessage(from, { text: reply }, { quoted: msg }).catch(() => {});
+      await this.replyMessage(from, reply, msg);
 
       if (count === 8 || count === 9) {
         this.notifyMissingSlots(mix);
@@ -739,9 +782,7 @@ class WhatsAppBotManager {
 
       const idx = mix.players?.findIndex(p => p.id === profileKey || p.phone === senderPhone || p.nick === senderName);
       if (idx === -1 || idx === undefined) {
-        return this.sock.sendMessage(from, {
-          text: `⚠️ Você não está na fila deste mix.`
-        }, { quoted: msg }).catch(() => {});
+        return this.replyMessage(from, `⚠️ Você não está na fila deste mix.`, msg);
       }
 
       mix.players.splice(idx, 1);
@@ -755,25 +796,31 @@ class WhatsAppBotManager {
         }
       }
 
-      return this.sock.sendMessage(from, {
-        text: `🚪 *Você saiu da fila do Mix.* (${mix.players.length}/10 vagas ocupadas).`
-      }, { quoted: msg }).catch(() => {});
+      return this.replyMessage(
+        from,
+        `🚪 *Você saiu da fila do Mix.* (${mix.players.length}/10 vagas ocupadas).`,
+        msg
+      );
     }
 
     // 7. SORTEAR TIMES COM SNAKE-DRAFT GC (!sortear, !times)
     if (cmd === '!sortear' || cmd === '!times') {
       const activeData = this.getActiveMix();
       if (!activeData || !activeData.mix || activeData.mix.phase === 'cancelled' || activeData.mix.phase === 'finished') {
-        return this.sock.sendMessage(from, {
-          text: `⚠️ *Nenhum mix ativo no momento para sortear.* Digite *!mix* para criar um!`
-        }, { quoted: msg }).catch(() => {});
+        return this.replyMessage(
+          from,
+          `⚠️ *Nenhum mix ativo no momento para sortear.* Digite *!mix* para criar um!`,
+          msg
+        );
       }
 
       const mix = activeData.mix;
       if (!mix.players || mix.players.length < 2) {
-        return this.sock.sendMessage(from, {
-          text: `⚠️ *Jogadores insuficientes.* É necessário pelo menos 2 jogadores no lobby para sortear os times! (Atual: ${mix.players?.length || 0}/10)`
-        }, { quoted: msg }).catch(() => {});
+        return this.replyMessage(
+          from,
+          `⚠️ *Jogadores insuficientes.* É necessário pelo menos 2 jogadores no lobby para sortear os times! (Atual: ${mix.players?.length || 0}/10)`,
+          msg
+        );
       }
 
       // Balance teams
@@ -808,16 +855,14 @@ class WhatsAppBotManager {
         `⚖️ *Equilíbrio do Confronto:* ${mix.balancePct || 95}%\n\n` +
         `👉 Digite *!ip* para receber o endereço do servidor CS2 e o link Steam 1-Clique!`;
 
-      return this.sock.sendMessage(from, { text: drawText }, { quoted: msg }).catch(() => {});
+      return this.replyMessage(from, drawText, msg);
     }
 
     // 8. CANCELAR O MIX ATIVO (!cancelar)
     if (cmd === '!cancelar') {
       const activeData = this.getActiveMix();
       if (!activeData || !activeData.mix || activeData.mix.phase === 'cancelled' || activeData.mix.phase === 'finished') {
-        return this.sock.sendMessage(from, {
-          text: `⚠️ *Nenhum mix ativo no momento para cancelar.*`
-        }, { quoted: msg }).catch(() => {});
+        return this.replyMessage(from, `⚠️ *Nenhum mix ativo no momento para cancelar.*`, msg);
       }
 
       const mix = activeData.mix;
@@ -840,9 +885,11 @@ class WhatsAppBotManager {
         }
       }
 
-      return this.sock.sendMessage(from, {
-        text: `❌ *O Mix 5v5 (${mix.name || mix.id}) foi cancelado!*\n\nPara iniciar uma nova partida, qualquer membro pode digitar *!mix*.`
-      }, { quoted: msg }).catch(() => {});
+      return this.replyMessage(
+        from,
+        `❌ *O Mix 5v5 (${mix.name || mix.id}) foi cancelado!*\n\nPara iniciar uma nova partida, qualquer membro pode digitar *!mix*.`,
+        msg
+      );
     }
 
     // 9. AJUDA E GUIA DE COMANDOS (!ajuda, !help, !comandos)
@@ -860,7 +907,7 @@ class WhatsAppBotManager {
         `• *!ajuda* — Exibe esta lista de comandos\n\n` +
         `🌐 *Hub Web:* ${this.getPublicUrl()}`;
 
-      return this.sock.sendMessage(from, { text: helpText }, { quoted: msg }).catch(() => {});
+      return this.replyMessage(from, helpText, msg);
     }
   }
 
