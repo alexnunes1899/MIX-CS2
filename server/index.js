@@ -743,6 +743,8 @@ io.on('connection', (socket) => {
       whatsappBot.notifyMixCreated(room).catch(() => {});
     } else if (room.players.length === 8 || room.players.length === 9) {
       whatsappBot.notifyMissingSlots(room).catch(() => {});
+    } else {
+      whatsappBot.broadcastLobbyUpdate(room, `🌐 *${cleanNick}* [Lvl ${playerData.level || 16} GC] entrou no mix pelo site!`);
     }
 
     emitRoomState(cleanRoomId, room);
@@ -851,6 +853,7 @@ io.on('connection', (socket) => {
     const room = getRoomAndTouch(roomId);
     if (!room) return;
     room.players = room.players.filter((p) => p.id !== playerId);
+    whatsappBot.broadcastLobbyUpdate(room, `🚪 Um jogador saiu da fila pelo site.`);
     emitRoomState(roomId, room);
     broadcastRoomsList();
   });
@@ -1072,6 +1075,7 @@ io.on('connection', (socket) => {
     }
 
     room.phase = 'teams';
+    whatsappBot.broadcastTeamsDrawn(room);
     emitRoomState(roomId, room);
     broadcastRoomsList();
   });
@@ -2199,6 +2203,20 @@ app.post('/api/whatsapp/test', async (req, res) => {
     } else {
       res.status(400).json({ success: false, error: 'Falha ao enviar mensagem. Verifique se o grupo foi salvo e se o bot está conectado.' });
     }
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/whatsapp/broadcast-status', async (req, res) => {
+  try {
+    const activeData = whatsappBot.getActiveMix();
+    if (!activeData || !activeData.mix) {
+      return res.status(400).json({ success: false, error: 'Nenhum mix ativo no momento.' });
+    }
+    const notice = req.body.notice || null;
+    await whatsappBot.sendLobbyStatus(whatsappBot.config.targetGroupId, null, activeData.mix, notice);
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

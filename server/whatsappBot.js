@@ -22,6 +22,13 @@ const PROFILES_PATH = path.join(DATA_DIR, 'playerProfiles.json');
 const GROUPS_PATH = path.join(DATA_DIR, 'whatsappGroups.json');
 import { scheduleSave, clearMixPersistence } from './mixPersistence.js';
 
+export function parsePhoneFromJid(jid) {
+  if (!jid || typeof jid !== 'string') return '';
+  const noAt = jid.split('@')[0] || '';
+  const noDevice = noAt.split(':')[0] || '';
+  return noDevice.replace(/\D/g, '');
+}
+
 class WhatsAppBotManager {
   constructor() {
     this.sock = null;
@@ -37,6 +44,8 @@ class WhatsAppBotManager {
     this.isConnecting = false;
     this.discordBotRef = null;
     this.webRoomsRef = null;
+    this.sentMessageIds = new Set();
+    this._broadcastTimer = null;
     this.loadCachedGroups();
   }
 
@@ -506,7 +515,7 @@ class WhatsAppBotManager {
             const participantJid = r.key.participant || (r.key.fromMe ? this.sock.user?.id : null);
             if (!participantJid) continue;
 
-            const senderPhone = participantJid.replace(/\D/g, '').split(':')[0] || '';
+            const senderPhone = parsePhoneFromJid(participantJid);
             if (!senderPhone) continue;
 
             const profiles = this.loadPlayerProfiles();
@@ -557,12 +566,26 @@ class WhatsAppBotManager {
       } else {
         res = await this.sock.sendMessage(from, { text });
       }
+      if (res?.key?.id && this.sentMessageIds) {
+        this.sentMessageIds.add(res.key.id);
+        if (this.sentMessageIds.size > 2000) {
+          const first = this.sentMessageIds.values().next().value;
+          this.sentMessageIds.delete(first);
+        }
+      }
       console.log(`📤 [WHATSAPP ENVIADO] Mensagem enviada para ${from}`);
       return res;
     } catch (err) {
       console.warn(`[WHATSAPP] Falha no reply com quoted: ${err.message}. Enviando direto.`);
       try {
         const res = await this.sock.sendMessage(from, { text });
+        if (res?.key?.id && this.sentMessageIds) {
+          this.sentMessageIds.add(res.key.id);
+          if (this.sentMessageIds.size > 2000) {
+            const first = this.sentMessageIds.values().next().value;
+            this.sentMessageIds.delete(first);
+          }
+        }
         console.log(`📤 [WHATSAPP ENVIADO] Mensagem enviada direto para ${from}`);
         return res;
       } catch (err2) {
@@ -573,31 +596,51 @@ class WhatsAppBotManager {
   }
 
   async handleIncomingMessage(msg) {
-    const from = msg.key.remoteJid;
+    const from = msg.key?.remoteJid;
     if (!from) return;
 
+    // Ignora se o ID da mensagem foi registrado como enviado por este bot
+    if (this.sentMessageIds && msg.key?.id && this.sentMessageIds.has(msg.key.id)) {
+      return;
+    }
+
+    const m =
+      msg.message?.ephemeralMessage?.message ||
+      msg.message?.viewOnceMessage?.message ||
+      msg.message?.viewOnceMessageV2?.message ||
+      msg.message?.documentWithCaptionMessage?.message ||
+      msg.message;
+
     const rawText =
-      msg.message?.conversation ||
-      msg.message?.extendedTextMessage?.text ||
-      msg.message?.imageMessage?.caption ||
-      msg.message?.videoMessage?.caption ||
+      m?.conversation ||
+      m?.extendedTextMessage?.text ||
+      m?.imageMessage?.caption ||
+      m?.videoMessage?.caption ||
+      m?.buttonsResponseMessage?.selectedButtonId ||
+      m?.templateButtonReplyMessage?.selectedId ||
+      m?.listResponseMessage?.singleSelectReply?.selectedRowId ||
       '';
 
     const clean = rawText.trim();
     if (!clean) return;
 
-    // Se a mensagem foi enviada pelo dono do bot (fromMe),
-    // SÓ processamos se começar com '!' (comando de controle digitado pelo dono).
-    // Isso evita qualquer loop com respostas automáticas do bot.
-    if (msg.key?.fromMe && !clean.startsWith('!')) return;
+    // Proteção contra templates automáticos do bot para evitar loop
+    if (
+      clean.includes('CS2 MIX 5v5 • STATUS DA FILA ATUALIZADO') ||
+      clean.includes('Escalação dos 10 Slots:') ||
+      clean.includes('COMANDOS OFICIAIS DO CS2 MIX HUB') ||
+      clean.includes('CS2 MIX HUB • TIMES SORTEADOS')
+    ) {
+      return;
+    }
 
     const senderJid = msg.key.fromMe
-      ? (this.sock.user?.id || from)
-      : (msg.key.participant || from);
-    const senderPhone = senderJid.replace(/\D/g, '').split(':')[0] || this.user?.phone || '';
+      ? (this.sock.user?.id || this.user?.phone || from)
+      : (msg.key.participant || msg.participant || from);
+    const senderPhone = parsePhoneFromJid(senderJid) || this.user?.phone || '';
     const senderName = msg.key.fromMe
       ? (this.user?.name || 'Alex Nunes')
-      : (msg.pushName || `Jogador_${senderPhone.slice(-4)}`);
+      : (msg.pushName || (senderPhone ? `Jogador_${senderPhone.slice(-4)}` : 'Jogador'));
     const lower = clean.toLowerCase();
 
     console.log(`💬 [WHATSAPP MSG] De ${senderName} (${senderPhone}) em ${from}: "${clean}"`);
@@ -666,8 +709,48 @@ class WhatsAppBotManager {
       return this.replyMessage(from, activateMsg, msg);
     }
 
-    // Normalização inteligente de comandos e suporte ao prefixo !mix <subcomando>
+    // Normalização inteligente de comandos: suporta !, /, . e palavras-chave diretas
     let cmd = lower;
+    if (cmd.startsWith('/') || cmd.startsWith('.')) {
+      cmd = '!' + cmd.slice(1);
+    } else if (!cmd.startsWith('!')) {
+      const firstWord = cmd.split(/\s+/)[0];
+      if ([
+        'mix', 'fila', 'status', 'jogadores', 'players', 'entrar', 'jogar', 'join',
+        'sair', 'leave', 'sortear', 'times', 'draw', 'ip', 'servidor', 'server', 'connect',
+        'cancelar', 'cancel', 'perfil', 'card', 'link', 'ajuda', 'help', 'comandos',
+        'lvl', 'level', 'gc', 'nivel', 'lista', 'enquete', 'botoes', 'painel'
+      ].includes(firstWord)) {
+        cmd = '!' + cmd;
+      } else if (
+        /quantos\s*(player|jogador|tem|deu|falta)/i.test(lower) ||
+        /(deu|tem)\s*quantos/i.test(lower) ||
+        /falta\s*quantos/i.test(lower) ||
+        /faltam\s*quantos/i.test(lower) ||
+        /cad[eê]\s*(o\s*mix|a\s*fila|a\s*lista|quantos|os\s*player)/i.test(lower) ||
+        /(manda|passa|mostra|envia)\s*(a\s*)?(lista|fila)/i.test(lower) ||
+        /tem\s*vaga/i.test(lower) ||
+        /como\s*t[aá]\s*(a\s*)?(fila|o\s*mix|o\s*lobby)/i.test(lower) ||
+        /(vai\s*(ter|rolar|dar\s*bom)|mi[ao]u?)/i.test(lower) ||
+        /quem\s*(vai|t[aá]\s*dentro|t[aá]\s*na\s*fila|t[aá]\s*no\s*mix|joga)/i.test(lower) ||
+        /bora\s*(mix|jogar|cs)/i.test(lower) ||
+        /algu[eé]m\s*(mix|cs|joga|vai|anima)/i.test(lower)
+      ) {
+        cmd = '!fila';
+      }
+    }
+
+    const naturalLvlMatch = lower.match(/(?:sou|meu|coloca|coloquei)?\s*(?:lvl|level|gc|n[ií]vel)\s*[:=]?\s*(\d{1,2})/i);
+    if (naturalLvlMatch && !cmd.startsWith('!lvl') && !cmd.startsWith('!level') && !cmd.startsWith('!gc') && !cmd.startsWith('!nivel')) {
+      const parsedLvl = parseInt(naturalLvlMatch[1], 10);
+      if (parsedLvl >= 1 && parsedLvl <= 21) {
+        cmd = `!lvl ${parsedLvl}`;
+      }
+    }
+
+    // Se a mensagem foi enviada pelo dono do bot (fromMe) e não foi normalizada para comando, ignorar
+    if (msg.key?.fromMe && !cmd.startsWith('!')) return;
+
     if (cmd.startsWith('!mix ')) {
       const rest = cmd.slice(5).trim();
       if (rest.startsWith('entrar') || rest.startsWith('join') || rest.startsWith('jogar')) {
@@ -1225,10 +1308,62 @@ class WhatsAppBotManager {
       if (mentionsList.length > 0) {
         payload.mentions = mentionsList;
       }
-      await this.sock.sendMessage(dest, payload);
+      const res = await this.sock.sendMessage(dest, payload);
+      if (res?.key?.id && this.sentMessageIds) {
+        this.sentMessageIds.add(res.key.id);
+        if (this.sentMessageIds.size > 2000) {
+          const first = this.sentMessageIds.values().next().value;
+          this.sentMessageIds.delete(first);
+        }
+      }
       return true;
     } catch (e) {
       console.warn(`[WHATSAPP] Erro ao enviar mensagem para ${dest}:`, e.message);
+      return false;
+    }
+  }
+
+  async broadcastLobbyUpdate(mix, bannerNotice = null) {
+    if (!this.sock || this.status !== 'connected') return false;
+    const targetGroup = this.config.targetGroupId;
+    if (!targetGroup || !mix) return false;
+
+    if (this._broadcastTimer) {
+      clearTimeout(this._broadcastTimer);
+    }
+
+    this._broadcastTimer = setTimeout(async () => {
+      try {
+        await this.sendLobbyStatus(targetGroup, null, mix, bannerNotice);
+      } catch (e) {
+        console.warn('[WHATSAPP] Falha no broadcastLobbyUpdate:', e.message);
+      }
+    }, 450);
+    return true;
+  }
+
+  async broadcastTeamsDrawn(mix) {
+    if (!this.sock || this.status !== 'connected') return false;
+    const targetGroup = this.config.targetGroupId;
+    if (!targetGroup || !mix) return false;
+
+    try {
+      const listA = (mix.teamA?.players || []).map((p, idx) => `${idx === 0 ? '👑 ' : ''}*${p.displayName || p.nick || p.username}* [Lvl ${p.level || 16}]`).join('\n• ');
+      const listB = (mix.teamB?.players || []).map((p, idx) => `${idx === 0 ? '👑 ' : ''}*${p.displayName || p.nick || p.username}* [Lvl ${p.level || 16}]`).join('\n• ');
+
+      const drawText =
+        `⚔️ *CS2 MIX HUB • TIMES SORTEADOS (SNAKE-DRAFT GC)*\n\n` +
+        `🔵 *TIME A (${mix.teamA?.side || 'CT'})* — Média Lvl ${mix.teamA?.avgLevel || 16}\n` +
+        `• ${listA}\n\n` +
+        `🟡 *TIME B (${mix.teamB?.side || 'TR'})* — Média Lvl ${mix.teamB?.avgLevel || 16}\n` +
+        `• ${listB}\n\n` +
+        `⚖️ *Equilíbrio do Confronto:* ${mix.balancePct || 95}%\n\n` +
+        `👉 Digite *!ip* para receber o endereço do servidor CS2 e o link Steam 1-Clique!`;
+
+      await this.sendMessageToGroup(drawText, targetGroup);
+      return true;
+    } catch (e) {
+      console.warn('[WHATSAPP] Falha ao enviar broadcastTeamsDrawn:', e.message);
       return false;
     }
   }

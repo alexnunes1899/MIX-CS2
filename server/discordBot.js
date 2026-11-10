@@ -1575,6 +1575,7 @@ class DiscordBotManager {
         await this.handlePrefixCommand(message);
       } catch (err) {
         console.error('[DISCORD BOT] Erro ao processar mensagem prefixo !:', err);
+        message.reply(`❌ Ocorreu um erro ao processar o comando: ${err.message}`).catch(() => {});
       }
     });
 
@@ -1628,15 +1629,17 @@ class DiscordBotManager {
       isMentioned = true;
     }
 
-    if (!content.startsWith('!') && !isMentioned) return;
+    if (!content.startsWith('!') && !content.startsWith('.') && !isMentioned) return;
 
-    if (content.startsWith('!')) {
+    if (content.startsWith('!') || content.startsWith('.')) {
       content = content.slice(1).trim();
     }
 
     const args = content.split(/\s+/);
     const command = (args[0] || '').toLowerCase();
     const subArg = (args[1] || '').toLowerCase();
+
+    console.log(`💬 [DISCORD CMD] De ${message.author?.username} em #${message.channel?.name || message.channelId}: "!${command} ${args.slice(1).join(' ')}"`);
 
     if (command === 'mix' || command === 'criar' || command === 'lobby') {
       if (subArg === 'fila' || subArg === 'status' || subArg === 'jogadores') return this.prefixFila(message);
@@ -1694,6 +1697,7 @@ class DiscordBotManager {
         if (mix) {
           mix.serverIp = clean;
           this.syncToWebRoom(mix);
+          this.updateLobbyInChannels(mix);
         }
         return message.reply(`✅ Servidor CS2 configurado com sucesso para os mixes: \`${clean}\``);
       }
@@ -1732,6 +1736,9 @@ class DiscordBotManager {
       return this.prefixInventory(message);
     }
     if (command === 'cancelar') return this.prefixCancel(message);
+    if (command === 'ip' || command === 'connect') return this.prefixIp(message);
+    if (command === 'comandos') return this.prefixHelp(message);
+    if (command === 'reset') return this.prefixCancel(message);
 
     // If the user mentioned the bot directly (e.g. "@cs hub" or "@cs hub oi"), always respond with the interactive panel
     if (isMentioned) {
@@ -1879,15 +1886,19 @@ class DiscordBotManager {
         'O seu nível ficará salvo no seu perfil para todas as próximas partidas!'
       );
     }
+    const playerLvl = this.getPlayerLevel(message.author.id);
+    const pName = message.member?.displayName || message.author.username;
     mix.players.push({
       id: message.author.id,
       username: message.author.username,
-      displayName: message.member?.displayName || message.author.username,
+      displayName: pName,
       avatar: message.author.displayAvatarURL({ dynamic: true }),
-      level: this.getPlayerLevel(message.author.id),
+      level: playerLvl,
       ready: true,
     });
     this.syncToWebRoom(mix);
+    this.updateLobbyInChannels(mix);
+    whatsappBot.broadcastLobbyUpdate(mix, `🎮 *${pName}* [Lvl ${playerLvl} GC] entrou no mix pelo Discord!`);
 
     if (mix.players.length === 8 || mix.players.length === 9) {
       this.notifyMissingSlots(mix, message.guild, message.channel).catch(() => {});
@@ -1908,11 +1919,13 @@ class DiscordBotManager {
     if (!mix) return message.reply('⚠️ Nenhum mix ativo neste canal.');
     const idx = mix.players.findIndex((p) => p.id === message.author.id);
     if (idx === -1) return message.reply('⚠️ Você não está no mix.');
-    mix.players.splice(idx, 1);
+    const removed = mix.players.splice(idx, 1)[0];
     if (mix.players.length <= 7 && mix.notifiedMissing) {
       mix.notifiedMissing.clear();
     }
     this.syncToWebRoom(mix);
+    this.updateLobbyInChannels(mix);
+    whatsappBot.broadcastLobbyUpdate(mix, `🚪 *${removed?.displayName || removed?.username || 'Jogador'}* saiu do mix pelo Discord.`);
     return message.reply(`🚪 <@${message.author.id}> saiu do mix. (${mix.players.length}/10)`);
   }
 
@@ -1921,6 +1934,7 @@ class DiscordBotManager {
     if (!mix) return message.reply('⚠️ Nenhum mix ativo neste canal.');
     if (mix.players.length < 2) return message.reply('⚠️ É necessário pelo menos 2 jogadores para sortear!');
     this.balanceTeams(mix);
+    whatsappBot.broadcastTeamsDrawn(mix);
     const embed = this.buildTeamsEmbed(mix);
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(`mix_veto:${mix.id}`).setLabel('🗳️ Iniciar Pick & Ban').setStyle(ButtonStyle.Success),
@@ -2001,6 +2015,33 @@ class DiscordBotManager {
   async prefixMapStats(message) {
     const embed = this.buildMapStatsEmbed();
     return message.reply({ embeds: [embed] });
+  }
+
+  async prefixIp(message) {
+    const mix = this.activeMixes.get(message.channelId);
+    const ip = (mix?.serverIp || this.config.serverConnect || '').trim();
+    if (!ip) {
+      return message.reply('⚠️ Nenhum servidor CS2 configurado no momento. Use `!servidor <ip:porta>` para definir o IP!');
+    }
+    const cleanIp = ip.replace(/^connect\s+/i, '');
+    const connectUrl = this.getPublicWebUrl(`/connect?ip=${encodeURIComponent(cleanIp)}`);
+    const embed = new EmbedBuilder()
+      .setTitle('💻 SERVIDOR CS2 DO MIX')
+      .setDescription(
+        `🌐 **Comando de Conexão no Console do CS2:**\n\`\`\`bash\nconnect ${cleanIp}\n\`\`\`\n` +
+        `🚀 **Steam 1-Clique:** Clique no botão abaixo para abrir o Counter-Strike 2 e conectar diretamente!`
+      )
+      .setColor(0x10b981)
+      .setFooter({ text: 'CS2 Mix Hub • Conexão Instantânea' });
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setLabel('🚀 Conectar Direto no CS2 (Steam)')
+        .setStyle(ButtonStyle.Link)
+        .setURL(connectUrl)
+    );
+
+    return message.reply({ embeds: [embed], components: [row] });
   }
 
   async prefixServerStatus(message, args) {
@@ -3100,6 +3141,8 @@ class DiscordBotManager {
       this.activeMixes.set(channelId, mix);
       if (mix.id) this.activeMixes.set(mix.id, mix);
       this.syncToWebRoom(mix);
+      this.updateLobbyInChannels(mix);
+      whatsappBot.broadcastLobbyUpdate(mix, `🎮 *${interaction.member?.displayName || interaction.user.username}* [Lvl ${parsed} GC] definiu o nível e entrou no mix pelo Discord!`);
       whatsappBot.notifyMixCreated(mix).catch(() => {});
       scheduleSave(100);
     }
@@ -4166,6 +4209,10 @@ class DiscordBotManager {
         ready: true,
       });
       this.syncToWebRoom(mix);
+      this.updateLobbyInChannels(mix);
+      whatsappBot.broadcastLobbyUpdate(mix, `🎮 *${interaction.member?.displayName || interaction.user.username}* [Lvl ${parsed} GC] definiu o nível e entrou no mix pelo Discord!`);
+      this.updateLobbyInChannels(mix);
+      whatsappBot.broadcastLobbyUpdate(mix, `🎮 *${interaction.member?.displayName || user.username}* [Lvl ${userLvl} GC] entrou no mix pelo Discord!`);
 
       // If 10 players reached, launch Ready Check!
       if (mix.players.length === 8 || mix.players.length === 9) {
@@ -4260,6 +4307,8 @@ class DiscordBotManager {
         mix.notifiedMissing.clear();
       }
       this.syncToWebRoom(mix);
+      this.updateLobbyInChannels(mix);
+      whatsappBot.broadcastLobbyUpdate(mix, `🚪 *${interaction.member?.displayName || user.username}* saiu do mix pelo Discord.`);
 
       if (mix.phase === 'ready_check') {
         if (mix.readyCheck?.timer) clearTimeout(mix.readyCheck.timer);
@@ -4282,6 +4331,7 @@ class DiscordBotManager {
       }
 
       this.balanceTeams(mix);
+      whatsappBot.broadcastTeamsDrawn(mix);
       const embed = this.buildTeamsEmbed(mix);
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId(`mix_veto:${mix.id}`).setLabel('Iniciar Pick & Ban').setEmoji('🗳️').setStyle(ButtonStyle.Success),
@@ -4347,6 +4397,7 @@ class DiscordBotManager {
         veto.deciderMap = veto.remainingMaps[0];
         mix.phase = 'side_pick';
         this.syncToWebRoom(mix);
+        this.updateLobbyInChannels(mix);
 
         const capBTag = isSnowflake(mix.teamB.captain?.id)
           ? `<@${mix.teamB.captain?.id}>`
@@ -4414,6 +4465,7 @@ class DiscordBotManager {
       mix.phase = 'live';
 
       this.syncToWebRoom(mix);
+      this.updateLobbyInChannels(mix);
 
       if (this.config.autoMoveVoice) {
         this.executeVoiceMover(interaction.guild, mix, interaction.channel).catch(() => {});
@@ -4442,6 +4494,7 @@ class DiscordBotManager {
       mix.veto.deciderMap = drawn;
       mix.phase = 'live';
       this.syncToWebRoom(mix);
+      this.updateLobbyInChannels(mix);
 
       if (this.config.autoMoveVoice) {
         this.executeVoiceMover(interaction.guild, mix, interaction.channel).catch(() => {});
@@ -5091,6 +5144,8 @@ class DiscordBotManager {
         if (p) {
           p.level = parsed;
           this.syncToWebRoom(mix);
+          this.updateLobbyInChannels(mix);
+          whatsappBot.broadcastLobbyUpdate(mix, `⭐ *${interaction.member?.displayName || interaction.user.username}* atualizou seu nível para Lvl ${parsed} GC!`);
           const embed = this.buildLobbyEmbed(mix);
           const components = this.buildLobbyButtons(mix);
           if (mix.phase === 'lobby' && interaction.message) {
@@ -5135,6 +5190,8 @@ class DiscordBotManager {
         const p = mix.players.find((pl) => pl.id === interaction.user.id);
         if (p) p.level = parsed;
         this.syncToWebRoom(mix);
+        this.updateLobbyInChannels(mix);
+        whatsappBot.broadcastLobbyUpdate(mix, `⭐ *${interaction.member?.displayName || interaction.user.username}* atualizou seu nível para Lvl ${parsed} GC!`);
         return interaction.reply({
           content: `✅ Seu nível GC foi salvo como **Lvl ${parsed}** (\`${badge}\`) e atualizado no seu slot do Mix!`,
           ephemeral: true,
@@ -5157,6 +5214,8 @@ class DiscordBotManager {
         ready: true,
       });
       this.syncToWebRoom(mix);
+      this.updateLobbyInChannels(mix);
+      whatsappBot.broadcastLobbyUpdate(mix, `🎮 *${interaction.member?.displayName || interaction.user.username}* [Lvl ${parsed} GC] definiu o nível e entrou no mix pelo Discord!`);
 
       if (mix.players.length === 8 || mix.players.length === 9) {
         this.notifyMissingSlots(mix, interaction.guild, interaction.channel).catch(() => {});
@@ -5234,6 +5293,7 @@ class DiscordBotManager {
       if (mix) {
         mix.serverIp = cleanIp;
         this.syncToWebRoom(mix);
+        this.updateLobbyInChannels(mix);
       }
       this.config.serverConnect = cleanIp;
       this.saveConfig({ serverConnect: cleanIp });
