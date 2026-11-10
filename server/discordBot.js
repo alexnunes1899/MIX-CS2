@@ -34,6 +34,7 @@ import {
   recordMatchHistoryEntry,
   updateMatchMvp,
   getMapImageUrl,
+  normalizeMapName,
 } from './matchHistory.js';
 import { hardwareDealsManager, CATEGORY_LABELS } from './hardwareDeals.js';
 import { SteamScannerService } from './steamScanner.js';
@@ -1196,6 +1197,12 @@ class DiscordBotManager {
             .setName('placar')
             .setDescription('Placar final do jogo (ex: 13-9, 13-11, 16-14)')
             .setRequired(false)
+        )
+        .addStringOption((opt) =>
+          opt
+            .setName('mapa')
+            .setDescription('Mapa jogado (ex: Mirage, Dust II, Inferno, Nuke, Ancient, Anubis, Cache)')
+            .setRequired(false)
         ),
 
       new SlashCommandBuilder()
@@ -1821,10 +1828,11 @@ class DiscordBotManager {
     }
     const winner = (args[0] || '').toUpperCase();
     if (winner !== 'A' && winner !== 'B') {
-      return message.reply('👉 Uso correto: `!vitoria A 13-9` ou `!vitoria B 13-11` (indique Time A ou Time B).');
+      return message.reply('👉 Uso correto: `!vitoria A 13-9 [mapa]` ou `!vitoria B 13-11 [mapa]` (ex: `!vitoria A 13-9 Dust II`).');
     }
     const score = args[1] || '13-9';
-    const res = await this.recordMatchResult(mix, winner, score, message.author, message.channel);
+    const map = args.slice(2).join(' ').trim() || '';
+    const res = await this.recordMatchResult(mix, winner, score, message.author, message.channel, map);
     if (!res.success) return message.reply(`⚠️ ${res.error}`);
     return message.channel.send({ embeds: res.embeds, components: res.components });
   }
@@ -2341,7 +2349,7 @@ class DiscordBotManager {
     return awarded;
   }
 
-  async recordMatchResult(mix, winnerTeamLetter, scoreInput, declaredByUser, channel) {
+  async recordMatchResult(mix, winnerTeamLetter, scoreInput, declaredByUser, channel, mapInput = null) {
     const isA = (winnerTeamLetter || '').toUpperCase() === 'A';
     const isB = (winnerTeamLetter || '').toUpperCase() === 'B';
     if (!isA && !isB) {
@@ -2356,9 +2364,14 @@ class DiscordBotManager {
     const loserTeam = isA ? mix.teamB : mix.teamA;
     const score = (scoreInput || '13-9').trim();
 
+    const resolvedMap = normalizeMapName(mapInput || mix.veto?.deciderMap?.name || 'Mirage');
+    const resolvedImage = getMapImageUrl(resolvedMap);
+
     mix.phase = 'finished';
     mix.winner = winnerTeam.name;
     mix.finalScore = score;
+    mix.matchMap = resolvedMap;
+    mix.matchMapImage = resolvedImage;
 
     const profiles = this.loadPlayerProfiles();
 
@@ -2400,8 +2413,8 @@ class DiscordBotManager {
       balancePct: mix.balancePct || 95,
       serverConnect: mix.serverIp || this.config.serverConnect || '',
       timestamp: Date.now(),
-      map: mix.veto.deciderMap?.name || 'Mirage',
-      mapImage: mix.veto.deciderMap?.image || getMapImageUrl(mix.veto.deciderMap?.name || 'Mirage'),
+      map: resolvedMap,
+      mapImage: resolvedImage,
       winner: winnerTeam.name,
       loser: loserTeam.name,
       score,
@@ -2441,7 +2454,7 @@ class DiscordBotManager {
       .setTitle(`🏆 VITÓRIA DO ${winnerTeam.name.toUpperCase()}! • PLACAR ${score}`)
       .setDescription(
         `A partida foi encerrada e as estatísticas de todos os 10 jogadores foram atualizadas no **Ranking Geral**!\n\n` +
-        `🗺️ **Mapa:** **${mix.veto.deciderMap?.name || 'Mirage'}**\n` +
+        `🗺️ **Mapa:** **${resolvedMap}**\n` +
         `⚔️ **Resultado Oficial:** **${winnerTeam.name}** venceu por **${score}**!\n` +
         `👑 **Declarado por:** <@${declaredByUser.id}>\n\n` +
         `⭐ **VOTAÇÃO DE MVP INICIADA:** Selecione no menu abaixo quem jogou mais nesta partida!\n` +
@@ -2463,8 +2476,8 @@ class DiscordBotManager {
       .setFooter({ text: 'CS2 Mix Hub • Partida Concluída' })
       .setTimestamp();
 
-    if (mix.veto.deciderMap?.image) {
-      victoryEmbed.setThumbnail(mix.veto.deciderMap.image);
+    if (resolvedImage) {
+      victoryEmbed.setThumbnail(resolvedImage);
     }
 
     // Initialize MVP voting state with automatic timer (60s countdown)
@@ -2569,7 +2582,7 @@ class DiscordBotManager {
     const mvpEmbed = new EmbedBuilder()
       .setTitle('👑 MVP DA PARTIDA COROADO!')
       .setDescription(
-        `A comunidade votou e escolheu o grande destaque da partida no mapa **${mix.veto.deciderMap?.name || 'Mirage'}**:\n\n` +
+        `A comunidade votou e escolheu o grande destaque da partida no mapa **${mix.matchMap || mix.veto?.deciderMap?.name || 'Mirage'}**:\n\n` +
         `⭐ **MVP ELEITO:** <@${bestCandidateId}> (\`${maxVotes} votos\`)\n` +
         `🏆 **Total de MVPs na Carreira:** **${prof.mvps}x MVP**\n` +
         `🎖️ **Nível GC:** Lvl ${prof.level || 16}`
@@ -3865,6 +3878,8 @@ class DiscordBotManager {
         .setCustomId(`modal_match_result:${mix.id}`)
         .setTitle('🏆 Declarar Placar da Partida');
 
+      const defaultMap = mix.matchMap || mix.veto?.deciderMap?.name || 'Mirage';
+
       const winnerInput = new TextInputBuilder()
         .setCustomId('winner_input')
         .setLabel('Time Vencedor (digite A ou B)')
@@ -3884,9 +3899,20 @@ class DiscordBotManager {
         .setMaxLength(10)
         .setRequired(true);
 
+      const mapInput = new TextInputBuilder()
+        .setCustomId('map_input')
+        .setLabel('Mapa Jogado no CS2')
+        .setPlaceholder('Ex: Mirage, Inferno, Nuke, Dust II, Ancient, Anubis...')
+        .setValue(defaultMap)
+        .setStyle(TextInputStyle.Short)
+        .setMinLength(3)
+        .setMaxLength(30)
+        .setRequired(false);
+
       modal.addComponents(
         new ActionRowBuilder().addComponents(winnerInput),
-        new ActionRowBuilder().addComponents(scoreInput)
+        new ActionRowBuilder().addComponents(scoreInput),
+        new ActionRowBuilder().addComponents(mapInput)
       );
 
       return interaction.showModal(modal);
@@ -4154,11 +4180,15 @@ class DiscordBotManager {
     if (customId.startsWith('modal_match_result')) {
       const winner = interaction.fields.getTextInputValue('winner_input');
       const score = interaction.fields.getTextInputValue('score_input');
+      let map = '';
+      try {
+        map = interaction.fields.getTextInputValue('map_input') || '';
+      } catch (_) {}
       const mix = this.activeMixes.get(interaction.channelId);
       if (!mix) {
         return interaction.reply({ content: '⚠️ Nenhum mix ativo encontrado neste canal.', ephemeral: true });
       }
-      const result = await this.recordMatchResult(mix, winner, score, interaction.user, interaction.channel);
+      const result = await this.recordMatchResult(mix, winner, score, interaction.user, interaction.channel, map);
       if (!result.success) {
         return interaction.reply({ content: `⚠️ ${result.error}`, ephemeral: true });
       }
@@ -4184,7 +4214,8 @@ class DiscordBotManager {
     }
     const winner = interaction.options.getString('time');
     const score = interaction.options.getString('placar') || '13-9';
-    const res = await this.recordMatchResult(mix, winner, score, interaction.user, interaction.channel);
+    const map = interaction.options.getString('mapa') || '';
+    const res = await this.recordMatchResult(mix, winner, score, interaction.user, interaction.channel, map);
     if (!res.success) {
       return interaction.reply({ content: `⚠️ ${res.error}`, ephemeral: true });
     }

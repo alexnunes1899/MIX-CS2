@@ -30,6 +30,7 @@ import {
   recordMatchHistoryEntry,
   onMatchHistoryUpdated,
   getMapImageUrl,
+  normalizeMapName,
 } from './matchHistory.js';
 import { hardwareDealsManager } from './hardwareDeals.js';
 import { SteamScannerService } from './steamScanner.js';
@@ -1521,18 +1522,32 @@ io.on('connection', (socket) => {
   });
 
   // Save match score to history
-  socket.on('save_score', ({ roomId, scoreA, scoreB }) => {
+  socket.on('save_score', ({ roomId, scoreA, scoreB, map, mapName }) => {
     const room = getRoomAndTouch(roomId);
     if (!room) return;
 
     const numA = Number(scoreA) || 0;
     const numB = Number(scoreB) || 0;
 
+    const resolvedMap = normalizeMapName(
+      mapName ||
+      map ||
+      room.finalMap?.name ||
+      room.finalMap?.id ||
+      room.finalMap ||
+      room.drawnSeries?.[0]?.map?.name ||
+      room.drawnSeries?.[0]?.map?.id ||
+      room.drawnSeries?.[0]?.map ||
+      'Mirage'
+    );
+    const resolvedImage = getMapImageUrl(resolvedMap);
+
     room.history.unshift({
       id: `match-${Date.now()}`,
       date: new Date().toLocaleDateString('pt-BR'),
       time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-      map: room.finalMap?.name || 'Indefinido',
+      map: resolvedMap,
+      mapImage: resolvedImage,
       scoreA: numA,
       scoreB: numB,
       winner: numA > numB ? 'Time A' : numB > numA ? 'Time B' : 'Empate',
@@ -1545,7 +1560,7 @@ io.on('connection', (socket) => {
       const updated = recordMatch({
         winners: room.teamA,
         losers: room.teamB,
-        map: room.finalMap?.name || 'Indefinido',
+        map: resolvedMap,
         scoreWinners: numA,
         scoreLosers: numB,
       });
@@ -1554,7 +1569,7 @@ io.on('connection', (socket) => {
       const updated = recordMatch({
         winners: room.teamB,
         losers: room.teamA,
-        map: room.finalMap?.name || 'Indefinido',
+        map: resolvedMap,
         scoreWinners: numB,
         scoreLosers: numA,
       });
@@ -1570,8 +1585,8 @@ io.on('connection', (socket) => {
       roomId: roomId,
       roomName: room.name || `Sala ${roomId}`,
       timestamp: Date.now(),
-      map: room.finalMap?.name || 'Mirage',
-      mapImage: room.finalMap?.image || getMapImageUrl(room.finalMap?.name || 'Mirage'),
+      map: resolvedMap,
+      mapImage: resolvedImage,
       winner: numA > numB ? 'Time A' : numB > numA ? 'Time B' : 'Empate',
       loser: numA > numB ? 'Time B' : numB > numA ? 'Time A' : 'Empate',
       score: `${Math.max(numA, numB)}-${Math.min(numA, numB)}`,

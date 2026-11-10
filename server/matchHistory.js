@@ -12,6 +12,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DATA_DIR = path.join(__dirname, 'data');
 const MATCH_HISTORY_FILE = path.join(DATA_DIR, 'matchHistory.json');
+const DEFAULT_MATCH_HISTORY_FILE = path.join(DATA_DIR, 'matchHistory.default.json');
 
 const MAP_IMAGES = {
   de_mirage: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_mirage_1_png.png',
@@ -23,13 +24,39 @@ const MAP_IMAGES = {
   de_dust2: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_dust2_1_png.png',
   dust2: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_dust2_1_png.png',
   'dust ii': 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_dust2_1_png.png',
+  'dust 2': 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_dust2_1_png.png',
   de_ancient: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_ancient_1_png.png',
   ancient: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_ancient_1_png.png',
   de_anubis: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_anubis_1_png.png',
   anubis: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_anubis_1_png.png',
   de_cache: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_cache_1_png.png',
   cache: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_cache_1_png.png',
+  de_vertigo: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_vertigo_1_png.png',
+  vertigo: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_vertigo_1_png.png',
+  de_overpass: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_overpass_1_png.png',
+  overpass: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_overpass_1_png.png',
+  de_train: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_train_1_png.png',
+  train: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_train_1_png.png',
 };
+
+export function normalizeMapName(mapName = '') {
+  if (typeof mapName === 'object' && mapName !== null) {
+    mapName = mapName.name || mapName.id || mapName.file || '';
+  }
+  const raw = String(mapName || '').trim();
+  const lower = raw.toLowerCase().replace(/^de_/, '');
+  if (lower.includes('dust')) return 'Dust II';
+  if (lower.includes('mirage')) return 'Mirage';
+  if (lower.includes('inferno')) return 'Inferno';
+  if (lower.includes('nuke')) return 'Nuke';
+  if (lower.includes('ancient')) return 'Ancient';
+  if (lower.includes('anubis')) return 'Anubis';
+  if (lower.includes('cache')) return 'Cache';
+  if (lower.includes('vertigo')) return 'Vertigo';
+  if (lower.includes('overpass')) return 'Overpass';
+  if (lower.includes('train')) return 'Train';
+  return raw || 'Mirage';
+}
 
 let listeners = [];
 
@@ -44,8 +71,9 @@ function ensureDirExists() {
 }
 
 export function getMapImageUrl(mapName = '') {
+  const norm = normalizeMapName(mapName).toLowerCase();
   const key = String(mapName || '').toLowerCase().trim();
-  return MAP_IMAGES[key] || MAP_IMAGES[key.replace('de_', '')] || 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_mirage_1_png.png';
+  return MAP_IMAGES[norm] || MAP_IMAGES[key] || MAP_IMAGES[key.replace('de_', '')] || MAP_IMAGES.mirage;
 }
 
 /**
@@ -59,6 +87,7 @@ export function normalizeMatchRecord(m = {}) {
 
   const source = m.source || 'discord';
   const isDiscord = source === 'discord';
+  const cleanMap = normalizeMapName(m.map || 'Mirage');
 
   return {
     id: m.id || `MIX-${Math.random().toString(36).slice(2, 7).toUpperCase()}`,
@@ -75,8 +104,8 @@ export function normalizeMatchRecord(m = {}) {
     date: m.date || dateStr,
     time: m.time || timeStr,
     dateFormatted: `${dateStr} às ${timeStr}`,
-    map: m.map || 'Mirage',
-    mapImage: m.mapImage || getMapImageUrl(m.map),
+    map: cleanMap,
+    mapImage: m.mapImage && !m.mapImage.includes('mirage') ? m.mapImage : getMapImageUrl(cleanMap),
     winner: m.winner || 'Time A',
     loser: m.loser || 'Time B',
     score: m.score || '13-8',
@@ -120,8 +149,19 @@ export function loadMatchHistory() {
     if (fs.existsSync(MATCH_HISTORY_FILE)) {
       const raw = fs.readFileSync(MATCH_HISTORY_FILE, 'utf8');
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
+      if (Array.isArray(parsed) && parsed.length > 0) {
         return parsed.map(normalizeMatchRecord);
+      }
+    }
+    if (fs.existsSync(DEFAULT_MATCH_HISTORY_FILE)) {
+      const raw = fs.readFileSync(DEFAULT_MATCH_HISTORY_FILE, 'utf8');
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const seeded = parsed.map(normalizeMatchRecord);
+        try {
+          fs.writeFileSync(MATCH_HISTORY_FILE, JSON.stringify(seeded, null, 2), 'utf8');
+        } catch (_) {}
+        return seeded;
       }
     }
   } catch (e) {

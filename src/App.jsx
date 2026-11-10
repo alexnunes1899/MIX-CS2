@@ -1007,9 +1007,10 @@ export default function App() {
   };
 
   // Save match score
-  const handleSaveScore = (scoreA, scoreB) => {
+  const handleSaveScore = (scoreA, scoreB, selectedMap) => {
     const numA = Number(scoreA) || 0;
     const numB = Number(scoreB) || 0;
+    const mapToSave = selectedMap || room.finalMap?.name || 'Mirage';
 
     // Record stats for player if authenticated with Steam
     if (myProfile?.steamId) {
@@ -1025,7 +1026,13 @@ export default function App() {
     }
 
     if (socket.connected) {
-      socket.emit('save_score', { roomId, scoreA, scoreB });
+      socket.emit('save_score', {
+        roomId,
+        scoreA,
+        scoreB,
+        map: mapToSave,
+        mapName: mapToSave,
+      });
     } else {
       setRoom((prev) => ({
         ...prev,
@@ -1034,7 +1041,7 @@ export default function App() {
             id: `match-${Date.now()}`,
             date: new Date().toLocaleDateString('pt-BR'),
             time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-            map: prev.finalMap?.name || 'Mirage',
+            map: mapToSave,
             scoreA: numA,
             scoreB: numB,
             winner: numA > numB ? 'Time A' : numB > numA ? 'Time B' : 'Empate',
@@ -2314,6 +2321,7 @@ export default function App() {
         isOpen={historyOpen}
         onClose={() => setHistoryOpen(false)}
         history={room.history}
+        currentMap={room.finalMap?.name || room.finalMap || 'Mirage'}
         onSaveScore={handleSaveScore}
         onOpenGlobalHistory={() => {
           setHistoryOpen(false);
