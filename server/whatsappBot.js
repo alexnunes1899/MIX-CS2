@@ -266,7 +266,8 @@ class WhatsAppBotManager {
     }
   }
 
-  async sendLobbyStatus(from, msg, mix) {
+  async sendLobbyStatus(from, msg, mix, bannerNotice = null) {
+    if (!mix) return false;
     const count = mix.players?.length || 0;
     const remaining = Math.max(0, 10 - count);
     const roomUrl = this.getPublicUrl(`/?room=${mix.id}`);
@@ -285,23 +286,36 @@ class WhatsAppBotManager {
       }
     }
 
+    let header = '';
+    if (bannerNotice) {
+      header = `${bannerNotice}\n\n`;
+    }
+
+    let statusLine = '';
+    if (count >= 10) {
+      statusLine = `🎉 *LOBBY COMPLETO (10/10)!* Todos os 10 jogadores confirmados.\n👉 Digite *!sortear* ou reaja com ⚔️ para sortear os times e o mapa!`;
+    } else {
+      statusLine = `👥 *Vagas Restantes:* *${count}/10* (Faltam *${remaining}* para fechar a partida)\n⚠️ *Regra do Mix:* É obrigatório definir seu Nível GC antes de entrar na fila!`;
+    }
+
     const statusText =
-      `🎮 *CS2 MIX 5v5 • STATUS DO LOBBY*\n` +
+      `${header}` +
+      `🎮 *CS2 MIX 5v5 • STATUS DA FILA ATUALIZADO*\n` +
       `📍 *Sala:* ${mix.name || `Mix #${mix.id}`}\n` +
-      `👥 *Vagas:* *${count}/10* (${remaining} restante(s))\n\n` +
-      `📋 *Lista de Jogadores Confirmados:*\n` +
+      `${statusLine}\n\n` +
+      `📋 *Escalação dos 10 Slots:*\n` +
       `${listStr}\n` +
       `⭐ *Definir Nível GC & Nick em 1 Toque (Botões 1 ao 21):*\n` +
       `👉 ${profileUrl}\n\n` +
-      `🔘 *Ações Rápidas por Reação (Toque e Reaja nesta mensagem):*\n` +
-      `• 👍 = *Entrar no Mix*\n` +
+      `🔘 *Ações Rápidas por Reação (1 Toque nesta mensagem):*\n` +
+      `• 👍 = *Entrar no Mix* (precisa de nível salvo)\n` +
       `• 🚪 = *Sair da Fila*\n` +
       `• ⚔️ = *Sortear Times*\n\n` +
       `💬 *Comandos Rápidos no WhatsApp:*\n` +
-      `• *!entrar* — Entra na fila\n` +
+      `• *!entrar* — Entra na fila (ou *!entrar <nível>*)\n` +
       `• *!sair* — Libera sua vaga\n` +
       `• *!lvl <1-21>* — Salva seu nível GC direto no chat (ex: *!lvl 18*)\n` +
-      `• *!sortear* — Sorteia os times balanceados\n` +
+      `• *!sortear* — Sorteia os times balanceados pelo Snake-Draft\n` +
       `• *!ip* — Exibe o IP do servidor CS2 e botão Steam 1-Clique\n` +
       `• *!enquete* — Envia a enquete com botões de rádio para votar\n\n` +
       `🌐 Acompanhe ao vivo pelo navegador: ${roomUrl}`;
@@ -675,40 +689,40 @@ class WhatsAppBotManager {
         return this.sendLobbyStatus(from, msg, activeData.mix);
       }
 
-      // Nenhum mix aberto: CRIA UM NOVO LOBBY 5v5 AUTOMATICAMENTE!
-      const mix = this.createMixFromWhatsApp(senderPhone, senderName);
-      const publicUrl = this.getPublicUrl(`/?room=${mix.id}`);
-      const profileUrl = this.getPublicUrl(`/perfil?room=${mix.id}&phone=${senderPhone}`);
-      const creatorLvl = mix.players[0]?.level || 16;
+      // REGRA OBRIGATÓRIA: Verificar se o criador tem nível Gamers Club salvo!
+      const profileKey = `wa_${senderPhone}`;
+      let creatorLvl = this.getPlayerLevel(profileKey) || this.getPlayerLevel(senderPhone);
 
-      let slotsStr = `1. 👑 *${senderName}* [Lvl ${creatorLvl} GC]\n`;
-      for (let i = 2; i <= 10; i++) {
-        slotsStr += `${i}. ⏳ _[Vaga Aberta]_\n`;
+      // Suporte a criar já com nível embutido: ex: !mix 18 ou !criar 18
+      const inlineLvlMatch = clean.match(/!(?:mix|criar)\s+(?:lvl\s*|level\s*|gc\s*)?(\d{1,2})/i);
+      if (inlineLvlMatch) {
+        const inline = parseInt(inlineLvlMatch[1], 10);
+        if (inline >= 1 && inline <= 21) {
+          this.savePlayerProfile(profileKey, { level: inline, username: senderName, phone: senderPhone, source: 'whatsapp' });
+          this.savePlayerProfile(senderPhone, { level: inline, username: senderName, phone: senderPhone, source: 'whatsapp' });
+          creatorLvl = inline;
+        }
       }
 
-      const createMsg =
-        `🎮 *CS2 MIX HUB • NOVO LOBBY 5v5 CRIADO!*\n\n` +
-        `👑 *Criado por:* *${senderName}* [Lvl ${creatorLvl} GC]\n` +
-        `📍 *Sala:* ${mix.name}\n` +
-        `👥 *Vagas:* *1/10* (Faltam 9 vagas para fechar)\n\n` +
-        `📋 *Fila da Partida:*\n` +
-        `${slotsStr}\n` +
-        `⭐ *Definir Nível GC & Nick em 1 Toque (Botões 1 ao 21):*\n` +
-        `👉 ${profileUrl}\n\n` +
-        `🔘 *Ações Rápidas por Reação (Toque e Reaja nesta mensagem):*\n` +
-        `• 👍 = *Entrar no Mix*\n` +
-        `• 🚪 = *Sair da Fila*\n` +
-        `• ⚔️ = *Sortear Times*\n\n` +
-        `💬 *Comandos Rápidos no WhatsApp:*\n` +
-        `• Digite *!entrar* para entrar na fila\n` +
-        `• Digite *!sair* para liberar sua vaga\n` +
-        `• Digite *!lvl <1-21>* para salvar seu nível GC (ex: *!lvl 18*)\n` +
-        `• Digite *!sortear* quando fechar 10 jogadores\n` +
-        `• Digite *!ip* para ver o IP do servidor CS2\n` +
-        `• Digite *!enquete* para abrir botões de rádio no grupo\n\n` +
-        `👉 Acompanhe ao vivo pelo navegador: ${publicUrl}`;
+      if (!creatorLvl) {
+        const profileUrl = this.getPublicUrl(`/perfil?phone=${senderPhone}&nick=${encodeURIComponent(senderName)}`);
+        const blockMsg =
+          `⚠️ *ATENÇÃO, ${senderName.toUpperCase()}!*\n\n` +
+          `🛑 *Você ainda não possui um Nível da Gamers Club cadastrado.*\n` +
+          `Para não prejudicar o sorteio e o equilíbrio dos times, é *OBRIGATÓRIO* definir seu nível (1 a 21) antes de abrir a fila e assumir a vaga de Capitão!\n\n` +
+          `👉 *Como definir seu nível agora (escolha uma opção):*\n` +
+          `1️⃣ Digite aqui no chat: *!lvl <1-21>* (exemplo: *!lvl 18*)\n` +
+          `2️⃣ Ou crie já com seu nível: *!mix <seu nível>* (exemplo: *!mix 18*)\n` +
+          `3️⃣ Ou toque nos botões em 1 clique: ${profileUrl}\n\n` +
+          `_Assim que definir seu nível, o lobby será aberto e sua vaga de Capitão estará garantida!_`;
+        return this.replyMessage(from, blockMsg, msg);
+      }
 
-      const res = await this.replyMessage(from, createMsg, msg);
+      // Criador possui nível: CRIA O LOBBY 5v5
+      const mix = this.createMixFromWhatsApp(senderPhone, senderName);
+      mix.players[0].level = creatorLvl;
+      const notice = `🎉 *NOVO MIX 5v5 ABERTO COM SUCESSO!*\n👑 *Capitão:* *${senderName}* [Lvl ${creatorLvl} GC] criou a sala!`;
+      const res = await this.sendLobbyStatus(from, msg, mix, notice);
       this.sendActionPoll(from, mix).catch(() => {});
       return res;
     }
@@ -761,24 +775,61 @@ class WhatsAppBotManager {
         phone: senderPhone,
         source: 'whatsapp',
       });
+      this.savePlayerProfile(senderPhone, {
+        level: parsed,
+        username: senderName,
+        phone: senderPhone,
+        source: 'whatsapp',
+      });
 
-      // Atualiza no mix ativo se já estiver na fila
+      const badge = parsed >= 20 ? '👑 Major/Pro' : parsed >= 18 ? '🏆 Black/Elite' : parsed >= 14 ? '🥇 Ouro' : '🥈 Prata';
+
+      // Atualiza ou insere no mix ativo se houver lobby aberto
       const activeData = this.getActiveMix();
-      if (activeData?.mix?.players) {
-        const found = activeData.mix.players.find(p => p.id === profileKey || p.phone === senderPhone);
+      const mix = activeData?.mix;
+      if (mix && mix.phase === 'lobby') {
+        const found = mix.players?.find(p => p.id === profileKey || p.phone === senderPhone);
         if (found) {
           found.level = parsed;
+          if (activeData.source === 'discord' && typeof this.discordBotRef?.syncToWebRoom === 'function') {
+            this.discordBotRef.syncToWebRoom(mix);
+          }
+          const notice = `⭐ *NÍVEL ATUALIZADO NA FILA:* *${senderName}* atualizou seu perfil para *Lvl ${parsed} GC* (${badge})!`;
+          return this.sendLobbyStatus(from, msg, mix, notice);
+        } else if (mix.players?.length < 10) {
+          // Se não estava no mix e há vagas: entra automaticamente!
+          const newPlayer = {
+            id: profileKey,
+            nick: senderName,
+            username: senderName,
+            name: senderName,
+            displayName: senderName,
+            phone: senderPhone,
+            level: parsed,
+            source: 'whatsapp',
+            ready: true,
+          };
+          mix.players.push(newPlayer);
+          if (activeData.source === 'discord' && typeof this.discordBotRef?.syncToWebRoom === 'function') {
+            this.discordBotRef.syncToWebRoom(mix);
+          } else if (this.webRoomsRef && mix.id) {
+            const room = this.webRoomsRef.get(mix.id);
+            if (room && Array.isArray(room.players)) {
+              room.players.push({ id: profileKey, nick: senderName, level: parsed, ready: true });
+            }
+          }
+          const notice = `🎉 *NÍVEL DEFINIDO E VAGA GARANTIDA!*\n*${senderName}* definiu seu nível como *Lvl ${parsed} GC* (${badge}) e entrou na fila!`;
+          return this.sendLobbyStatus(from, msg, mix, notice);
         }
       }
-
-      const badge = parsed >= 20 ? '👑 Lvl 20+' : parsed >= 18 ? '🏆 Lvl 18-19' : parsed >= 14 ? '🥇 Lvl 14-17' : '🥈 Lvl 1-13';
 
       return this.replyMessage(
         from,
         `✅ *Nível Gamers Club Salvo com Sucesso!*\n\n` +
           `👤 *Jogador:* ${senderName}\n` +
           `⭐ *Nível GC:* *Lvl ${parsed}* (${badge})\n\n` +
-          `Seu nível está salvo no sistema e garantirá que o sorteio forme times equilibrados!`,
+          `Seu nível está salvo no sistema para sempre e garantirá que o sorteio forme times equilibrados!\n\n` +
+          `👉 Digite *!entrar* para entrar no mix ativo ou *!mix* para ver a fila.`,
         msg
       );
     }
@@ -811,19 +862,45 @@ class WhatsAppBotManager {
 
       const mix = activeData.mix;
       const profileKey = `wa_${senderPhone}`;
-      const savedLevel = this.getPlayerLevel(profileKey);
+      let savedLevel = this.getPlayerLevel(profileKey) || this.getPlayerLevel(senderPhone);
+
+      // Suporte a entrar passando o nível direto: ex: !entrar 18 ou !entrar lvl 18
+      const inlineLvlMatch = clean.match(/!(?:entrar|jogar|join)\s+(?:lvl\s*|level\s*|gc\s*)?(\d{1,2})/i);
+      if (inlineLvlMatch) {
+        const inline = parseInt(inlineLvlMatch[1], 10);
+        if (inline >= 1 && inline <= 21) {
+          this.savePlayerProfile(profileKey, { level: inline, username: senderName, phone: senderPhone, source: 'whatsapp' });
+          this.savePlayerProfile(senderPhone, { level: inline, username: senderName, phone: senderPhone, source: 'whatsapp' });
+          savedLevel = inline;
+        }
+      }
+
+      // REGRA OBRIGATÓRIA: Bloqueia entrada se não tiver nível GC definido!
+      if (!savedLevel) {
+        const profileUrl = this.getPublicUrl(`/perfil?phone=${senderPhone}&nick=${encodeURIComponent(senderName)}`);
+        const blockMsg =
+          `⚠️ *ATENÇÃO, ${senderName.toUpperCase()}!*\n\n` +
+          `🛑 *Você ainda não possui um Nível da Gamers Club cadastrado.*\n` +
+          `Para não prejudicar o sorteio e manter os times equilibrados (Snake-Draft), é *OBRIGATÓRIO* definir seu nível (1 a 21) antes de entrar na fila!\n\n` +
+          `👉 *Como definir seu nível agora (escolha uma opção):*\n` +
+          `1️⃣ Digite aqui no chat: *!lvl <1 a 21>* (exemplo: *!lvl 18*)\n` +
+          `2️⃣ Ou digite direto: *!entrar <seu nível>* (exemplo: *!entrar 18*)\n` +
+          `3️⃣ Ou toque nos botões em 1 clique: ${profileUrl}\n\n` +
+          `_Assim que você definir seu nível, sua vaga estará garantida na lista!_`;
+        return this.replyMessage(from, blockMsg, msg);
+      }
 
       if (mix.players?.length >= 10) {
         return this.replyMessage(
           from,
-          `⚠️ *O lobby acabou de lotar (10/10 jogadores)!* Fique atento para o próximo mix.`,
+          `⚠️ *O lobby acabou de lotar (10/10 jogadores)!* Fique atento para o próximo mix ou digite *!sortear*.`,
           msg
         );
       }
 
       const alreadyIn = mix.players?.some(p => p.id === profileKey || p.phone === senderPhone || p.nick === senderName);
       if (alreadyIn) {
-        return this.replyMessage(from, `ℹ️ Você já está confirmado nesta partida!`, msg);
+        return this.replyMessage(from, `ℹ️ Você já está confirmado nesta partida com [Lvl ${savedLevel} GC]!`, msg);
       }
 
       const newPlayer = {
@@ -833,7 +910,7 @@ class WhatsAppBotManager {
         name: senderName,
         displayName: senderName,
         phone: senderPhone,
-        level: savedLevel || 16,
+        level: savedLevel,
         source: 'whatsapp',
         ready: true,
       };
@@ -847,19 +924,15 @@ class WhatsAppBotManager {
           room.players.push({
             id: profileKey,
             nick: senderName,
-            level: savedLevel || 16,
+            level: savedLevel,
             ready: true,
           });
         }
       }
 
       const count = mix.players.length;
-      let reply = `✅ *Você entrou no Mix CS2!* (${count}/10)\n\n👤 *${senderName}* [Lvl ${savedLevel || 16} GC]`;
-      if (!savedLevel) {
-        reply += `\n\n💡 *Dica:* Digite *!lvl <1 a 21>* para salvar seu nível real da Gamers Club e equilibrar os times!`;
-      }
-
-      await this.replyMessage(from, reply, msg);
+      const notice = `✅ *VAGA CONFIRMADA:* *${senderName}* [Lvl ${savedLevel} GC] entrou na fila! (${count}/10 vagas ocupadas)`;
+      await this.sendLobbyStatus(from, msg, mix, notice);
 
       if (count === 8 || count === 9) {
         this.notifyMissingSlots(mix);
@@ -879,7 +952,7 @@ class WhatsAppBotManager {
         return this.replyMessage(from, `⚠️ Você não está na fila deste mix.`, msg);
       }
 
-      mix.players.splice(idx, 1);
+      const removed = mix.players.splice(idx, 1)[0];
       if (activeData.source === 'discord' && typeof this.discordBotRef?.syncToWebRoom === 'function') {
         this.discordBotRef.syncToWebRoom(mix);
       } else if (this.webRoomsRef && mix.id) {
@@ -890,11 +963,9 @@ class WhatsAppBotManager {
         }
       }
 
-      return this.replyMessage(
-        from,
-        `🚪 *Você saiu da fila do Mix.* (${mix.players.length}/10 vagas ocupadas).`,
-        msg
-      );
+      const count = mix.players.length;
+      const notice = `🚪 *VAGA LIBERADA:* *${removed?.nick || senderName}* saiu da fila (${count}/10 vagas ocupadas).`;
+      return this.sendLobbyStatus(from, msg, mix, notice);
     }
 
     // 7. SORTEAR TIMES COM SNAKE-DRAFT GC (!sortear, !times)

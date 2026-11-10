@@ -2060,23 +2060,52 @@ app.post('/api/player/profile', (req, res) => {
 
   // Update in active WhatsApp & Discord mixes
   const activeData = whatsappBot.getActiveMix();
-  if (activeData?.mix?.players) {
-    const p = activeData.mix.players.find(
+  const mix = activeData?.mix;
+  let reSentStatus = false;
+
+  if (mix && mix.phase === 'lobby') {
+    const p = mix.players?.find(
       (pl) => pl.phone === cleanPhone || pl.id === `wa_${cleanPhone}` || pl.nick?.toLowerCase() === cleanName.toLowerCase()
     );
     if (p) {
       p.level = parsedLevel;
       p.nick = cleanName;
       p.username = cleanName;
+    } else if (mix.players?.length < 10) {
+      const newPlayer = {
+        id: `wa_${cleanPhone}`,
+        nick: cleanName,
+        username: cleanName,
+        name: cleanName,
+        displayName: cleanName,
+        phone: cleanPhone,
+        level: parsedLevel,
+        source: 'whatsapp',
+        ready: true,
+      };
+      mix.players.push(newPlayer);
+      if (activeData.source === 'discord' && typeof discordBotManager?.syncToWebRoom === 'function') {
+        discordBotManager.syncToWebRoom(mix);
+      } else if (typeof rooms !== 'undefined' && mix.id) {
+        const room = rooms.get(mix.id);
+        if (room && Array.isArray(room.players)) {
+          room.players.push({ id: `wa_${cleanPhone}`, nick: cleanName, level: parsedLevel, ready: true });
+        }
+      }
     }
-    // Rebalance teams if they were already generated
-    if (activeData.mix.phase === 'teams') {
-      whatsappBot.balanceTeamsLocal(activeData.mix);
+
+    if (whatsappBot.config.targetGroupId) {
+      const tierName = parsedLevel >= 20 ? 'Major / Pro' : parsedLevel >= 16 ? 'Black / Elite' : parsedLevel >= 11 ? 'Ouro' : parsedLevel >= 6 ? 'Prata' : 'Bronze';
+      const notice = `🎉 *PERFIL SALVO PELO SITE & VAGA CONFIRMADA!*\n*${cleanName}* definiu seu nível como *Lvl ${parsedLevel} GC* (${tierName}) e garantiu sua vaga na fila!`;
+      whatsappBot.sendLobbyStatus(whatsappBot.config.targetGroupId, null, mix, notice).catch(() => {});
+      reSentStatus = true;
     }
+  } else if (mix && mix.phase === 'teams') {
+    whatsappBot.balanceTeamsLocal(mix);
   }
 
-  // Also notify group if configured
-  if (whatsappBot.config.targetGroupId && cleanName) {
+  // Se não reenviou o status do lobby, manda aviso simples se tiver grupo configurado
+  if (!reSentStatus && whatsappBot.config.targetGroupId && cleanName) {
     const tierName = parsedLevel >= 20 ? 'Major / Pro' : parsedLevel >= 16 ? 'Black / Elite' : parsedLevel >= 11 ? 'Ouro' : parsedLevel >= 6 ? 'Prata' : 'Bronze';
     whatsappBot.sendMessageToGroup(
       `⭐ *CS2 MIX HUB • PERFIL ATUALIZADO!*\n\n` +
