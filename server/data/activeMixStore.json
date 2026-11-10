@@ -1,13 +1,13 @@
 {
-  "savedAt": 1794344533921,
-  "roomsCount": 1,
-  "discordMixesCount": 0,
+  "savedAt": 1794354219858,
+  "roomsCount": 2,
+  "discordMixesCount": 1,
   "rooms": [
     {
       "id": "MIX-SISTEMA",
       "name": "Time Alex Nunes",
       "createdAt": 1794344533597,
-      "lastActivity": 1794344533597,
+      "lastActivity": 1794354187959,
       "creatorId": "wa_553498318907",
       "creatorSteamId": null,
       "creatorNick": "Alex Nunes",
@@ -17,16 +17,23 @@
       "players": [
         {
           "id": "wa_553498318907",
-          "nick": "Alex Nunes",
-          "level": 18,
-          "faceitLevel": 9,
-          "faceitElo": null,
-          "side": "ANY",
           "avatar": "🎯",
-          "steamId": null,
-          "cs2Hours": null,
-          "ready": true,
-          "socketId": "5bFqpg4nUhdd7VzcAAAA"
+          "level": 11,
+          "side": "TR",
+          "ready": true
+        },
+        {
+          "id": "wa_103023632199723",
+          "nick": "Henrique",
+          "level": 7,
+          "side": "TR",
+          "ready": true
+        },
+        {
+          "id": "wa_103023632199723",
+          "level": 7,
+          "side": "TR",
+          "ready": true
         }
       ],
       "teamA": [],
@@ -126,12 +133,12 @@
       "vetoFirstTeam": "teamA",
       "bo1Order": "ABABAB",
       "pendingSidePick": null,
-      "teamAName": null,
-      "teamBName": null,
+      "teamAName": "Time A",
+      "teamBName": "Time B",
       "currentTurn": "teamA",
       "finalMap": null,
       "startingSideTeamB": null,
-      "serverIp": "",
+      "serverIp": "connect 103.14.27.41:25054",
       "rconPassword": "",
       "password": "",
       "isPrivate": false,
@@ -150,8 +157,138 @@
       "captainB": null,
       "captainTurn": "captainA",
       "unassignedPlayers": [],
-      "_waCreatedNotified": true
+      "_waCreatedNotified": true,
+      "source": "discord",
+      "sourceLabel": "Via Discord"
+    },
+    {
+      "id": "MIX-U9AOI",
+      "name": "Mix 5v5 de alexnunes1899",
+      "createdAt": 1794354211358,
+      "lastActivity": 1794354219544,
+      "creatorId": "530523476969390080",
+      "creatorNick": "alexnunes1899",
+      "source": "discord",
+      "sourceLabel": "Via Discord",
+      "phase": "lobby",
+      "players": [
+        {
+          "id": "530523476969390080",
+          "nick": "Alex Baguncinha",
+          "avatar": "https://cdn.discordapp.com/avatars/530523476969390080/067994f7ee0662a93e765275301735a8.webp",
+          "level": 10,
+          "side": "TR",
+          "ready": true
+        }
+      ],
+      "teamA": [],
+      "teamB": [],
+      "captainA": null,
+      "captainB": null,
+      "teamAName": "Time A",
+      "teamBName": "Time B",
+      "finalMap": null,
+      "serverIp": "connect 103.14.27.41:25054",
+      "matchFormat": "MD1"
     }
   ],
-  "discordMixes": []
+  "discordMixes": [
+    {
+      "channelId": "933123227402797088",
+      "mix": {
+        "id": "MIX-U9AOI",
+        "channelId": "933123227402797088",
+        "name": "Mix 5v5 de alexnunes1899",
+        "format": "MD1",
+        "creatorId": "530523476969390080",
+        "creatorNick": "alexnunes1899",
+        "players": [
+          {
+            "id": "530523476969390080",
+            "username": "alexnunes1899",
+            "displayName": "Alex Baguncinha",
+            "avatar": "https://cdn.discordapp.com/avatars/530523476969390080/067994f7ee0662a93e765275301735a8.webp",
+            "level": 10,
+            "ready": true
+          }
+        ],
+        "phase": "lobby",
+        "readyCheck": {
+          "active": false,
+          "confirmed": [],
+          "expiresAt": null,
+          "timer": null
+        },
+        "teamA": {
+          "name": "Time A",
+          "captain": null,
+          "players": [],
+          "side": "CT",
+          "avgLevel": 16
+        },
+        "teamB": {
+          "name": "Time B",
+          "captain": null,
+          "players": [],
+          "side": "TR",
+          "avgLevel": 16
+        },
+        "balancePct": 95,
+        "veto": {
+          "currentTurn": "teamA",
+          "bannedMaps": [],
+          "remainingMaps": [
+            {
+              "id": "de_mirage",
+              "name": "Mirage",
+              "emoji": "🏜️",
+              "image": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_mirage_1_png.png"
+            },
+            {
+              "id": "de_inferno",
+              "name": "Inferno",
+              "emoji": "🔥",
+              "image": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_inferno_1_png.png"
+            },
+            {
+              "id": "de_nuke",
+              "name": "Nuke",
+              "emoji": "☢️",
+              "image": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_nuke_1_png.png"
+            },
+            {
+              "id": "de_dust2",
+              "name": "Dust II",
+              "emoji": "☀️",
+              "image": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_dust2_1_png.png"
+            },
+            {
+              "id": "de_ancient",
+              "name": "Ancient",
+              "emoji": "🌿",
+              "image": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_ancient_1_png.png"
+            },
+            {
+              "id": "de_anubis",
+              "name": "Anubis",
+              "emoji": "🏺",
+              "image": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_anubis_1_png.png"
+            },
+            {
+              "id": "de_cache",
+              "name": "Cache",
+              "emoji": "🏭",
+              "image": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_cache_1_png.png"
+            }
+          ],
+          "deciderMap": null,
+          "history": []
+        },
+        "serverIp": "connect 103.14.27.41:25054",
+        "messageId": null,
+        "createdAt": 1794354211358,
+        "lobbyMessageId": "1569860090696302604"
+      }
+    }
+  ]
 }

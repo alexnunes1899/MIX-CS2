@@ -1747,22 +1747,40 @@ class DiscordBotManager {
   }
 
   async prefixCreateMix(message, customName) {
-    const user = message.author;
-    const name = customName || `Mix 5v5 de ${user.username}`;
-    const mix = this.getOrCreateMix(message.channelId, user, { name });
-    const tutorialEmbed = this.buildMixTutorialEmbed();
-    const embed = this.buildLobbyEmbed(mix);
-    const components = this.buildLobbyButtons(mix);
-    const sent = await message.channel.send({
-      content: `🎮 <@${user.id}> criou um novo **Lobby de Mix CS2 5v5**!`,
-      embeds: [tutorialEmbed, embed],
-      components,
-    });
-    if (sent) {
-      mix.lobbyMessageId = sent.id;
-      mix.channelId = message.channelId;
+    try {
+      const user = message.author;
+      const name = customName || `Mix 5v5 de ${user.username}`;
+      const mix = this.getOrCreateMix(message.channelId, user, { name });
+
+      if (mix.players.length === 0 && this.hasSavedLevel(user.id)) {
+        mix.players.push({
+          id: user.id,
+          username: user.username,
+          displayName: message.member?.displayName || user.username,
+          avatar: user.displayAvatarURL({ dynamic: true }),
+          level: this.getPlayerLevel(user.id),
+          ready: true,
+        });
+        this.syncToWebRoom(mix);
+      }
+
+      const tutorialEmbed = this.buildMixTutorialEmbed();
+      const embed = this.buildLobbyEmbed(mix);
+      const components = this.buildLobbyButtons(mix);
+      const sent = await message.channel.send({
+        content: `🎮 <@${user.id}> abriu o **Lobby de Mix CS2 5v5**! (${mix.players.length}/10 confirmados)`,
+        embeds: [tutorialEmbed, embed],
+        components,
+      });
+      if (sent) {
+        mix.lobbyMessageId = sent.id;
+        mix.channelId = message.channelId;
+      }
+      return sent;
+    } catch (err) {
+      console.error('[DISCORD BOT] Erro em prefixCreateMix:', err);
+      return message.reply(`❌ Erro ao abrir lobby no Discord: ${err.message}. Verifique se o bot tem permissão de "Inserir Links" (Embeds) neste canal!`);
     }
-    return sent;
   }
 
   async prefixPainel(message) {
@@ -3107,6 +3125,9 @@ class DiscordBotManager {
 
   getOrCreateMix(channelId, creator, options = {}) {
     let mix = options.forceNew ? null : this.activeMixes.get(channelId);
+    if (mix && (mix.phase === 'finished' || mix.phase === 'cancelled')) {
+      mix = null;
+    }
     if (!mix) {
       const mixId = options.id || `MIX-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
       mix = {
@@ -3142,7 +3163,6 @@ class DiscordBotManager {
       if (mix.id) this.activeMixes.set(mix.id, mix);
       this.syncToWebRoom(mix);
       this.updateLobbyInChannels(mix);
-      whatsappBot.broadcastLobbyUpdate(mix, `🎮 *${interaction.member?.displayName || interaction.user.username}* [Lvl ${parsed} GC] definiu o nível e entrou no mix pelo Discord!`);
       whatsappBot.notifyMixCreated(mix).catch(() => {});
       scheduleSave(100);
     }
@@ -4209,8 +4229,6 @@ class DiscordBotManager {
         ready: true,
       });
       this.syncToWebRoom(mix);
-      this.updateLobbyInChannels(mix);
-      whatsappBot.broadcastLobbyUpdate(mix, `🎮 *${interaction.member?.displayName || interaction.user.username}* [Lvl ${parsed} GC] definiu o nível e entrou no mix pelo Discord!`);
       this.updateLobbyInChannels(mix);
       whatsappBot.broadcastLobbyUpdate(mix, `🎮 *${interaction.member?.displayName || user.username}* [Lvl ${userLvl} GC] entrou no mix pelo Discord!`);
 
