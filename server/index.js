@@ -2222,6 +2222,66 @@ app.post('/api/whatsapp/broadcast-status', async (req, res) => {
   }
 });
 
+app.post('/api/whatsapp/send-message', async (req, res) => {
+  try {
+    const text = req.body.text;
+    const target = req.body.targetGroupId || whatsappBot.config.targetGroupId;
+    const ok = await whatsappBot.sendMessageToGroup(text, target);
+    res.json({ success: ok });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/discord/announce-match', async (req, res) => {
+  try {
+    const mixId = req.body.mixId || 'MIX-U9AOI';
+    let mix = null;
+    if (discordBotManager?.activeMixes) {
+      for (const m of discordBotManager.activeMixes.values()) {
+        if (m && m.id === mixId) {
+          mix = m;
+          break;
+        }
+      }
+    }
+    if (!mix && typeof rooms !== 'undefined') {
+      const room = rooms.get(mixId);
+      if (room) mix = room;
+    }
+    if (!mix) {
+      return res.status(404).json({ success: false, error: 'mix_not_found' });
+    }
+
+    const channelId = req.body.channelId || mix.channelId || '933123227402797088';
+    const channel = await discordBotManager.client?.channels?.fetch(channelId).catch(() => null);
+    if (!channel || !channel.isTextBased()) {
+      return res.status(400).json({ success: false, error: 'channel_not_found' });
+    }
+
+    const embed = discordBotManager.buildMatchReadyEmbed(mix);
+    const components = discordBotManager.buildMatchReadyButtons(mix);
+
+    const sent = await channel.send({
+      content:
+        `🚨 **ATENÇÃO TODOS OS JOGADORES — O MAPA DA PARTIDA FOI DEFINIDO!**\n\n` +
+        `🗺️ **MAPA OFICIAL:** ☢️ **NUKE (de_nuke)**\n` +
+        `🛡️ **Time A (CT):** Capitão <@${mix.teamA?.captain?.id || '372168272575201290'}>\n` +
+        `💣 **Time B (TR):** Capitão <@${mix.teamB?.captain?.id || '212353154531065857'}>\n\n` +
+        `💻 **Comando de Conexão no CS2:** \`connect ${(mix.serverIp || '103.14.27.41:25054').replace(/^connect\s+/i, '')}\`\n` +
+        `🚀 **Steam 1-Clique:** Clique no botão verde abaixo para entrar no servidor automaticamente!`,
+      embeds: [embed],
+      components,
+    });
+
+    whatsappBot.notifyMatchReady(mix).catch(() => {});
+
+    res.json({ success: true, messageId: sent.id });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 app.post('/api/whatsapp/connect', async (req, res) => {
   try {
     await whatsappBot.connect();

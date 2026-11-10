@@ -4498,6 +4498,19 @@ class DiscordBotManager {
         components,
       });
 
+      await interaction.channel.send({
+        content:
+          `🚨 **PARTIDA CONFIRMADA NO CS2!**\n\n` +
+          `🗺️ **MAPA ESCOLHIDO:** ${veto.deciderMap?.emoji || '🎯'} **${veto.deciderMap?.name?.toUpperCase()}** (\`${veto.deciderMap?.id}\`)\n` +
+          `🛡️ **${mix.teamA.name} (${mix.teamA.side}):** Capitão <@${mix.teamA.captain?.id}>\n` +
+          `💣 **${mix.teamB.name} (${mix.teamB.side}):** Capitão <@${mix.teamB.captain?.id}>\n\n` +
+          `💻 **Comando Console CS2:** \`connect ${(mix.serverIp || this.config.serverConnect).replace(/^connect\s+/i, '')}\``,
+        embeds: [finalEmbed],
+        components,
+      }).catch(() => {});
+
+      whatsappBot.notifyMatchReady(mix).catch(() => {});
+
       // INICIAR MONITORAMENTO AUTOMÁTICO EM TEMPO REAL
       this.startAutomaticLiveMonitoring(mix, interaction.channel, interaction.guild).catch((err) => {
         console.warn('[BOT] Erro ao iniciar monitoramento automático:', err.message);
@@ -4510,6 +4523,7 @@ class DiscordBotManager {
       const randIdx = Math.floor(Math.random() * OFFICIAL_MAPS.length);
       const drawn = OFFICIAL_MAPS[randIdx];
       mix.veto.deciderMap = drawn;
+      mix.finalMap = { name: drawn.name, file: drawn.id };
       mix.phase = 'live';
       this.syncToWebRoom(mix);
       this.updateLobbyInChannels(mix);
@@ -4522,10 +4536,24 @@ class DiscordBotManager {
       const components = this.buildMatchReadyButtons(mix);
 
       await interaction.update({
-        content: `🎲 **MAPA DEFINIDO PELA ROLETA!** GL & HF!`,
+        content: `🎲 **MAPA DEFINIDO PELA ROLETA:** ${drawn.emoji} **${drawn.name.toUpperCase()}** (\`${drawn.id}\`)!`,
         embeds: [embed],
         components,
-      });
+      }).catch(() => {});
+
+      await interaction.channel.send({
+        content:
+          `🎲 **MAPA SORTEADO PELA ROLETA:** ${drawn.emoji} **${drawn.name.toUpperCase()}** (\`${drawn.id}\`)!\n\n` +
+          `🗺️ **MAPA OFICIAL:** **${drawn.name}**\n` +
+          `🛡️ **${mix.teamA.name} (${mix.teamA.side}):** Capitão <@${mix.teamA.captain?.id}>\n` +
+          `💣 **${mix.teamB.name} (${mix.teamB.side}):** Capitão <@${mix.teamB.captain?.id}>\n\n` +
+          `💻 **Comando Console CS2:** \`connect ${(mix.serverIp || this.config.serverConnect).replace(/^connect\s+/i, '')}\`\n` +
+          `🚀 **Steam 1-Clique:** ${this.getPublicWebUrl(`/connect?ip=${encodeURIComponent((mix.serverIp || this.config.serverConnect).replace(/^connect\s+/i, ''))}`)}`,
+        embeds: [embed],
+        components,
+      }).catch(() => {});
+
+      whatsappBot.notifyMatchReady(mix).catch(() => {});
 
       // INICIAR MONITORAMENTO AUTOMÁTICO EM TEMPO REAL
       this.startAutomaticLiveMonitoring(mix, interaction.channel, interaction.guild).catch((err) => {
@@ -5448,24 +5476,44 @@ class DiscordBotManager {
   }
 
   async cmdCreateMix(interaction) {
-    const name = interaction.options.getString('nome') || `Mix 5v5 de ${interaction.user.username}`;
-    const format = interaction.options.getString('formato') || 'MD1';
-    const mix = this.getOrCreateMix(interaction.channelId, interaction.user, { name, format });
-    const tutorialEmbed = this.buildMixTutorialEmbed();
-    const embed = this.buildLobbyEmbed(mix);
-    const components = this.buildLobbyButtons(mix);
+    try {
+      const name = interaction.options.getString('nome') || `Mix 5v5 de ${interaction.user.username}`;
+      const format = interaction.options.getString('formato') || 'MD1';
+      const mix = this.getOrCreateMix(interaction.channelId, interaction.user, { name, format });
 
-    const reply = await interaction.reply({
-      content: `🎮 <@${interaction.user.id}> criou um novo **Lobby de Mix CS2 5v5**!`,
-      embeds: [tutorialEmbed, embed],
-      components,
-      fetchReply: true,
-    });
-    if (reply) {
-      mix.lobbyMessageId = reply.id;
-      mix.channelId = interaction.channelId;
+      if (mix.players.length === 0 && this.hasSavedLevel(interaction.user.id)) {
+        mix.players.push({
+          id: interaction.user.id,
+          username: interaction.user.username,
+          displayName: interaction.member?.displayName || interaction.user.username,
+          avatar: interaction.user.displayAvatarURL({ dynamic: true }),
+          level: this.getPlayerLevel(interaction.user.id),
+          ready: true,
+        });
+        this.syncToWebRoom(mix);
+      }
+
+      const tutorialEmbed = this.buildMixTutorialEmbed();
+      const embed = this.buildLobbyEmbed(mix);
+      const components = this.buildLobbyButtons(mix);
+
+      const reply = await interaction.reply({
+        content: `🎮 <@${interaction.user.id}> abriu o **Lobby de Mix CS2 5v5**! (${mix.players.length}/10 confirmados)`,
+        embeds: [tutorialEmbed, embed],
+        components,
+        fetchReply: true,
+      });
+      if (reply) {
+        mix.lobbyMessageId = reply.id;
+        mix.channelId = interaction.channelId;
+      }
+      return reply;
+    } catch (err) {
+      console.error('[DISCORD BOT] Erro em cmdCreateMix:', err);
+      if (!interaction.replied && !interaction.deferred) {
+        return interaction.reply({ content: `❌ Erro ao criar o mix: ${err.message}`, ephemeral: true });
+      }
     }
-    return reply;
   }
 
   async cmdJoinMix(interaction) {

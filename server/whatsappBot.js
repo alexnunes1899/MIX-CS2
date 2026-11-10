@@ -1446,26 +1446,30 @@ class WhatsAppBotManager {
     if (this.recentAlerts.has(alertKey)) return;
     this.recentAlerts.set(alertKey, Date.now());
 
-    const map = mix.matchMap || mix.veto?.deciderMap?.name || 'Mirage';
-    const capA = mix.teamA?.captain?.username || mix.teamA?.captain?.name || mix.teamA?.players?.[0]?.name || 'Time A';
-    const capB = mix.teamB?.captain?.username || mix.teamB?.captain?.name || mix.teamB?.players?.[0]?.name || 'Time B';
-    const serverIp = (mix.serverIp || this.config.serverConnect || '').trim();
+    const map = mix.matchMap || mix.finalMap?.name || mix.veto?.deciderMap?.name || 'Nuke';
+    const serverIp = (mix.serverIp || this.config.serverConnect || '').trim().replace(/^connect\s+/i, '');
     const url = this.getPublicUrl(`/?room=${mix.id}`);
+    const connectUrl = this.getPublicUrl(`/connect?ip=${encodeURIComponent(serverIp)}`);
+
+    const listA = (mix.teamA?.players || []).map((p, idx) => `${idx === 0 ? '👑 ' : '• '}*${p.displayName || p.nick || p.name || p.username}* [Lvl ${p.level || 16} GC]`).join('\n');
+    const listB = (mix.teamB?.players || []).map((p, idx) => `${idx === 0 ? '👑 ' : '• '}*${p.displayName || p.nick || p.name || p.username}* [Lvl ${p.level || 16} GC]`).join('\n');
 
     let msg =
-      `⚔️ *PARTIDA DE CS2 PRONTA PARA COMEÇAR!*\n\n` +
-      `🗺️ *Mapa:* ${map}\n` +
-      `🛡️ *Time A:* Capitão ${capA} (${mix.teamA?.side || 'CT'})\n` +
-      `💣 *Time B:* Capitão ${capB} (${mix.teamB?.side || 'TR'})\n\n`;
+      `🚨 *CS2 MIX HUB • MAPA SORTEADO & PARTIDA CONFIRMADA!*\n\n` +
+      `🗺️ *MAPA OFICIAL:* *${map.toUpperCase()}*\n\n` +
+      `🛡️ *TIME A (${mix.teamA?.side || 'CT'})* — Média Lvl ${mix.teamA?.avgLevel || 14}\n${listA}\n\n` +
+      `💣 *TIME B (${mix.teamB?.side || 'TR'})* — Média Lvl ${mix.teamB?.avgLevel || 14}\n${listB}\n\n`;
 
     if (serverIp) {
-      msg += `💻 *Servidor CS2:* \`connect ${serverIp}\`\n\n`;
+      msg +=
+        `💻 *Endereço CS2:* \`connect ${serverIp}\`\n\n` +
+        `🚀 *Conectar Direto no CS2 (Steam 1-Clique):*\n` +
+        `👉 ${connectUrl}\n\n`;
     }
 
     msg +=
-      `Acompanhe a vida, dinheiro e placar ao vivo pelo Hub:\n` +
-      `👉 ${url}\n\n` +
-      `GL & HF a todos os 10 jogadores! 🔥`;
+      `🌐 *Acompanhe os Rounds e Placar ao Vivo:* ${url}\n\n` +
+      `🔥 *Bom jogo a todos! GL & HF!*`;
 
     await this.sendMessageToGroup(msg);
   }

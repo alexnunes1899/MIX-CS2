@@ -1,5 +1,5 @@
 {
-  "savedAt": 1794354219858,
+  "savedAt": 1794354478523,
   "roomsCount": 2,
   "discordMixesCount": 1,
   "rooms": [
@@ -7,7 +7,7 @@
       "id": "MIX-SISTEMA",
       "name": "Time Alex Nunes",
       "createdAt": 1794344533597,
-      "lastActivity": 1794354187959,
+      "lastActivity": 1794354397317,
       "creatorId": "wa_553498318907",
       "creatorSteamId": null,
       "creatorNick": "Alex Nunes",
@@ -165,29 +165,192 @@
       "id": "MIX-U9AOI",
       "name": "Mix 5v5 de alexnunes1899",
       "createdAt": 1794354211358,
-      "lastActivity": 1794354219544,
+      "lastActivity": 1794354478212,
       "creatorId": "530523476969390080",
       "creatorNick": "alexnunes1899",
       "source": "discord",
       "sourceLabel": "Via Discord",
-      "phase": "lobby",
+      "phase": "match",
       "players": [
         {
           "id": "530523476969390080",
           "nick": "Alex Baguncinha",
           "avatar": "https://cdn.discordapp.com/avatars/530523476969390080/067994f7ee0662a93e765275301735a8.webp",
-          "level": 10,
+          "level": 11,
+          "side": "CT",
+          "ready": true
+        },
+        {
+          "id": "372168272575201290",
+          "nick": "gux",
+          "avatar": "https://cdn.discordapp.com/avatars/372168272575201290/5dc05286533befb6ecc13f67f69020ad.webp",
+          "level": 18,
+          "side": "CT",
+          "ready": true
+        },
+        {
+          "id": "1563914401667485756",
+          "nick": "JHCaixeta",
+          "avatar": "https://cdn.discordapp.com/embed/avatars/4.png",
+          "level": 15,
+          "side": "CT",
+          "ready": true
+        },
+        {
+          "id": "wa_17514910212348",
+          "nick": "Braian Costa",
+          "level": 14,
+          "side": "TR",
+          "ready": true
+        },
+        {
+          "id": "212353154531065857",
+          "nick": "jotasete",
+          "avatar": "https://cdn.discordapp.com/avatars/212353154531065857/27119b0841df26200724b3afa85a1d81.webp",
+          "level": 17,
+          "side": "TR",
+          "ready": true
+        },
+        {
+          "id": "819344775869497384",
+          "nick": "paulin",
+          "avatar": "https://cdn.discordapp.com/avatars/819344775869497384/700b506aba15870d8e6688513214774b.webp",
+          "level": 16,
+          "side": "CT",
+          "ready": true
+        },
+        {
+          "id": "1176570190188773456",
+          "nick": "mrl",
+          "avatar": "https://cdn.discordapp.com/avatars/1176570190188773456/224501c1a5e5a8e9bdcbfd34de29bdcb.webp",
+          "level": 17,
+          "side": "TR",
+          "ready": true
+        },
+        {
+          "id": "372168609365229588",
+          "nick": "xoCo",
+          "avatar": "https://cdn.discordapp.com/avatars/372168609365229588/d2921cf39a21f93b9468489d3305be75.webp",
+          "level": 8,
+          "side": "CT",
+          "ready": true
+        },
+        {
+          "id": "456964525871333376",
+          "nick": "★varão 034",
+          "avatar": "https://cdn.discordapp.com/avatars/456964525871333376/88802d6f3d48df900917c3c930aec214.webp",
+          "level": 14,
+          "side": "TR",
+          "ready": true
+        },
+        {
+          "id": "833121273562660914",
+          "nick": "Napa 🚩",
+          "avatar": "https://cdn.discordapp.com/avatars/833121273562660914/9930f4b41859e93cbf481721da91c527.webp",
+          "level": 7,
           "side": "TR",
           "ready": true
         }
       ],
-      "teamA": [],
-      "teamB": [],
-      "captainA": null,
-      "captainB": null,
+      "teamA": [
+        {
+          "id": "372168272575201290",
+          "nick": "gux",
+          "avatar": "https://cdn.discordapp.com/avatars/372168272575201290/5dc05286533befb6ecc13f67f69020ad.webp",
+          "level": 18,
+          "side": "CT",
+          "isCaptain": true
+        },
+        {
+          "id": "819344775869497384",
+          "nick": "paulin",
+          "avatar": "https://cdn.discordapp.com/avatars/819344775869497384/700b506aba15870d8e6688513214774b.webp",
+          "level": 16,
+          "side": "CT",
+          "isCaptain": false
+        },
+        {
+          "id": "1563914401667485756",
+          "nick": "JHCaixeta",
+          "avatar": "https://cdn.discordapp.com/embed/avatars/4.png",
+          "level": 15,
+          "side": "CT",
+          "isCaptain": false
+        },
+        {
+          "id": "530523476969390080",
+          "nick": "Alex Baguncinha",
+          "avatar": "https://cdn.discordapp.com/avatars/530523476969390080/067994f7ee0662a93e765275301735a8.webp",
+          "level": 11,
+          "side": "CT",
+          "isCaptain": false
+        },
+        {
+          "id": "372168609365229588",
+          "nick": "xoCo",
+          "avatar": "https://cdn.discordapp.com/avatars/372168609365229588/d2921cf39a21f93b9468489d3305be75.webp",
+          "level": 8,
+          "side": "CT",
+          "isCaptain": false
+        }
+      ],
+      "teamB": [
+        {
+          "id": "212353154531065857",
+          "nick": "jotasete",
+          "avatar": "https://cdn.discordapp.com/avatars/212353154531065857/27119b0841df26200724b3afa85a1d81.webp",
+          "level": 17,
+          "side": "TR",
+          "isCaptain": true
+        },
+        {
+          "id": "1176570190188773456",
+          "nick": "mrl",
+          "avatar": "https://cdn.discordapp.com/avatars/1176570190188773456/224501c1a5e5a8e9bdcbfd34de29bdcb.webp",
+          "level": 17,
+          "side": "TR",
+          "isCaptain": false
+        },
+        {
+          "id": "wa_17514910212348",
+          "nick": "Braian Costa",
+          "level": 14,
+          "side": "TR",
+          "isCaptain": false
+        },
+        {
+          "id": "456964525871333376",
+          "nick": "★varão 034",
+          "avatar": "https://cdn.discordapp.com/avatars/456964525871333376/88802d6f3d48df900917c3c930aec214.webp",
+          "level": 14,
+          "side": "TR",
+          "isCaptain": false
+        },
+        {
+          "id": "833121273562660914",
+          "nick": "Napa 🚩",
+          "avatar": "https://cdn.discordapp.com/avatars/833121273562660914/9930f4b41859e93cbf481721da91c527.webp",
+          "level": 7,
+          "side": "TR",
+          "isCaptain": false
+        }
+      ],
+      "captainA": {
+        "id": "372168272575201290",
+        "nick": "gux",
+        "level": 18
+      },
+      "captainB": {
+        "id": "212353154531065857",
+        "nick": "jotasete",
+        "level": 17
+      },
       "teamAName": "Time A",
       "teamBName": "Time B",
-      "finalMap": null,
+      "finalMap": {
+        "name": "Nuke",
+        "file": "de_nuke"
+      },
       "serverIp": "connect 103.14.27.41:25054",
       "matchFormat": "MD1"
     }
@@ -208,11 +371,86 @@
             "username": "alexnunes1899",
             "displayName": "Alex Baguncinha",
             "avatar": "https://cdn.discordapp.com/avatars/530523476969390080/067994f7ee0662a93e765275301735a8.webp",
-            "level": 10,
+            "level": 11,
+            "ready": true
+          },
+          {
+            "id": "372168272575201290",
+            "username": "gux8262",
+            "displayName": "gux",
+            "avatar": "https://cdn.discordapp.com/avatars/372168272575201290/5dc05286533befb6ecc13f67f69020ad.webp",
+            "level": 18,
+            "ready": true
+          },
+          {
+            "id": "1563914401667485756",
+            "username": "jhcaixeta",
+            "displayName": "JHCaixeta",
+            "avatar": "https://cdn.discordapp.com/embed/avatars/4.png",
+            "level": 15,
+            "ready": true
+          },
+          {
+            "id": "wa_17514910212348",
+            "nick": "Braian Costa",
+            "username": "Braian Costa",
+            "name": "Braian Costa",
+            "displayName": "Braian Costa",
+            "phone": "17514910212348",
+            "level": 14,
+            "source": "whatsapp",
+            "ready": true
+          },
+          {
+            "id": "212353154531065857",
+            "username": "jottasete",
+            "displayName": "jotasete",
+            "avatar": "https://cdn.discordapp.com/avatars/212353154531065857/27119b0841df26200724b3afa85a1d81.webp",
+            "level": 17,
+            "ready": true
+          },
+          {
+            "id": "819344775869497384",
+            "username": "onyxx5972",
+            "displayName": "paulin",
+            "avatar": "https://cdn.discordapp.com/avatars/819344775869497384/700b506aba15870d8e6688513214774b.webp",
+            "level": 16,
+            "ready": true
+          },
+          {
+            "id": "1176570190188773456",
+            "username": "murillonunesdev",
+            "displayName": "mrl",
+            "avatar": "https://cdn.discordapp.com/avatars/1176570190188773456/224501c1a5e5a8e9bdcbfd34de29bdcb.webp",
+            "level": 17,
+            "ready": true
+          },
+          {
+            "id": "372168609365229588",
+            "username": "xokinho",
+            "displayName": "xoCo",
+            "avatar": "https://cdn.discordapp.com/avatars/372168609365229588/d2921cf39a21f93b9468489d3305be75.webp",
+            "level": 8,
+            "ready": true
+          },
+          {
+            "id": "456964525871333376",
+            "username": "madimbas",
+            "displayName": "★varão 034",
+            "avatar": "https://cdn.discordapp.com/avatars/456964525871333376/88802d6f3d48df900917c3c930aec214.webp",
+            "level": 14,
+            "ready": true
+          },
+          {
+            "id": "833121273562660914",
+            "username": "napazs",
+            "displayName": "Napa 🚩",
+            "avatar": "https://cdn.discordapp.com/avatars/833121273562660914/9930f4b41859e93cbf481721da91c527.webp",
+            "level": 7,
             "ready": true
           }
         ],
-        "phase": "lobby",
+        "phase": "live",
         "readyCheck": {
           "active": false,
           "confirmed": [],
@@ -221,19 +459,118 @@
         },
         "teamA": {
           "name": "Time A",
-          "captain": null,
-          "players": [],
+          "captain": {
+            "id": "372168272575201290",
+            "username": "gux8262",
+            "displayName": "gux",
+            "avatar": "https://cdn.discordapp.com/avatars/372168272575201290/5dc05286533befb6ecc13f67f69020ad.webp",
+            "level": 18,
+            "ready": true
+          },
+          "players": [
+            {
+              "id": "372168272575201290",
+              "username": "gux8262",
+              "displayName": "gux",
+              "avatar": "https://cdn.discordapp.com/avatars/372168272575201290/5dc05286533befb6ecc13f67f69020ad.webp",
+              "level": 18,
+              "ready": true
+            },
+            {
+              "id": "819344775869497384",
+              "username": "onyxx5972",
+              "displayName": "paulin",
+              "avatar": "https://cdn.discordapp.com/avatars/819344775869497384/700b506aba15870d8e6688513214774b.webp",
+              "level": 16,
+              "ready": true
+            },
+            {
+              "id": "1563914401667485756",
+              "username": "jhcaixeta",
+              "displayName": "JHCaixeta",
+              "avatar": "https://cdn.discordapp.com/embed/avatars/4.png",
+              "level": 15,
+              "ready": true
+            },
+            {
+              "id": "530523476969390080",
+              "username": "alexnunes1899",
+              "displayName": "Alex Baguncinha",
+              "avatar": "https://cdn.discordapp.com/avatars/530523476969390080/067994f7ee0662a93e765275301735a8.webp",
+              "level": 11,
+              "ready": true
+            },
+            {
+              "id": "372168609365229588",
+              "username": "xokinho",
+              "displayName": "xoCo",
+              "avatar": "https://cdn.discordapp.com/avatars/372168609365229588/d2921cf39a21f93b9468489d3305be75.webp",
+              "level": 8,
+              "ready": true
+            }
+          ],
           "side": "CT",
-          "avgLevel": 16
+          "avgLevel": "13.6"
         },
         "teamB": {
           "name": "Time B",
-          "captain": null,
-          "players": [],
+          "captain": {
+            "id": "212353154531065857",
+            "username": "jottasete",
+            "displayName": "jotasete",
+            "avatar": "https://cdn.discordapp.com/avatars/212353154531065857/27119b0841df26200724b3afa85a1d81.webp",
+            "level": 17,
+            "ready": true
+          },
+          "players": [
+            {
+              "id": "212353154531065857",
+              "username": "jottasete",
+              "displayName": "jotasete",
+              "avatar": "https://cdn.discordapp.com/avatars/212353154531065857/27119b0841df26200724b3afa85a1d81.webp",
+              "level": 17,
+              "ready": true
+            },
+            {
+              "id": "1176570190188773456",
+              "username": "murillonunesdev",
+              "displayName": "mrl",
+              "avatar": "https://cdn.discordapp.com/avatars/1176570190188773456/224501c1a5e5a8e9bdcbfd34de29bdcb.webp",
+              "level": 17,
+              "ready": true
+            },
+            {
+              "id": "wa_17514910212348",
+              "nick": "Braian Costa",
+              "username": "Braian Costa",
+              "name": "Braian Costa",
+              "displayName": "Braian Costa",
+              "phone": "17514910212348",
+              "level": 14,
+              "source": "whatsapp",
+              "ready": true
+            },
+            {
+              "id": "456964525871333376",
+              "username": "madimbas",
+              "displayName": "★varão 034",
+              "avatar": "https://cdn.discordapp.com/avatars/456964525871333376/88802d6f3d48df900917c3c930aec214.webp",
+              "level": 14,
+              "ready": true
+            },
+            {
+              "id": "833121273562660914",
+              "username": "napazs",
+              "displayName": "Napa 🚩",
+              "avatar": "https://cdn.discordapp.com/avatars/833121273562660914/9930f4b41859e93cbf481721da91c527.webp",
+              "level": 7,
+              "ready": true
+            }
+          ],
           "side": "TR",
-          "avgLevel": 16
+          "avgLevel": "13.8"
         },
-        "balancePct": 95,
+        "balancePct": 97,
         "veto": {
           "currentTurn": "teamA",
           "bannedMaps": [],
@@ -281,13 +618,19 @@
               "image": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_cache_1_png.png"
             }
           ],
-          "deciderMap": null,
+          "deciderMap": {
+            "id": "de_nuke",
+            "name": "Nuke",
+            "emoji": "☢️",
+            "image": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_nuke_1_png.png"
+          },
           "history": []
         },
         "serverIp": "connect 103.14.27.41:25054",
         "messageId": null,
         "createdAt": 1794354211358,
-        "lobbyMessageId": "1569860090696302604"
+        "lobbyMessageId": "1569860090696302604",
+        "notifiedMissing": {}
       }
     }
   ]
