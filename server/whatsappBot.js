@@ -17,6 +17,7 @@ const DATA_DIR = path.join(__dirname, 'data');
 const AUTH_DIR = path.join(DATA_DIR, 'whatsapp_auth');
 const CONFIG_PATH = path.join(DATA_DIR, 'whatsappConfig.json');
 const CONFIG_DEFAULT_PATH = path.join(DATA_DIR, 'whatsappConfig.default.json');
+const PROFILES_PATH = path.join(DATA_DIR, 'playerProfiles.json');
 
 class WhatsAppBotManager {
   constructor() {
@@ -31,6 +32,61 @@ class WhatsAppBotManager {
     this.config = this.loadConfig();
     this.recentAlerts = new Map(); // key -> timestamp to avoid spam
     this.isConnecting = false;
+    this.discordBotRef = null;
+    this.webRoomsRef = null;
+  }
+
+  setStoreRefs(discordBot, webRooms) {
+    if (discordBot) this.discordBotRef = discordBot;
+    if (webRooms) this.webRoomsRef = webRooms;
+  }
+
+  loadPlayerProfiles() {
+    try {
+      if (fs.existsSync(PROFILES_PATH)) {
+        const raw = fs.readFileSync(PROFILES_PATH, 'utf8');
+        return JSON.parse(raw);
+      }
+    } catch (_) {}
+    return {};
+  }
+
+  savePlayerProfile(userId, data) {
+    try {
+      const profiles = this.loadPlayerProfiles();
+      profiles[userId] = {
+        ...(profiles[userId] || {}),
+        ...data,
+        updatedAt: Date.now(),
+      };
+      if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+      fs.writeFileSync(PROFILES_PATH, JSON.stringify(profiles, null, 2), 'utf8');
+      return profiles[userId];
+    } catch (e) {
+      console.warn('[WHATSAPP] Erro ao salvar perfil:', e.message);
+      return null;
+    }
+  }
+
+  getPlayerLevel(userId) {
+    const profiles = this.loadPlayerProfiles();
+    return profiles[userId]?.level || null;
+  }
+
+  getActiveMix() {
+    // 1. Check active Discord mixes
+    if (this.discordBotRef && this.discordBotRef.activeMixes?.size > 0) {
+      for (const m of this.discordBotRef.activeMixes.values()) {
+        if (m && m.phase !== 'cancelled') return { source: 'discord', mix: m };
+      }
+    }
+    // 2. Check active Web rooms
+    if (this.webRoomsRef && this.webRoomsRef.size > 0) {
+      for (const r of this.webRoomsRef.values()) {
+        if (r && r.phase !== 'finished') return { source: 'web', mix: r };
+      }
+    }
+    return null;
   }
 
   loadConfig() {
@@ -195,35 +251,220 @@ class WhatsAppBotManager {
     const from = msg.key.remoteJid;
     if (!from) return;
 
-    const text =
+    const rawText =
       msg.message?.conversation ||
       msg.message?.extendedTextMessage?.text ||
       '';
 
-    const clean = text.trim().toLowerCase();
-    const prefix = (this.config.prefix || '!mix').toLowerCase();
+    const clean = rawText.trim();
+    if (!clean) return;
 
-    if (clean === '!mix' || clean === '!jogos' || clean === '!status' || clean === prefix) {
-      const publicUrl = process.env.PUBLIC_URL || 'https://mix-cs2-production.up.railway.app';
-      const replyText =
-        `🎮 *CS2 MIX HUB • SALAS & COMANDOS*\n\n` +
-        `Para criar ou entrar em um Mix 5v5 com sorteio balanceado de times por Level da Gamers Club e Pick & Ban oficial de mapas, acesse o link:\n` +
-        `👉 ${publicUrl}\n\n` +
-        `• *!mix status* - Ver status do bot\n` +
-        `• *!mix ajuda* - Informações sobre o sistema`;
+    const senderJid = msg.key.participant || from;
+    const senderPhone = senderJid.replace(/\D/g, '');
+    const senderName = msg.pushName || `Jogador_${senderPhone.slice(-4)}`;
+    const lower = clean.toLowerCase();
 
-      await this.sock.sendMessage(from, { text: replyText }, { quoted: msg }).catch(() => {});
-    } else if (clean === '!mix ajuda' || clean === '!mix help') {
-      const replyText =
-        `ℹ️ *CS2 MIX HUB BOT*\n\n` +
-        `Eu sou o bot oficial de avisos de partidas da comunidade de CS2!\n` +
-        `Aqui neste grupo eu notifico:\n` +
-        `• Quando um novo mix é aberto;\n` +
-        `• Quando faltam 1 ou 2 vagas para fechar o 5v5;\n` +
-        `• Quando os times são sorteados e o mapa é definido;\n` +
-        `• Placar final e MVP das partidas finalizadas!`;
+    // 1. IP DO SERVIDOR CS2 & CONEXÃO STEAM 1-CLIQUE
+    if (lower === '!ip' || lower === '!servidor' || lower === '!connect' || lower === '!server') {
+      const activeData = this.getActiveMix();
+      const mix = activeData?.mix;
+      const ip = (mix?.serverIp || this.config.serverConnect || this.discordBotRef?.config?.serverConnect || '').trim();
+      const publicUrl = this.getPublicUrl();
 
-      await this.sock.sendMessage(from, { text: replyText }, { quoted: msg }).catch(() => {});
+      if (!ip) {
+        return this.sock.sendMessage(from, {
+          text: `⚠️ *Nenhum IP de servidor CS2 configurado no momento.*\n\nDefina o IP pelo site (${publicUrl}) ou no Discord com \`!servidor <ip:porta>\`.`
+        }, { quoted: msg }).catch(() => {});
+      }
+
+      const cleanIp = ip.replace(/^connect\s+/i, '');
+      const steamConnectUrl = `${publicUrl}/connect?ip=${encodeURIComponent(cleanIp)}`;
+
+      const ipText =
+        `💻 *SERVIDOR CS2 DO MIX*\n\n` +
+        `🌐 *Endereço:* \`connect ${cleanIp}\`\n\n` +
+        `🚀 *Conectar Direto no CS2 (Steam 1-Clique):*\n` +
+        `👉 ${steamConnectUrl}\n\n` +
+        `_(Basta tocar no link acima para abrir o Counter-Strike 2 automaticamente!)_`;
+
+      return this.sock.sendMessage(from, { text: ipText }, { quoted: msg }).catch(() => {});
+    }
+
+    // 2. SALVAR NÍVEL GAMERS CLUB (GC)
+    if (lower.startsWith('!lvl') || lower.startsWith('!gc') || lower.startsWith('!level')) {
+      const parts = clean.split(/\s+/);
+      const parsed = parseInt(parts[1], 10);
+
+      if (isNaN(parsed) || parsed < 1 || parsed > 21) {
+        return this.sock.sendMessage(from, {
+          text: `⚠️ *Nível inválido!*\nDigite um número de *1 a 21* correspondente ao seu nível na Gamers Club.\n\nExemplo: *!lvl 16*`
+        }, { quoted: msg }).catch(() => {});
+      }
+
+      const profileKey = `wa_${senderPhone}`;
+      this.savePlayerProfile(profileKey, {
+        level: parsed,
+        username: senderName,
+        phone: senderPhone,
+        source: 'whatsapp',
+      });
+
+      // Update in active mix if already joined
+      const activeData = this.getActiveMix();
+      if (activeData?.mix?.players) {
+        const found = activeData.mix.players.find(p => p.id === profileKey || p.phone === senderPhone);
+        if (found) {
+          found.level = parsed;
+        }
+      }
+
+      const badge = parsed >= 20 ? '👑 Lvl 20+' : parsed >= 18 ? '🏆 Lvl 18-19' : parsed >= 14 ? '🥇 Lvl 14-17' : '🥈 Lvl 1-13';
+
+      return this.sock.sendMessage(from, {
+        text: `✅ *Nível Gamers Club Salvo com Sucesso!*\n\n` +
+          `👤 *Jogador:* ${senderName}\n` +
+          `⭐ *Nível GC:* *Lvl ${parsed}* (${badge})\n\n` +
+          `Seu nível está salvo no sistema e garantirá que o sorteio forme times equilibrados!`
+      }, { quoted: msg }).catch(() => {});
+    }
+
+    // 3. MOSTRAR FILA / JOGADORES / STATUS DO LOBBY
+    if (lower === '!fila' || lower === '!jogadores' || lower === '!players' || lower === '!mix' || lower === '!status') {
+      const activeData = this.getActiveMix();
+      if (!activeData || !activeData.mix) {
+        const publicUrl = this.getPublicUrl();
+        return this.sock.sendMessage(from, {
+          text: `ℹ️ *Nenhum mix aberto no momento!*\n\nCrie uma nova partida agora pelo Hub:\n👉 ${publicUrl}`
+        }, { quoted: msg }).catch(() => {});
+      }
+
+      const mix = activeData.mix;
+      const count = mix.players?.length || 0;
+      const remaining = Math.max(0, 10 - count);
+      const publicUrl = this.getPublicUrl(`/?room=${mix.id}`);
+
+      let listStr = '';
+      for (let i = 0; i < 10; i++) {
+        const p = mix.players?.[i];
+        if (p) {
+          const capBadge = (i === 0 || p.isCaptain) ? '👑 ' : '';
+          const name = p.username || p.nick || p.name || 'Jogador';
+          const lvl = p.level || p.gcLevel || 16;
+          listStr += `${i + 1}. ${capBadge}*${name}* [Lvl ${lvl} GC]\n`;
+        } else {
+          listStr += `${i + 1}. ⏳ _[Vaga Aberta]_\n`;
+        }
+      }
+
+      const statusText =
+        `🎮 *CS2 MIX 5v5 • STATUS DO LOBBY*\n` +
+        `📍 *Sala:* ${mix.name || `Mix #${mix.id}`}\n` +
+        `👥 *Vagas:* *${count}/10* (${remaining} restante(s))\n\n` +
+        `📋 *Lista de Jogadores Confirmados:*\n` +
+        `${listStr}\n` +
+        `💬 *Comandos Rápidos no WhatsApp:*\n` +
+        `• Digite *!entrar* para garantir sua vaga\n` +
+        `• Digite *!sair* para liberar sua vaga\n` +
+        `• Digite *!lvl <1-21>* para salvar seu nível GC\n` +
+        `• Digite *!ip* para ver o servidor e conectar\n\n` +
+        `👉 Ou acesse pelo navegador: ${publicUrl}`;
+
+      return this.sock.sendMessage(from, { text: statusText }, { quoted: msg }).catch(() => {});
+    }
+
+    // 4. ENTRAR NO MIX PELO WHATSAPP
+    if (lower === '!entrar' || lower === '!jogar' || lower === '!join') {
+      const activeData = this.getActiveMix();
+      if (!activeData || !activeData.mix) {
+        return this.sock.sendMessage(from, {
+          text: `⚠️ *Não há nenhum mix aberto no momento.*\nCrie uma sala primeiro em: ${this.getPublicUrl()}`
+        }, { quoted: msg }).catch(() => {});
+      }
+
+      const mix = activeData.mix;
+      const profileKey = `wa_${senderPhone}`;
+      const savedLevel = this.getPlayerLevel(profileKey);
+
+      if (mix.players?.length >= 10) {
+        return this.sock.sendMessage(from, {
+          text: `⚠️ *O lobby acabou de lotar (10/10 jogadores)!* Fique atento para o próximo mix.`
+        }, { quoted: msg }).catch(() => {});
+      }
+
+      const alreadyIn = mix.players?.some(p => p.id === profileKey || p.phone === senderPhone || p.nick === senderName);
+      if (alreadyIn) {
+        return this.sock.sendMessage(from, {
+          text: `ℹ️ Você já está confirmado nesta partida!`
+        }, { quoted: msg }).catch(() => {});
+      }
+
+      const newPlayer = {
+        id: profileKey,
+        nick: senderName,
+        username: senderName,
+        name: senderName,
+        phone: senderPhone,
+        level: savedLevel || 16,
+        source: 'whatsapp',
+        ready: true,
+      };
+
+      mix.players.push(newPlayer);
+      if (activeData.source === 'discord' && typeof this.discordBotRef?.syncToWebRoom === 'function') {
+        this.discordBotRef.syncToWebRoom(mix);
+      }
+
+      const count = mix.players.length;
+      let reply = `✅ *Você entrou no Mix CS2!* (${count}/10)\n\n👤 *${senderName}* [Lvl ${savedLevel || 16} GC]`;
+      if (!savedLevel) {
+        reply += `\n\n💡 *Dica:* Digite *!lvl <1 a 21>* para salvar seu nível real da Gamers Club e equilibrar os times!`;
+      }
+
+      await this.sock.sendMessage(from, { text: reply }, { quoted: msg }).catch(() => {});
+
+      if (count === 8 || count === 9) {
+        this.notifyMissingSlots(mix);
+      }
+      return;
+    }
+
+    // 5. SAIR DO MIX
+    if (lower === '!sair' || lower === '!leave') {
+      const activeData = this.getActiveMix();
+      if (!activeData || !activeData.mix) return;
+      const mix = activeData.mix;
+      const profileKey = `wa_${senderPhone}`;
+
+      const idx = mix.players?.findIndex(p => p.id === profileKey || p.phone === senderPhone || p.nick === senderName);
+      if (idx === -1 || idx === undefined) {
+        return this.sock.sendMessage(from, {
+          text: `⚠️ Você não está na fila deste mix.`
+        }, { quoted: msg }).catch(() => {});
+      }
+
+      mix.players.splice(idx, 1);
+      if (activeData.source === 'discord' && typeof this.discordBotRef?.syncToWebRoom === 'function') {
+        this.discordBotRef.syncToWebRoom(mix);
+      }
+
+      return this.sock.sendMessage(from, {
+        text: `🚪 *Você saiu da fila do Mix.* (${mix.players.length}/10 vagas ocupadas).`
+      }, { quoted: msg }).catch(() => {});
+    }
+
+    // 6. AJUDA E COMANDOS
+    if (lower === '!ajuda' || lower === '!help') {
+      const helpText =
+        `🤖 *COMANDOS DO BOT CS2 NO WHATSAPP*\n\n` +
+        `• *!fila* ou *!mix* - Ver a lista dos 10 jogadores e status do lobby\n` +
+        `• *!entrar* - Entrar na fila do mix direto pelo WhatsApp\n` +
+        `• *!sair* - Sair da fila do mix\n` +
+        `• *!ip* - Ver o IP do servidor e link para conectar pela Steam\n` +
+        `• *!lvl <1-21>* - Salvar seu nível da Gamers Club (ex: *!lvl 18*)\n` +
+        `• *!ajuda* - Ver esta lista de comandos\n\n` +
+        `🌐 *Hub Web:* ${this.getPublicUrl()}`;
+
+      return this.sock.sendMessage(from, { text: helpText }, { quoted: msg }).catch(() => {});
     }
   }
 

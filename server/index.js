@@ -3052,7 +3052,8 @@ server.listen(PORT, '0.0.0.0', () => {
   ensureBotOnlineWithCloudFailover();
   setInterval(ensureBotOnlineWithCloudFailover, 25000);
 
-  // Initialize WhatsApp Bot Integration
+  // Initialize WhatsApp Bot Integration with store references
+  whatsappBot.setStoreRefs(discordBotManager, rooms);
   whatsappBot.initialize().catch((err) => {
     console.warn('[WHATSAPP] Erro ao inicializar bot:', err.message);
   });

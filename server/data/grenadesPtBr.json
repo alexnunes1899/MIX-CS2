@@ -1,6 +1,6 @@
 {
   "source": "Curadoria Oficial CS2 Brasil (100% PT-BR)",
-  "lastSync": 1794314559519,
+  "lastSync": 1794315940800,
   "totalLineups": 14,
   "verifiedCount": 14,
   "lineups": [
@@ -34,7 +34,7 @@
       "aimImage": "https://img.youtube.com/vi/Wg-HxBkRmCs/maxresdefault.jpg",
       "mapImage": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_mirage_1_png.png",
       "verified": true,
-      "lastVerifiedAt": 1794314559479
+      "lastVerifiedAt": 1794315940764
     },
     {
       "id": "mirage-smoke-stairs",
@@ -66,7 +66,7 @@
       "aimImage": "https://img.youtube.com/vi/H3Awo4sMF3A/maxresdefault.jpg",
       "mapImage": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_mirage_1_png.png",
       "verified": true,
-      "lastVerifiedAt": 1794314559498
+      "lastVerifiedAt": 1794315940768
     },
     {
       "id": "mirage-smoke-ct",
@@ -98,7 +98,7 @@
       "aimImage": "https://img.youtube.com/vi/1Y72G3BeHOs/maxresdefault.jpg",
       "mapImage": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_mirage_1_png.png",
       "verified": true,
-      "lastVerifiedAt": 1794314559495
+      "lastVerifiedAt": 1794315940774
     },
     {
       "id": "mirage-molotov-van",
@@ -130,7 +130,7 @@
       "aimImage": "https://img.youtube.com/vi/K7Yk7GUJVBA/maxresdefault.jpg",
       "mapImage": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_mirage_1_png.png",
       "verified": true,
-      "lastVerifiedAt": 1794314559480
+      "lastVerifiedAt": 1794315940795
     },
     {
       "id": "inferno-smoke-coffins",
@@ -162,7 +162,7 @@
       "aimImage": "https://img.youtube.com/vi/vrs8OsMqxXY/maxresdefault.jpg",
       "mapImage": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_inferno_1_png.png",
       "verified": true,
-      "lastVerifiedAt": 1794314559493
+      "lastVerifiedAt": 1794315940779
     },
     {
       "id": "inferno-smoke-ct-b",
@@ -194,7 +194,7 @@
       "aimImage": "https://img.youtube.com/vi/8Fz05wY6tpI/maxresdefault.jpg",
       "mapImage": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_inferno_1_png.png",
       "verified": true,
-      "lastVerifiedAt": 1794314559483
+      "lastVerifiedAt": 1794315940793
     },
     {
       "id": "inferno-moly-sandbags",
@@ -226,7 +226,7 @@
       "aimImage": "https://img.youtube.com/vi/nXT9PJcXgkA/maxresdefault.jpg",
       "mapImage": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_inferno_1_png.png",
       "verified": true,
-      "lastVerifiedAt": 1794314559497
+      "lastVerifiedAt": 1794315940777
     },
     {
       "id": "nuke-smoke-yard-cross",
@@ -258,7 +258,7 @@
       "aimImage": "https://img.youtube.com/vi/yx0HQQ3V4U8/maxresdefault.jpg",
       "mapImage": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_nuke_1_png.png",
       "verified": true,
-      "lastVerifiedAt": 1794314559495
+      "lastVerifiedAt": 1794315940794
     },
     {
       "id": "nuke-flash-ramp",
@@ -290,7 +290,7 @@
       "aimImage": "https://img.youtube.com/vi/IENZf80llG0/maxresdefault.jpg",
       "mapImage": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_nuke_1_png.png",
       "verified": true,
-      "lastVerifiedAt": 1794314559506
+      "lastVerifiedAt": 1794315940777
     },
     {
       "id": "dust2-smoke-xbox",
@@ -322,7 +322,7 @@
       "aimImage": "https://img.youtube.com/vi/wY5vwkT5ALQ/maxresdefault.jpg",
       "mapImage": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_dust2_1_png.png",
       "verified": true,
-      "lastVerifiedAt": 1794314559504
+      "lastVerifiedAt": 1794315940771
     },
     {
       "id": "dust2-smoke-long-corner",
@@ -354,7 +354,7 @@
       "aimImage": "https://img.youtube.com/vi/Bnk7oIUv6Ps/maxresdefault.jpg",
       "mapImage": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_dust2_1_png.png",
       "verified": true,
-      "lastVerifiedAt": 1794314559519
+      "lastVerifiedAt": 1794315940800
     },
     {
       "id": "ancient-smoke-donut",
@@ -386,7 +386,7 @@
       "aimImage": "https://img.youtube.com/vi/AydoZRyzygs/maxresdefault.jpg",
       "mapImage": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_ancient_1_png.png",
       "verified": true,
-      "lastVerifiedAt": 1794314559487
+      "lastVerifiedAt": 1794315940789
     },
     {
       "id": "ancient-smoke-b-red",
@@ -418,7 +418,7 @@
       "aimImage": "https://img.youtube.com/vi/M9F0RGd76N0/maxresdefault.jpg",
       "mapImage": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_ancient_1_png.png",
       "verified": true,
-      "lastVerifiedAt": 1794314559495
+      "lastVerifiedAt": 1794315940792
     },
     {
       "id": "anubis-smoke-connector",
@@ -450,7 +450,7 @@
       "aimImage": "https://img.youtube.com/vi/oT-WX8MFKoQ/maxresdefault.jpg",
       "mapImage": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_anubis_1_png.png",
       "verified": true,
-      "lastVerifiedAt": 1794314559512
+      "lastVerifiedAt": 1794315940771
     }
   ]
 }
