@@ -2444,7 +2444,8 @@ class DiscordBotManager {
         `🗺️ **Mapa:** **${mix.veto.deciderMap?.name || 'Mirage'}**\n` +
         `⚔️ **Resultado Oficial:** **${winnerTeam.name}** venceu por **${score}**!\n` +
         `👑 **Declarado por:** <@${declaredByUser.id}>\n\n` +
-        `⭐ **VOTAÇÃO DE MVP INICIADA:** Selecione no menu abaixo quem jogou mais nesta partida!`
+        `⭐ **VOTAÇÃO DE MVP INICIADA:** Selecione no menu abaixo quem jogou mais nesta partida!\n` +
+        `⏱️ **Tempo para Votar:** \`60 segundos\` (Ao esgotar o tempo, o MVP será computado e coroado automaticamente!)`
       )
       .setColor(0x22c55e)
       .addFields(
@@ -2466,11 +2467,19 @@ class DiscordBotManager {
       victoryEmbed.setThumbnail(mix.veto.deciderMap.image);
     }
 
-    // Initialize MVP voting state
+    // Initialize MVP voting state with automatic timer (60s countdown)
+    const mvpDurationSeconds = 60;
     mix.mvpVote = {
       active: true,
       votes: new Map(),
-      expiresAt: Date.now() + 60000,
+      expiresAt: Date.now() + (mvpDurationSeconds * 1000),
+      timer: setTimeout(() => {
+        if (mix.mvpVote?.active) {
+          this.finishMvpVote(mix, channel).catch((err) => {
+            console.warn('[DISCORD BOT] Falha ao encerrar votação de MVP por tempo:', err.message);
+          });
+        }
+      }, mvpDurationSeconds * 1000),
     };
 
     // MVP select options
@@ -2493,7 +2502,7 @@ class DiscordBotManager {
     const finishBtn = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId(`mvp_finish:${mix.id}`)
-        .setLabel('Encerrar MVP')
+        .setLabel('Encerrar MVP Agora (60s)')
         .setEmoji('👑')
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
@@ -2514,6 +2523,11 @@ class DiscordBotManager {
 
   async finishMvpVote(mix, channel) {
     if (!mix || !mix.mvpVote) return;
+    if (mix.mvpVote.timer) {
+      clearTimeout(mix.mvpVote.timer);
+      mix.mvpVote.timer = null;
+    }
+    if (!mix.mvpVote.active) return;
     mix.mvpVote.active = false;
 
     const voteCounts = new Map();
@@ -2913,40 +2927,18 @@ class DiscordBotManager {
     mix.readyCheck = {
       active: true,
       confirmed: new Set(),
-      expiresAt: Date.now() + 45000,
+      expiresAt: null,
       timer: null,
     };
 
     const mentions = mix.players.map((p) => `<@${p.id}>`).join(' ');
     channel.send({
-      content: `🚨 **LOBBY CHEIO (10/10)!** ${mentions}\nTodos os 10 jogadores devem clicar em **Confirmar Presença** no botão abaixo em até **45 segundos**! Jogadores ausentes serão removidos da fila.`,
+      content: `🚨 **LOBBY CHEIO (10/10)!** ${mentions}\nTodos os 10 jogadores podem clicar em **Confirmar Presença** no botão abaixo quando estiverem prontos, ou sortear os times para jogar!`,
     }).catch(() => {});
-
-    mix.readyCheck.timer = setTimeout(async () => {
-      if (mix.phase !== 'ready_check') return;
-      const unconfirmed = mix.players.filter((p) => !mix.readyCheck.confirmed.has(p.id));
-      if (unconfirmed.length > 0) {
-        const afkIds = new Set(unconfirmed.map((p) => p.id));
-        mix.players = mix.players.filter((p) => !afkIds.has(p.id));
-        mix.phase = 'lobby';
-        mix.readyCheck.active = false;
-
-        const embed = this.buildLobbyEmbed(mix);
-        const components = this.buildLobbyButtons(mix);
-
-        await channel.send({
-          content: `⏰ **TEMPO DE CHECK-IN EXPIRADO!**\nOs seguintes jogadores não confirmaram e foram removidos: ${unconfirmed.map((p) => `<@${p.id}>`).join(', ')}.\n` +
-            `👉 O lobby voltou para **${mix.players.length}/10**. Vagas abertas para novos jogadores!`,
-          embeds: [embed],
-          components,
-        }).catch(() => {});
-      }
-    }, 45000);
   }
 
   buildReadyCheckEmbed(mix) {
     const confirmedCount = mix.readyCheck?.confirmed?.size || 0;
-    const remainingSeconds = Math.max(0, Math.ceil(((mix.readyCheck?.expiresAt || Date.now()) - Date.now()) / 1000));
 
     const statusList = mix.players.map((p) => {
       const isConfirmed = mix.readyCheck?.confirmed?.has(p.id);
@@ -2956,8 +2948,7 @@ class DiscordBotManager {
     const embed = new EmbedBuilder()
       .setTitle(`🚨 CHECK-IN DE CONFIRMAÇÃO • ${mix.name.toUpperCase()}`)
       .setDescription(
-        `O lobby atingiu 10 jogadores! Para garantir que ninguém está ausente (AFK), todos devem confirmar presença agora.\n\n` +
-        `⏱️ **Tempo Restante:** \`${remainingSeconds}s\`\n` +
+        `O lobby atingiu 10 jogadores! Confirmem presença nos botões abaixo ou iniciem o sorteio dos times quando todos estiverem prontos.\n\n` +
         `📊 **Confirmados:** \`${confirmedCount}/10\``
       )
       .setColor(confirmedCount === 10 ? 0x10b981 : 0xeab308)
@@ -2973,7 +2964,7 @@ class DiscordBotManager {
           inline: true,
         }
       )
-      .setFooter({ text: 'CS2 Mix Hub • Sistema Anti-AFK Inteligente' })
+      .setFooter({ text: 'CS2 Mix Hub • Confirmação de Presença' })
       .setTimestamp();
 
     return embed;
@@ -2988,6 +2979,11 @@ class DiscordBotManager {
           .setLabel(`Confirmar Presença (${confirmedCount}/10)`)
           .setEmoji('✅')
           .setStyle(ButtonStyle.Success),
+        new ButtonBuilder()
+          .setCustomId(`mix_teams:${mix.id}`)
+          .setLabel('Sortear Times')
+          .setEmoji('⚔️')
+          .setStyle(ButtonStyle.Primary),
         new ButtonBuilder()
           .setCustomId(`mix_leave:${mix.id}`)
           .setLabel('Desistir / Sair')
@@ -3009,9 +3005,8 @@ class DiscordBotManager {
           `**2️⃣ Cadastre seu Nível da Gamers Club (GC):**\n` +
           `• Clique no botão azul **\`[⭐ Meu Nível GC]\`** ou digite \`!lvl <1 a 21>\` (ex: \`!lvl 16\`).\n` +
           `• O bot salva seu nível para sempre! Isso garante que o sorteio forme times equilibrados.\n\n` +
-          `**3️⃣ Confirmação de Presença (Anti-AFK):**\n` +
-          `• Assim que a fila atingir **10/10 jogadores**, o bot abrirá um check-in de 45 segundos.\n` +
-          `• Todos devem clicar em **\`[✅ Confirmar Presença]\`**. Quem não confirmar sai automaticamente!\n\n` +
+          `**3️⃣ Confirmação de Presença (Sem Limite de Tempo):**\n` +
+          `• Assim que a fila atingir **10/10 jogadores**, os jogadores podem confirmar presença ou sortear os times direto sem pressa e sem ninguém ser expulso por tempo.\n\n` +
           `**4️⃣ Sorteio dos Times & Capitães:**\n` +
           `• Clique em **\`[⚔️ Sortear Times]\`** (ou \`!sortear\`).\n` +
           `• Os dois jogadores de maior nível viram os Capitães 👑 (Time A e Time B) e o sistema divide os elos igualmente.\n\n` +
@@ -4099,10 +4094,22 @@ class DiscordBotManager {
       const chosenPlayerId = interaction.values[0];
       mix.mvpVote.votes.set(interaction.user.id, chosenPlayerId);
       const totalVotes = mix.mvpVote.votes.size;
-      return interaction.reply({
-        content: `⭐ Seu voto de MVP para <@${chosenPlayerId}> foi computado com sucesso! (Total de votos computados: ${totalVotes})`,
+      const remainingSeconds = Math.max(0, Math.ceil(((mix.mvpVote.expiresAt || Date.now()) - Date.now()) / 1000));
+
+      await interaction.reply({
+        content: `⭐ Seu voto de MVP para <@${chosenPlayerId}> foi computado com sucesso! (Total: ${totalVotes} voto(s) • Tempo restante: ~${remainingSeconds}s)`,
         ephemeral: true,
       });
+
+      // Se todos os jogadores do mix já votaram, encerra e coroa o MVP imediatamente sem esperar o cronômetro
+      if (mix.mvpVote.votes.size >= (mix.players?.length || 10)) {
+        if (mix.mvpVote.timer) {
+          clearTimeout(mix.mvpVote.timer);
+          mix.mvpVote.timer = null;
+        }
+        await this.finishMvpVote(mix, interaction.channel);
+      }
+      return;
     }
   }
 
