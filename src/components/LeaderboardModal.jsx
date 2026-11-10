@@ -722,21 +722,76 @@ export default function LeaderboardModal({
                         </div>
                       </div>
 
-                      {/* MVP Highlight Banner if present */}
-                      {m.mvpNick && (
-                        <div className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500/15 via-slate-900 to-slate-900 border border-amber-500/30 flex items-center justify-between text-xs">
-                          <div className="flex items-center gap-2">
-                            <Crown size={15} className="text-amber-400" />
-                            <span>
-                              <strong className="text-amber-300">MVP da Partida:</strong>{' '}
-                              <span className="text-white font-bold">{m.mvpNick}</span>
-                            </span>
+                      {/* Special Prestige MVP Showcase Card */}
+                      {(m.mvpNick || m.mvp?.nick) && (
+                        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-amber-500/20 via-slate-900 to-amber-950/30 border-2 border-amber-500/50 p-3 sm:p-4 shadow-lg shadow-amber-500/10">
+                          {/* Ambient glow */}
+                          <div className="absolute top-0 right-0 w-32 h-32 bg-amber-400/15 rounded-full blur-2xl pointer-events-none" />
+
+                          <div className="relative z-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                              <div className="relative">
+                                <div className="w-12 h-12 rounded-2xl bg-amber-500/25 border-2 border-amber-400 flex items-center justify-center text-amber-300 shadow-md shadow-amber-500/20 overflow-hidden">
+                                  {m.mvp?.avatar ? (
+                                    <img src={m.mvp.avatar} alt={m.mvpNick} className="w-full h-full object-cover" />
+                                  ) : (
+                                    <Crown size={24} className="text-amber-400 animate-pulse" />
+                                  )}
+                                </div>
+                                <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-amber-400 text-slate-950 flex items-center justify-center text-[10px] font-black shadow">
+                                  ⭐
+                                </div>
+                              </div>
+
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <span className="px-2 py-0.5 rounded-full bg-amber-500/25 border border-amber-400/60 text-amber-300 text-[10px] font-mono font-black uppercase tracking-wider flex items-center gap-1 shadow-sm">
+                                    <Crown size={10} /> MVP DA PARTIDA
+                                  </span>
+                                  {m.mvp?.level && (
+                                    <span className="text-[10px] font-mono font-black text-slate-300 bg-slate-800 px-1.5 py-0.2 rounded border border-slate-700">
+                                      Lvl {m.mvp.level} GC
+                                    </span>
+                                  )}
+                                </div>
+                                <h4 className="text-sm sm:text-base font-black font-heading text-white tracking-wide mt-0.5 flex items-center gap-1.5">
+                                  <span>{m.mvpNick || m.mvp?.nick}</span>
+                                  <span className="text-xs text-amber-400/90 font-normal hidden sm:inline">
+                                    (Melhor Desempenho Estatístico)
+                                  </span>
+                                </h4>
+                              </div>
+                            </div>
+
+                            {/* MVP Statistical Badges */}
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {m.mvpStats?.kills !== undefined && (
+                                <span className="px-2.5 py-1 rounded-xl bg-slate-950/80 border border-slate-800 text-[11px] font-mono font-bold text-white shadow-inner">
+                                  🎯 <strong className="text-emerald-400">{m.mvpStats.kills}</strong> Kills
+                                </span>
+                              )}
+                              {m.mvpStats?.deaths !== undefined && (
+                                <span className="px-2.5 py-1 rounded-xl bg-slate-950/80 border border-slate-800 text-[11px] font-mono font-bold text-white shadow-inner">
+                                  💀 <strong className="text-rose-400">{m.mvpStats.deaths}</strong> Mortes
+                                </span>
+                              )}
+                              {m.mvpStats?.kd !== undefined && (
+                                <span className="px-2.5 py-1 rounded-xl bg-slate-950/80 border border-amber-500/30 text-[11px] font-mono font-bold text-amber-300 shadow-inner">
+                                  ⚡ <strong>{m.mvpStats.kd}</strong> K/D
+                                </span>
+                              )}
+                              {m.mvpStats?.mvps !== undefined && m.mvpStats.mvps > 0 && (
+                                <span className="px-2.5 py-1 rounded-xl bg-amber-500/15 border border-amber-500/40 text-[11px] font-mono font-bold text-amber-300 shadow-inner">
+                                  ⭐ <strong>{m.mvpStats.mvps}</strong> MVPs
+                                </span>
+                              )}
+                              {m.mvpStats?.rating !== undefined && (
+                                <span className="px-2.5 py-1 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-[11px] font-mono font-bold text-emerald-300 shadow-inner">
+                                  📈 <strong>{m.mvpStats.rating}</strong> Rating
+                                </span>
+                              )}
+                            </div>
                           </div>
-                          {m.mvpVotes > 0 && (
-                            <span className="text-[11px] font-mono text-amber-400/90 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
-                              ⭐ {m.mvpVotes} votos da comunidade
-                            </span>
-                          )}
                         </div>
                       )}
 

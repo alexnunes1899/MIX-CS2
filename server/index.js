@@ -28,6 +28,7 @@ import { discordBotManager } from './discordBot.js';
 import {
   getMatchHistoryState,
   recordMatchHistoryEntry,
+  computeMatchMvp,
   onMatchHistoryUpdated,
   getMapImageUrl,
   normalizeMapName,
@@ -1636,6 +1637,20 @@ io.on('connection', (socket) => {
       })),
     };
 
+    // Automatically compute Match MVP based on CS2 player performance statistics
+    const currentGsi = getGsiState(roomId) || room.gsiState || room.liveMatch || null;
+    const computedMvp = computeMatchMvp(webMatchRecord, currentGsi);
+    if (computedMvp) {
+      webMatchRecord.mvpId = computedMvp.id;
+      webMatchRecord.mvpNick = computedMvp.nick;
+      webMatchRecord.mvp = computedMvp;
+      webMatchRecord.mvpStats = computedMvp;
+      room.matchMvp = computedMvp;
+      if (room.liveMatch) {
+        room.liveMatch.matchMvp = computedMvp;
+      }
+    }
+
     // Strictly enforce 10 players (5v5) before persisting to global match history
     if (room.teamA?.length === 5 && room.teamB?.length === 5) {
       recordMatchHistoryEntry(webMatchRecord);
@@ -1644,7 +1659,7 @@ io.on('connection', (socket) => {
         score: webMatchRecord.score,
         winner: webMatchRecord.winner,
         map: webMatchRecord.map,
-        mvp: webMatchRecord.mvpNick,
+        mvp: computedMvp || webMatchRecord.mvpNick,
       }).catch(() => {});
     }
 

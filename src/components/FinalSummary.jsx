@@ -3,7 +3,7 @@ import GCBadge from './GCBadge';
 import FaceitBadge from './FaceitBadge';
 import PlayerAvatar from './PlayerAvatar';
 import { CS2_MAPS } from '../data/maps';
-import { Trophy, Share2, Terminal, RotateCcw, Shield, Flame, Check, History, Zap, Radio, Sparkles, Bell, Play, Pause, RefreshCw, Send, Image, Copy, Swords, Smartphone, Download, Award, ThumbsUp, Heart, Star } from 'lucide-react';
+import { Trophy, Share2, Terminal, RotateCcw, Shield, Flame, Check, History, Zap, Radio, Sparkles, Bell, Play, Pause, RefreshCw, Send, Image, Copy, Swords, Smartphone, Download, Award, ThumbsUp, Heart, Star, Crown } from 'lucide-react';
 import { formatDiscordSummary, formatServerCommand } from '../utils/exportText';
 import { playClickSound, playReadySound } from '../utils/audio';
 import { getTeamNames } from '../utils/teamNames';
@@ -402,6 +402,74 @@ export default function FinalSummary({
           )}
         </div>
       </div>
+
+      {/* Crowned Match MVP Spotlight Card */}
+      {(liveMatch?.matchMvp || room.matchMvp) && (() => {
+        const mvp = liveMatch?.matchMvp || room.matchMvp;
+        const mvpName = mvp.name || mvp.nick || 'Jogador';
+        return (
+          <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-amber-500/20 via-slate-900 to-amber-950/40 border-2 border-amber-500/60 p-5 sm:p-6 shadow-2xl shadow-amber-500/20 animate-glow text-left">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div className="flex items-center gap-3.5">
+                <div className="relative">
+                  <div className="w-14 h-14 rounded-2xl bg-amber-500/20 border-2 border-amber-400 flex items-center justify-center text-amber-300 shadow-lg shadow-amber-500/25 overflow-hidden">
+                    {mvp.avatar ? (
+                      <img src={mvp.avatar} alt={mvpName} className="w-full h-full object-cover" />
+                    ) : (
+                      <Crown size={28} className="text-amber-400 animate-pulse" />
+                    )}
+                  </div>
+                  <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-amber-400 text-slate-950 flex items-center justify-center text-xs font-black shadow-md">
+                    👑
+                  </div>
+                </div>
+
+                <div>
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] font-mono font-black uppercase tracking-wider mb-1">
+                    <Crown size={11} /> MVP DA PARTIDA ELEITO
+                  </div>
+                  <h3 className="text-lg sm:text-xl font-black font-heading text-white">
+                    {mvpName}
+                  </h3>
+                  <p className="text-xs text-amber-400/80">
+                    Eleito automaticamente com o melhor desempenho da partida pelas estatísticas!
+                  </p>
+                </div>
+              </div>
+
+              {/* Stats badges */}
+              <div className="flex items-center gap-2 flex-wrap">
+                {mvp.kills !== undefined && (
+                  <span className="px-3 py-1.5 rounded-xl bg-slate-950/90 border border-slate-800 text-xs font-mono font-bold text-white shadow-inner">
+                    🎯 <strong className="text-emerald-400">{mvp.kills}</strong> Kills
+                  </span>
+                )}
+                {mvp.deaths !== undefined && (
+                  <span className="px-3 py-1.5 rounded-xl bg-slate-950/90 border border-slate-800 text-xs font-mono font-bold text-white shadow-inner">
+                    💀 <strong className="text-rose-400">{mvp.deaths}</strong> Mortes
+                  </span>
+                )}
+                {mvp.kd !== undefined && (
+                  <span className="px-3 py-1.5 rounded-xl bg-slate-950/90 border border-amber-500/40 text-xs font-mono font-bold text-amber-300 shadow-inner">
+                    ⚡ <strong>{mvp.kd}</strong> K/D
+                  </span>
+                )}
+                {mvp.mvps !== undefined && mvp.mvps > 0 && (
+                  <span className="px-3 py-1.5 rounded-xl bg-amber-500/20 border border-amber-500/50 text-xs font-mono font-bold text-amber-300 shadow-inner">
+                    ⭐ <strong>{mvp.mvps}</strong> MVPs
+                  </span>
+                )}
+                {mvp.rating !== undefined && (
+                  <span className="px-3 py-1.5 rounded-xl bg-emerald-500/20 border border-emerald-500/50 text-xs font-mono font-bold text-emerald-300 shadow-inner">
+                    📈 <strong>{mvp.rating}</strong> Rating
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Series Breakdown Grid for MD3 / MD5 */}
       {room.drawnSeries && room.drawnSeries.length > 1 && (

@@ -32,6 +32,7 @@ import {
   loadMatchHistory as loadUnifiedMatchHistory,
   saveMatchHistory as saveUnifiedMatchHistory,
   recordMatchHistoryEntry,
+  computeMatchMvp,
   updateMatchMvp,
   getMapImageUrl,
   normalizeMapName,
@@ -2650,6 +2651,21 @@ class DiscordBotManager {
       })),
       vetoBans: Array.isArray(mix.veto?.bannedMaps) ? mix.veto.bannedMaps : [],
     };
+    // Automatically compute Match MVP based on CS2 player performance statistics
+    const gsiState = mix.gsi || null;
+    const computedMvp = computeMatchMvp(matchRecord, gsiState);
+    if (computedMvp) {
+      matchRecord.mvpId = computedMvp.id;
+      matchRecord.mvpNick = computedMvp.nick;
+      matchRecord.mvp = computedMvp;
+      matchRecord.mvpStats = computedMvp;
+
+      // Credit MVP to player's persistent profile
+      if (profiles[computedMvp.id]) {
+        profiles[computedMvp.id].mvps = (profiles[computedMvp.id].mvps || 0) + 1;
+      }
+    }
+
     recordMatchHistoryEntry(matchRecord);
     this.updateLeaderboardFile(profiles);
     if (typeof this.onMatchRecorded === 'function') {
@@ -2659,7 +2675,7 @@ class DiscordBotManager {
       score,
       winner: winnerTeam.name || (winner === 'A' ? 'Time A' : 'Time B'),
       map: resolvedMap,
-      mvp: null,
+      mvp: computedMvp || null,
     }).catch(() => {});
 
     // Check and award tier roles asynchronously to winners
@@ -2667,19 +2683,33 @@ class DiscordBotManager {
       console.warn('[DISCORD BOT] Falha ao atribuir patentes automáticas:', err.message);
     });
 
-    // Build victory embed
+    // Build victory embed with crowned MVP
+    const mvpDescription = computedMvp
+      ? `\n\n👑 **MVP DA PARTIDA ELEITO:** <@${computedMvp.id}>\n` +
+        `⭐ **Estatísticas:** 🎯 **${computedMvp.kills} Kills** • 💀 **${computedMvp.deaths} Mortes** (K/D **${computedMvp.kd}**) • ⭐ **${computedMvp.mvps} MVPs de Round** • 📊 Rating **${computedMvp.rating}**\n` +
+        `🏆 *Eleito automaticamente com o melhor desempenho da partida pelas estatísticas!*`
+      : '';
+
     const victoryEmbed = new EmbedBuilder()
       .setTitle(`🏆 VITÓRIA DO ${winnerTeam.name.toUpperCase()}! • PLACAR ${score}`)
       .setDescription(
         `A partida foi encerrada e as estatísticas de todos os 10 jogadores foram atualizadas no **Ranking Geral**!\n\n` +
         `🗺️ **Mapa:** **${resolvedMap}**\n` +
         `⚔️ **Resultado Oficial:** **${winnerTeam.name}** venceu por **${score}**!\n` +
-        `👑 **Declarado por:** <@${declaredByUser.id}>\n\n` +
-        `⭐ **VOTAÇÃO DE MVP INICIADA:** Selecione no menu abaixo quem jogou mais nesta partida!\n` +
-        `⏱️ **Tempo para Votar:** \`60 segundos\` (Ao esgotar o tempo, o MVP será computado e coroado automaticamente!)`
+        `👑 **Declarado por:** <@${declaredByUser.id}>` +
+        mvpDescription
       )
       .setColor(0x22c55e)
       .addFields(
+        ...(computedMvp
+          ? [
+              {
+                name: `👑 MVP da Partida • ${computedMvp.nick}`,
+                value: `🎯 **${computedMvp.kills} Kills** • 💀 **${computedMvp.deaths} Mortes** • ⚡ **${computedMvp.kd} K/D** • ⭐ **${computedMvp.mvps} MVPs** • 📈 **${computedMvp.rating} Rating**\n🏆 Total na carreira: **${profiles[computedMvp.id]?.mvps || 1}x MVP**`,
+                inline: false,
+              },
+            ]
+          : []),
         {
           name: `🥇 Campeões • ${winnerTeam.name} (+1 Vitória)`,
           value: winnerTeam.players.map((p) => `👑 <@${p.id}> \`[Lvl ${p.level || 16}]\``).join('\n') || '*Sem jogadores*',
@@ -2698,38 +2728,7 @@ class DiscordBotManager {
       victoryEmbed.setThumbnail(resolvedImage);
     }
 
-    // Initialize MVP voting state with automatic timer (60s countdown)
-    const mvpDurationSeconds = 60;
-    mix.mvpVote = {
-      active: true,
-      votes: new Map(),
-      expiresAt: Date.now() + (mvpDurationSeconds * 1000),
-      timer: setTimeout(() => {
-        if (mix.mvpVote?.active) {
-          this.finishMvpVote(mix, channel).catch((err) => {
-            console.warn('[DISCORD BOT] Falha ao encerrar votação de MVP por tempo:', err.message);
-          });
-        }
-      }, mvpDurationSeconds * 1000),
-    };
-
-    // MVP select options
-    const selectOptions = mix.players.slice(0, 25).map((p) => ({
-      label: (p.displayName || p.username || 'Jogador').slice(0, 25),
-      description: `Lvl ${p.level || 16} GC • ${winnerTeam.players.some((w) => w.id === p.id) ? 'Time Vencedor 🏆' : 'Time Perdedor'}`,
-      value: p.id,
-      emoji: winnerTeam.players.some((w) => w.id === p.id) ? '🥇' : '🎯',
-    }));
-
     const components = [];
-    if (selectOptions.length > 0) {
-      const selectMenu = new StringSelectMenuBuilder()
-        .setCustomId(`mvp_vote:${mix.id}`)
-        .setPlaceholder('⭐ Escolha o MVP da Partida...')
-        .addOptions(selectOptions);
-      components.push(new ActionRowBuilder().addComponents(selectMenu));
-    }
-
     const finishBtn = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId(`mvp_finish:${mix.id}`)

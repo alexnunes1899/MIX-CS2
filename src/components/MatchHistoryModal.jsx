@@ -209,9 +209,16 @@ export default function MatchHistoryModal({
                       )}
                       <div>
                         <div className="font-bold text-sm text-white">Mapa: {h.map || 'Mirage'}</div>
-                        <span className="text-[10px] text-slate-500 font-mono flex items-center gap-1">
-                          <Calendar size={10} /> {h.date} às {h.time}
-                        </span>
+                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                          <span className="text-[10px] text-slate-500 font-mono flex items-center gap-1">
+                            <Calendar size={10} /> {h.date} às {h.time}
+                          </span>
+                          {(h.mvpNick || h.mvp?.nick) && (
+                            <span className="text-[10px] font-mono font-bold text-amber-300 bg-amber-500/20 border border-amber-500/40 px-1.5 py-0.2 rounded-md flex items-center gap-1 shadow-sm">
+                              👑 MVP: <strong>{h.mvpNick || h.mvp?.nick}</strong>
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
 

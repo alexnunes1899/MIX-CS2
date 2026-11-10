@@ -510,16 +510,21 @@ class WhatsAppBotManager {
     }
   }
 
-  async sendMessageToGroup(text, targetJid = null) {
+  async sendMessageToGroup(text, targetJid = null, mentions = []) {
     if (!this.sock || this.status !== 'connected') return false;
-    const dest = targetJid || this.config.targetGroupId;
+    const dest = typeof targetJid === 'string' && targetJid.includes('@') ? targetJid : this.config.targetGroupId;
+    const mentionsList = Array.isArray(targetJid) ? targetJid : (Array.isArray(mentions) ? mentions : []);
     if (!dest) {
       console.warn('[WHATSAPP] Nenhum grupo configurado para envio de mensagens.');
       return false;
     }
 
     try {
-      await this.sock.sendMessage(dest, { text });
+      const payload = { text };
+      if (mentionsList.length > 0) {
+        payload.mentions = mentionsList;
+      }
+      await this.sock.sendMessage(dest, payload);
       return true;
     } catch (e) {
       console.warn(`[WHATSAPP] Erro ao enviar mensagem para ${dest}:`, e.message);
@@ -625,15 +630,31 @@ class WhatsAppBotManager {
       `📊 *Placar:* ${result.score || '13-X'}\n` +
       `👑 *Vencedor:* ${winnerSide}!\n`;
 
+    const mentions = [];
     if (result.mvp) {
-      msg += `⭐ *MVP da Partida:* ${result.mvp}\n`;
+      const mvpNick = typeof result.mvp === 'object' ? (result.mvp.nick || result.mvp.name || 'Destaque') : result.mvp;
+      const stats = typeof result.mvp === 'object' ? result.mvp : (result.mvpStats || null);
+      const phone = stats?.phone || (typeof result.mvp === 'object' ? result.mvp.phone : null);
+
+      msg += `\n👑 *MVP DA PARTIDA ELEITO:* ${phone ? `@${phone}` : mvpNick}\n`;
+      if (stats && (stats.kills !== undefined || stats.kd !== undefined)) {
+        const kda = `🎯 ${stats.kills || 0} Kills | 💀 ${stats.deaths || 0} Mortes | ⚡ K/D ${stats.kd || '1.0'}`;
+        const roundMvps = stats.mvps ? ` | ⭐ ${stats.mvps} MVPs` : '';
+        const ratingStr = stats.rating ? ` | 📈 Rating ${stats.rating}` : '';
+        msg += `⭐ *Estatísticas:* ${kda}${roundMvps}${ratingStr}\n`;
+      }
+      msg += `🎖️ *Desempenho decisivo eleito automaticamente pelas estatísticas do confronto!*\n`;
+
+      if (phone) {
+        mentions.push(`${phone}@s.whatsapp.net`);
+      }
     }
 
     msg +=
       `\nParabéns a todos os jogadores! O próximo mix já pode ser criado no site:\n` +
       `👉 ${url}`;
 
-    await this.sendMessageToGroup(msg);
+    await this.sendMessageToGroup(msg, this.config.targetGroupId, mentions);
   }
 
   async clearAuthState() {
