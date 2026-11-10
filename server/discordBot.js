@@ -1635,6 +1635,7 @@ class DiscordBotManager {
     const subArg = (args[1] || '').toLowerCase();
 
     if (command === 'mix' || command === 'criar' || command === 'lobby') {
+      if (subArg === 'fila' || subArg === 'status' || subArg === 'jogadores') return this.prefixFila(message);
       if (subArg === 'entrar') return this.prefixJoin(message);
       if (subArg === 'sair') return this.prefixLeave(message);
       if (subArg === 'sortear' || subArg === 'times') return this.prefixDraw(message);
@@ -1645,6 +1646,7 @@ class DiscordBotManager {
     }
 
     if (command === 'painel') return this.prefixPainel(message);
+    if (command === 'fila' || command === 'status' || command === 'jogadores') return this.prefixFila(message);
     if (command === 'entrar') return this.prefixJoin(message);
     if (command === 'sair') return this.prefixLeave(message);
     if (command === 'sortear' || command === 'times') return this.prefixDraw(message);
@@ -1785,6 +1787,39 @@ class DiscordBotManager {
     );
 
     return message.channel.send({ embeds: [embed], components: [row] });
+  }
+
+  async prefixFila(message) {
+    let mix = this.activeMixes.get(message.channelId);
+    if (!mix && this.activeMixes.size > 0) {
+      mix = Array.from(this.activeMixes.values())[0];
+    }
+    if (!mix) {
+      return message.reply('ℹ️ Nenhum mix ativo no momento. Use `!mix` ou `/mix criar` para abrir um!');
+    }
+    const embed = this.buildLobbyEmbed(mix);
+    const components = this.buildLobbyButtons(mix);
+    return message.channel.send({ embeds: [embed], components });
+  }
+
+  async updateLobbyInChannels(mix) {
+    if (!mix || !this.client) return;
+    try {
+      const embed = this.buildLobbyEmbed(mix);
+      const components = this.buildLobbyButtons(mix);
+
+      if (mix.channelId && mix.lobbyMessageId) {
+        const channel = await this.client.channels.fetch(mix.channelId).catch(() => null);
+        if (channel && channel.isTextBased()) {
+          const msg = await channel.messages.fetch(mix.lobbyMessageId).catch(() => null);
+          if (msg) {
+            await msg.edit({ embeds: [embed], components }).catch(() => {});
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('[DISCORD BOT] Falha ao atualizar lobby nos canais:', e.message);
+    }
   }
 
   async prefixJoin(message) {
@@ -3426,17 +3461,27 @@ class DiscordBotManager {
       if (p) {
         const lvl = p.level || this.getPlayerLevel(p.id) || 16;
         const gcEmoji = lvl >= 20 ? '👑' : lvl >= 18 ? '🏆' : lvl >= 14 ? '🥇' : '🥈';
-        playerList.push(`**${i + 1}.** <@${p.id}> \`[Lvl ${lvl} GC ${gcEmoji}]\``);
+        const isWa = p.source === 'whatsapp' || String(p.id).startsWith('wa_') || Boolean(p.phone);
+        const capTag = (i === 0 || p.isCaptain) ? '👑 ' : '';
+        const name = p.displayName || p.nick || p.name || p.username || 'Jogador';
+        if (isWa) {
+          playerList.push(`**${i + 1}.** ${capTag}💬 **${name}** \`[WhatsApp • Lvl ${lvl} GC ${gcEmoji}]\``);
+        } else {
+          playerList.push(`**${i + 1}.** ${capTag}🎮 <@${p.id}> \`[Discord • Lvl ${lvl} GC ${gcEmoji}]\``);
+        }
       } else {
-        playerList.push(`**${i + 1}.** *[Vazio - Disponível]*`);
+        playerList.push(`**${i + 1}.** ⏳ *[Vazio - Disponível]*`);
       }
     }
+
+    const creatorDisplay = mix.creatorNick || (String(mix.creatorId).startsWith('wa_') ? '💬 WhatsApp' : `<@${mix.creatorId}>`);
 
     const embed = new EmbedBuilder()
       .setTitle(`🎮 CS2 MIX HUB • ${mix.name.toUpperCase()}`)
       .setDescription(
         `Fila oficial de Mix 5v5 para Counter-Strike 2.\n` +
-          `Clique nos botões abaixo para entrar ou gerenciar a partida!`
+        `🌐 **Sincronização Ativa:** Jogadores do **Discord**, **WhatsApp** e **Web** jogam no mesmo lobby!\n` +
+        `Clique nos botões abaixo para entrar ou gerenciar a partida!`
       )
       .setColor(color)
       .addFields(
@@ -3453,15 +3498,15 @@ class DiscordBotManager {
         {
           name: '⚙️ Configurações da Partida',
           value:
-            `🏆 **Formato:** ${mix.format}\n` +
-            `🛡️ **Status:** ${isFull ? '🟢 **LOBBY LOTADO (10/10)!**' : '🟡 Aguardando jogadores'}\n` +
+            `🏆 **Formato:** ${mix.format || 'MD1'}\n` +
+            `🛡️ **Status:** ${isFull ? '🟢 **LOBBY LOTADO (10/10)!**' : `🟡 Aguardando jogadores (${10 - total} restante(s))`}\n` +
             `💻 **Servidor:** ${mix.serverIp ? `\`${mix.serverIp}\`` : '*A definir ou host local*'}\n` +
-            `👑 **Criador:** <@${mix.creatorId}>`,
+            `👑 **Criador:** ${creatorDisplay}`,
           inline: false,
         }
       )
       .setFooter({
-        text: `ID do Mix: ${mix.id} • CS2 Mix Hub eSports Edition`,
+        text: `ID do Mix: ${mix.id} • Sincronizado Discord + WhatsApp + Web`,
       })
       .setTimestamp();
 
@@ -3540,20 +3585,34 @@ class DiscordBotManager {
     const captainA = teamA.captain || teamA.players?.[0];
     const captainB = teamB.captain || teamB.players?.[0];
 
+    const formatPlayer = (p, isCap) => {
+      const capTag = isCap ? '👑 **Capitão:** ' : '• ';
+      const lvl = p.level || 16;
+      const isWa = p.source === 'whatsapp' || String(p.id).startsWith('wa_') || Boolean(p.phone);
+      const name = p.displayName || p.nick || p.name || p.username || 'Jogador';
+      if (isWa) {
+        return `${capTag}💬 **${name}** \`[WhatsApp • Lvl ${lvl} GC]\``;
+      }
+      return `${capTag}🎮 <@${p.id}> \`[Discord • Lvl ${lvl} GC]\``;
+    };
+
     const aPlayers = (teamA.players || [])
-      .map((p) => `${p.id === captainA?.id ? '👑 **Capitão:** ' : '• '}<@${p.id}> \`[Lvl ${p.level || 16} GC]\``)
+      .map((p) => formatPlayer(p, p.id === captainA?.id))
       .join('\n') || '*Nenhum jogador*';
 
     const bPlayers = (teamB.players || [])
-      .map((p) => `${p.id === captainB?.id ? '👑 **Capitão:** ' : '• '}<@${p.id}> \`[Lvl ${p.level || 16} GC]\``)
+      .map((p) => formatPlayer(p, p.id === captainB?.id))
       .join('\n') || '*Nenhum jogador*';
+
+    const capAName = captainA ? (String(captainA.id).startsWith('wa_') ? `💬 ${captainA.nick || captainA.name}` : `<@${captainA.id}>`) : 'A definir';
+    const capBName = captainB ? (String(captainB.id).startsWith('wa_') ? `💬 ${captainB.nick || captainB.name}` : `<@${captainB.id}>`) : 'A definir';
 
     const embed = new EmbedBuilder()
       .setTitle(`⚔️ TIMES FORMADOS • ${mix.name.toUpperCase()}`)
       .setDescription(
-        `Os dois esquadrões foram balanceados pelo algoritmo Gamers Club / FACEIT!\n\n` +
-        `👑 **Capitão Time A:** <@${captainA?.id}> \`[Lvl ${captainA?.level || 16} GC]\`\n` +
-        `👑 **Capitão Time B:** <@${captainB?.id}> \`[Lvl ${captainB?.level || 16} GC]\`\n\n` +
+        `Os dois esquadrões foram balanceados pelo algoritmo Snake-Draft Gamers Club!\n\n` +
+        `👑 **Capitão Time A:** ${capAName} \`[Lvl ${captainA?.level || 16} GC]\`\n` +
+        `👑 **Capitão Time B:** ${capBName} \`[Lvl ${captainB?.level || 16} GC]\`\n\n` +
         `⚖️ **Equilíbrio:** \`[${bar}] ${pct}%\` (Média A: **${teamA.avgLevel || 16}** | Média B: **${teamB.avgLevel || 16}**)`
       )
       .setColor(0xf59e0b)
@@ -3574,7 +3633,7 @@ class DiscordBotManager {
           inline: false,
         }
       )
-      .setFooter({ text: `Mix: ${mix.id} • CS2 Mix Hub eSports Edition` })
+      .setFooter({ text: 'Sincronizado em tempo real entre Discord, WhatsApp e Web Hub' })
       .setTimestamp();
 
     return embed;
