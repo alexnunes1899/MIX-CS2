@@ -1611,8 +1611,12 @@ io.on('connection', (socket) => {
         role: idx === 0 ? 'Capitão' : 'Jogador',
       })),
     };
-    recordMatchHistoryEntry(webMatchRecord);
-    io.emit('match_history_updated', getMatchHistoryState());
+
+    // Strictly enforce 10 players (5v5) before persisting to global match history
+    if (room.teamA?.length === 5 && room.teamB?.length === 5) {
+      recordMatchHistoryEntry(webMatchRecord);
+      io.emit('match_history_updated', getMatchHistoryState());
+    }
 
     emitRoomState(roomId, room);
   });

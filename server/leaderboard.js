@@ -32,9 +32,13 @@ function loadFromFile() {
       const raw = fs.readFileSync(LEADERBOARD_FILE, 'utf8');
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        // Filter out any legacy fake seed entries (seed-1..seed-5) or mock bots (bot-*)
+        // Filter out any legacy fake seed entries (seed-*), mock bots (bot-*), or test users (user_test_*)
         memoryLeaderboard = parsed.filter(
-          (item) => item && !String(item.id || '').startsWith('seed-') && !String(item.id || '').startsWith('bot-')
+          (item) =>
+            item &&
+            !String(item.id || '').startsWith('seed-') &&
+            !String(item.id || '').startsWith('bot-') &&
+            !String(item.id || '').startsWith('user_test_')
         );
         return;
       }

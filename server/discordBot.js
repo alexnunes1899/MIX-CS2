@@ -2253,34 +2253,56 @@ class DiscordBotManager {
   }
 
   buildMatchHistoryEmbed(limit = 6) {
-    const history = this.loadMatchHistory();
+    const rawHistory = this.loadMatchHistory() || [];
+    // Only matches with 10 players (5v5) that were finalized
+    const history = rawHistory.filter(
+      (m) => (m.winnerPlayers?.length || 0) + (m.loserPlayers?.length || 0) === 10
+    );
+
     const embed = new EmbedBuilder()
-      .setTitle('📜 HISTÓRICO DE PARTIDAS • CS2 MIX HUB')
+      .setTitle('📜 HISTÓRICO DE PARTIDAS 5v5 • CS2 MIX HUB')
       .setColor(0x3b82f6)
-      .setFooter({ text: 'CS2 Mix Hub • Histórico Oficial de Partidas' })
+      .setFooter({ text: 'CS2 Mix Hub • Apenas Partidas Oficiais 5v5 (10 Jogadores)' })
       .setTimestamp();
 
     if (!history || history.length === 0) {
       embed.setDescription(
-        'Nenhuma partida finalizada foi registrada ainda neste servidor!\n\n' +
-        '👉 Para registrar o placar de um mix finalizado, use o botão **`[🏆 Declarar Placar]`** ou digite no chat:\n' +
+        '🛡️ **Nenhuma partida oficial de 10 jogadores finalizada ainda!**\n\n' +
+        'O histórico de partidas do servidor mantém **exclusivamente** partidas completas (5v5 com 10 jogadores) que foram concluídas.\n' +
+        'Lobbies incompletos ou partidas sem estatísticas foram descartados para não lotar o histórico.\n\n' +
+        '👉 Para registrar o placar de um mix 5v5 finalizado, use o botão **`[🏆 Declarar Placar]`** no lobby ou digite no chat:\n' +
         '`!vitoria A 13-9` ou `!vitoria B 13-11`.'
       );
       return embed;
     }
 
     const recent = history.slice(0, limit);
-    embed.setDescription(`Exibindo as últimas **${recent.length}** partidas finalizadas e computadas no ranking geral:`);
+    embed.setDescription(`Exibindo as últimas **${recent.length}** partidas 5v5 completas (10 jogadores) finalizadas com mapas oficiais:`);
 
     recent.forEach((m, idx) => {
       const dateStr = m.timestamp
         ? new Date(m.timestamp).toLocaleDateString('pt-BR', { hour: '2-digit', minute: '2-digit' })
         : 'Recente';
       const winNames = (m.winnerPlayers || []).map((p) => p.nick || p.username).join(', ') || 'Equipe';
+      const loseNames = (m.loserPlayers || []).map((p) => p.nick || p.username).join(', ') || 'Equipe';
       const mvpBadge = m.mvpNick ? ` • ⭐ MVP: **${m.mvpNick}**` : '';
+      const mapEmoji =
+        m.map === 'Nuke' ? '☢️' :
+        m.map === 'Inferno' ? '🏰' :
+        m.map === 'Dust II' ? '🏜️' :
+        m.map === 'Ancient' ? '🏛️' :
+        m.map === 'Anubis' ? '🏺' :
+        m.map === 'Vertigo' ? '🏢' :
+        m.map === 'Overpass' ? '🌉' :
+        m.map === 'Cache' ? '☣️' : '🎯';
+
       embed.addFields({
-        name: `#${idx + 1} • 🗺️ ${m.map || 'Mirage'} [${m.score || '13-9'}] • ${m.winner || 'Time Vencedor'} 🏆`,
-        value: `📅 *${dateStr}*${mvpBadge}\n👑 **Campeões:** \`${winNames}\`\nDeclarado por: **${m.declaredBy || 'Admin'}**`,
+        name: `#${idx + 1} • ${mapEmoji} **${m.map || 'Mirage'}** [${m.score || '13-9'}] • 🏆 ${m.winner || 'Time A'}`,
+        value:
+          `📅 *${dateStr}*${mvpBadge}\n` +
+          `👑 **Vencedores (5):** \`${winNames}\`\n` +
+          `💀 **Derrotados (5):** \`${loseNames}\`\n` +
+          `👤 *Declarado por: **${m.declaredBy || 'Admin'}***`,
         inline: false,
       });
     });
@@ -2516,11 +2538,37 @@ class DiscordBotManager {
       return { success: false, error: 'Os times ainda não foram sorteados! Use `!sortear` antes de registrar o placar da partida.' };
     }
 
+    const totalPlayers = (mix.teamA.players.length || 0) + (mix.teamB.players.length || 0);
+    if (totalPlayers !== 10) {
+      return {
+        success: false,
+        error: `⚠️ Este mix possui apenas **${totalPlayers}/10 jogadores** (${mix.teamA.players.length} no Time A e ${mix.teamB.players.length} no Time B)!\nO histórico oficial registra exclusivamente partidas completas de **10 jogadores (5v5)** que foram finalizadas para não poluir o histórico.`,
+      };
+    }
+
     const winnerTeam = isA ? mix.teamA : mix.teamB;
     const loserTeam = isA ? mix.teamB : mix.teamA;
     const score = (scoreInput || '13-9').trim();
 
-    const resolvedMap = normalizeMapName(mapInput || mix.veto?.deciderMap?.name || 'Mirage');
+    // Accurately resolve map:
+    // 1. Explicit map input (e.g. from command or modal)
+    // 2. Pick & Ban decider map
+    // 3. Roulette / active match map
+    // 4. Web room final map
+    // 5. Valve CS2 GSI active server map
+    let candidateMap =
+      mapInput ||
+      mix.veto?.deciderMap?.name ||
+      mix.veto?.deciderMap?.id ||
+      mix.matchMap ||
+      mix.finalMap?.name ||
+      mix.finalMap?.id;
+
+    if (!candidateMap && this.lastGsiState?.mapName && this.lastGsiState.mapName !== 'Indefinido') {
+      candidateMap = this.lastGsiState.mapName;
+    }
+
+    const resolvedMap = normalizeMapName(candidateMap || 'Mirage');
     const resolvedImage = getMapImageUrl(resolvedMap);
 
     mix.phase = 'finished';

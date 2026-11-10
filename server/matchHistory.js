@@ -77,7 +77,34 @@ export function getMapImageUrl(mapName = '') {
 }
 
 /**
- * Normalizes any legacy or new match object so all fields are guaranteed to exist.
+ * Validates that a match is real, finalized, and had 10 players (5v5).
+ * Matches without 10 players, unfinalized lobbies, or test dummies are rejected.
+ */
+export function isValidMatchRecord(m) {
+  if (!m || typeof m !== 'object') return false;
+  if (!m.id || !m.winner || !m.score) return false;
+
+  const idStr = String(m.id || '');
+  if (idStr.startsWith('seed-') || idStr.startsWith('test-')) return false;
+
+  const winPlayers = Array.isArray(m.winnerPlayers) ? m.winnerPlayers : [];
+  const losePlayers = Array.isArray(m.loserPlayers) ? m.loserPlayers : [];
+  const total = winPlayers.length + losePlayers.length;
+
+  // STRICT RULE: Only matches with 10 players (5v5) and real statistics
+  if (total !== 10) return false;
+
+  // Reject dummy test mock entries
+  const hasDummyUsers = [...winPlayers, ...losePlayers].some(
+    (p) => String(p.id || '').startsWith('user_test_') || String(p.nick || '').startsWith('Player_')
+  );
+  if (hasDummyUsers) return false;
+
+  return true;
+}
+
+/**
+ * Normalizes any match object so all fields and map images are guaranteed accurate.
  */
 export function normalizeMatchRecord(m = {}) {
   const ts = m.timestamp || Date.now();
@@ -105,7 +132,7 @@ export function normalizeMatchRecord(m = {}) {
     time: m.time || timeStr,
     dateFormatted: `${dateStr} às ${timeStr}`,
     map: cleanMap,
-    mapImage: m.mapImage && !m.mapImage.includes('mirage') ? m.mapImage : getMapImageUrl(cleanMap),
+    mapImage: getMapImageUrl(cleanMap),
     winner: m.winner || 'Time A',
     loser: m.loser || 'Time B',
     score: m.score || '13-8',
@@ -149,19 +176,8 @@ export function loadMatchHistory() {
     if (fs.existsSync(MATCH_HISTORY_FILE)) {
       const raw = fs.readFileSync(MATCH_HISTORY_FILE, 'utf8');
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed.map(normalizeMatchRecord);
-      }
-    }
-    if (fs.existsSync(DEFAULT_MATCH_HISTORY_FILE)) {
-      const raw = fs.readFileSync(DEFAULT_MATCH_HISTORY_FILE, 'utf8');
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        const seeded = parsed.map(normalizeMatchRecord);
-        try {
-          fs.writeFileSync(MATCH_HISTORY_FILE, JSON.stringify(seeded, null, 2), 'utf8');
-        } catch (_) {}
-        return seeded;
+      if (Array.isArray(parsed)) {
+        return parsed.filter(isValidMatchRecord).map(normalizeMatchRecord);
       }
     }
   } catch (e) {
@@ -173,9 +189,11 @@ export function loadMatchHistory() {
 export function saveMatchHistory(matches) {
   try {
     ensureDirExists();
-    const normalized = (Array.isArray(matches) ? matches : []).map(normalizeMatchRecord);
-    fs.writeFileSync(MATCH_HISTORY_FILE, JSON.stringify(normalized, null, 2), 'utf8');
-    return normalized;
+    const valid = (Array.isArray(matches) ? matches : [])
+      .filter(isValidMatchRecord)
+      .map(normalizeMatchRecord);
+    fs.writeFileSync(MATCH_HISTORY_FILE, JSON.stringify(valid, null, 2), 'utf8');
+    return valid;
   } catch (e) {
     console.error('[MATCH_HISTORY] Falha ao salvar matchHistory.json:', e.message);
     return [];
@@ -183,6 +201,10 @@ export function saveMatchHistory(matches) {
 }
 
 export function recordMatchHistoryEntry(match) {
+  if (!isValidMatchRecord(match)) {
+    console.warn('[MATCH_HISTORY] Partida rejeitada: apenas partidas com 10 jogadores finalizadas e com estatísticas são salvas.');
+    return null;
+  }
   const current = loadMatchHistory();
   const normalized = normalizeMatchRecord(match);
   
