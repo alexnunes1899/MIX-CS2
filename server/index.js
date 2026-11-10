@@ -41,6 +41,7 @@ import { freeGamesRadar } from './freeGamesRadar.js';
 import { communityClips } from './communityClips.js';
 import { whatsappBot } from './whatsappBot.js';
 import { renderWhatsAppAdminHtml } from './whatsappHtml.js';
+import { renderProfileHtml } from './profileHtml.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -2011,6 +2012,81 @@ app.get(['/connect', '/join-cs2'], (req, res) => {
   </script>
 </body>
 </html>`);
+});
+
+// ==========================================
+// PLAYER PROFILE & GAMERS CLUB MODAL
+// ==========================================
+app.get(['/perfil', '/gc', '/profile'], (req, res) => {
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.status(200).type('html').send(renderProfileHtml({ query: req.query }));
+});
+
+app.get('/api/player/profile', (req, res) => {
+  const phone = (req.query.phone || '').replace(/\D/g, '');
+  const id = req.query.id || (phone ? `wa_${phone}` : null);
+  if (!id) return res.status(400).json({ success: false, error: 'Identificador ou telefone ausente.' });
+
+  const profiles = whatsappBot.loadPlayerProfiles();
+  const profile = profiles[id] || (phone ? profiles[phone] : null) || null;
+  return res.json({ success: true, profile });
+});
+
+app.post('/api/player/profile', (req, res) => {
+  const { phone, name, username, level, steamId, room } = req.body || {};
+  const cleanPhone = String(phone || '').replace(/\D/g, '');
+  const cleanName = String(name || username || (cleanPhone ? `Jogador_${cleanPhone.slice(-4)}` : 'Jogador')).trim();
+  const parsedLevel = parseInt(level, 10);
+
+  if (isNaN(parsedLevel) || parsedLevel < 1 || parsedLevel > 21) {
+    return res.status(400).json({ success: false, error: 'O nível Gamers Club deve ser entre 1 e 21.' });
+  }
+
+  const profileData = {
+    level: parsedLevel,
+    username: cleanName,
+    name: cleanName,
+    phone: cleanPhone,
+    steamId: steamId ? String(steamId).trim() : '',
+    source: 'web_form',
+    updatedAt: Date.now(),
+  };
+
+  // Save under wa_${cleanPhone} and cleanPhone
+  if (cleanPhone) {
+    whatsappBot.savePlayerProfile(`wa_${cleanPhone}`, profileData);
+    whatsappBot.savePlayerProfile(cleanPhone, profileData);
+  }
+
+  // Update in active WhatsApp & Discord mixes
+  const activeData = whatsappBot.getActiveMix();
+  if (activeData?.mix?.players) {
+    const p = activeData.mix.players.find(
+      (pl) => pl.phone === cleanPhone || pl.id === `wa_${cleanPhone}` || pl.nick?.toLowerCase() === cleanName.toLowerCase()
+    );
+    if (p) {
+      p.level = parsedLevel;
+      p.nick = cleanName;
+      p.username = cleanName;
+    }
+    // Rebalance teams if they were already generated
+    if (activeData.mix.phase === 'teams') {
+      whatsappBot.balanceTeamsLocal(activeData.mix);
+    }
+  }
+
+  // Also notify group if configured
+  if (whatsappBot.config.targetGroupId && cleanName) {
+    const tierName = parsedLevel >= 20 ? 'Major / Pro' : parsedLevel >= 16 ? 'Black / Elite' : parsedLevel >= 11 ? 'Ouro' : parsedLevel >= 6 ? 'Prata' : 'Bronze';
+    whatsappBot.sendMessageToGroup(
+      `⭐ *CS2 MIX HUB • PERFIL ATUALIZADO!*\n\n` +
+      `👤 *Jogador:* *${cleanName}*\n` +
+      `🏆 *Nível Gamers Club:* *Lvl ${parsedLevel}* (${tierName})\n\n` +
+      `_Seu perfil foi salvo permanentemente e garantirá times calibrados nas próximas partidas!_`
+    ).catch(() => {});
+  }
+
+  return res.json({ success: true, profile: profileData });
 });
 
 // ==========================================

@@ -8,6 +8,7 @@ import pino from 'pino';
 import qrcode from 'qrcode';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -243,10 +244,33 @@ class WhatsAppBotManager {
     mix.balancePct = balancePct;
   }
 
+  async sendActionPoll(from, mix) {
+    if (!this.sock) return false;
+    try {
+      const count = mix?.players?.length || 0;
+      return await this.sock.sendMessage(from, {
+        poll: {
+          name: `🎮 CS2 MIX 5v5 • AÇÕES RÁPIDAS (${count}/10 Vagas)`,
+          values: [
+            '✅ Entrar no Mix (Garantir Vaga)',
+            '🚪 Sair da Fila',
+            '⚔️ Sortear Times (Snake-Draft)',
+            '💻 Ver IP do Servidor CS2',
+          ],
+          selectableCount: 1,
+        },
+      });
+    } catch (err) {
+      console.warn('[WHATSAPP] Falha ao enviar enquete de ações:', err.message);
+      return false;
+    }
+  }
+
   async sendLobbyStatus(from, msg, mix) {
     const count = mix.players?.length || 0;
     const remaining = Math.max(0, 10 - count);
-    const publicUrl = this.getPublicUrl(`/?room=${mix.id}`);
+    const roomUrl = this.getPublicUrl(`/?room=${mix.id}`);
+    const profileUrl = this.getPublicUrl(`/perfil?room=${mix.id}`);
 
     let listStr = '';
     for (let i = 0; i < 10; i++) {
@@ -267,13 +291,20 @@ class WhatsAppBotManager {
       `👥 *Vagas:* *${count}/10* (${remaining} restante(s))\n\n` +
       `📋 *Lista de Jogadores Confirmados:*\n` +
       `${listStr}\n` +
+      `⭐ *Definir Nível GC & Nick em 1 Toque (Botões 1 ao 21):*\n` +
+      `👉 ${profileUrl}\n\n` +
+      `🔘 *Ações Rápidas por Reação (Toque e Reaja nesta mensagem):*\n` +
+      `• 👍 = *Entrar no Mix*\n` +
+      `• 🚪 = *Sair da Fila*\n` +
+      `• ⚔️ = *Sortear Times*\n\n` +
       `💬 *Comandos Rápidos no WhatsApp:*\n` +
-      `• Digite *!entrar* para garantir sua vaga\n` +
-      `• Digite *!sair* para liberar sua vaga\n` +
-      `• Digite *!lvl <1-21>* para salvar seu nível GC\n` +
-      `• Digite *!sortear* para sortear os times\n` +
-      `• Digite *!ip* para ver o servidor e conectar\n\n` +
-      `👉 Ou acesse pelo navegador: ${publicUrl}`;
+      `• *!entrar* — Entra na fila\n` +
+      `• *!sair* — Libera sua vaga\n` +
+      `• *!lvl <1-21>* — Salva seu nível GC direto no chat (ex: *!lvl 18*)\n` +
+      `• *!sortear* — Sorteia os times balanceados\n` +
+      `• *!ip* — Exibe o IP do servidor CS2 e botão Steam 1-Clique\n` +
+      `• *!enquete* — Envia a enquete com botões de rádio para votar\n\n` +
+      `🌐 Acompanhe ao vivo pelo navegador: ${roomUrl}`;
 
     return this.replyMessage(from, statusText, msg);
   }
@@ -431,6 +462,55 @@ class WhatsAppBotManager {
         }
       });
 
+      // 1-Click Emoji Reactions Listener (👍 = Entrar, 🚪/❌ = Sair, ⚔️ = Sortear)
+      this.sock.ev.on('messages.reaction', async (reactions) => {
+        try {
+          if (!reactions || !Array.isArray(reactions)) return;
+          for (const r of reactions) {
+            if (!r.reaction || !r.key) continue;
+            const emoji = r.reaction.text;
+            if (!emoji) continue;
+
+            const from = r.key.remoteJid;
+            if (!from || !from.endsWith('@g.us')) continue;
+
+            const participantJid = r.key.participant || (r.key.fromMe ? this.sock.user?.id : null);
+            if (!participantJid) continue;
+
+            const senderPhone = participantJid.replace(/\D/g, '').split(':')[0] || '';
+            if (!senderPhone) continue;
+
+            const profiles = this.loadPlayerProfiles();
+            const profile = profiles[`wa_${senderPhone}`] || profiles[senderPhone];
+            const senderName = profile?.username || profile?.name || `Jogador_${senderPhone.slice(-4)}`;
+
+            console.log(`👍 [WHATSAPP REACTION] ${senderName} (${senderPhone}) reagiu com "${emoji}" em ${from}`);
+
+            if (emoji === '👍' || emoji === '✅' || emoji === '🎮' || emoji === '➕') {
+              await this.handleIncomingMessage({
+                key: { remoteJid: from, participant: participantJid, fromMe: false },
+                message: { conversation: '!entrar' },
+                pushName: senderName,
+              });
+            } else if (emoji === '❌' || emoji === '🚪' || emoji === '➖') {
+              await this.handleIncomingMessage({
+                key: { remoteJid: from, participant: participantJid, fromMe: false },
+                message: { conversation: '!sair' },
+                pushName: senderName,
+              });
+            } else if (emoji === '⚔️' || emoji === '🎲') {
+              await this.handleIncomingMessage({
+                key: { remoteJid: from, participant: participantJid, fromMe: false },
+                message: { conversation: '!sortear' },
+                pushName: senderName,
+              });
+            }
+          }
+        } catch (e) {
+          console.warn('[WHATSAPP] Erro ao processar reações:', e.message);
+        }
+      });
+
     } catch (err) {
       this.isConnecting = false;
       this.status = 'disconnected';
@@ -573,6 +653,10 @@ class WhatsAppBotManager {
         cmd = '!ajuda';
       } else if (rest.startsWith('criar') || rest.startsWith('novo') || rest.startsWith('new')) {
         cmd = '!criar';
+      } else if (rest.startsWith('perfil') || rest.startsWith('card') || rest.startsWith('link')) {
+        cmd = '!perfil';
+      } else if (rest.startsWith('enquete') || rest.startsWith('botoes') || rest.startsWith('poll') || rest.startsWith('painel')) {
+        cmd = '!enquete';
       }
     }
 
@@ -594,6 +678,7 @@ class WhatsAppBotManager {
       // Nenhum mix aberto: CRIA UM NOVO LOBBY 5v5 AUTOMATICAMENTE!
       const mix = this.createMixFromWhatsApp(senderPhone, senderName);
       const publicUrl = this.getPublicUrl(`/?room=${mix.id}`);
+      const profileUrl = this.getPublicUrl(`/perfil?room=${mix.id}&phone=${senderPhone}`);
       const creatorLvl = mix.players[0]?.level || 16;
 
       let slotsStr = `1. 👑 *${senderName}* [Lvl ${creatorLvl} GC]\n`;
@@ -608,15 +693,24 @@ class WhatsAppBotManager {
         `👥 *Vagas:* *1/10* (Faltam 9 vagas para fechar)\n\n` +
         `📋 *Fila da Partida:*\n` +
         `${slotsStr}\n` +
+        `⭐ *Definir Nível GC & Nick em 1 Toque (Botões 1 ao 21):*\n` +
+        `👉 ${profileUrl}\n\n` +
+        `🔘 *Ações Rápidas por Reação (Toque e Reaja nesta mensagem):*\n` +
+        `• 👍 = *Entrar no Mix*\n` +
+        `• 🚪 = *Sair da Fila*\n` +
+        `• ⚔️ = *Sortear Times*\n\n` +
         `💬 *Comandos Rápidos no WhatsApp:*\n` +
         `• Digite *!entrar* para entrar na fila\n` +
         `• Digite *!sair* para liberar sua vaga\n` +
         `• Digite *!lvl <1-21>* para salvar seu nível GC (ex: *!lvl 18*)\n` +
         `• Digite *!sortear* quando fechar 10 jogadores\n` +
-        `• Digite *!ip* para ver o IP do servidor CS2\n\n` +
+        `• Digite *!ip* para ver o IP do servidor CS2\n` +
+        `• Digite *!enquete* para abrir botões de rádio no grupo\n\n` +
         `👉 Acompanhe ao vivo pelo navegador: ${publicUrl}`;
 
-      return this.replyMessage(from, createMsg, msg);
+      const res = await this.replyMessage(from, createMsg, msg);
+      this.sendActionPoll(from, mix).catch(() => {});
+      return res;
     }
 
     // 2. IP DO SERVIDOR CS2 & CONEXÃO STEAM 1-CLIQUE (!ip, !servidor, !connect)
@@ -892,8 +986,30 @@ class WhatsAppBotManager {
       );
     }
 
-    // 9. AJUDA E GUIA DE COMANDOS (!ajuda, !help, !comandos)
+    // 9. DEFINIR PERFIL & NÍVEL GAMERS CLUB (!perfil, !card, !link)
+    if (cmd === '!perfil' || cmd === '!card' || cmd === '!link') {
+      const profileUrl = this.getPublicUrl(`/perfil?phone=${senderPhone}&nick=${encodeURIComponent(senderName)}`);
+      const savedLvl = this.getPlayerLevel(`wa_${senderPhone}`);
+      const text =
+        `⭐ *DEFINIR SEU NÍVEL GAMERS CLUB & PERFIL*\n\n` +
+        `👤 *Jogador:* ${senderName}\n` +
+        `🏆 *Nível Atual:* ${savedLvl ? `*Lvl ${savedLvl} GC*` : '_Ainda não definido_'}\n\n` +
+        `📱 *Clique no link abaixo para escolher seu nível (Botões 1 ao 21) e salvar seu perfil em 1 toque:*\n` +
+        `👉 ${profileUrl}\n\n` +
+        `_Ou se preferir, digite diretamente aqui no chat:_ *!lvl 18*`;
+      return this.replyMessage(from, text, msg);
+    }
+
+    // 10. ENQUETE INTERATIVA DE AÇÕES (!enquete, !botoes, !painel)
+    if (cmd === '!enquete' || cmd === '!botoes' || cmd === '!painel') {
+      const activeData = this.getActiveMix();
+      const mix = activeData?.mix || { name: 'Mix 5v5', players: [] };
+      return this.sendActionPoll(from, mix);
+    }
+
+    // 11. AJUDA E GUIA DE COMANDOS (!ajuda, !help, !comandos)
     if (cmd === '!ajuda' || cmd === '!help' || cmd === '!comandos') {
+      const profileUrl = this.getPublicUrl(`/perfil?phone=${senderPhone}`);
       const helpText =
         `🤖 *COMANDOS OFICIAIS DO CS2 MIX HUB NO WHATSAPP*\n\n` +
         `• *!mix* — Cria um novo lobby 5v5 ou exibe a fila atual\n` +
@@ -902,10 +1018,16 @@ class WhatsAppBotManager {
         `• *!sortear* — Sorteia os times A (CT) e B (TR) pelo Snake-Draft GC\n` +
         `• *!ip* — Envia o IP do servidor CS2 e o link Steam 1-Clique\n` +
         `• *!lvl <1-21>* — Salva seu nível Gamers Club permanente (ex: *!lvl 18*)\n` +
+        `• *!perfil* — Link para abrir os botões interativos de nível GC (1 a 21)\n` +
+        `• *!enquete* — Envia a enquete com botões de rádio para votar\n` +
         `• *!fila* — Exibe a lista dos 10 jogadores confirmados\n` +
-        `• *!cancelar* — Cancela a partida atual para reiniciar\n` +
-        `• *!ajuda* — Exibe esta lista de comandos\n\n` +
-        `🌐 *Hub Web:* ${this.getPublicUrl()}`;
+        `• *!cancelar* — Cancela a partida atual para reiniciar\n\n` +
+        `🔘 *Ações por Reação (1 Toque):*\n` +
+        `• 👍 Reagir para entrar no mix\n` +
+        `• 🚪 Reagir para sair da fila\n` +
+        `• ⚔️ Reagir para sortear os times\n\n` +
+        `⭐ *Seu Perfil Web:* ${profileUrl}\n` +
+        `🌐 *Hub Geral:* ${this.getPublicUrl()}`;
 
       return this.replyMessage(from, helpText, msg);
     }
@@ -1032,8 +1154,28 @@ class WhatsAppBotManager {
     }
   }
 
+  detectBestHostUrl() {
+    if (this.config.publicUrl && this.config.publicUrl.trim()) {
+      return this.config.publicUrl.trim();
+    }
+    if (process.env.PUBLIC_URL && process.env.PUBLIC_URL.trim()) {
+      return process.env.PUBLIC_URL.trim();
+    }
+    try {
+      const nets = os.networkInterfaces();
+      for (const name of Object.keys(nets)) {
+        for (const net of nets[name]) {
+          if (net.family === 'IPv4' && !net.internal && !net.address.startsWith('169.254.')) {
+            return `http://${net.address}:3000`;
+          }
+        }
+      }
+    } catch (_) {}
+    return 'http://localhost:3000';
+  }
+
   getPublicUrl(subpath = '') {
-    const base = process.env.PUBLIC_URL || 'https://mix-cs2-production.up.railway.app';
+    const base = this.detectBestHostUrl();
     return `${base.replace(/\/$/, '')}${subpath}`;
   }
 
