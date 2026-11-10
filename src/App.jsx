@@ -534,7 +534,7 @@ export default function App() {
     });
 
     socket.on('room_state', (updatedRoom) => {
-      if (updatedRoom && updatedRoom.id === roomId) {
+      if (updatedRoom && String(updatedRoom.id).toUpperCase() === String(roomId).toUpperCase()) {
         setRoom(updatedRoom);
       }
     });

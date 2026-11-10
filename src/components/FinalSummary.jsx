@@ -965,6 +965,11 @@ export default function FinalSummary({
                   <div className="flex items-center gap-2.5">
                     <PlayerAvatar avatar={p.avatar} nick={p.nick} size="sm" />
                     <span className="font-bold text-sm text-white">{p.nick}</span>
+                    {(p.source === 'whatsapp' || String(p.id).startsWith('wa_') || Boolean(p.phone)) && (
+                      <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded border border-emerald-500/20 shrink-0" title="Conectado pelo WhatsApp">
+                        WhatsApp
+                      </span>
+                    )}
                   </div>
                   {isFaceit ? (
                     <FaceitBadge level={pFaceitLevel} elo={p.faceitElo} size="sm" />
@@ -1022,6 +1027,11 @@ export default function FinalSummary({
                   <div className="flex items-center gap-2.5">
                     <PlayerAvatar avatar={p.avatar} nick={p.nick} size="sm" />
                     <span className="font-bold text-sm text-white">{p.nick}</span>
+                    {(p.source === 'whatsapp' || String(p.id).startsWith('wa_') || Boolean(p.phone)) && (
+                      <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded border border-emerald-500/20 shrink-0" title="Conectado pelo WhatsApp">
+                        WhatsApp
+                      </span>
+                    )}
                   </div>
                   {isFaceit ? (
                     <FaceitBadge level={pFaceitLevel} elo={p.faceitElo} size="sm" />

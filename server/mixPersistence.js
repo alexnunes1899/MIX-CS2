@@ -73,9 +73,13 @@ export function saveActiveMixStateNow() {
 
     const discordMixesList = [];
     if (discordBotRef && discordBotRef.activeMixes && discordBotRef.activeMixes.size > 0) {
+      const seenMixIds = new Set();
       for (const [channelId, mix] of discordBotRef.activeMixes.entries()) {
         if (!mix) continue;
         if (mix.phase === 'finished' || mix.phase === 'cancelled') continue;
+        // Avoid persisting the same mix twice if keyed by both channelId and mix.id
+        if (mix.id && seenMixIds.has(mix.id)) continue;
+        if (mix.id) seenMixIds.add(mix.id);
         discordMixesList.push({
           channelId,
           mix: serializeMix(mix),

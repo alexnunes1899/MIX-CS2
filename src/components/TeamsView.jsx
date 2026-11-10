@@ -163,6 +163,11 @@ export default function TeamsView({
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="font-bold text-sm text-white truncate max-w-[140px] sm:max-w-[180px]" title={p.nick}>{p.nick}</span>
+                        {(p.source === 'whatsapp' || String(p.id).startsWith('wa_') || Boolean(p.phone)) && (
+                          <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded border border-emerald-500/20 shrink-0" title="Conectado pelo WhatsApp">
+                            WhatsApp
+                          </span>
+                        )}
                         {p.id === adminId && (
                           <span className="text-[9px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.2 rounded-full flex items-center gap-1 font-mono shadow-sm shrink-0">
                             <Crown size={9} className="fill-amber-400 text-amber-400" /> Admin
@@ -274,6 +279,11 @@ export default function TeamsView({
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="font-bold text-sm text-white truncate max-w-[140px] sm:max-w-[180px]" title={p.nick}>{p.nick}</span>
+                        {(p.source === 'whatsapp' || String(p.id).startsWith('wa_') || Boolean(p.phone)) && (
+                          <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded border border-emerald-500/20 shrink-0" title="Conectado pelo WhatsApp">
+                            WhatsApp
+                          </span>
+                        )}
                         {p.id === adminId && (
                           <span className="text-[9px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.2 rounded-full flex items-center gap-1 font-mono shadow-sm shrink-0">
                             <Crown size={9} className="fill-amber-400 text-amber-400" /> Admin

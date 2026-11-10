@@ -1801,7 +1801,7 @@ class DiscordBotManager {
   async prefixFila(message) {
     let mix = this.activeMixes.get(message.channelId);
     if (!mix && this.activeMixes.size > 0) {
-      mix = Array.from(this.activeMixes.values())[0];
+      mix = Array.from(this.activeMixes.values()).find((m) => m && m.phase !== 'cancelled' && m.phase !== 'finished') || Array.from(this.activeMixes.values())[0];
     }
     if (!mix && this.webRoomsRef && this.webRoomsRef.size > 0) {
       for (const r of this.webRoomsRef.values()) {
@@ -3050,10 +3050,14 @@ class DiscordBotManager {
     }
 
     if (this.activeMixes.size > 0) {
+      const active = Array.from(this.activeMixes.values()).find((m) => m && m.phase !== 'cancelled' && m.phase !== 'finished');
+      if (active) return active;
       return Array.from(this.activeMixes.values())[0];
     }
 
     if (this.webRoomsRef && this.webRoomsRef.size > 0) {
+      const active = Array.from(this.webRoomsRef.values()).find((r) => r && r.phase !== 'cancelled' && r.phase !== 'finished');
+      if (active) return active;
       return Array.from(this.webRoomsRef.values())[0];
     }
 
@@ -3094,6 +3098,7 @@ class DiscordBotManager {
         createdAt: Date.now(),
       };
       this.activeMixes.set(channelId, mix);
+      if (mix.id) this.activeMixes.set(mix.id, mix);
       this.syncToWebRoom(mix);
       whatsappBot.notifyMixCreated(mix).catch(() => {});
       scheduleSave(100);
@@ -3152,6 +3157,7 @@ class DiscordBotManager {
     if (!mix) return null;
     if (mix.readyCheck?.timer) clearTimeout(mix.readyCheck.timer);
     this.activeMixes.delete(channelId);
+    if (mix.id) this.activeMixes.delete(mix.id);
     if (this.webRoomsRef && mix.id) {
       this.webRoomsRef.delete(mix.id);
       if (typeof this.onRoomUpdated === 'function') {
@@ -5494,7 +5500,7 @@ class DiscordBotManager {
   async cmdStatus(interaction) {
     let mix = this.activeMixes.get(interaction.channelId);
     if (!mix && this.activeMixes.size > 0) {
-      mix = Array.from(this.activeMixes.values())[0];
+      mix = Array.from(this.activeMixes.values()).find((m) => m && m.phase !== 'cancelled' && m.phase !== 'finished') || Array.from(this.activeMixes.values())[0];
     }
     if (!mix && this.webRoomsRef && this.webRoomsRef.size > 0) {
       for (const r of this.webRoomsRef.values()) {

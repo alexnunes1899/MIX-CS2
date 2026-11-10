@@ -107,7 +107,7 @@ class WhatsAppBotManager {
     // 1. Check active Discord mixes
     if (this.discordBotRef && this.discordBotRef.activeMixes?.size > 0) {
       for (const m of this.discordBotRef.activeMixes.values()) {
-        if (m && m.phase !== 'cancelled') return { source: 'discord', mix: m };
+        if (m && m.phase !== 'cancelled' && m.phase !== 'finished') return { source: 'discord', mix: m };
       }
     }
     // 2. Check active Web rooms
@@ -171,6 +171,7 @@ class WhatsAppBotManager {
     if (this.discordBotRef) {
       if (!this.discordBotRef.activeMixes) this.discordBotRef.activeMixes = new Map();
       this.discordBotRef.activeMixes.set(defaultChannelId, newMix);
+      this.discordBotRef.activeMixes.set(mixId, newMix);
       this.notifyDiscordLobbyUpdate(newMix);
     }
 

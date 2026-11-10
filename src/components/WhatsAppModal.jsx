@@ -71,8 +71,8 @@ export default function WhatsAppModal({ isOpen, onClose, soundEnabled = true }) 
       if (res.ok) {
         const data = await res.json();
         setStatusData(data);
-        if (data.config?.targetGroupId) {
-          setSelectedGroupId(data.config.targetGroupId);
+        if (data.config && data.config.targetGroupId !== undefined) {
+          setSelectedGroupId(data.config.targetGroupId || '');
         }
       }
     } catch (_) {}

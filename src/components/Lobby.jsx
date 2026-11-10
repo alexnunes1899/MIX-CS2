@@ -535,6 +535,11 @@ export default function Lobby({
                     <span className="text-[10px] text-slate-500 font-mono shrink-0">
                       Slot #{idx + 1}
                     </span>
+                    {(p.source === 'whatsapp' || String(p.id).startsWith('wa_') || Boolean(p.phone)) && (
+                      <span className="text-[8px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-1 rounded shrink-0" title="Conectado pelo WhatsApp">
+                        WhatsApp
+                      </span>
+                    )}
                     {isMe && (
                       <span className="text-[8px] font-black uppercase tracking-wider text-amber-300 bg-amber-500/25 border border-amber-500/40 px-1 rounded shrink-0">
                         VOCÊ

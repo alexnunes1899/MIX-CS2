@@ -2133,6 +2133,7 @@ app.post('/api/player/profile', (req, res) => {
     ).catch(() => {});
   }
 
+  scheduleSave(100);
   return res.json({ success: true, profile: profileData });
 });
 
@@ -2912,6 +2913,12 @@ app.post('/api/discord/move-members', sensitiveLimiter, async (req, res) => {
 app.get('/api/discord/bot/status', (req, res) => {
   res.json(discordBotManager.getStatus());
 });
+app.get('/api/discord/status', (req, res) => {
+  res.json(discordBotManager.getStatus());
+});
+app.get('/api/deals', (req, res) => {
+  res.redirect('/api/hardware/deals');
+});
 
 app.post('/api/discord/bot/config', sensitiveLimiter, async (req, res) => {
   const {
@@ -3126,6 +3133,7 @@ server.listen(PORT, '0.0.0.0', () => {
     for (const item of persistedMixState.discordMixes) {
       if (item && item.channelId && item.mix && item.mix.phase !== 'finished' && item.mix.phase !== 'cancelled') {
         discordBotManager.activeMixes.set(item.channelId, item.mix);
+        if (item.mix.id) discordBotManager.activeMixes.set(item.mix.id, item.mix);
         console.log(`💾 [PERSISTÊNCIA] Mix ${item.mix.id} (${item.mix.name}, ${item.mix.players?.length || 0}/10 jogadores) restaurado no Discord!`);
       }
     }
