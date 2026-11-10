@@ -412,7 +412,7 @@ class DiscordBotManager {
     return embed;
   }
 
-  buildLiveMatchEmbed(requesterName = 'Jogador', targetPlayerQuery = null, isExpanded = false) {
+  buildLiveMatchEmbed(requesterName = 'Jogador', targetPlayerQuery = null, isExpanded = false, mix = null) {
     let state = this.lastGsiState || {};
 
     // If specific player requested by name or steamId
@@ -630,6 +630,106 @@ class DiscordBotManager {
         : '';
     const nadesText = (player.grenades || []).length > 0 ? player.grenades.join(', ') : 'Nenhum';
 
+    // Resolve active mix context if not explicitly provided
+    let activeMix = mix;
+    if (!activeMix && this.activeMixes && this.activeMixes.size > 0) {
+      for (const m of this.activeMixes.values()) {
+        if (m && (m.phase === 'live' || m.phase === 'teams' || m.phase === 'veto')) {
+          activeMix = m;
+          break;
+        }
+      }
+    }
+
+    const allStats = Array.isArray(state.allPlayersStats) ? state.allPlayersStats : [];
+
+    function resolvePlayerGsi(p) {
+      if (!p) return null;
+      const pName = (p.displayName || p.username || p.nick || p.name || '').toLowerCase();
+      return allStats.find((s) => {
+        const sName = (s.name || '').toLowerCase();
+        return sName === pName || (pName.length >= 3 && sName.includes(pName)) || (sName.length >= 3 && pName.includes(sName));
+      });
+    }
+
+    // Build dedicated dual team lists for Time A and Time B (or CT & TR)
+    let teamAField = null;
+    let teamBField = null;
+
+    if (activeMix && activeMix.teamA?.players?.length > 0 && activeMix.teamB?.players?.length > 0) {
+      const isTeamACt = (activeMix.teamA.side || 'CT') === 'CT';
+      const capA = activeMix.teamA.captain || activeMix.teamA.players[0];
+      const capB = activeMix.teamB.captain || activeMix.teamB.players[0];
+      const moneyA = isTeamACt ? (state.totalMoneyCT || 0) : (state.totalMoneyTR || 0);
+      const moneyB = isTeamACt ? (state.totalMoneyTR || 0) : (state.totalMoneyCT || 0);
+      const aliveA = isTeamACt ? (state.aliveCountCT ?? 5) : (state.aliveCountTR ?? 5);
+      const aliveB = isTeamACt ? (state.aliveCountTR ?? 5) : (state.aliveCountCT ?? 5);
+
+      const linesA = activeMix.teamA.players.map((p) => {
+        const isCap = p.id === capA?.id;
+        const gsi = resolvePlayerGsi(p);
+        const hp = gsi ? gsi.health : 100;
+        const isAlive = gsi ? gsi.isAlive : true;
+        const money = gsi ? gsi.money : 0;
+        const kills = gsi ? gsi.kills : 0;
+        const deaths = gsi ? gsi.deaths : 0;
+        const weapon = gsi?.activeWeapon || 'Faca';
+        const hpBadge = isAlive ? `❤️ \`${hp} HP\`` : '💀 `MORTO`';
+        const capIcon = isCap ? '👑 ' : '• ';
+        return `${capIcon}<@${p.id}> \`[Lvl ${p.level || 16} GC]\`\n  └ ${hpBadge} | 💰 \`$${money}\` | 🎯 \`${kills}/${deaths}\` | 🔫 \`${weapon}\``;
+      }).join('\n');
+
+      const linesB = activeMix.teamB.players.map((p) => {
+        const isCap = p.id === capB?.id;
+        const gsi = resolvePlayerGsi(p);
+        const hp = gsi ? gsi.health : 100;
+        const isAlive = gsi ? gsi.isAlive : true;
+        const money = gsi ? gsi.money : 0;
+        const kills = gsi ? gsi.kills : 0;
+        const deaths = gsi ? gsi.deaths : 0;
+        const weapon = gsi?.activeWeapon || 'Faca';
+        const hpBadge = isAlive ? `❤️ \`${hp} HP\`` : '💀 `MORTO`';
+        const capIcon = isCap ? '👑 ' : '• ';
+        return `${capIcon}<@${p.id}> \`[Lvl ${p.level || 16} GC]\`\n  └ ${hpBadge} | 💰 \`$${money}\` | 🎯 \`${kills}/${deaths}\` | 🔫 \`${weapon}\``;
+      }).join('\n');
+
+      teamAField = {
+        name: `🛡️ TIME A (${activeMix.teamA.side || 'CT'}) • 💵 $${moneyA} • 🛡️ ${aliveA}/5 Vivos`,
+        value: `👑 **Capitão do Time A:** <@${capA?.id}> \`[Lvl ${capA?.level || 16} GC]\`\n${linesA}`,
+        inline: true,
+      };
+
+      teamBField = {
+        name: `🔥 TIME B (${activeMix.teamB.side || 'TR'}) • 💵 $${moneyB} • 🛡️ ${aliveB}/5 Vivos`,
+        value: `👑 **Capitão do Time B:** <@${capB?.id}> \`[Lvl ${capB?.level || 16} GC]\`\n${linesB}`,
+        inline: true,
+      };
+    } else if (state.teamCT?.length > 0 || state.teamTR?.length > 0) {
+      const ctLines = (state.teamCT || []).map((p, i) => {
+        const hpBadge = p.isAlive ? `❤️ \`${p.health} HP\`` : '💀 `MORTO`';
+        const capBadge = i === 0 ? '👑 ' : '• ';
+        return `${capBadge}**${p.name}**\n  └ ${hpBadge} | 💰 \`$${p.money || 0}\` | 🎯 \`${p.kills}/${p.deaths}\` | 🔫 \`${p.activeWeapon || 'Faca'}\``;
+      }).join('\n') || '*Aguardando jogadores*';
+
+      const trLines = (state.teamTR || []).map((p, i) => {
+        const hpBadge = p.isAlive ? `❤️ \`${p.health} HP\`` : '💀 `MORTO`';
+        const capBadge = i === 0 ? '👑 ' : '• ';
+        return `${capBadge}**${p.name}**\n  └ ${hpBadge} | 💰 \`$${p.money || 0}\` | 🎯 \`${p.kills}/${p.deaths}\` | 🔫 \`${p.activeWeapon || 'Faca'}\``;
+      }).join('\n') || '*Aguardando jogadores*';
+
+      teamAField = {
+        name: `🛡️ CONTRA-TERRORISTAS (CT) • 💵 $${state.totalMoneyCT || 0} • 🛡️ ${state.aliveCountCT ?? 0} Vivos`,
+        value: ctLines,
+        inline: true,
+      };
+
+      teamBField = {
+        name: `💣 TERRORISTAS (TR) • 💵 $${state.totalMoneyTR || 0} • 🛡️ ${state.aliveCountTR ?? 0} Vivos`,
+        value: trLines,
+        inline: true,
+      };
+    }
+
     if (!isExpanded) {
       // ==========================================
       // MODO DISCRETO / COMPACTO (PAINEL PEQUENO)
@@ -643,14 +743,24 @@ class DiscordBotManager {
 
       embed
         .setTitle(`🔴 AO VIVO • ${playerName.toUpperCase()} [${isCt ? 'CT' : 'TR'}] • ${state.mapName || 'CS2'} • CT ${state.scoreCT || 0} x ${state.scoreTR || 0} TR (R${state.roundNumber || 1})`)
-        .setColor(sideColor)
-        .setDescription(
+        .setColor(sideColor);
+
+      if (teamAField && teamBField) {
+        embed
+          .setDescription(
+            `⏱️ **Situação:** ${bombStatusText}\n` +
+            `${hpBadge} • ${weaponShort} • ${moneyShort}`
+          )
+          .addFields(teamAField, teamBField);
+      } else {
+        embed.setDescription(
           `${hpBadge} • ${armorShort} • ${weaponShort}\n` +
           `${moneyShort} • ${kdaShort}${nadesShort ? ` • ${nadesShort}` : ''}\n` +
           `⏱️ **Situação:** ${bombStatusText}`
-        )
-        .setFooter({ text: '📡 Painel Discreto • Clique em "Ver Detalhes (+)" para expandir' });
+        );
+      }
 
+      embed.setFooter({ text: '📡 Painel Discreto • Clique em "Ver Detalhes (+)" para expandir' });
       return embed;
     }
 
@@ -658,42 +768,47 @@ class DiscordBotManager {
     // MODO DETALHADO / EXPANDIDO
     // ==========================================
     embed
-      .setTitle(`🔴 AO VIVO • ${playerName.toUpperCase()} NO CS2`)
+      .setTitle(`🔴 AO VIVO • MONITORAMENTO DE PARTIDA CS2`)
       .setColor(sideColor)
       .setDescription(
-        `Acompanhe a partida em tempo real diretamente do CS2 de **${playerName}**:\n\n` +
+        `Acompanhe a partida em tempo real com telemetria direta do CS2:\n\n` +
           `🗺️ **Mapa:** **${state.mapName || 'Mirage'}** • *Fase: ${state.phase || 'live'}*\n` +
-          `⚖️ **Lado que está jogando:** ${sideBadge}\n` +
-          `🔢 **Placar da Partida:** 🛡️ **CT ${state.scoreCT || 0} x ${state.scoreTR || 0} TR** 💣 (Round **${state.roundNumber || 1}**)\n` +
+          `⚖️ **Perspectiva:** ${sideBadge} (${playerName})\n` +
+          `🔢 **Placar Oficial:** 🛡️ **CT ${state.scoreCT || 0} x ${state.scoreTR || 0} TR** 💣 (Round **${state.roundNumber || 1}**)\n` +
           `⏱️ **Situação:** ${bombStatusText}`
-      )
-      .addFields(
-        {
-          name: '❤️ Vida & Proteção',
-          value: `${healthBar}\n${armorBadge}`,
-          inline: true,
-        },
-        {
-          name: '💵 Economia & Dinheiro',
-          value: `💰 **$${player.money || 0}**\nEquipamento: \`$${player.equipValue || 0}\``,
-          inline: true,
-        },
-        {
-          name: '🔫 Armamento Atual',
-          value: `🎯 **${weaponName}** ${ammoText}\nUtilitários: \`${nadesText}\``,
-          inline: true,
-        },
-        {
-          name: `📊 Estatísticas na Partida (Score: ${player.score || 0})`,
-          value: `🎯 **${player.kills || 0} Kills** • 💀 **${player.deaths || 0} Mortes** • 🤝 **${player.assists || 0} Assists** • ⭐ **${player.mvps || 0} MVPs**`,
-          inline: false,
-        },
-        {
-          name: '📈 Eficiência de Combate',
-          value: `🔥 **K/D Ratio:** **${player.kd || 0}**\n⚡ **Kills neste Round:** **${player.roundKills || 0}** (${player.roundKillHs || 0} Headshots)`,
-          inline: false,
-        }
       );
+
+    if (teamAField && teamBField) {
+      embed.addFields(teamAField, teamBField);
+    }
+
+    embed.addFields(
+      {
+        name: `❤️ Vida & Proteção de ${playerName}`,
+        value: `${healthBar}\n${armorBadge}`,
+        inline: true,
+      },
+      {
+        name: '💵 Economia Pessoal',
+        value: `💰 **$${player.money || 0}**\nEquipamento: \`$${player.equipValue || 0}\``,
+        inline: true,
+      },
+      {
+        name: '🔫 Armamento Atual',
+        value: `🎯 **${weaponName}** ${ammoText}\nUtilitários: \`${nadesText}\``,
+        inline: true,
+      },
+      {
+        name: `📊 Estatísticas na Partida (Score: ${player.score || 0})`,
+        value: `🎯 **${player.kills || 0} Kills** • 💀 **${player.deaths || 0} Mortes** • 🤝 **${player.assists || 0} Assists** • ⭐ **${player.mvps || 0} MVPs**`,
+        inline: false,
+      },
+      {
+        name: '📈 Eficiência de Combate',
+        value: `🔥 **K/D Ratio:** **${player.kd || 0}**\n⚡ **Kills neste Round:** **${player.roundKills || 0}** (${player.roundKillHs || 0} Headshots)`,
+        inline: false,
+      }
+    );
 
     // List other online players if multiple people installed the .bat
     const otherPlayers = [];
@@ -772,7 +887,7 @@ class DiscordBotManager {
   async syncLiveTrackers(liveState) {
     if (!this.liveTrackers || this.liveTrackers.size === 0) return;
     const now = Date.now();
-    const sig = `${liveState?.roundNumber}_${liveState?.scoreCT}_${liveState?.scoreTR}_${liveState?.bomb}_${liveState?.player?.isAlive}_${liveState?.player?.health}_${liveState?.player?.kills}_${liveState?.player?.deaths}_${liveState?.player?.roundKills}_${liveState?.player?.activeWeapon?.name}_${liveState?.player?.team}_${liveState?.phase}_${liveState?.isGameOver}`;
+    const sig = `${liveState?.roundNumber}_${liveState?.scoreCT}_${liveState?.scoreTR}_${liveState?.bomb}_${liveState?.player?.isAlive}_${liveState?.player?.health}_${liveState?.player?.kills}_${liveState?.player?.deaths}_${liveState?.aliveCountCT}_${liveState?.aliveCountTR}_${liveState?.totalMoneyCT}_${liveState?.totalMoneyTR}_${liveState?.player?.roundKills}_${liveState?.player?.activeWeapon?.name}_${liveState?.player?.team}_${liveState?.phase}_${liveState?.isGameOver}`;
 
     for (const [msgId, tracker] of this.liveTrackers.entries()) {
       if (now - tracker.startedAt > 2.5 * 3600 * 1000) {
@@ -803,7 +918,8 @@ class DiscordBotManager {
         }
 
         const isExpanded = Boolean(tracker.isExpanded);
-        const embed = this.buildLiveMatchEmbed(tracker.requester, tracker.targetQuery, isExpanded);
+        const mix = this.activeMixes?.get(tracker.channelId);
+        const embed = this.buildLiveMatchEmbed(tracker.requester, tracker.targetQuery, isExpanded, mix);
         const row = this.buildLiveMatchButtons(Boolean(this.lastGsiState?.player?.name), isExpanded);
 
         await msg.edit({ embeds: [embed], components: [row] }).catch((e) => {
@@ -850,6 +966,13 @@ class DiscordBotManager {
     } catch (e) {
       console.error('[DISCORD BOT] Falha ao salvar playerProfiles.json:', e.message);
     }
+  }
+
+  hasSavedLevel(userId) {
+    if (!userId) return false;
+    const profiles = this.loadPlayerProfiles();
+    const lvl = profiles[userId]?.level;
+    return typeof lvl === 'number' && lvl >= 1 && lvl <= 21;
   }
 
   getPlayerLevel(userId) {
@@ -1665,6 +1788,14 @@ class DiscordBotManager {
     }
     if (mix.players.length >= 10) {
       return message.reply('🚫 O mix já está lotado (10/10)!');
+    }
+
+    if (!this.hasSavedLevel(message.author.id)) {
+      return message.reply(
+        '⚠️ **Você precisa cadastrar seu Nível da Gamers Club antes de entrar no mix!**\n' +
+        '👉 Digite `!lvl <1 a 21>` (ex: `!lvl 16`) ou clique no botão **`[⭐ Meu Nível GC]`** na mensagem do lobby.\n' +
+        'O seu nível ficará salvo no seu perfil para todas as próximas partidas!'
+      );
     }
     mix.players.push({
       id: message.author.id,
@@ -2867,7 +2998,11 @@ class DiscordBotManager {
 
     // Refresh every player's level from their persistent profile
     mix.players.forEach((p) => {
-      p.level = this.getPlayerLevel(p.id) || p.level || 16;
+      if (this.hasSavedLevel(p.id)) {
+        p.level = this.getPlayerLevel(p.id);
+      } else {
+        p.level = p.level || 16;
+      }
     });
 
     const sorted = [...mix.players].sort((a, b) => (b.level || 16) - (a.level || 16));
@@ -2888,11 +3023,15 @@ class DiscordBotManager {
     const diff = Math.abs(sumA - sumB);
     const balancePct = Math.max(75, Math.min(100, Math.round(100 - diff * 3.5)));
 
+    // Ensure each team is sorted by Gamers Club level descending so top level is Captain
+    teamA.sort((a, b) => (b.level || 16) - (a.level || 16));
+    teamB.sort((a, b) => (b.level || 16) - (a.level || 16));
+
     mix.teamA.players = teamA;
-    mix.teamA.captain = teamA[0] || null; // Top Gamers Club player in Team A
+    mix.teamA.captain = teamA[0] || null; // Maior Nível Gamers Club do Time A eleito Capitão
     mix.teamA.avgLevel = avgA;
     mix.teamB.players = teamB;
-    mix.teamB.captain = teamB[0] || null; // Top Gamers Club player in Team B
+    mix.teamB.captain = teamB[0] || null; // Maior Nível Gamers Club do Time B eleito Capitão
     mix.teamB.avgLevel = avgB;
     mix.balancePct = balancePct;
     mix.phase = 'teams';
@@ -2931,6 +3070,7 @@ class DiscordBotManager {
           avatar: p.avatar,
           level: p.level || 16,
           side: mix.teamA?.side || 'CT',
+          isCaptain: mix.teamA?.captain?.id === p.id,
         })),
         teamB: (mix.teamB?.players || []).map((p) => ({
           id: p.id,
@@ -2938,7 +3078,22 @@ class DiscordBotManager {
           avatar: p.avatar,
           level: p.level || 16,
           side: mix.teamB?.side || 'TR',
+          isCaptain: mix.teamB?.captain?.id === p.id,
         })),
+        captainA: mix.teamA?.captain
+          ? {
+              id: mix.teamA.captain.id,
+              nick: mix.teamA.captain.displayName || mix.teamA.captain.username,
+              level: mix.teamA.captain.level || 16,
+            }
+          : null,
+        captainB: mix.teamB?.captain
+          ? {
+              id: mix.teamB.captain.id,
+              nick: mix.teamB.captain.displayName || mix.teamB.captain.username,
+              level: mix.teamB.captain.level || 16,
+            }
+          : null,
         teamAName: mix.teamA?.name || 'Time A',
         teamBName: mix.teamB?.name || 'Time B',
         finalMap: mix.veto?.deciderMap
@@ -3205,18 +3360,23 @@ class DiscordBotManager {
     const filled = Math.round(pct / 10);
     const bar = '█'.repeat(filled) + '░'.repeat(10 - filled);
 
+    const captainA = teamA.captain || teamA.players?.[0];
+    const captainB = teamB.captain || teamB.players?.[0];
+
     const aPlayers = (teamA.players || [])
-      .map((p, i) => `${i === 0 ? '👑 ' : ''}<@${p.id}> \`[Lvl ${p.level || 16} GC]\``)
+      .map((p) => `${p.id === captainA?.id ? '👑 **Capitão:** ' : '• '}<@${p.id}> \`[Lvl ${p.level || 16} GC]\``)
       .join('\n') || '*Nenhum jogador*';
 
     const bPlayers = (teamB.players || [])
-      .map((p, i) => `${i === 0 ? '👑 ' : ''}<@${p.id}> \`[Lvl ${p.level || 16} GC]\``)
+      .map((p) => `${p.id === captainB?.id ? '👑 **Capitão:** ' : '• '}<@${p.id}> \`[Lvl ${p.level || 16} GC]\``)
       .join('\n') || '*Nenhum jogador*';
 
     const embed = new EmbedBuilder()
       .setTitle(`⚔️ TIMES FORMADOS • ${mix.name.toUpperCase()}`)
       .setDescription(
         `Os dois esquadrões foram balanceados pelo algoritmo Gamers Club / FACEIT!\n\n` +
+        `👑 **Capitão Time A:** <@${captainA?.id}> \`[Lvl ${captainA?.level || 16} GC]\`\n` +
+        `👑 **Capitão Time B:** <@${captainB?.id}> \`[Lvl ${captainB?.level || 16} GC]\`\n\n` +
         `⚖️ **Equilíbrio:** \`[${bar}] ${pct}%\` (Média A: **${teamA.avgLevel || 16}** | Média B: **${teamB.avgLevel || 16}**)`
       )
       .setColor(0xf59e0b)
@@ -3347,12 +3507,12 @@ class DiscordBotManager {
       .addFields(
         {
           name: `🛡️ ${mix.teamA.name} (${mix.teamA.side})`,
-          value: mix.teamA.players.map((p, i) => `${i === 0 ? '👑 ' : ''}<@${p.id}>`).join('\n') || '*Sem jogadores*',
+          value: mix.teamA.players.map((p) => `${p.id === mix.teamA.captain?.id ? '👑 **Capitão:** ' : '• '}<@${p.id}> \`[Lvl ${p.level || 16} GC]\``).join('\n') || '*Sem jogadores*',
           inline: true,
         },
         {
           name: `🔥 ${mix.teamB.name} (${mix.teamB.side})`,
-          value: mix.teamB.players.map((p, i) => `${i === 0 ? '👑 ' : ''}<@${p.id}>`).join('\n') || '*Sem jogadores*',
+          value: mix.teamB.players.map((p) => `${p.id === mix.teamB.captain?.id ? '👑 **Capitão:** ' : '• '}<@${p.id}> \`[Lvl ${p.level || 16} GC]\``).join('\n') || '*Sem jogadores*',
           inline: true,
         }
       )
@@ -3617,6 +3777,25 @@ class DiscordBotManager {
           content: '🚫 O lobby já está lotado com 10 jogadores!',
           ephemeral: true,
         });
+      }
+
+      if (!this.hasSavedLevel(user.id)) {
+        const modal = new ModalBuilder()
+          .setCustomId(`modal_join_set_level:${mix.id}`)
+          .setTitle('Cadastre seu Nível GC (1 a 21)');
+
+        const levelInput = new TextInputBuilder()
+          .setCustomId('gc_level_input')
+          .setLabel('Seu Nível Gamers Club (1 a 21)')
+          .setStyle(TextInputStyle.Short)
+          .setPlaceholder('Ex: 16 (ficará salvo no seu perfil)')
+          .setRequired(true)
+          .setMinLength(1)
+          .setMaxLength(2);
+
+        const firstActionRow = new ActionRowBuilder().addComponents(levelInput);
+        modal.addComponents(firstActionRow);
+        return interaction.showModal(modal);
       }
 
       const userLvl = this.getPlayerLevel(user.id);
@@ -4541,6 +4720,89 @@ class DiscordBotManager {
       });
     }
 
+    if (customId.startsWith('modal_join_set_level')) {
+      const raw = interaction.fields.getTextInputValue('gc_level_input');
+      const parsed = parseInt(raw?.trim(), 10);
+      if (isNaN(parsed) || parsed < 1 || parsed > 21) {
+        return interaction.reply({
+          content: '⚠️ Nível inválido! Insira um número de **1 a 21** correspondente ao seu nível na Gamers Club.',
+          ephemeral: true,
+        });
+      }
+
+      this.setPlayerProfile(interaction.user.id, {
+        level: parsed,
+        username: interaction.user.username,
+      });
+
+      const mix = this.activeMixes.get(interaction.channelId);
+      const badge = parsed >= 20 ? '👑 Lvl 20+' : parsed >= 18 ? '🏆 Lvl 18-19' : parsed >= 14 ? '🥇 Lvl 14-17' : '🥈 Lvl 1-13';
+
+      if (!mix) {
+        return interaction.reply({
+          content: `✅ Seu nível GC foi salvo como **Lvl ${parsed}** (\`${badge}\`) no seu perfil com sucesso!`,
+          ephemeral: true,
+        });
+      }
+
+      if (mix.players.some((p) => p.id === interaction.user.id)) {
+        const p = mix.players.find((pl) => pl.id === interaction.user.id);
+        if (p) p.level = parsed;
+        this.syncToWebRoom(mix);
+        return interaction.reply({
+          content: `✅ Seu nível GC foi salvo como **Lvl ${parsed}** (\`${badge}\`) e atualizado no seu slot do Mix!`,
+          ephemeral: true,
+        });
+      }
+
+      if (mix.players.length >= 10) {
+        return interaction.reply({
+          content: `✅ Nível GC **Lvl ${parsed}** (\`${badge}\`) salvo com sucesso no seu perfil! Porém, o mix acabou de lotar (10/10). Fique atento para o próximo!`,
+          ephemeral: true,
+        });
+      }
+
+      mix.players.push({
+        id: interaction.user.id,
+        username: interaction.user.username,
+        displayName: interaction.member?.displayName || interaction.user.username,
+        avatar: interaction.user.displayAvatarURL({ dynamic: true }),
+        level: parsed,
+        ready: true,
+      });
+      this.syncToWebRoom(mix);
+
+      if (mix.players.length === 8 || mix.players.length === 9) {
+        this.notifyMissingSlots(mix, interaction.guild, interaction.channel).catch(() => {});
+      }
+
+      if (mix.players.length === 10) {
+        this.startReadyCheck(mix, interaction.channel);
+        const embed = this.buildReadyCheckEmbed(mix);
+        const components = this.buildReadyCheckButtons(mix);
+        if (mix.lobbyMessageId) {
+          const msg = await interaction.channel.messages.fetch(mix.lobbyMessageId).catch(() => null);
+          if (msg) await msg.edit({ embeds: [embed], components }).catch(() => {});
+        }
+        return interaction.reply({
+          content: `✅ Nível GC salvo como **Lvl ${parsed}** (\`${badge}\`) e você entrou no Mix! 🎯 O lobby atingiu **10/10 jogadores**!`,
+          ephemeral: true,
+        });
+      }
+
+      const embed = this.buildLobbyEmbed(mix);
+      const components = this.buildLobbyButtons(mix);
+      if (mix.lobbyMessageId) {
+        const msg = await interaction.channel.messages.fetch(mix.lobbyMessageId).catch(() => null);
+        if (msg) await msg.edit({ embeds: [embed], components }).catch(() => {});
+      }
+
+      return interaction.reply({
+        content: `✅ Nível GC salvo como **Lvl ${parsed}** (\`${badge}\`) e você acabou de entrar no Mix! 🎯 Vaga confirmada (${mix.players.length}/10).`,
+        ephemeral: true,
+      });
+    }
+
     if (customId.startsWith('modal_match_result')) {
       const winner = interaction.fields.getTextInputValue('winner_input');
       const score = interaction.fields.getTextInputValue('score_input');
@@ -4709,6 +4971,25 @@ class DiscordBotManager {
     }
     if (mix.players.length >= 10) {
       return interaction.reply({ content: '🚫 O mix já está lotado (10/10)!', ephemeral: true });
+    }
+
+    if (!this.hasSavedLevel(interaction.user.id)) {
+      const modal = new ModalBuilder()
+        .setCustomId(`modal_join_set_level:${mix.id}`)
+        .setTitle('Cadastre seu Nível GC (1 a 21)');
+
+      const levelInput = new TextInputBuilder()
+        .setCustomId('gc_level_input')
+        .setLabel('Seu Nível Gamers Club (1 a 21)')
+        .setStyle(TextInputStyle.Short)
+        .setPlaceholder('Ex: 16 (ficará salvo no seu perfil)')
+        .setRequired(true)
+        .setMinLength(1)
+        .setMaxLength(2);
+
+      const firstActionRow = new ActionRowBuilder().addComponents(levelInput);
+      modal.addComponents(firstActionRow);
+      return interaction.showModal(modal);
     }
 
     mix.players.push({

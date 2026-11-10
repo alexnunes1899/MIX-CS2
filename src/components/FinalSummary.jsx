@@ -640,6 +640,8 @@ export default function FinalSummary({
                       <th className="py-2 px-3">#</th>
                       <th className="py-2 px-3">Competidor</th>
                       <th className="py-2 px-2 text-center">Lado</th>
+                      <th className="py-2 px-2 text-center">Vida (HP)</th>
+                      <th className="py-2 px-2 text-center">Dinheiro</th>
                       <th className="py-2 px-3 text-center">K / D / A</th>
                       <th className="py-2 px-3 text-center">K/D</th>
                       <th className="py-2 px-2 text-center">MVPs</th>
@@ -650,10 +652,15 @@ export default function FinalSummary({
                     {liveMatch.allPlayersStats.map((p, idx) => (
                       <tr key={p.steamId || idx} className="hover:bg-slate-900/40 transition-colors">
                         <td className="py-2 px-3 text-slate-500 font-bold">{idx + 1}</td>
-                        <td className="py-2 px-3 font-sans font-bold text-white flex items-center gap-1.5">
+                        <td className="py-2 px-3 font-sans font-bold text-white flex items-center gap-1.5 flex-wrap">
                           <span>{p.name}</span>
                           {liveMatch.matchMvp?.name === p.name && (
                             <span className="text-amber-400" title="MVP">⭐</span>
+                          )}
+                          {p.activeWeapon && (
+                            <span className="text-[9px] text-slate-400 font-normal bg-slate-900 border border-slate-800 px-1 py-0.2 rounded">
+                              🔫 {p.activeWeapon}
+                            </span>
                           )}
                         </td>
                         <td className="py-2 px-2 text-center">
@@ -662,6 +669,28 @@ export default function FinalSummary({
                           }`}>
                             {p.team}
                           </span>
+                        </td>
+                        <td className="py-2 px-2 text-center font-bold">
+                          {p.health !== undefined ? (
+                            p.isAlive !== false && p.health > 0 ? (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400">
+                                ❤️ {p.health}
+                              </span>
+                            ) : (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-400">
+                                💀 MORTO
+                              </span>
+                            )
+                          ) : (
+                            <span className="text-slate-500">-</span>
+                          )}
+                        </td>
+                        <td className="py-2 px-2 text-center font-bold">
+                          {p.money !== undefined ? (
+                            <span className="text-amber-400 font-bold">${p.money}</span>
+                          ) : (
+                            <span className="text-slate-500">-</span>
+                          )}
                         </td>
                         <td className="py-2 px-3 text-center font-bold">
                           <span className="text-emerald-400">{p.kills}</span>

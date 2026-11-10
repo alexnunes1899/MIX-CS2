@@ -96,30 +96,64 @@ export function handleGsiPayload(roomId, payload) {
 
   const finalKd = finalDeaths > 0 ? Number((finalKills / finalDeaths).toFixed(2)) : Number(finalKills.toFixed(2));
 
-  // Parse all players match statistics (Kills, Deaths, Assists, MVPs, Score, K/D)
+  // Parse all players match statistics (Kills, Deaths, Assists, MVPs, Score, K/D, Health, Money, Weapons)
   const allPlayersStats = [];
+  const teamCT = [];
+  const teamTR = [];
+
   if (payload.allplayers && typeof payload.allplayers === 'object') {
     Object.entries(payload.allplayers).forEach(([steamId, pData]) => {
       if (!pData || typeof pData !== 'object') return;
       const stats = pData.match_stats || {};
+      const pState = pData.state || {};
       const kills = typeof stats.kills === 'number' ? stats.kills : 0;
       const deaths = typeof stats.deaths === 'number' ? stats.deaths : 0;
       const assists = typeof stats.assists === 'number' ? stats.assists : 0;
       const mvps = typeof stats.mvps === 'number' ? stats.mvps : 0;
       const score = typeof stats.score === 'number' ? stats.score : 0;
       const kd = deaths > 0 ? Number((kills / deaths).toFixed(2)) : Number(kills.toFixed(2));
+      const health = typeof pState.health === 'number' ? pState.health : 100;
+      const armor = typeof pState.armor === 'number' ? pState.armor : 0;
+      const helmet = Boolean(pState.helmet);
+      const money = typeof pState.money === 'number' ? pState.money : 0;
+      const equipValue = typeof pState.equip_value === 'number' ? pState.equip_value : 0;
+      const isAlive = health > 0;
+      const team = pData.team === 'CT' ? 'CT' : pData.team === 'T' ? 'TR' : (pData.team || 'Indefinido');
 
-      allPlayersStats.push({
+      const weapons = [];
+      let activeWeapon = null;
+      if (pData.weapons && typeof pData.weapons === 'object') {
+        Object.values(pData.weapons).forEach((w) => {
+          if (!w || !w.name) return;
+          const clean = w.name.replace(/^weapon_/, '').replace('_silencer', '-S').toUpperCase();
+          weapons.push(clean);
+          if (w.state === 'active') activeWeapon = clean;
+        });
+      }
+
+      const pObj = {
         steamId,
         name: pData.name || 'Jogador',
-        team: pData.team === 'CT' ? 'CT' : 'T',
+        team,
+        health,
+        isAlive,
+        armor,
+        helmet,
+        money,
+        equipValue,
         kills,
         deaths,
         assists,
         mvps,
         score,
         kd,
-      });
+        activeWeapon: activeWeapon || weapons[0] || 'Faca',
+        weapons,
+      };
+
+      allPlayersStats.push(pObj);
+      if (team === 'CT') teamCT.push(pObj);
+      else if (team === 'TR') teamTR.push(pObj);
     });
   }
 
@@ -128,17 +162,37 @@ export function handleGsiPayload(roomId, payload) {
     (p) => (player.steamid && p.steamId === player.steamid) || (player.name && p.name === player.name)
   );
   if (!playerInAll && (player.name || player.steamid)) {
-    allPlayersStats.push({
+    const pState = player.state || {};
+    const health = typeof pState.health === 'number' ? pState.health : 100;
+    const armor = typeof pState.armor === 'number' ? pState.armor : 0;
+    const helmet = Boolean(pState.helmet);
+    const money = typeof pState.money === 'number' ? pState.money : 0;
+    const equipValue = typeof pState.equip_value === 'number' ? pState.equip_value : 0;
+    const isAlive = health > 0;
+    const team = player.team === 'CT' ? 'CT' : 'TR';
+
+    const pObj = {
       steamId: player.steamid || 'local_player',
       name: player.name || 'Jogador',
-      team: player.team === 'CT' ? 'CT' : 'T',
+      team,
+      health,
+      isAlive,
+      armor,
+      helmet,
+      money,
+      equipValue,
       kills: finalKills,
       deaths: finalDeaths,
       assists: finalAssists,
       mvps: finalMvps,
       score: finalScore,
       kd: finalKd,
-    });
+      activeWeapon: 'Faca',
+      weapons: [],
+    };
+    allPlayersStats.push(pObj);
+    if (team === 'CT') teamCT.push(pObj);
+    else teamTR.push(pObj);
   } else if (playerInAll && playerInAll.kills === 0 && finalKills > 0) {
     playerInAll.kills = finalKills;
     playerInAll.deaths = finalDeaths;
@@ -230,6 +284,10 @@ export function handleGsiPayload(roomId, payload) {
   }
 
   const now = Date.now();
+  const totalMoneyCT = teamCT.reduce((acc, p) => acc + (p.money || 0), 0);
+  const totalMoneyTR = teamTR.reduce((acc, p) => acc + (p.money || 0), 0);
+  const aliveCountCT = teamCT.filter((p) => p.isAlive).length;
+  const aliveCountTR = teamTR.filter((p) => p.isAlive).length;
 
   const liveState = {
     connected: true,
@@ -245,6 +303,12 @@ export function handleGsiPayload(roomId, payload) {
     rawPlayer: player?.name ? { name: player.name, team: player.team, steamId: player.steamid, matchStats: rawStats } : null,
     player: individualPlayer,
     allPlayersStats,
+    teamCT,
+    teamTR,
+    totalMoneyCT,
+    totalMoneyTR,
+    aliveCountCT,
+    aliveCountTR,
     topFragger,
     matchMvp,
     isGameOver: phase === 'gameover' || (scoreCT >= 13 && scoreCT - scoreTR >= 2) || (scoreTR >= 13 && scoreTR - scoreCT >= 2),
@@ -307,6 +371,7 @@ export function generateGsiConfig(serverBaseUrl, roomId) {
         "player_weapons"         "1"
         "player_match_stats"     "1"
         "allplayers_state"       "1"
+        "allplayers_weapons"     "1"
         "allplayers_match_stats" "1"
     }
     "auth"
