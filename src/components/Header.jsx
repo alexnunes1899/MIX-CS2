@@ -28,6 +28,7 @@ export default function Header({
   onOpenQuickMapRoll,
   onOpenLeaderboard,
   onOpenDiscordModal,
+  onOpenWhatsAppModal,
   onOpenLocalHost,
   onOpenServersPage,
   onOpenTournament,
@@ -227,6 +228,7 @@ export default function Header({
           onGoHome={onGoHome}
           onOpenLeaderboard={onOpenLeaderboard}
           onOpenDiscordModal={onOpenDiscordModal}
+          onOpenWhatsAppModal={onOpenWhatsAppModal}
           onOpenQuickMapRoll={onOpenQuickMapRoll}
           onOpenQuickVeto={onOpenQuickVeto}
           onOpenServersPage={onOpenServersPage || onOpenLocalHost}

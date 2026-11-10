@@ -13,7 +13,7 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const DATA_DIR = path.join(__dirname, 'data');
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const AUTH_DIR = path.join(DATA_DIR, 'whatsapp_auth');
 const CONFIG_PATH = path.join(DATA_DIR, 'whatsappConfig.json');
 const CONFIG_DEFAULT_PATH = path.join(DATA_DIR, 'whatsappConfig.default.json');

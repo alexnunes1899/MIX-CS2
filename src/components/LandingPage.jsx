@@ -15,6 +15,7 @@ export default function LandingPage({
   onOpenRoomsHub,
   onOpenLeaderboard,
   onOpenDiscordModal,
+  onOpenWhatsAppModal,
   onOpenLocalHost,
   onOpenServersPage,
   onOpenTournament,
@@ -199,6 +200,7 @@ export default function LandingPage({
             }}
             onOpenLeaderboard={onOpenLeaderboard}
             onOpenDiscordModal={onOpenDiscordModal}
+            onOpenWhatsAppModal={onOpenWhatsAppModal}
             onOpenQuickMapRoll={onOpenQuickMapRoll}
             onOpenQuickVeto={onOpenQuickVeto}
             onOpenServersPage={onOpenServersPage || onOpenLocalHost}

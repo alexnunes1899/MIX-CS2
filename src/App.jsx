@@ -30,6 +30,7 @@ import AimReflexModal from './components/AimReflexModal';
 import TournamentBracketModal from './components/TournamentBracketModal';
 import LocalHostModal from './components/LocalHostModal';
 import DedicatedServersHub from './components/DedicatedServersHub';
+import WhatsAppModal from './components/WhatsAppModal';
 import { playClickSound, setSoundEnabledGlobal, isSoundEnabled } from './utils/audio';
 import { recordMatchResult } from './utils/playerStats';
 import { ACTIVE_DUTY_MAPS, OFFICIAL_ACTIVE_DUTY, EXTRA_CS2_MAPS } from './data/maps';
@@ -145,6 +146,7 @@ export default function App() {
   const [gsiModalOpen, setGsiModalOpen] = useState(false);
   const [leaderboardOpen, setLeaderboardOpen] = useState(false);
   const [discordModalOpen, setDiscordModalOpen] = useState(false);
+  const [whatsappModalOpen, setWhatsappModalOpen] = useState(false);
   const [matchCardOpen, setMatchCardOpen] = useState(false);
   const [storyCardOpen, setStoryCardOpen] = useState(false);
   const [grenadeModalOpen, setGrenadeModalOpen] = useState(false);
@@ -1827,6 +1829,7 @@ export default function App() {
           onOpenRoomsHub={() => setRoomsHubOpen(true)}
           onOpenLeaderboard={() => setLeaderboardOpen(true)}
           onOpenDiscordModal={() => setDiscordModalOpen(true)}
+          onOpenWhatsAppModal={() => setWhatsappModalOpen(true)}
           onOpenTournament={() => setTournamentModalOpen(true)}
           onOpenGrenades={() => setGrenadeModalOpen(true)}
           onOpenAimReflex={() => setAimReflexModalOpen(true)}
@@ -1950,6 +1953,7 @@ export default function App() {
           onOpenRoomsHub={() => setRoomsHubOpen(true)}
           onOpenLeaderboard={() => setLeaderboardOpen(true)}
           onOpenDiscordModal={() => setDiscordModalOpen(true)}
+          onOpenWhatsAppModal={() => setWhatsappModalOpen(true)}
           onOpenLocalHost={() => setLocalHostModalOpen(true)}
           onOpenTournament={() => setTournamentModalOpen(true)}
           onOpenGrenades={() => setGrenadeModalOpen(true)}
@@ -2144,6 +2148,7 @@ export default function App() {
         onOpenQuickMapRoll={() => setQuickMapRollOpen(true)}
         onOpenLeaderboard={() => setLeaderboardOpen(true)}
         onOpenDiscordModal={() => setDiscordModalOpen(true)}
+        onOpenWhatsAppModal={() => setWhatsappModalOpen(true)}
         onOpenLocalHost={() => setLocalHostModalOpen(true)}
         onOpenTournament={() => setTournamentModalOpen(true)}
         onOpenGrenades={() => setGrenadeModalOpen(true)}
@@ -2428,6 +2433,13 @@ export default function App() {
         autoGsiBomb={Boolean(room.discordGsiBomb)}
         autoStats={room.discordAutoStats !== false}
         onSaveWebhook={handleSaveDiscordWebhook}
+        soundEnabled={soundEnabled}
+      />
+
+      {/* WhatsApp Bot Settings & Pairing Modal */}
+      <WhatsAppModal
+        isOpen={whatsappModalOpen}
+        onClose={() => setWhatsappModalOpen(false)}
         soundEnabled={soundEnabled}
       />
 

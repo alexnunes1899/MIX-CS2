@@ -48,10 +48,11 @@ import { bagreVoteService } from './bagreVote.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const CONFIG_FILE = path.join(__dirname, 'data', 'discordBotConfig.json');
-const PROFILES_FILE = path.join(__dirname, 'data', 'playerProfiles.json');
-const MATCH_HISTORY_FILE = path.join(__dirname, 'data', 'matchHistory.json');
-const LEADERBOARD_FILE = path.join(__dirname, 'data', 'leaderboard.json');
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
+const CONFIG_FILE = path.join(DATA_DIR, 'discordBotConfig.json');
+const PROFILES_FILE = path.join(DATA_DIR, 'playerProfiles.json');
+const MATCH_HISTORY_FILE = path.join(DATA_DIR, 'matchHistory.json');
+const LEADERBOARD_FILE = path.join(DATA_DIR, 'leaderboard.json');
 
 // Default Active Duty Maps for Pick & Ban with official CDN images
 const OFFICIAL_MAPS = [

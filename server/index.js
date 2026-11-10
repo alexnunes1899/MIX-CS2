@@ -75,6 +75,19 @@ app.use(express.json({ limit: '500kb' }));
 app.use(express.urlencoded({ extended: false, limit: '500kb' }));
 app.use(cors());
 
+// Ultra-fast Healthcheck for Railway / Docker / Kubernetes (<1ms response, bypasses rate limiting)
+app.get(['/health', '/api/health'], (req, res) => {
+  return res.status(200).json({
+    status: 'ok',
+    uptime: Math.floor(process.uptime()),
+    timestamp: new Date().toISOString(),
+    service: 'cs2-mix-hub',
+    activeRooms: typeof rooms !== 'undefined' ? rooms.size : 0,
+    discordBot: typeof discordBotManager !== 'undefined' ? discordBotManager.getStatus().running : false,
+    whatsappBot: typeof whatsappBot !== 'undefined' ? whatsappBot.getStatus().status : 'disconnected',
+  });
+});
+
 // In-Memory Anti-DDoS & Rate Limiting System
 const ipRateLimits = new Map();
 function createRateLimiter({ windowMs = 60000, max = 250, message = 'Muitas requisições. Tente novamente em breve.' }) {
@@ -1947,10 +1960,6 @@ app.use(express.static(distPath, {
     }
   }
 }));
-
-app.get(['/health', '/api/health'], (req, res) => {
-  res.status(200).json({ status: 'ok', time: new Date().toISOString(), activeRooms: rooms.size });
-});
 
 // Steam direct connect handler for Discord Bot 1-click launch
 app.get(['/connect', '/join-cs2'], (req, res) => {

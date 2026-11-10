@@ -55,6 +55,7 @@ export default function DedicatedServersHub({
   onOpenRoomsHub,
   onOpenLeaderboard,
   onOpenDiscordModal,
+  onOpenWhatsAppModal,
   onOpenTournament,
   onOpenGrenades,
   onOpenAimReflex,
@@ -458,6 +459,7 @@ pause
             onGoHome={onGoHome}
             onOpenLeaderboard={onOpenLeaderboard}
             onOpenDiscordModal={onOpenDiscordModal}
+            onOpenWhatsAppModal={onOpenWhatsAppModal}
             onOpenQuickMapRoll={onOpenQuickMapRoll}
             onOpenQuickVeto={onOpenQuickVeto}
             onOpenServersPage={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
