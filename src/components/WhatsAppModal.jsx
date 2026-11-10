@@ -274,9 +274,24 @@ export default function WhatsAppModal({ isOpen, onClose, soundEnabled = true }) 
 
   const commandsList = [
     {
-      cmd: '!fila',
-      desc: 'Lista os 10 jogadores, níveis GC salvos e capitães de cada time.',
-      badge: 'Tempo Real',
+      cmd: '!mix',
+      desc: 'Cria uma nova fila 5v5 no grupo ou exibe o lobby e jogadores da partida ativa.',
+      badge: 'Criar / Lobby',
+    },
+    {
+      cmd: '!entrar',
+      desc: 'Entra diretamente na fila do mix ativo via chat do WhatsApp.',
+      badge: 'Fila 5v5',
+    },
+    {
+      cmd: '!sair',
+      desc: 'Remove sua vaga da fila do mix ativo.',
+      badge: 'Liberar Vaga',
+    },
+    {
+      cmd: '!sortear',
+      desc: 'Sorteia os times A (CT) e B (TR) pelo Snake-Draft GC com capitães automáticos.',
+      badge: 'Snake Draft',
     },
     {
       cmd: '!ip',
@@ -289,18 +304,13 @@ export default function WhatsAppModal({ isOpen, onClose, soundEnabled = true }) 
       badge: 'Perfil GC',
     },
     {
-      cmd: '!entrar',
-      desc: 'Entra diretamente na fila do mix ativo via chat do WhatsApp.',
-      badge: 'Fila Rápida',
-    },
-    {
-      cmd: '!sair',
-      desc: 'Remove sua vaga da fila do mix ativo.',
-      badge: 'Liberar Vaga',
+      cmd: '!cancelar',
+      desc: 'Cancela o mix ativo para liberar o grupo para uma nova partida.',
+      badge: 'Resetar',
     },
     {
       cmd: '!ajuda',
-      desc: 'Exibe o guia completo de comandos do bot no grupo.',
+      desc: 'Exibe o guia completo de comandos oficiais do bot no grupo.',
       badge: 'Ajuda',
     },
   ];

@@ -111,10 +111,171 @@ class WhatsAppBotManager {
     // 2. Check active Web rooms
     if (this.webRoomsRef && this.webRoomsRef.size > 0) {
       for (const r of this.webRoomsRef.values()) {
-        if (r && r.phase !== 'finished') return { source: 'web', mix: r };
+        if (r && r.phase !== 'finished' && r.phase !== 'cancelled') return { source: 'web', mix: r };
       }
     }
     return null;
+  }
+
+  createMixFromWhatsApp(creatorPhone, creatorName) {
+    const creatorId = `wa_${creatorPhone}`;
+    const creatorLvl = this.getPlayerLevel(creatorId) || 16;
+    const mixId = `MIX-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+    const defaultChannelId = this.discordBotRef?.config?.mixChannelId || 'whatsapp-mix';
+
+    const creatorPlayer = {
+      id: creatorId,
+      nick: creatorName,
+      username: creatorName,
+      name: creatorName,
+      displayName: creatorName,
+      phone: creatorPhone,
+      level: creatorLvl,
+      source: 'whatsapp',
+      ready: true,
+    };
+
+    const newMix = {
+      id: mixId,
+      channelId: defaultChannelId,
+      name: `Mix 5v5 de ${creatorName}`,
+      format: 'MD1',
+      creatorId,
+      creatorNick: creatorName,
+      players: [creatorPlayer],
+      phase: 'lobby',
+      readyCheck: {
+        active: false,
+        confirmed: new Set(),
+        expiresAt: null,
+        timer: null,
+      },
+      teamA: { name: 'Time A', captain: creatorPlayer, players: [creatorPlayer], side: 'CT', avgLevel: creatorLvl },
+      teamB: { name: 'Time B', captain: null, players: [], side: 'TR', avgLevel: 16 },
+      balancePct: 100,
+      veto: {
+        currentTurn: 'teamA',
+        bannedMaps: [],
+        remainingMaps: ['de_mirage', 'de_inferno', 'de_nuke', 'de_ancient', 'de_anubis', 'de_dust2', 'de_vertigo'],
+        deciderMap: null,
+        history: [],
+      },
+      serverIp: this.config.serverConnect || this.discordBotRef?.config?.serverConnect || '',
+      messageId: null,
+      createdAt: Date.now(),
+    };
+
+    // 1. Sync to Discord activeMixes if Discord bot is available
+    if (this.discordBotRef) {
+      if (!this.discordBotRef.activeMixes) this.discordBotRef.activeMixes = new Map();
+      this.discordBotRef.activeMixes.set(defaultChannelId, newMix);
+      if (typeof this.discordBotRef.syncToWebRoom === 'function') {
+        this.discordBotRef.syncToWebRoom(newMix);
+      }
+    }
+
+    // 2. Sync to Web Rooms map
+    if (this.webRoomsRef) {
+      this.webRoomsRef.set(mixId, {
+        id: mixId,
+        name: newMix.name,
+        createdAt: Date.now(),
+        lastActivity: Date.now(),
+        creatorId,
+        creatorNick: creatorName,
+        source: 'whatsapp',
+        sourceLabel: 'Via WhatsApp',
+        phase: 'lobby',
+        rankingSystem: 'gc',
+        serverIp: newMix.serverIp,
+        players: [
+          {
+            id: creatorId,
+            nick: creatorName,
+            level: creatorLvl,
+            ready: true,
+          },
+        ],
+        teamA: newMix.teamA,
+        teamB: newMix.teamB,
+      });
+
+      if (this.discordBotRef && typeof this.discordBotRef.onRoomUpdated === 'function') {
+        try {
+          this.discordBotRef.onRoomUpdated(mixId, this.webRoomsRef.get(mixId));
+        } catch (_) {}
+      }
+    }
+
+    return newMix;
+  }
+
+  balanceTeamsLocal(mix) {
+    if (!mix.players || mix.players.length < 2) return;
+    mix.players.forEach((p) => {
+      const profileKey = p.phone ? `wa_${p.phone}` : p.id;
+      p.level = this.getPlayerLevel(profileKey) || p.level || 16;
+    });
+
+    const sorted = [...mix.players].sort((a, b) => (b.level || 16) - (a.level || 16));
+    const teamA = [];
+    const teamB = [];
+
+    // Snake Draft: 0->A, 1->B, 2->B, 3->A, 4->A...
+    sorted.forEach((p, i) => {
+      const mod = i % 4;
+      if (mod === 0 || mod === 3) teamA.push(p);
+      else teamB.push(p);
+    });
+
+    const sumA = teamA.reduce((acc, p) => acc + (p.level || 16), 0);
+    const sumB = teamB.reduce((acc, p) => acc + (p.level || 16), 0);
+    const avgA = (sumA / (teamA.length || 1)).toFixed(1);
+    const avgB = (sumB / (teamB.length || 1)).toFixed(1);
+    const diff = Math.abs(sumA - sumB);
+    const balancePct = Math.max(75, Math.min(100, Math.round(100 - diff * 3.5)));
+
+    teamA.sort((a, b) => (b.level || 16) - (a.level || 16));
+    teamB.sort((a, b) => (b.level || 16) - (a.level || 16));
+
+    mix.teamA = { name: 'Time A', captain: teamA[0] || null, players: teamA, side: 'CT', avgLevel: avgA };
+    mix.teamB = { name: 'Time B', captain: teamB[0] || null, players: teamB, side: 'TR', avgLevel: avgB };
+    mix.balancePct = balancePct;
+  }
+
+  async sendLobbyStatus(from, msg, mix) {
+    const count = mix.players?.length || 0;
+    const remaining = Math.max(0, 10 - count);
+    const publicUrl = this.getPublicUrl(`/?room=${mix.id}`);
+
+    let listStr = '';
+    for (let i = 0; i < 10; i++) {
+      const p = mix.players?.[i];
+      if (p) {
+        const capBadge = (i === 0 || p.isCaptain) ? '👑 ' : '';
+        const name = p.username || p.nick || p.name || 'Jogador';
+        const lvl = p.level || p.gcLevel || 16;
+        listStr += `${i + 1}. ${capBadge}*${name}* [Lvl ${lvl} GC]\n`;
+      } else {
+        listStr += `${i + 1}. ⏳ _[Vaga Aberta]_\n`;
+      }
+    }
+
+    const statusText =
+      `🎮 *CS2 MIX 5v5 • STATUS DO LOBBY*\n` +
+      `📍 *Sala:* ${mix.name || `Mix #${mix.id}`}\n` +
+      `👥 *Vagas:* *${count}/10* (${remaining} restante(s))\n\n` +
+      `📋 *Lista de Jogadores Confirmados:*\n` +
+      `${listStr}\n` +
+      `💬 *Comandos Rápidos no WhatsApp:*\n` +
+      `• Digite *!entrar* para garantir sua vaga\n` +
+      `• Digite *!sair* para liberar sua vaga\n` +
+      `• Digite *!lvl <1-21>* para salvar seu nível GC\n` +
+      `• Digite *!sortear* para sortear os times\n` +
+      `• Digite *!ip* para ver o servidor e conectar\n\n` +
+      `👉 Ou acesse pelo navegador: ${publicUrl}`;
+
+    return this.sock.sendMessage(from, { text: statusText }, { quoted: msg }).catch(() => {});
   }
 
   loadConfig() {
@@ -359,8 +520,74 @@ class WhatsAppBotManager {
       return this.sock.sendMessage(from, { text: activateMsg }, { quoted: msg }).catch(() => {});
     }
 
-    // 1. IP DO SERVIDOR CS2 & CONEXÃO STEAM 1-CLIQUE
-    if (lower === '!ip' || lower === '!servidor' || lower === '!connect' || lower === '!server') {
+    // Normalização inteligente de comandos e suporte ao prefixo !mix <subcomando>
+    let cmd = lower;
+    if (cmd.startsWith('!mix ')) {
+      const rest = cmd.slice(5).trim();
+      if (rest.startsWith('entrar') || rest.startsWith('join') || rest.startsWith('jogar')) {
+        cmd = '!entrar';
+      } else if (rest.startsWith('sair') || rest.startsWith('leave')) {
+        cmd = '!sair';
+      } else if (rest.startsWith('sortear') || rest.startsWith('times') || rest.startsWith('draw')) {
+        cmd = '!sortear';
+      } else if (rest.startsWith('ip') || rest.startsWith('servidor') || rest.startsWith('connect')) {
+        cmd = '!ip';
+      } else if (rest.startsWith('fila') || rest.startsWith('status') || rest.startsWith('players') || rest.startsWith('jogadores')) {
+        cmd = '!fila';
+      } else if (rest.startsWith('cancelar') || rest.startsWith('cancel')) {
+        cmd = '!cancelar';
+      } else if (rest.startsWith('lvl') || rest.startsWith('gc') || rest.startsWith('level') || rest.startsWith('nivel')) {
+        cmd = `!lvl ${rest.replace(/\D/g, '')}`;
+      } else if (rest.startsWith('ajuda') || rest.startsWith('help') || rest.startsWith('comandos')) {
+        cmd = '!ajuda';
+      } else if (rest.startsWith('criar') || rest.startsWith('novo') || rest.startsWith('new')) {
+        cmd = '!criar';
+      }
+    }
+
+    // 1. COMANDO PRINCIPAL: !mix ou !criar (Criação de Lobby 5v5 ou Exibição do Status)
+    if (cmd === '!mix' || cmd === '!criar') {
+      const activeData = this.getActiveMix();
+      // Se já houver um mix ativo em andamento
+      if (activeData && activeData.mix && activeData.mix.phase !== 'cancelled' && activeData.mix.phase !== 'finished') {
+        if (cmd === '!criar') {
+          return this.sock.sendMessage(from, {
+            text: `⚠️ *Já existe um mix em andamento no momento!* (${activeData.mix.name || activeData.mix.id})\n\nDigite *!fila* para ver os jogadores ou *!cancelar* se desejar reiniciar a fila.`
+          }, { quoted: msg }).catch(() => {});
+        }
+        return this.sendLobbyStatus(from, msg, activeData.mix);
+      }
+
+      // Nenhum mix aberto: CRIA UM NOVO LOBBY 5v5 AUTOMATICAMENTE!
+      const mix = this.createMixFromWhatsApp(senderPhone, senderName);
+      const publicUrl = this.getPublicUrl(`/?room=${mix.id}`);
+      const creatorLvl = mix.players[0]?.level || 16;
+
+      let slotsStr = `1. 👑 *${senderName}* [Lvl ${creatorLvl} GC]\n`;
+      for (let i = 2; i <= 10; i++) {
+        slotsStr += `${i}. ⏳ _[Vaga Aberta]_\n`;
+      }
+
+      const createMsg =
+        `🎮 *CS2 MIX HUB • NOVO LOBBY 5v5 CRIADO!*\n\n` +
+        `👑 *Criado por:* *${senderName}* [Lvl ${creatorLvl} GC]\n` +
+        `📍 *Sala:* ${mix.name}\n` +
+        `👥 *Vagas:* *1/10* (Faltam 9 vagas para fechar)\n\n` +
+        `📋 *Fila da Partida:*\n` +
+        `${slotsStr}\n` +
+        `💬 *Comandos Rápidos no WhatsApp:*\n` +
+        `• Digite *!entrar* para entrar na fila\n` +
+        `• Digite *!sair* para liberar sua vaga\n` +
+        `• Digite *!lvl <1-21>* para salvar seu nível GC (ex: *!lvl 18*)\n` +
+        `• Digite *!sortear* quando fechar 10 jogadores\n` +
+        `• Digite *!ip* para ver o IP do servidor CS2\n\n` +
+        `👉 Acompanhe ao vivo pelo navegador: ${publicUrl}`;
+
+      return this.sock.sendMessage(from, { text: createMsg }, { quoted: msg }).catch(() => {});
+    }
+
+    // 2. IP DO SERVIDOR CS2 & CONEXÃO STEAM 1-CLIQUE (!ip, !servidor, !connect)
+    if (cmd === '!ip' || cmd === '!servidor' || cmd === '!connect' || cmd === '!server') {
       const activeData = this.getActiveMix();
       const mix = activeData?.mix;
       const ip = (mix?.serverIp || this.config.serverConnect || this.discordBotRef?.config?.serverConnect || '').trim();
@@ -385,10 +612,10 @@ class WhatsAppBotManager {
       return this.sock.sendMessage(from, { text: ipText }, { quoted: msg }).catch(() => {});
     }
 
-    // 2. SALVAR NÍVEL GAMERS CLUB (GC)
-    if (lower.startsWith('!lvl') || lower.startsWith('!gc') || lower.startsWith('!level')) {
+    // 3. SALVAR NÍVEL GAMERS CLUB (!lvl, !gc, !level, !nivel)
+    if (cmd.startsWith('!lvl') || cmd.startsWith('!gc') || cmd.startsWith('!level') || cmd.startsWith('!nivel')) {
       const parts = clean.split(/\s+/);
-      const parsed = parseInt(parts[1], 10);
+      const parsed = parseInt(parts[1] || cmd.replace(/\D/g, ''), 10);
 
       if (isNaN(parsed) || parsed < 1 || parsed > 21) {
         return this.sock.sendMessage(from, {
@@ -404,7 +631,7 @@ class WhatsAppBotManager {
         source: 'whatsapp',
       });
 
-      // Update in active mix if already joined
+      // Atualiza no mix ativo se já estiver na fila
       const activeData = this.getActiveMix();
       if (activeData?.mix?.players) {
         const found = activeData.mix.players.find(p => p.id === profileKey || p.phone === senderPhone);
@@ -423,56 +650,25 @@ class WhatsAppBotManager {
       }, { quoted: msg }).catch(() => {});
     }
 
-    // 3. MOSTRAR FILA / JOGADORES / STATUS DO LOBBY
-    if (lower === '!fila' || lower === '!jogadores' || lower === '!players' || lower === '!mix' || lower === '!status') {
+    // 4. MOSTRAR FILA / JOGADORES / STATUS DO LOBBY (!fila, !status, !jogadores, !players)
+    if (cmd === '!fila' || cmd === '!jogadores' || cmd === '!players' || cmd === '!status') {
       const activeData = this.getActiveMix();
-      if (!activeData || !activeData.mix) {
+      if (!activeData || !activeData.mix || activeData.mix.phase === 'cancelled' || activeData.mix.phase === 'finished') {
         const publicUrl = this.getPublicUrl();
         return this.sock.sendMessage(from, {
-          text: `ℹ️ *Nenhum mix aberto no momento!*\n\nCrie uma nova partida agora pelo Hub:\n👉 ${publicUrl}`
+          text: `ℹ️ *Nenhum mix aberto no momento!*\n\nDigite *!mix* para criar um novo lobby 5v5 agora mesmo, ou acesse pelo navegador:\n👉 ${publicUrl}`
         }, { quoted: msg }).catch(() => {});
       }
 
-      const mix = activeData.mix;
-      const count = mix.players?.length || 0;
-      const remaining = Math.max(0, 10 - count);
-      const publicUrl = this.getPublicUrl(`/?room=${mix.id}`);
-
-      let listStr = '';
-      for (let i = 0; i < 10; i++) {
-        const p = mix.players?.[i];
-        if (p) {
-          const capBadge = (i === 0 || p.isCaptain) ? '👑 ' : '';
-          const name = p.username || p.nick || p.name || 'Jogador';
-          const lvl = p.level || p.gcLevel || 16;
-          listStr += `${i + 1}. ${capBadge}*${name}* [Lvl ${lvl} GC]\n`;
-        } else {
-          listStr += `${i + 1}. ⏳ _[Vaga Aberta]_\n`;
-        }
-      }
-
-      const statusText =
-        `🎮 *CS2 MIX 5v5 • STATUS DO LOBBY*\n` +
-        `📍 *Sala:* ${mix.name || `Mix #${mix.id}`}\n` +
-        `👥 *Vagas:* *${count}/10* (${remaining} restante(s))\n\n` +
-        `📋 *Lista de Jogadores Confirmados:*\n` +
-        `${listStr}\n` +
-        `💬 *Comandos Rápidos no WhatsApp:*\n` +
-        `• Digite *!entrar* para garantir sua vaga\n` +
-        `• Digite *!sair* para liberar sua vaga\n` +
-        `• Digite *!lvl <1-21>* para salvar seu nível GC\n` +
-        `• Digite *!ip* para ver o servidor e conectar\n\n` +
-        `👉 Ou acesse pelo navegador: ${publicUrl}`;
-
-      return this.sock.sendMessage(from, { text: statusText }, { quoted: msg }).catch(() => {});
+      return this.sendLobbyStatus(from, msg, activeData.mix);
     }
 
-    // 4. ENTRAR NO MIX PELO WHATSAPP
-    if (lower === '!entrar' || lower === '!jogar' || lower === '!join') {
+    // 5. ENTRAR NO MIX PELO WHATSAPP (!entrar, !jogar, !join)
+    if (cmd === '!entrar' || cmd === '!jogar' || cmd === '!join') {
       const activeData = this.getActiveMix();
-      if (!activeData || !activeData.mix) {
+      if (!activeData || !activeData.mix || activeData.mix.phase === 'cancelled' || activeData.mix.phase === 'finished') {
         return this.sock.sendMessage(from, {
-          text: `⚠️ *Não há nenhum mix aberto no momento.*\nCrie uma sala primeiro em: ${this.getPublicUrl()}`
+          text: `⚠️ *Não há nenhum mix aberto no momento.*\n\nDigite *!mix* para criar um novo lobby 5v5 agora mesmo!`
         }, { quoted: msg }).catch(() => {});
       }
 
@@ -498,6 +694,7 @@ class WhatsAppBotManager {
         nick: senderName,
         username: senderName,
         name: senderName,
+        displayName: senderName,
         phone: senderPhone,
         level: savedLevel || 16,
         source: 'whatsapp',
@@ -507,6 +704,16 @@ class WhatsAppBotManager {
       mix.players.push(newPlayer);
       if (activeData.source === 'discord' && typeof this.discordBotRef?.syncToWebRoom === 'function') {
         this.discordBotRef.syncToWebRoom(mix);
+      } else if (this.webRoomsRef && mix.id) {
+        const room = this.webRoomsRef.get(mix.id);
+        if (room && Array.isArray(room.players)) {
+          room.players.push({
+            id: profileKey,
+            nick: senderName,
+            level: savedLevel || 16,
+            ready: true,
+          });
+        }
       }
 
       const count = mix.players.length;
@@ -523,8 +730,8 @@ class WhatsAppBotManager {
       return;
     }
 
-    // 5. SAIR DO MIX
-    if (lower === '!sair' || lower === '!leave') {
+    // 6. SAIR DO MIX (!sair, !leave)
+    if (cmd === '!sair' || cmd === '!leave') {
       const activeData = this.getActiveMix();
       if (!activeData || !activeData.mix) return;
       const mix = activeData.mix;
@@ -540,6 +747,12 @@ class WhatsAppBotManager {
       mix.players.splice(idx, 1);
       if (activeData.source === 'discord' && typeof this.discordBotRef?.syncToWebRoom === 'function') {
         this.discordBotRef.syncToWebRoom(mix);
+      } else if (this.webRoomsRef && mix.id) {
+        const room = this.webRoomsRef.get(mix.id);
+        if (room && Array.isArray(room.players)) {
+          const rIdx = room.players.findIndex(p => p.id === profileKey);
+          if (rIdx !== -1) room.players.splice(rIdx, 1);
+        }
       }
 
       return this.sock.sendMessage(from, {
@@ -547,16 +760,104 @@ class WhatsAppBotManager {
       }, { quoted: msg }).catch(() => {});
     }
 
-    // 6. AJUDA E COMANDOS
-    if (lower === '!ajuda' || lower === '!help') {
+    // 7. SORTEAR TIMES COM SNAKE-DRAFT GC (!sortear, !times)
+    if (cmd === '!sortear' || cmd === '!times') {
+      const activeData = this.getActiveMix();
+      if (!activeData || !activeData.mix || activeData.mix.phase === 'cancelled' || activeData.mix.phase === 'finished') {
+        return this.sock.sendMessage(from, {
+          text: `⚠️ *Nenhum mix ativo no momento para sortear.* Digite *!mix* para criar um!`
+        }, { quoted: msg }).catch(() => {});
+      }
+
+      const mix = activeData.mix;
+      if (!mix.players || mix.players.length < 2) {
+        return this.sock.sendMessage(from, {
+          text: `⚠️ *Jogadores insuficientes.* É necessário pelo menos 2 jogadores no lobby para sortear os times! (Atual: ${mix.players?.length || 0}/10)`
+        }, { quoted: msg }).catch(() => {});
+      }
+
+      // Balance teams
+      if (this.discordBotRef && typeof this.discordBotRef.balanceTeams === 'function') {
+        this.discordBotRef.balanceTeams(mix);
+      } else {
+        this.balanceTeamsLocal(mix);
+      }
+
+      mix.phase = 'teams';
+
+      if (activeData.source === 'discord' && typeof this.discordBotRef?.syncToWebRoom === 'function') {
+        this.discordBotRef.syncToWebRoom(mix);
+      } else if (this.webRoomsRef && mix.id) {
+        const room = this.webRoomsRef.get(mix.id);
+        if (room) {
+          room.teamA = mix.teamA;
+          room.teamB = mix.teamB;
+          room.phase = 'teams';
+        }
+      }
+
+      const listA = (mix.teamA?.players || []).map((p, idx) => `${idx === 0 ? '👑 ' : ''}*${p.nick || p.username}* [Lvl ${p.level || 16}]`).join('\n• ');
+      const listB = (mix.teamB?.players || []).map((p, idx) => `${idx === 0 ? '👑 ' : ''}*${p.nick || p.username}* [Lvl ${p.level || 16}]`).join('\n• ');
+
+      const drawText =
+        `⚔️ *CS2 MIX HUB • TIMES SORTEADOS (SNAKE-DRAFT GC)*\n\n` +
+        `🔵 *TIME A (${mix.teamA?.side || 'CT'})* — Média Lvl ${mix.teamA?.avgLevel || 16}\n` +
+        `• ${listA}\n\n` +
+        `🟡 *TIME B (${mix.teamB?.side || 'TR'})* — Média Lvl ${mix.teamB?.avgLevel || 16}\n` +
+        `• ${listB}\n\n` +
+        `⚖️ *Equilíbrio do Confronto:* ${mix.balancePct || 95}%\n\n` +
+        `👉 Digite *!ip* para receber o endereço do servidor CS2 e o link Steam 1-Clique!`;
+
+      return this.sock.sendMessage(from, { text: drawText }, { quoted: msg }).catch(() => {});
+    }
+
+    // 8. CANCELAR O MIX ATIVO (!cancelar)
+    if (cmd === '!cancelar') {
+      const activeData = this.getActiveMix();
+      if (!activeData || !activeData.mix || activeData.mix.phase === 'cancelled' || activeData.mix.phase === 'finished') {
+        return this.sock.sendMessage(from, {
+          text: `⚠️ *Nenhum mix ativo no momento para cancelar.*`
+        }, { quoted: msg }).catch(() => {});
+      }
+
+      const mix = activeData.mix;
+      mix.phase = 'cancelled';
+
+      if (this.discordBotRef && this.discordBotRef.activeMixes) {
+        for (const [k, m] of this.discordBotRef.activeMixes.entries()) {
+          if (m.id === mix.id) {
+            this.discordBotRef.activeMixes.delete(k);
+          }
+        }
+      }
+
+      if (this.webRoomsRef && mix.id) {
+        this.webRoomsRef.delete(mix.id);
+        if (this.discordBotRef && typeof this.discordBotRef.onRoomUpdated === 'function') {
+          try {
+            this.discordBotRef.onRoomUpdated(mix.id, null);
+          } catch (_) {}
+        }
+      }
+
+      return this.sock.sendMessage(from, {
+        text: `❌ *O Mix 5v5 (${mix.name || mix.id}) foi cancelado!*\n\nPara iniciar uma nova partida, qualquer membro pode digitar *!mix*.`
+      }, { quoted: msg }).catch(() => {});
+    }
+
+    // 9. AJUDA E GUIA DE COMANDOS (!ajuda, !help, !comandos)
+    if (cmd === '!ajuda' || cmd === '!help' || cmd === '!comandos') {
       const helpText =
-        `🤖 *COMANDOS DO BOT CS2 NO WHATSAPP*\n\n` +
-        `• *!fila* ou *!mix* - Ver a lista dos 10 jogadores e status do lobby\n` +
-        `• *!entrar* - Entrar na fila do mix direto pelo WhatsApp\n` +
-        `• *!sair* - Sair da fila do mix\n` +
-        `• *!ip* - Ver o IP do servidor e link para conectar pela Steam\n` +
-        `• *!lvl <1-21>* - Salvar seu nível da Gamers Club (ex: *!lvl 18*)\n` +
-        `• *!ajuda* - Ver esta lista de comandos\n\n` +
+        `🤖 *COMANDOS OFICIAIS DO CS2 MIX HUB NO WHATSAPP*\n\n` +
+        `• *!mix* — Cria um novo lobby 5v5 ou exibe a fila atual\n` +
+        `• *!entrar* — Entra na fila do mix ativo\n` +
+        `• *!sair* — Sai da fila e libera sua vaga\n` +
+        `• *!sortear* — Sorteia os times A (CT) e B (TR) pelo Snake-Draft GC\n` +
+        `• *!ip* — Envia o IP do servidor CS2 e o link Steam 1-Clique\n` +
+        `• *!lvl <1-21>* — Salva seu nível Gamers Club permanente (ex: *!lvl 18*)\n` +
+        `• *!fila* — Exibe a lista dos 10 jogadores confirmados\n` +
+        `• *!cancelar* — Cancela a partida atual para reiniciar\n` +
+        `• *!ajuda* — Exibe esta lista de comandos\n\n` +
         `🌐 *Hub Web:* ${this.getPublicUrl()}`;
 
       return this.sock.sendMessage(from, { text: helpText }, { quoted: msg }).catch(() => {});
