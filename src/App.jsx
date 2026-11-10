@@ -1909,6 +1909,12 @@ export default function App() {
           soundEnabled={soundEnabled}
         />
 
+        <WhatsAppModal
+          isOpen={whatsappModalOpen}
+          onClose={() => setWhatsappModalOpen(false)}
+          soundEnabled={soundEnabled}
+        />
+
         <PlayerStoryCardModal
           isOpen={storyCardOpen}
           onClose={() => setStoryCardOpen(false)}
@@ -2090,6 +2096,12 @@ export default function App() {
           autoGsiBomb={Boolean(room.discordGsiBomb)}
           autoStats={room.discordAutoStats !== false}
           onSaveWebhook={handleSaveDiscordWebhook}
+          soundEnabled={soundEnabled}
+        />
+
+        <WhatsAppModal
+          isOpen={whatsappModalOpen}
+          onClose={() => setWhatsappModalOpen(false)}
           soundEnabled={soundEnabled}
         />
 
