@@ -37,6 +37,7 @@ import {
   getMapImageUrl,
   normalizeMapName,
 } from './matchHistory.js';
+import { scheduleSave, clearMixPersistence } from './mixPersistence.js';
 import { hardwareDealsManager, CATEGORY_LABELS } from './hardwareDeals.js';
 import { whatsappBot } from './whatsappBot.js';
 import { SteamScannerService } from './steamScanner.js';
@@ -3059,6 +3060,7 @@ class DiscordBotManager {
       this.activeMixes.set(channelId, mix);
       this.syncToWebRoom(mix);
       whatsappBot.notifyMixCreated(mix).catch(() => {});
+      scheduleSave(100);
     }
     return mix;
   }
@@ -3122,6 +3124,8 @@ class DiscordBotManager {
         } catch (_) {}
       }
     }
+    clearMixPersistence(mix.id);
+    scheduleSave(50);
     return mix;
   }
 
@@ -3235,6 +3239,7 @@ class DiscordBotManager {
         matchFormat: mix.format || 'MD1',
       };
       this.webRoomsRef.set(roomId, room);
+      scheduleSave(100);
       if (typeof this.onRoomUpdated === 'function') {
         try {
           this.onRoomUpdated(roomId, room);

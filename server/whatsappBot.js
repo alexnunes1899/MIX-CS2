@@ -20,6 +20,7 @@ const CONFIG_PATH = path.join(DATA_DIR, 'whatsappConfig.json');
 const CONFIG_DEFAULT_PATH = path.join(DATA_DIR, 'whatsappConfig.default.json');
 const PROFILES_PATH = path.join(DATA_DIR, 'playerProfiles.json');
 const GROUPS_PATH = path.join(DATA_DIR, 'whatsappGroups.json');
+import { scheduleSave, clearMixPersistence } from './mixPersistence.js';
 
 class WhatsAppBotManager {
   constructor() {
@@ -206,6 +207,7 @@ class WhatsAppBotManager {
       }
     }
 
+    scheduleSave(100);
     return newMix;
   }
 
@@ -221,6 +223,7 @@ class WhatsAppBotManager {
     } catch (e) {
       console.warn('[WHATSAPP] Falha ao sincronizar lobby com Discord:', e.message);
     }
+    scheduleSave(100);
   }
 
   balanceTeamsLocal(mix) {
@@ -1058,6 +1061,9 @@ class WhatsAppBotManager {
           } catch (_) {}
         }
       }
+
+      clearMixPersistence(mix.id);
+      scheduleSave(50);
 
       return this.replyMessage(
         from,

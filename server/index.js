@@ -42,6 +42,13 @@ import { communityClips } from './communityClips.js';
 import { whatsappBot } from './whatsappBot.js';
 import { renderWhatsAppAdminHtml } from './whatsappHtml.js';
 import { renderProfileHtml } from './profileHtml.js';
+import {
+  setPersistenceRefs,
+  loadActiveMixState,
+  scheduleSave,
+  saveActiveMixStateNow,
+  clearMixPersistence,
+} from './mixPersistence.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -202,8 +209,18 @@ const MOCK_BOTS = [
   { id: 'bot-10', nick: 'bit', level: 16, faceitLevel: 8, faceitElo: 1920, cs2Hours: 13800, side: 'CT', ready: true, avatar: '🧠' },
 ];
 
-// In-memory rooms
+// In-memory rooms (carregadas com persistência automática de disco)
 const rooms = new Map();
+const persistedMixState = loadActiveMixState();
+if (persistedMixState && Array.isArray(persistedMixState.rooms)) {
+  for (const r of persistedMixState.rooms) {
+    if (r && r.id && r.phase !== 'finished' && r.phase !== 'cancelled') {
+      r.lastActivity = Date.now();
+      rooms.set(r.id, r);
+      console.log(`💾 [PERSISTÊNCIA] Sala ${r.id} (${r.name || 'Sem nome'}, ${r.players?.length || 0}/10 jogadores) restaurada do disco!`);
+    }
+  }
+}
 
 function touchRoomActivity(room) {
   if (room) {
@@ -381,6 +398,7 @@ function emitRoomState(targetRoomId, room) {
   if (!room) return;
   const safeRoom = getSafeRoomState(room);
   io.to(targetRoomId).emit('room_state', safeRoom);
+  scheduleSave();
 }
 
 function getRoomAndTouch(roomId) {
@@ -3103,12 +3121,22 @@ app.use((req, res) => {
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`🎮 [CS2 MIX HUB] Servidor rodando na porta ${PORT} em 0.0.0.0`);
+  setPersistenceRefs(rooms, discordBotManager);
+  if (persistedMixState && Array.isArray(persistedMixState.discordMixes)) {
+    for (const item of persistedMixState.discordMixes) {
+      if (item && item.channelId && item.mix && item.mix.phase !== 'finished' && item.mix.phase !== 'cancelled') {
+        discordBotManager.activeMixes.set(item.channelId, item.mix);
+        console.log(`💾 [PERSISTÊNCIA] Mix ${item.mix.id} (${item.mix.name}, ${item.mix.players?.length || 0}/10 jogadores) restaurado no Discord!`);
+      }
+    }
+  }
   discordBotManager.setWebRoomsReference(rooms);
   discordBotManager.onRoomUpdated = (roomId, room) => {
     if (room) {
       emitRoomState(roomId, room);
     }
     broadcastRoomsList();
+    scheduleSave();
   };
   discordBotManager.onMatchRecorded = (match) => {
     io.emit('match_history_updated', getMatchHistoryState());
@@ -3141,7 +3169,10 @@ server.listen(PORT, '0.0.0.0', () => {
 
 // Graceful shutdown for Railway & container orchestrators
 const shutdown = (signal) => {
-  console.log(`🛑 [CS2 MIX HUB] Recebido ${signal}, encerrando servidor graciosamente...`);
+  console.log(`🛑 [CS2 MIX HUB] Recebido ${signal}, salvando mixes e encerrando servidor graciosamente...`);
+  try {
+    saveActiveMixStateNow();
+  } catch (_) {}
   server.close(() => {
     console.log('✓ Servidor encerrado com sucesso.');
     process.exit(0);
@@ -3150,4 +3181,10 @@ const shutdown = (signal) => {
 };
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('beforeExit', () => {
+  try {
+    saveActiveMixStateNow();
+  } catch (_) {}
+});
 process.on('SIGINT', () => shutdown('SIGINT'));
