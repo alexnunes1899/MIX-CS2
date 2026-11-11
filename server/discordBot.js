@@ -27,6 +27,7 @@ import {
 import fs from 'fs';
 import path from 'path';
 import dgram from 'dgram';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import {
   loadMatchHistory as loadUnifiedMatchHistory,
@@ -57,6 +58,7 @@ const CONFIG_FILE = path.join(DATA_DIR, 'discordBotConfig.json');
 const PROFILES_FILE = path.join(DATA_DIR, 'playerProfiles.json');
 const MATCH_HISTORY_FILE = path.join(DATA_DIR, 'matchHistory.json');
 const LEADERBOARD_FILE = path.join(DATA_DIR, 'leaderboard.json');
+const ROULETTE_STATE_FILE = path.join(DATA_DIR, 'mapRouletteState.json');
 
 // Validates numeric Discord Snowflake ID (17 to 20 digits)
 export const isSnowflake = (id) => typeof id === 'string' && /^\d{17,20}$/.test(id);
@@ -1237,7 +1239,14 @@ class DiscordBotManager {
 
       new SlashCommandBuilder()
         .setName('roleta')
-        .setDescription('Gira a roleta rápida de mapas oficiais do CS2 (CSPRNG Fisher-Yates)'),
+        .setDescription('Roleta justa de mapas (não repete até sair todos) ou escolha um mapa')
+        .addStringOption((opt) =>
+          opt
+            .setName('mapa')
+            .setDescription('Opcional: escolher um mapa específico em vez de sortear')
+            .setRequired(false)
+            .addChoices(...OFFICIAL_MAPS.map((m) => ({ name: m.name, value: m.id })))
+        ),
 
       new SlashCommandBuilder()
         .setName('stats')
@@ -1656,6 +1665,18 @@ class DiscordBotManager {
       return this.prefixDraw(message);
     }
     if (
+      command === 'escolher' ||
+      command === 'escolhermapa' ||
+      command === 'escolher-mapa' ||
+      command === 'pickmapa' ||
+      command === 'setmapa'
+    ) {
+      return this.prefixChooseMap(message, args.slice(1).join(' ').replace(/^mapa\s*/i, '').trim());
+    }
+    if ((command === 'mapa' || command === 'map') && subArg && this.findOfficialMap(args.slice(1).join(' '))) {
+      return this.prefixChooseMap(message, args.slice(1).join(' '));
+    }
+    if (
       command === 'sortearmapa' ||
       command === 'sortear-mapa' ||
       command === 'sorteiomapa' ||
@@ -2003,7 +2024,7 @@ class DiscordBotManager {
     const embed = this.buildTeamsEmbed(mix);
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(`mix_veto:${mix.id}`).setLabel('Iniciar Pick & Ban').setEmoji('🗳️').setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId(`mix_roulette:${mix.id}`).setLabel('Roleta Rápida').setEmoji('🎲').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(`mix_roulette:${mix.id}`).setLabel('Roleta Rápida').setEmoji('🎲').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId(`mix_pick_map:${mix.id}`).setLabel('Escolher Mapa').setEmoji('🗺️').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId(`mix_voice:${mix.id}`).setLabel('Mover para Calls').setEmoji('📞').setStyle(ButtonStyle.Secondary)
     );
     return message.reply({ embeds: [embed], components: [row] });
@@ -2028,65 +2049,244 @@ class DiscordBotManager {
     });
   }
 
-  async prefixRoulette(message) {
-    let mix = this.activeMixes.get(message.channelId);
-    if (!mix && this.activeMixes.size > 0) {
-      mix = Array.from(this.activeMixes.values()).find((m) => m && m.phase !== 'cancelled' && m.phase !== 'finished') || Array.from(this.activeMixes.values())[0];
+  // ==========================================
+  // ROLETA JUSTA DE MAPAS (SEM REPETIÇÃO) + ESCOLHA MANUAL
+  // ==========================================
+
+  loadRouletteState() {
+    try {
+      if (fs.existsSync(ROULETTE_STATE_FILE)) {
+        return JSON.parse(fs.readFileSync(ROULETTE_STATE_FILE, 'utf8')) || {};
+      }
+    } catch (e) {
+      console.warn('[ROLETA] Falha ao ler estado da roleta:', e.message);
+    }
+    return {};
+  }
+
+  saveRouletteState(state) {
+    try {
+      if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+      fs.writeFileSync(ROULETTE_STATE_FILE, JSON.stringify(state, null, 2), 'utf8');
+    } catch (e) {
+      console.warn('[ROLETA] Falha ao salvar estado da roleta:', e.message);
+    }
+  }
+
+  getRouletteScope(guildOrChannelId) {
+    return String(guildOrChannelId || 'global');
+  }
+
+  shuffleMapIds() {
+    const ids = OFFICIAL_MAPS.map((m) => m.id);
+    // Fisher-Yates com gerador criptográfico (crypto.randomInt)
+    for (let i = ids.length - 1; i > 0; i--) {
+      const j = crypto.randomInt(0, i + 1);
+      [ids[i], ids[j]] = [ids[j], ids[i]];
+    }
+    return ids;
+  }
+
+  /**
+   * Sorteio justo estilo "saco de mapas": todos os mapas da rotação saem
+   * uma vez antes de qualquer mapa poder repetir, e o primeiro mapa de um
+   * novo ciclo nunca é igual ao último mapa jogado.
+   */
+  drawFairMap(scopeId) {
+    const scope = this.getRouletteScope(scopeId);
+    const state = this.loadRouletteState();
+    const entry = state[scope] || { bag: [], lastMap: null, history: [] };
+    const validIds = new Set(OFFICIAL_MAPS.map((m) => m.id));
+
+    entry.bag = (Array.isArray(entry.bag) ? entry.bag : []).filter((id) => validIds.has(id));
+    if (entry.bag.length === 0) {
+      entry.bag = this.shuffleMapIds();
+      if (entry.bag.length > 1 && entry.bag[0] === entry.lastMap) {
+        const swapIdx = crypto.randomInt(1, entry.bag.length);
+        [entry.bag[0], entry.bag[swapIdx]] = [entry.bag[swapIdx], entry.bag[0]];
+      }
     }
 
-    const randIdx = Math.floor(Math.random() * OFFICIAL_MAPS.length);
-    const drawn = OFFICIAL_MAPS[randIdx];
+    const mapId = entry.bag.shift();
+    entry.lastMap = mapId;
+    entry.history = [mapId, ...(Array.isArray(entry.history) ? entry.history : [])].slice(0, 20);
+    state[scope] = entry;
+    this.saveRouletteState(state);
 
-    if (mix) {
-      mix.veto = mix.veto || {};
-      mix.veto.deciderMap = drawn;
-      mix.finalMap = { name: drawn.name, file: drawn.id };
-      mix.phase = 'live';
-      this.syncToWebRoom(mix);
-      this.updateLobbyInChannels(mix);
+    const drawn = OFFICIAL_MAPS.find((m) => m.id === mapId) || OFFICIAL_MAPS[0];
+    return { drawn, remainingInCycle: entry.bag.length };
+  }
 
-      if (this.config.autoMoveVoice && message.guild) {
-        this.executeVoiceMover(message.guild, mix, message.channel).catch(() => {});
-      }
+  /** Marca um mapa escolhido manualmente como jogado, para a roleta não repeti-lo no ciclo atual. */
+  registerMapPlayed(scopeId, mapId) {
+    if (!mapId) return;
+    const scope = this.getRouletteScope(scopeId);
+    const state = this.loadRouletteState();
+    const entry = state[scope] || { bag: [], lastMap: null, history: [] };
+    entry.bag = (Array.isArray(entry.bag) ? entry.bag : []).filter((id) => id !== mapId);
+    entry.lastMap = mapId;
+    entry.history = [mapId, ...(Array.isArray(entry.history) ? entry.history : [])].slice(0, 20);
+    state[scope] = entry;
+    this.saveRouletteState(state);
+  }
 
-      const readyEmbed = this.buildMatchReadyEmbed(mix);
-      const components = this.buildMatchReadyButtons(mix);
+  findOfficialMap(input) {
+    const q = String(input || '').toLowerCase().replace(/^de_/, '').replace(/[^a-z0-9]/g, '');
+    if (!q) return null;
+    const aliases = { d2: 'dust2', dust: 'dust2', dustii: 'dust2', dust2: 'dust2' };
+    const target = aliases[q] || q;
+    return (
+      OFFICIAL_MAPS.find((m) => m.id.replace(/^de_/, '') === target) ||
+      OFFICIAL_MAPS.find((m) => m.name.toLowerCase().replace(/[^a-z0-9]/g, '') === target) ||
+      OFFICIAL_MAPS.find((m) => m.id.replace(/^de_/, '').startsWith(target) || m.name.toLowerCase().startsWith(target)) ||
+      null
+    );
+  }
 
-      const serverClean = (mix.serverIp || this.config.serverConnect || '103.14.27.41:25054').replace(/^connect\s+/i, '');
-      const steamDirect = this.getPublicWebUrl(`/connect?ip=${encodeURIComponent(serverClean)}`);
+  buildMapPickMenu(mix) {
+    const select = new StringSelectMenuBuilder()
+      .setCustomId(`mix_map_select:${mix?.id || 'none'}`)
+      .setPlaceholder('🗺️ Escolha o mapa da partida...')
+      .addOptions([
+        { label: 'Sortear na Roleta (sem repetir)', value: 'random', description: 'Sorteio justo: não repete mapa até sair todos', emoji: '🎲' },
+        ...OFFICIAL_MAPS.map((m) => ({ label: m.name, value: m.id, description: `Jogar em ${m.id}`, emoji: m.emoji })),
+      ]);
+    return [new ActionRowBuilder().addComponents(select)];
+  }
 
-      const sent = await message.channel.send({
+  canChooseMap(mix, userId) {
+    if (!mix || !userId) return false;
+    if (userId === mix.creatorId) return true;
+    if (userId === mix.teamA?.captain?.id || userId === mix.teamB?.captain?.id) return true;
+    return (mix.players || []).some((p) => p.id === userId);
+  }
+
+  /**
+   * Fluxo único para definir o mapa do mix (roleta ou escolha manual) e liberar a partida.
+   * Sempre envia o anúncio com o mapa no canal para ninguém ficar sem ver o resultado.
+   */
+  async startMatchWithMap(mix, drawn, { channel, guild, source = 'roleta', user = null, remainingInCycle = null } = {}) {
+    if (mix.players?.length >= 2 && (!mix.teamA?.players?.length || !mix.teamB?.players?.length)) {
+      this.balanceTeams(mix);
+    }
+
+    mix.veto = mix.veto || { currentTurn: 'teamA', bannedMaps: [], remainingMaps: [...OFFICIAL_MAPS], history: [] };
+    mix.veto.deciderMap = drawn;
+    mix.finalMap = { name: drawn.name, file: drawn.id };
+    mix.matchMap = drawn.name;
+    mix.phase = 'live';
+
+    if (source !== 'roleta') {
+      this.registerMapPlayed(guild?.id || channel?.id, drawn.id);
+    }
+
+    this.syncToWebRoom(mix);
+    this.updateLobbyInChannels(mix);
+
+    if (this.config.autoMoveVoice && guild) {
+      this.executeVoiceMover(guild, mix, channel).catch(() => {});
+    }
+
+    const readyEmbed = this.buildMatchReadyEmbed(mix);
+    readyEmbed.setImage(drawn.image);
+    const components = this.buildMatchReadyButtons(mix);
+
+    const serverClean = (mix.serverIp || this.config.serverConnect || '103.14.27.41:25054').replace(/^connect\s+/i, '');
+    const steamDirect = this.getPublicWebUrl(`/connect?ip=${encodeURIComponent(serverClean)}`);
+    const tag = (cap, fallback) =>
+      isSnowflake(cap?.id) ? `<@${cap.id}>` : `**${cap?.displayName || cap?.username || cap?.nick || fallback}**`;
+
+    const header =
+      source === 'roleta'
+        ? `🎲 **MAPA SORTEADO PELA ROLETA:** ${drawn.emoji} **${drawn.name.toUpperCase()}** (\`${drawn.id}\`)!` +
+          (remainingInCycle !== null ? `\n♻️ Roleta justa: faltam **${remainingInCycle}** mapa(s) para sair antes de qualquer repetição.` : '')
+        : `🗺️ **MAPA ESCOLHIDO${user ? ` POR ${isSnowflake(user.id) ? `<@${user.id}>` : user.username}` : ''}:** ${drawn.emoji} **${drawn.name.toUpperCase()}** (\`${drawn.id}\`)!`;
+
+    const sent = await channel
+      ?.send({
         content:
-          `🎲 **MAPA SORTEADO PELA ROLETA:** ${drawn.emoji} **${drawn.name.toUpperCase()}** (\`${drawn.id}\`)!\n\n` +
-          `🗺️ **MAPA OFICIAL:** **${drawn.name}**\n` +
-          `🛡️ **${mix.teamA.name} (${mix.teamA.side}):** Capitão <@${mix.teamA.captain?.id}>\n` +
-          `💣 **${mix.teamB.name} (${mix.teamB.side}):** Capitão <@${mix.teamB.captain?.id}>\n\n` +
+          `${header}\n\n` +
+          `🛡️ **${mix.teamA?.name || 'Time A'} (${mix.teamA?.side || 'CT'}):** Capitão ${tag(mix.teamA?.captain, 'Capitão A')}\n` +
+          `💣 **${mix.teamB?.name || 'Time B'} (${mix.teamB?.side || 'TR'}):** Capitão ${tag(mix.teamB?.captain, 'Capitão B')}\n\n` +
           `💻 **Comando Console CS2:** \`connect ${serverClean}\`\n` +
           `🚀 **Steam 1-Clique:** ${steamDirect}`,
         embeds: [readyEmbed],
         components,
-      }).catch(() => null);
-
-      whatsappBot.notifyMatchReady(mix).catch(() => {});
-
-      this.startAutomaticLiveMonitoring(mix, message.channel, message.guild).catch((err) => {
-        console.warn('[BOT] Erro ao iniciar monitoramento automático:', err.message);
+      })
+      .catch((err) => {
+        console.warn('[ROLETA] Falha ao anunciar mapa no canal:', err.message);
+        return null;
       });
-      return sent;
+
+    this.startAutomaticLiveMonitoring(mix, channel, guild).catch((err) => {
+      console.warn('[BOT] Erro ao iniciar monitoramento automático:', err.message);
+    });
+    return sent;
+  }
+
+  resolveActiveMixForChannel(channelId) {
+    let mix = this.activeMixes.get(channelId);
+    if (!mix && this.activeMixes.size > 0) {
+      mix =
+        Array.from(this.activeMixes.values()).find((m) => m && m.phase !== 'cancelled' && m.phase !== 'finished') ||
+        Array.from(this.activeMixes.values())[0];
+    }
+    return mix || null;
+  }
+
+  async prefixRoulette(message) {
+    const mix = this.resolveActiveMixForChannel(message.channelId);
+    const { drawn, remainingInCycle } = this.drawFairMap(message.guild?.id || message.channelId);
+
+    if (mix) {
+      return this.startMatchWithMap(mix, drawn, {
+        channel: message.channel,
+        guild: message.guild,
+        source: 'roleta',
+        remainingInCycle,
+      });
     }
 
     const embed = new EmbedBuilder()
       .setTitle('🎲 ROLETA OFICIAL DE MAPAS CS2')
       .setColor(0xf59e0b)
       .setDescription(
-        `O algoritmo criptográfico sorteou o mapa para o confronto:\n\n` +
         `🗺️ **MAPA SORTEADO:** ${drawn.emoji} **${drawn.name.toUpperCase()}** (\`${drawn.id}\`)\n` +
+        `♻️ Roleta justa: faltam **${remainingInCycle}** mapa(s) para sair antes de qualquer repetição.\n` +
         `GL & HF!`
       )
       .setImage(drawn.image)
-      .setFooter({ text: 'CS2 Mix Hub • CSPRNG Fisher-Yates' })
+      .setFooter({ text: 'CS2 Mix Hub • Roleta justa sem repetição' })
       .setTimestamp();
     return message.reply({ embeds: [embed] });
+  }
+
+  async prefixChooseMap(message, mapArg) {
+    const mix = this.resolveActiveMixForChannel(message.channelId);
+    if (!mix) return message.reply('⚠️ Nenhum mix ativo no momento. Use `!mix` para abrir uma fila!');
+
+    if (!mapArg) {
+      return message.reply({
+        content: `🗺️ **Escolha o mapa da partida** (${mix.name}):\nOu digite direto, ex: \`!escolher mirage\``,
+        components: this.buildMapPickMenu(mix),
+      });
+    }
+
+    const drawn = this.findOfficialMap(mapArg);
+    if (!drawn) {
+      return message.reply(
+        `⚠️ Mapa **${mapArg}** não encontrado. Mapas disponíveis: ${OFFICIAL_MAPS.map((m) => `\`${m.name}\``).join(', ')}`
+      );
+    }
+    if (!this.canChooseMap(mix, message.author.id)) {
+      return message.reply('🚫 Apenas jogadores do mix, capitães ou o criador podem escolher o mapa.');
+    }
+    return this.startMatchWithMap(mix, drawn, {
+      channel: message.channel,
+      guild: message.guild,
+      source: 'escolha',
+      user: message.author,
+    });
   }
 
   async prefixCancel(message) {
@@ -2374,8 +2574,11 @@ class DiscordBotManager {
           `• \`!mix\` ou \`!criar\` — Abre uma nova fila 5v5 com botões interativos\n` +
           `• \`!entrar\` / \`!sair\` — Gerencia sua vaga no lobby\n` +
           `• \`!sortear\` — Sorteio inteligente e balanceamento snake-draft\n` +
+          `• \`!roleta\` — Roleta rápida de mapas justa (não repete até sair todos os 7 mapas)\n` +
+          `• \`!escolher [mapa]\` ou \`!mapa [nome]\` — Escolhe diretamente o mapa do mix (ex: \`!mapa mirage\` ou menu interativo)\n` +
           `• \`!veto\` — Pick & Ban oficial da Valve com escolha de lados CT/TR\n` +
-          `• \`!vitoria [A|B] [placar]\` — Registra a vitória, pontua no ranking e inicia votação de MVP\n` +
+          `• \`!revanche\` — Inicia revanche imediata mantendo os 10 jogadores com lados invertidos\n` +
+          `• \`!vitoria [A|B] [placar]\` — Registra a vitória, elege automaticamente MVP e Bagre da Partida e pontua no ranking\n` +
           `• \`!aovivo\` [parar] — Monitorar Partida com auto-atualização round a round: placar, CT/TR, HP e armas (ative antes ou durante o jogo!)\n` +
           `• \`!gsi\` — Instruções e download do Valve GSI para transmissão em tempo real\n` +
           `• \`!historico [qtde]\` — Histórico das últimas partidas finalizadas\n` +
@@ -3903,6 +4106,11 @@ class DiscordBotManager {
         .setCustomId(`mix_veto:${mix.id}`)
         .setLabel('Pick & Ban')
         .setEmoji('🗳️')
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId(`mix_pick_map:${mix.id}`)
+        .setLabel('Escolher Mapa')
+        .setEmoji('🗺️')
         .setStyle(ButtonStyle.Primary)
     );
 
@@ -4515,7 +4723,7 @@ class DiscordBotManager {
         const embed = this.buildTeamsEmbed(mix);
         const row = new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId(`mix_veto:${mix.id}`).setLabel('Iniciar Pick & Ban').setEmoji('🗳️').setStyle(ButtonStyle.Success),
-          new ButtonBuilder().setCustomId(`mix_roulette:${mix.id}`).setLabel('Roleta Rápida').setEmoji('🎲').setStyle(ButtonStyle.Primary),
+          new ButtonBuilder().setCustomId(`mix_roulette:${mix.id}`).setLabel('Roleta Rápida').setEmoji('🎲').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId(`mix_pick_map:${mix.id}`).setLabel('Escolher Mapa').setEmoji('🗺️').setStyle(ButtonStyle.Primary),
           new ButtonBuilder().setCustomId(`mix_voice:${mix.id}`).setLabel('Mover para Calls').setEmoji('📞').setStyle(ButtonStyle.Secondary)
         );
 
@@ -4575,7 +4783,7 @@ class DiscordBotManager {
       const embed = this.buildTeamsEmbed(mix);
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId(`mix_veto:${mix.id}`).setLabel('Iniciar Pick & Ban').setEmoji('🗳️').setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId(`mix_roulette:${mix.id}`).setLabel('Roleta Rápida').setEmoji('🎲').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId(`mix_roulette:${mix.id}`).setLabel('Roleta Rápida').setEmoji('🎲').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId(`mix_pick_map:${mix.id}`).setLabel('Escolher Mapa').setEmoji('🗺️').setStyle(ButtonStyle.Primary),
         new ButtonBuilder().setCustomId(`mix_voice:${mix.id}`).setLabel('Mover para Calls').setEmoji('📞').setStyle(ButtonStyle.Secondary)
       );
 
@@ -4635,6 +4843,7 @@ class DiscordBotManager {
       // Check if 1 map left (decider) -> Trigger Side Pick!
       if (veto.remainingMaps.length === 1) {
         veto.deciderMap = veto.remainingMaps[0];
+        this.registerMapPlayed(interaction.guild?.id || interaction.channelId, veto.deciderMap?.id);
         mix.phase = 'side_pick';
         this.syncToWebRoom(mix);
         this.updateLobbyInChannels(mix);
@@ -4740,48 +4949,38 @@ class DiscordBotManager {
       return;
     }
 
-    // 8. ROULETTE
+    // 8. ROULETTE (sorteio justo, sem repetir mapa até sair todos)
     if (action === 'mix_roulette') {
-      const randIdx = Math.floor(Math.random() * OFFICIAL_MAPS.length);
-      const drawn = OFFICIAL_MAPS[randIdx];
-      mix.veto.deciderMap = drawn;
-      mix.finalMap = { name: drawn.name, file: drawn.id };
-      mix.phase = 'live';
-      this.syncToWebRoom(mix);
-      this.updateLobbyInChannels(mix);
+      const { drawn, remainingInCycle } = this.drawFairMap(interaction.guild?.id || interaction.channelId);
 
-      if (this.config.autoMoveVoice) {
-        this.executeVoiceMover(interaction.guild, mix, interaction.channel).catch(() => {});
+      if (interaction.message?.id && interaction.message.id !== mix.lobbyMessageId) {
+        await interaction.update({ components: [] }).catch(() => {});
+      } else {
+        await interaction.deferUpdate().catch(() => {});
       }
 
-      const embed = this.buildMatchReadyEmbed(mix);
-      const components = this.buildMatchReadyButtons(mix);
-
-      await interaction.update({
-        content: `🎲 **MAPA DEFINIDO PELA ROLETA:** ${drawn.emoji} **${drawn.name.toUpperCase()}** (\`${drawn.id}\`)!`,
-        embeds: [embed],
-        components,
-      }).catch(() => {});
-
-      await interaction.channel.send({
-        content:
-          `🎲 **MAPA SORTEADO PELA ROLETA:** ${drawn.emoji} **${drawn.name.toUpperCase()}** (\`${drawn.id}\`)!\n\n` +
-          `🗺️ **MAPA OFICIAL:** **${drawn.name}**\n` +
-          `🛡️ **${mix.teamA.name} (${mix.teamA.side}):** Capitão <@${mix.teamA.captain?.id}>\n` +
-          `💣 **${mix.teamB.name} (${mix.teamB.side}):** Capitão <@${mix.teamB.captain?.id}>\n\n` +
-          `💻 **Comando Console CS2:** \`connect ${(mix.serverIp || this.config.serverConnect).replace(/^connect\s+/i, '')}\`\n` +
-          `🚀 **Steam 1-Clique:** ${this.getPublicWebUrl(`/connect?ip=${encodeURIComponent((mix.serverIp || this.config.serverConnect).replace(/^connect\s+/i, ''))}`)}`,
-        embeds: [embed],
-        components,
-      }).catch(() => {});
-
-      whatsappBot.notifyMatchReady(mix).catch(() => {});
-
-      // INICIAR MONITORAMENTO AUTOMÁTICO EM TEMPO REAL
-      this.startAutomaticLiveMonitoring(mix, interaction.channel, interaction.guild).catch((err) => {
-        console.warn('[BOT] Erro ao iniciar monitoramento automático:', err.message);
+      await this.startMatchWithMap(mix, drawn, {
+        channel: interaction.channel,
+        guild: interaction.guild,
+        source: 'roleta',
+        remainingInCycle,
       });
       return;
+    }
+
+    // 8.1 ESCOLHER MAPA MANUALMENTE
+    if (action === 'mix_pick_map') {
+      if (!this.canChooseMap(mix, user.id)) {
+        return interaction.reply({
+          content: '🚫 Apenas jogadores do mix, capitães ou o criador podem escolher o mapa.',
+          ephemeral: true,
+        });
+      }
+      return interaction.reply({
+        content: `🗺️ **Escolha o mapa da partida** (${mix.name}):`,
+        components: this.buildMapPickMenu(mix),
+        ephemeral: true,
+      });
     }
 
     // 9. VOICE MOVER
@@ -5356,6 +5555,42 @@ class DiscordBotManager {
       const actionButtons = hardwareDealsManager.buildActionButtons(deals, { category });
       return interaction.update({ embeds: [embed], components: [selectMenu, ...actionButtons] });
     }
+    if (customId.startsWith('mix_map_select')) {
+      const mixId = customId.split(':')[1];
+      const mix =
+        (mixId && (this.activeMixes.get(mixId) || Array.from(this.activeMixes.values()).find((m) => m && m.id === mixId))) ||
+        this.resolveActiveMixForChannel(interaction.channelId);
+      if (!mix) {
+        return interaction.reply({ content: '⚠️ Mix não encontrado ou já encerrado.', ephemeral: true });
+      }
+      if (!this.canChooseMap(mix, interaction.user.id)) {
+        return interaction.reply({ content: '🚫 Apenas jogadores do mix, capitães ou o criador podem escolher o mapa.', ephemeral: true });
+      }
+      const value = interaction.values?.[0];
+      let drawn;
+      let remainingInCycle = null;
+      let source = 'escolha';
+      if (value === 'random') {
+        ({ drawn, remainingInCycle } = this.drawFairMap(interaction.guild?.id || interaction.channelId));
+        source = 'roleta';
+      } else {
+        drawn = OFFICIAL_MAPS.find((m) => m.id === value);
+      }
+      if (!drawn) {
+        return interaction.reply({ content: '⚠️ Mapa inválido.', ephemeral: true });
+      }
+      await interaction
+        .update({ content: `✅ Mapa definido: ${drawn.emoji} **${drawn.name}**`, components: [] })
+        .catch(() => interaction.deferUpdate().catch(() => {}));
+      await this.startMatchWithMap(mix, drawn, {
+        channel: interaction.channel,
+        guild: interaction.guild,
+        source,
+        user: interaction.user,
+        remainingInCycle,
+      });
+      return;
+    }
     if (customId.startsWith('bagre_select')) {
       const [_, mixId] = customId.split(':');
       const selectedId = interaction.values?.[0];
@@ -5820,7 +6055,8 @@ class DiscordBotManager {
     const embed = this.buildTeamsEmbed(mix);
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(`mix_veto:${mix.id}`).setLabel('Iniciar Pick & Ban').setEmoji('🗳️').setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId(`mix_roulette:${mix.id}`).setLabel('Roleta Rápida').setEmoji('🎲').setStyle(ButtonStyle.Primary)
+      new ButtonBuilder().setCustomId(`mix_roulette:${mix.id}`).setLabel('Roleta Rápida').setEmoji('🎲').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(`mix_pick_map:${mix.id}`).setLabel('Escolher Mapa').setEmoji('🗺️').setStyle(ButtonStyle.Primary)
     );
     return interaction.reply({ embeds: [embed], components: [row] });
   }
@@ -5838,14 +6074,45 @@ class DiscordBotManager {
   }
 
   async cmdRoulette(interaction) {
-    const randIdx = Math.floor(Math.random() * OFFICIAL_MAPS.length);
-    const drawn = OFFICIAL_MAPS[randIdx];
+    const chosenId = interaction.options?.getString?.('mapa') || null;
+    const mix = this.resolveActiveMixForChannel(interaction.channelId);
+    let drawn;
+    let remainingInCycle = null;
+    if (chosenId) {
+      drawn = OFFICIAL_MAPS.find((m) => m.id === chosenId);
+      if (!drawn) return interaction.reply({ content: '⚠️ Mapa inválido.', ephemeral: true });
+      if (mix && !this.canChooseMap(mix, interaction.user.id)) {
+        return interaction.reply({ content: '🚫 Apenas jogadores do mix, capitães ou o criador podem escolher o mapa.', ephemeral: true });
+      }
+    } else {
+      ({ drawn, remainingInCycle } = this.drawFairMap(interaction.guild?.id || interaction.channelId));
+    }
+
+    if (mix) {
+      await interaction.reply({
+        content: chosenId
+          ? `🗺️ Mapa escolhido: ${drawn.emoji} **${drawn.name}**`
+          : `🎲 Roleta girada: ${drawn.emoji} **${drawn.name}**`,
+      });
+      await this.startMatchWithMap(mix, drawn, {
+        channel: interaction.channel,
+        guild: interaction.guild,
+        source: chosenId ? 'escolha' : 'roleta',
+        user: interaction.user,
+        remainingInCycle,
+      });
+      return;
+    }
+
     const embed = new EmbedBuilder()
-      .setTitle('🎲 ROLETA OFICIAL DE MAPAS CS2')
+      .setTitle(chosenId ? '🗺️ MAPA ESCOLHIDO' : '🎲 ROLETA OFICIAL DE MAPAS CS2')
       .setColor(0xf59e0b)
-      .setDescription(`🗺️ **MAPA SORTEADO:** ${drawn.emoji} **${drawn.name.toUpperCase()}** (\`${drawn.id}\`)!`)
+      .setDescription(
+        `🗺️ **MAPA:** ${drawn.emoji} **${drawn.name.toUpperCase()}** (\`${drawn.id}\`)!` +
+        (remainingInCycle !== null ? `\n♻️ Faltam **${remainingInCycle}** mapa(s) para sair antes de repetir.` : '')
+      )
       .setImage(drawn.image)
-      .setFooter({ text: 'CS2 Mix Hub • CSPRNG' })
+      .setFooter({ text: 'CS2 Mix Hub • Roleta justa sem repetição' })
       .setTimestamp();
     return interaction.reply({ embeds: [embed] });
   }
