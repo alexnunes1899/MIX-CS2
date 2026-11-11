@@ -1,204 +1,8 @@
 {
-  "savedAt": 1794402162309,
-  "roomsCount": 1,
+  "savedAt": 1794410640311,
+  "roomsCount": 0,
   "discordMixesCount": 1,
-  "rooms": [
-    {
-      "id": "MIX-HKSEY",
-      "name": "Mix 5v5 de alexnunes1899",
-      "createdAt": 1794360691420,
-      "lastActivity": 1794402046813,
-      "creatorId": "530523476969390080",
-      "creatorNick": "alexnunes1899",
-      "source": "discord",
-      "sourceLabel": "Via Discord",
-      "phase": "match",
-      "players": [
-        {
-          "id": "304651341870006272",
-          "nick": "Tavares",
-          "avatar": "https://cdn.discordapp.com/avatars/304651341870006272/67c7601ceed3659db5109f7fe03c2bbe.webp",
-          "level": 10,
-          "side": "TR",
-          "ready": true
-        },
-        {
-          "id": "372168272575201290",
-          "nick": "gux",
-          "avatar": "https://cdn.discordapp.com/avatars/372168272575201290/5dc05286533befb6ecc13f67f69020ad.webp",
-          "level": 18,
-          "side": "CT",
-          "ready": true
-        },
-        {
-          "id": "819344775869497384",
-          "nick": "paulin",
-          "avatar": "https://cdn.discordapp.com/avatars/819344775869497384/700b506aba15870d8e6688513214774b.webp",
-          "level": 16,
-          "side": "CT",
-          "ready": true
-        },
-        {
-          "id": "530523476969390080",
-          "nick": "Alex Baguncinha",
-          "avatar": "https://cdn.discordapp.com/avatars/530523476969390080/067994f7ee0662a93e765275301735a8.webp",
-          "level": 11,
-          "side": "TR",
-          "ready": true
-        },
-        {
-          "id": "859230421703458836",
-          "nick": "dionatan.xp",
-          "avatar": "https://cdn.discordapp.com/avatars/859230421703458836/86127b7f6f4101df01ba940c7651bdb6.webp",
-          "level": 18,
-          "side": "TR",
-          "ready": true
-        },
-        {
-          "id": "1461908375079096380",
-          "nick": "Braian Costa",
-          "avatar": "https://cdn.discordapp.com/embed/avatars/5.png",
-          "level": 14,
-          "side": "CT",
-          "ready": true
-        },
-        {
-          "id": "212353154531065857",
-          "nick": "jotasete",
-          "avatar": "https://cdn.discordapp.com/avatars/212353154531065857/27119b0841df26200724b3afa85a1d81.webp",
-          "level": 17,
-          "side": "TR",
-          "ready": true
-        },
-        {
-          "id": "207846113410154496",
-          "nick": "Thiago Dias",
-          "avatar": "https://cdn.discordapp.com/avatars/207846113410154496/de2cfd34f6b32a548830ac50cfaf2811.webp",
-          "level": 5,
-          "side": "TR",
-          "ready": true
-        },
-        {
-          "id": "372168609365229588",
-          "nick": "xoCo",
-          "avatar": "https://cdn.discordapp.com/avatars/372168609365229588/d2921cf39a21f93b9468489d3305be75.webp",
-          "level": 8,
-          "side": "CT",
-          "ready": true
-        },
-        {
-          "id": "833121273562660914",
-          "nick": "Napa 🚩",
-          "avatar": "https://cdn.discordapp.com/avatars/833121273562660914/9930f4b41859e93cbf481721da91c527.webp",
-          "level": 7,
-          "side": "CT",
-          "ready": true
-        }
-      ],
-      "teamA": [
-        {
-          "id": "372168272575201290",
-          "nick": "gux",
-          "avatar": "https://cdn.discordapp.com/avatars/372168272575201290/5dc05286533befb6ecc13f67f69020ad.webp",
-          "level": 18,
-          "side": "CT",
-          "isCaptain": true
-        },
-        {
-          "id": "819344775869497384",
-          "nick": "paulin",
-          "avatar": "https://cdn.discordapp.com/avatars/819344775869497384/700b506aba15870d8e6688513214774b.webp",
-          "level": 16,
-          "side": "CT",
-          "isCaptain": false
-        },
-        {
-          "id": "1461908375079096380",
-          "nick": "Braian Costa",
-          "avatar": "https://cdn.discordapp.com/embed/avatars/5.png",
-          "level": 14,
-          "side": "CT",
-          "isCaptain": false
-        },
-        {
-          "id": "372168609365229588",
-          "nick": "xoCo",
-          "avatar": "https://cdn.discordapp.com/avatars/372168609365229588/d2921cf39a21f93b9468489d3305be75.webp",
-          "level": 8,
-          "side": "CT",
-          "isCaptain": false
-        },
-        {
-          "id": "833121273562660914",
-          "nick": "Napa 🚩",
-          "avatar": "https://cdn.discordapp.com/avatars/833121273562660914/9930f4b41859e93cbf481721da91c527.webp",
-          "level": 7,
-          "side": "CT",
-          "isCaptain": false
-        }
-      ],
-      "teamB": [
-        {
-          "id": "859230421703458836",
-          "nick": "dionatan.xp",
-          "avatar": "https://cdn.discordapp.com/avatars/859230421703458836/86127b7f6f4101df01ba940c7651bdb6.webp",
-          "level": 18,
-          "side": "TR",
-          "isCaptain": true
-        },
-        {
-          "id": "212353154531065857",
-          "nick": "jotasete",
-          "avatar": "https://cdn.discordapp.com/avatars/212353154531065857/27119b0841df26200724b3afa85a1d81.webp",
-          "level": 17,
-          "side": "TR",
-          "isCaptain": false
-        },
-        {
-          "id": "530523476969390080",
-          "nick": "Alex Baguncinha",
-          "avatar": "https://cdn.discordapp.com/avatars/530523476969390080/067994f7ee0662a93e765275301735a8.webp",
-          "level": 11,
-          "side": "TR",
-          "isCaptain": false
-        },
-        {
-          "id": "304651341870006272",
-          "nick": "Tavares",
-          "avatar": "https://cdn.discordapp.com/avatars/304651341870006272/67c7601ceed3659db5109f7fe03c2bbe.webp",
-          "level": 10,
-          "side": "TR",
-          "isCaptain": false
-        },
-        {
-          "id": "207846113410154496",
-          "nick": "Thiago Dias",
-          "avatar": "https://cdn.discordapp.com/avatars/207846113410154496/de2cfd34f6b32a548830ac50cfaf2811.webp",
-          "level": 5,
-          "side": "TR",
-          "isCaptain": false
-        }
-      ],
-      "captainA": {
-        "id": "372168272575201290",
-        "nick": "gux",
-        "level": 18
-      },
-      "captainB": {
-        "id": "859230421703458836",
-        "nick": "dionatan.xp",
-        "level": 18
-      },
-      "teamAName": "Time A",
-      "teamBName": "Time B",
-      "finalMap": {
-        "name": "Dust II",
-        "file": "de_dust2"
-      },
-      "serverIp": "connect 103.14.27.41:25054",
-      "matchFormat": "MD1"
-    }
-  ],
+  "rooms": [],
   "discordMixes": [
     {
       "channelId": "MIX-U8YFC",
@@ -210,7 +14,7 @@
         "creatorId": "372168272575201290",
         "creatorNick": "gux8262",
         "players": [],
-        "phase": "lobby",
+        "phase": "live",
         "readyCheck": {
           "active": false,
           "confirmed": [],
@@ -279,12 +83,22 @@
               "image": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_cache_1_png.png"
             }
           ],
-          "deciderMap": null,
+          "deciderMap": {
+            "id": "de_nuke",
+            "name": "Nuke",
+            "emoji": "☢️",
+            "image": "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_nuke_1_png.png"
+          },
           "history": []
         },
         "serverIp": "connect 103.14.27.41:25054",
         "messageId": null,
-        "createdAt": 1794357438170
+        "createdAt": 1794357438170,
+        "finalMap": {
+          "name": "Nuke",
+          "file": "de_nuke"
+        },
+        "matchMap": "Nuke"
       }
     }
   ]

@@ -42,7 +42,6 @@ import {
 } from './matchHistory.js';
 import { scheduleSave, clearMixPersistence } from './mixPersistence.js';
 import { hardwareDealsManager, CATEGORY_LABELS } from './hardwareDeals.js';
-import { whatsappBot } from './whatsappBot.js';
 import { SteamScannerService } from './steamScanner.js';
 import { cs2NewsRadar } from './cs2NewsRadar.js';
 import { proMatchesAgenda } from './proMatchesAgenda.js';
@@ -1988,7 +1987,6 @@ class DiscordBotManager {
     });
     this.syncToWebRoom(mix);
     this.updateLobbyInChannels(mix);
-    whatsappBot.broadcastLobbyUpdate(mix, `🎮 *${pName}* [Lvl ${playerLvl} GC] entrou no mix pelo Discord!`);
 
     if (mix.players.length === 8 || mix.players.length === 9) {
       this.notifyMissingSlots(mix, message.guild, message.channel).catch(() => {});
@@ -2018,7 +2016,6 @@ class DiscordBotManager {
     }
     this.syncToWebRoom(mix);
     this.updateLobbyInChannels(mix);
-    whatsappBot.broadcastLobbyUpdate(mix, `🚪 *${removed?.displayName || removed?.username || 'Jogador'}* saiu do mix pelo Discord.`);
     return message.reply(`🚪 <@${message.author.id}> saiu do mix. (${mix.players.length}/10)`);
   }
 
@@ -2030,7 +2027,6 @@ class DiscordBotManager {
     if (!mix) return message.reply('⚠️ Nenhum mix ativo no momento. Use `!mix` para abrir uma fila!');
     if (mix.players.length < 2) return message.reply('⚠️ É necessário pelo menos 2 jogadores para sortear os times!');
     this.balanceTeams(mix);
-    whatsappBot.broadcastTeamsDrawn(mix).catch(() => {});
     const embed = this.buildTeamsEmbed(mix);
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(`mix_veto:${mix.id}`).setLabel('Iniciar Pick & Ban').setEmoji('🗳️').setStyle(ButtonStyle.Success),
@@ -3411,7 +3407,6 @@ class DiscordBotManager {
       const msg = `📢 ${roleMention}**FALTA(M) APENAS ${missing} ${plural} PARA FECHAR O MIX 5v5!**\n` +
         `👉 Quem vai jogar? Clique no botão verde **\`[➕ Entrar]\`** ou digite \`!entrar\` agora!`;
       await channel.send(msg);
-      whatsappBot.notifyMissingSlots(mix).catch(() => {});
     } catch (e) {
       console.warn('[DISCORD BOT] Falha ao notificar vagas:', e.message);
     }
@@ -3595,7 +3590,6 @@ class DiscordBotManager {
       if (mix.id) this.activeMixes.set(mix.id, mix);
       this.syncToWebRoom(mix);
       this.updateLobbyInChannels(mix);
-      whatsappBot.notifyMixCreated(mix).catch(() => {});
       scheduleSave(100);
     }
     return mix;
@@ -3886,9 +3880,6 @@ class DiscordBotManager {
         this.registerLiveTracker(monitorMsg, 'Sistema CS2 Mix Hub', null, true);
       }
 
-      // Dispatch WhatsApp Group notification
-      whatsappBot.notifyMatchReady(mix).catch(() => {});
-
       // 2. Check if Server IP is defined. If missing, prompt players in chat with 1-click modal button
       const currentIp = (mix.serverIp || this.config.serverConnect || '').trim();
       if (!currentIp) {
@@ -4056,7 +4047,7 @@ class DiscordBotManager {
       .setTitle(`🎮 CS2 MIX HUB • ${mix.name.toUpperCase()}`)
       .setDescription(
         `Fila oficial de Mix 5v5 para Counter-Strike 2.\n` +
-        `🌐 **Sincronização Ativa:** Jogadores do **Discord**, **WhatsApp** e **Web** jogam no mesmo lobby!\n` +
+        `🌐 **Sincronização Ativa:** Jogadores do **Discord** e **Web Hub** jogam no mesmo lobby!\n` +
         `Clique nos botões abaixo para entrar ou gerenciar a partida!`
       )
       .setColor(color)
@@ -4082,7 +4073,7 @@ class DiscordBotManager {
         }
       )
       .setFooter({
-        text: `ID do Mix: ${mix.id} • Sincronizado Discord + WhatsApp + Web`,
+        text: `ID do Mix: ${mix.id} • Sincronizado Discord + Web`,
       })
       .setTimestamp();
 
@@ -4670,7 +4661,6 @@ class DiscordBotManager {
       });
       this.syncToWebRoom(mix);
       this.updateLobbyInChannels(mix);
-      whatsappBot.broadcastLobbyUpdate(mix, `🎮 *${interaction.member?.displayName || user.username}* [Lvl ${userLvl} GC] entrou no mix pelo Discord!`);
 
       // If 10 players reached, launch Ready Check!
       if (mix.players.length === 8 || mix.players.length === 9) {
@@ -4766,7 +4756,6 @@ class DiscordBotManager {
       }
       this.syncToWebRoom(mix);
       this.updateLobbyInChannels(mix);
-      whatsappBot.broadcastLobbyUpdate(mix, `🚪 *${interaction.member?.displayName || user.username}* saiu do mix pelo Discord.`);
 
       if (mix.phase === 'ready_check') {
         if (mix.readyCheck?.timer) clearTimeout(mix.readyCheck.timer);
@@ -4789,7 +4778,6 @@ class DiscordBotManager {
       }
 
       this.balanceTeams(mix);
-      whatsappBot.broadcastTeamsDrawn(mix);
       const embed = this.buildTeamsEmbed(mix);
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder().setCustomId(`mix_veto:${mix.id}`).setLabel('Iniciar Pick & Ban').setEmoji('🗳️').setStyle(ButtonStyle.Success),
@@ -4949,8 +4937,6 @@ class DiscordBotManager {
         embeds: [finalEmbed],
         components,
       }).catch(() => {});
-
-      whatsappBot.notifyMatchReady(mix).catch(() => {});
 
       // INICIAR MONITORAMENTO AUTOMÁTICO EM TEMPO REAL
       this.startAutomaticLiveMonitoring(mix, interaction.channel, interaction.guild).catch((err) => {
@@ -5663,7 +5649,6 @@ class DiscordBotManager {
           p.level = parsed;
           this.syncToWebRoom(mix);
           this.updateLobbyInChannels(mix);
-          whatsappBot.broadcastLobbyUpdate(mix, `⭐ *${interaction.member?.displayName || interaction.user.username}* atualizou seu nível para Lvl ${parsed} GC!`);
           const embed = this.buildLobbyEmbed(mix);
           const components = this.buildLobbyButtons(mix);
           if (mix.phase === 'lobby' && interaction.message) {
@@ -5709,7 +5694,6 @@ class DiscordBotManager {
         if (p) p.level = parsed;
         this.syncToWebRoom(mix);
         this.updateLobbyInChannels(mix);
-        whatsappBot.broadcastLobbyUpdate(mix, `⭐ *${interaction.member?.displayName || interaction.user.username}* atualizou seu nível para Lvl ${parsed} GC!`);
         return interaction.reply({
           content: `✅ Seu nível GC foi salvo como **Lvl ${parsed}** (\`${badge}\`) e atualizado no seu slot do Mix!`,
           ephemeral: true,
@@ -5733,7 +5717,6 @@ class DiscordBotManager {
       });
       this.syncToWebRoom(mix);
       this.updateLobbyInChannels(mix);
-      whatsappBot.broadcastLobbyUpdate(mix, `🎮 *${interaction.member?.displayName || interaction.user.username}* [Lvl ${parsed} GC] definiu o nível e entrou no mix pelo Discord!`);
 
       if (mix.players.length === 8 || mix.players.length === 9) {
         this.notifyMissingSlots(mix, interaction.guild, interaction.channel).catch(() => {});

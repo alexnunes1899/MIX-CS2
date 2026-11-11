@@ -22,7 +22,6 @@ export default function MainNavigationMenu({
   onGoHome,
   onOpenLeaderboard,
   onOpenDiscordModal,
-  onOpenWhatsAppModal,
   onOpenQuickMapRoll,
   onOpenQuickVeto,
   onOpenServersPage,
@@ -65,17 +64,6 @@ export default function MainNavigationMenu({
     setTacticsOpen(false);
     setMoreOpen(false);
     setMobileMenuOpen(false);
-  };
-
-  const handleWhatsAppClick = () => {
-    if (soundEnabled) playClickSound();
-    if (onOpenWhatsAppModal) {
-      onOpenWhatsAppModal();
-    } else {
-      window.open('/whatsapp', '_blank');
-    }
-    setMobileMenuOpen(false);
-    setMoreOpen(false);
   };
 
   const isTacticsActive = ['granadas', 'mira', 'roleta'].includes(activeTab);
@@ -350,17 +338,6 @@ export default function MainNavigationMenu({
                   <span className="hidden xl:inline">Discord</span>
                   <span className="w-1.5 h-1.5 rounded-full bg-[#5865F2] animate-pulse" />
                 </button>
-
-                <button
-                  type="button"
-                  onClick={handleWhatsAppClick}
-                  title="Bot do WhatsApp para Grupos (Avisos de Mix & Comandos)"
-                  className="px-2 xl:px-2.5 py-1.5 rounded-xl text-xs xl:text-[13px] font-bold tracking-tight transition-all cursor-pointer shrink-0 select-none flex items-center gap-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 hover:text-white border border-emerald-500/30 hover:border-emerald-500/60 shadow-sm shadow-emerald-500/10"
-                >
-                  <MessageCircle size={14} className="text-emerald-400" />
-                  <span className="hidden xl:inline">WhatsApp</span>
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                </button>
               </div>
             </>
           )}
@@ -493,15 +470,6 @@ export default function MainNavigationMenu({
                 >
                   <Bell size={14} className="text-[#5865F2]" />
                   <span>Bot do Discord</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleWhatsAppClick}
-                  className="w-full p-2 rounded-xl text-left text-xs font-bold text-emerald-300 hover:bg-emerald-500/20 flex items-center gap-2"
-                >
-                  <MessageCircle size={14} className="text-emerald-400" />
-                  <span>Bot do WhatsApp</span>
                 </button>
               </div>
             )}

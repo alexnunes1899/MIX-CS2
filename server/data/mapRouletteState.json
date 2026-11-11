@@ -20,9 +20,17 @@
     ]
   },
   "933123226647805993": {
-    "bag": [],
-    "lastMap": "de_anubis",
+    "bag": [
+      "de_anubis",
+      "de_cache",
+      "de_inferno",
+      "de_dust2",
+      "de_ancient",
+      "de_mirage"
+    ],
+    "lastMap": "de_nuke",
     "history": [
+      "de_nuke",
       "de_anubis",
       "de_anubis"
     ]

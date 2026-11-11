@@ -15,7 +15,6 @@ export default function LandingPage({
   onOpenRoomsHub,
   onOpenLeaderboard,
   onOpenDiscordModal,
-  onOpenWhatsAppModal,
   onOpenLocalHost,
   onOpenServersPage,
   onOpenTournament,
@@ -128,7 +127,6 @@ export default function LandingPage({
               }}
               onOpenLeaderboard={onOpenLeaderboard}
               onOpenDiscordModal={onOpenDiscordModal}
-              onOpenWhatsAppModal={onOpenWhatsAppModal}
               onOpenQuickMapRoll={onOpenQuickMapRoll}
               onOpenQuickVeto={onOpenQuickVeto}
               onOpenServersPage={onOpenServersPage || onOpenLocalHost}
@@ -156,22 +154,6 @@ export default function LandingPage({
               <Bell size={14} className="text-[#5865F2] shrink-0" />
               <span className="hidden xl:inline">Discord</span>
               <span className="w-1.5 h-1.5 rounded-full bg-[#5865F2] animate-pulse shrink-0" />
-            </button>
-
-            {/* WhatsApp Bot Button */}
-            <button
-              type="button"
-              onClick={() => {
-                if (soundEnabled) playClickSound();
-                if (onOpenWhatsAppModal) onOpenWhatsAppModal();
-                else window.open('/whatsapp', '_blank');
-              }}
-              title="Bot do WhatsApp para Grupos (Avisos de Mix & Comandos)"
-              className="p-1.5 xl:px-2.5 xl:py-1.5 rounded-xl text-xs font-bold tracking-tight transition-all cursor-pointer select-none flex items-center gap-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 hover:text-white border border-emerald-500/30 hover:border-emerald-500/60 shadow-sm shadow-emerald-500/10 active:scale-95 shrink-0"
-            >
-              <MessageCircle size={14} className="text-emerald-400 shrink-0" />
-              <span className="hidden xl:inline">WhatsApp</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
             </button>
 
             {/* Hairline Divider */}
@@ -247,7 +229,6 @@ export default function LandingPage({
             }}
             onOpenLeaderboard={onOpenLeaderboard}
             onOpenDiscordModal={onOpenDiscordModal}
-            onOpenWhatsAppModal={onOpenWhatsAppModal}
             onOpenQuickMapRoll={onOpenQuickMapRoll}
             onOpenQuickVeto={onOpenQuickVeto}
             onOpenServersPage={onOpenServersPage || onOpenLocalHost}

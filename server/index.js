@@ -41,8 +41,6 @@ import { cs2NewsRadar } from './cs2NewsRadar.js';
 import { proMatchesAgenda } from './proMatchesAgenda.js';
 import { freeGamesRadar } from './freeGamesRadar.js';
 import { communityClips } from './communityClips.js';
-import { whatsappBot } from './whatsappBot.js';
-import { renderWhatsAppAdminHtml } from './whatsappHtml.js';
 import { renderProfileHtml } from './profileHtml.js';
 import {
   setPersistenceRefs,
@@ -86,7 +84,7 @@ app.use(express.json({ limit: '500kb' }));
 app.use(express.urlencoded({ extended: false, limit: '500kb' }));
 app.use(cors());
 
-// Ultra-fast Healthcheck for Railway / Docker / Kubernetes (<1ms response, bypasses rate limiting)
+// Ultra-fast Healthcheck for Render / Railway / Docker / Kubernetes (<1ms response, bypasses rate limiting)
 app.get(['/health', '/api/health'], (req, res) => {
   return res.status(200).json({
     status: 'ok',
@@ -95,7 +93,6 @@ app.get(['/health', '/api/health'], (req, res) => {
     service: 'cs2-mix-hub',
     activeRooms: typeof rooms !== 'undefined' ? rooms.size : 0,
     discordBot: typeof discordBotManager !== 'undefined' ? discordBotManager.getStatus().running : false,
-    whatsappBot: typeof whatsappBot !== 'undefined' ? whatsappBot.getStatus().status : 'disconnected',
   });
 });
 
@@ -735,16 +732,6 @@ io.on('connection', (socket) => {
           }
         }).catch(() => {});
       }
-
-      // WhatsApp Group Notifications
-      if (room.players.length === 1 && !room._waCreatedNotified) {
-        room._waCreatedNotified = true;
-        whatsappBot.notifyMixCreated(room).catch(() => {});
-      } else if (room.players.length === 8 || room.players.length === 9) {
-        whatsappBot.notifyMissingSlots(room).catch(() => {});
-      } else if (existingIdx === -1) {
-        whatsappBot.broadcastLobbyUpdate(room, `🌐 *${cleanNick}* [Lvl ${playerData.level || 16} GC] entrou no mix pelo site!`).catch(() => {});
-      }
     }
 
     dispatchAutoDiscordLobby(room);
@@ -855,7 +842,6 @@ io.on('connection', (socket) => {
     const room = getRoomAndTouch(roomId);
     if (!room) return;
     room.players = room.players.filter((p) => p.id !== playerId);
-    whatsappBot.broadcastLobbyUpdate(room, `🚪 Um jogador saiu da fila pelo site.`);
     emitRoomState(roomId, room);
     broadcastRoomsList();
   });
@@ -1077,7 +1063,6 @@ io.on('connection', (socket) => {
     }
 
     room.phase = 'teams';
-    whatsappBot.broadcastTeamsDrawn(room);
     emitRoomState(roomId, room);
     broadcastRoomsList();
   });
@@ -1680,12 +1665,6 @@ io.on('connection', (socket) => {
     if (room.teamA?.length === 5 && room.teamB?.length === 5) {
       recordMatchHistoryEntry(webMatchRecord);
       io.emit('match_history_updated', getMatchHistoryState());
-      whatsappBot.notifyMatchFinished(room, {
-        score: webMatchRecord.score,
-        winner: webMatchRecord.winner,
-        map: webMatchRecord.map,
-        mvp: computedMvp || webMatchRecord.mvpNick,
-      }).catch(() => {});
     }
 
     emitRoomState(roomId, room);
@@ -2080,19 +2059,18 @@ app.get(['/perfil', '/gc', '/profile'], (req, res) => {
 });
 
 app.get('/api/player/profile', (req, res) => {
-  const phone = (req.query.phone || '').replace(/\D/g, '');
-  const id = req.query.id || (phone ? `wa_${phone}` : null);
-  if (!id) return res.status(400).json({ success: false, error: 'Identificador ou telefone ausente.' });
+  const id = req.query.id || req.query.userId || null;
+  if (!id) return res.status(400).json({ success: false, error: 'Identificador ausente.' });
 
-  const profiles = whatsappBot.loadPlayerProfiles();
-  const profile = profiles[id] || (phone ? profiles[phone] : null) || null;
+  const profiles = discordBotManager.loadPlayerProfiles();
+  const profile = profiles[id] || null;
   return res.json({ success: true, profile });
 });
 
 app.post('/api/player/profile', (req, res) => {
-  const { phone, name, username, level, steamId, room } = req.body || {};
-  const cleanPhone = String(phone || '').replace(/\D/g, '');
-  const cleanName = String(name || username || (cleanPhone ? `Jogador_${cleanPhone.slice(-4)}` : 'Jogador')).trim();
+  const { id, userId, name, username, level, steamId } = req.body || {};
+  const cleanId = id || userId;
+  const cleanName = String(name || username || 'Jogador').trim();
   const parsedLevel = parseInt(level, 10);
 
   if (isNaN(parsedLevel) || parsedLevel < 1 || parsedLevel > 21) {
@@ -2103,169 +2081,26 @@ app.post('/api/player/profile', (req, res) => {
     level: parsedLevel,
     username: cleanName,
     name: cleanName,
-    phone: cleanPhone,
     steamId: steamId ? String(steamId).trim() : '',
     source: 'web_form',
     updatedAt: Date.now(),
   };
 
-  // Save under wa_${cleanPhone} and cleanPhone
-  if (cleanPhone) {
-    whatsappBot.savePlayerProfile(`wa_${cleanPhone}`, profileData);
-    whatsappBot.savePlayerProfile(cleanPhone, profileData);
-  }
-
-  // Update in active WhatsApp & Discord mixes
-  const activeData = whatsappBot.getActiveMix();
-  const mix = activeData?.mix;
-  let reSentStatus = false;
-
-  if (mix && mix.phase === 'lobby') {
-    const p = mix.players?.find(
-      (pl) => pl.phone === cleanPhone || pl.id === `wa_${cleanPhone}` || pl.nick?.toLowerCase() === cleanName.toLowerCase()
-    );
-    if (p) {
-      p.level = parsedLevel;
-      p.nick = cleanName;
-      p.username = cleanName;
-    } else if (mix.players?.length < 10) {
-      const newPlayer = {
-        id: `wa_${cleanPhone}`,
-        nick: cleanName,
-        username: cleanName,
-        name: cleanName,
-        displayName: cleanName,
-        phone: cleanPhone,
-        level: parsedLevel,
-        source: 'whatsapp',
-        ready: true,
-      };
-      mix.players.push(newPlayer);
-      if (activeData.source === 'discord' && typeof discordBotManager?.syncToWebRoom === 'function') {
-        discordBotManager.syncToWebRoom(mix);
-      } else if (typeof rooms !== 'undefined' && mix.id) {
-        const room = rooms.get(mix.id);
-        if (room && Array.isArray(room.players)) {
-          room.players.push({ id: `wa_${cleanPhone}`, nick: cleanName, level: parsedLevel, ready: true });
-        }
-      }
-    }
-
-    if (whatsappBot.config.targetGroupId) {
-      const tierName = parsedLevel >= 20 ? 'Major / Pro' : parsedLevel >= 16 ? 'Black / Elite' : parsedLevel >= 11 ? 'Ouro' : parsedLevel >= 6 ? 'Prata' : 'Bronze';
-      const notice = `🎉 *PERFIL SALVO PELO SITE & VAGA CONFIRMADA!*\n*${cleanName}* definiu seu nível como *Lvl ${parsedLevel} GC* (${tierName}) e garantiu sua vaga na fila!`;
-      whatsappBot.sendLobbyStatus(whatsappBot.config.targetGroupId, null, mix, notice).catch(() => {});
-      reSentStatus = true;
-    }
-  } else if (mix && mix.phase === 'teams') {
-    whatsappBot.balanceTeamsLocal(mix);
-  }
-
-  // Se não reenviou o status do lobby, manda aviso simples se tiver grupo configurado
-  if (!reSentStatus && whatsappBot.config.targetGroupId && cleanName) {
-    const tierName = parsedLevel >= 20 ? 'Major / Pro' : parsedLevel >= 16 ? 'Black / Elite' : parsedLevel >= 11 ? 'Ouro' : parsedLevel >= 6 ? 'Prata' : 'Bronze';
-    whatsappBot.sendMessageToGroup(
-      `⭐ *CS2 MIX HUB • PERFIL ATUALIZADO!*\n\n` +
-      `👤 *Jogador:* *${cleanName}*\n` +
-      `🏆 *Nível Gamers Club:* *Lvl ${parsedLevel}* (${tierName})\n\n` +
-      `_Seu perfil foi salvo permanentemente e garantirá times calibrados nas próximas partidas!_`
-    ).catch(() => {});
+  if (cleanId) {
+    discordBotManager.setPlayerProfile(cleanId, profileData);
   }
 
   scheduleSave(100);
   return res.json({ success: true, profile: profileData });
 });
 
-// ==========================================
-// WHATSAPP BOT MANAGEMENT & API
-// ==========================================
+// Permanent redirect for WhatsApp endpoints
 app.get('/whatsapp', (req, res) => {
-  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-  res.status(200).type('html').send(renderWhatsAppAdminHtml());
+  res.redirect('/?notice=whatsapp_bot_disabled');
 });
 
-app.get('/api/whatsapp/status', (req, res) => {
-  res.json(whatsappBot.getStatus());
-});
-
-app.get('/api/whatsapp/groups', async (req, res) => {
-  try {
-    const groups = await whatsappBot.fetchGroups();
-    res.json(groups);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post('/api/whatsapp/resolve-group', async (req, res) => {
-  const { input } = req.body || {};
-  try {
-    const group = await whatsappBot.resolveGroupFromInput(input);
-    if (group) {
-      res.json({ success: true, group });
-    } else {
-      res.status(404).json({ success: false, error: 'Grupo não encontrado ou link inválido.' });
-    }
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-app.post('/api/whatsapp/pair-code', async (req, res) => {
-  const { phoneNumber } = req.body || {};
-  try {
-    const code = await whatsappBot.requestPairingCode(phoneNumber);
-    res.json({ success: true, code });
-  } catch (err) {
-    res.status(400).json({ success: false, error: err.message });
-  }
-});
-
-app.post('/api/whatsapp/config', (req, res) => {
-  const updated = whatsappBot.saveConfig(req.body);
-  res.json({ success: true, config: updated });
-});
-
-app.post('/api/whatsapp/test', async (req, res) => {
-  try {
-    const ok = await whatsappBot.sendMessageToGroup(
-      `🚀 *CS2 MIX HUB • TESTE DE NOTIFICAÇÃO*\n\n` +
-      `O bot foi integrado e está conectado com sucesso no WhatsApp!\n` +
-      `As notificações automáticas de criação de mix, vagas restantes, times e placares serão enviadas aqui! 🎯`
-    );
-    if (ok) {
-      res.json({ success: true });
-    } else {
-      res.status(400).json({ success: false, error: 'Falha ao enviar mensagem. Verifique se o grupo foi salvo e se o bot está conectado.' });
-    }
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-app.post('/api/whatsapp/broadcast-status', async (req, res) => {
-  try {
-    const activeData = whatsappBot.getActiveMix();
-    if (!activeData || !activeData.mix) {
-      return res.status(400).json({ success: false, error: 'Nenhum mix ativo no momento.' });
-    }
-    const notice = req.body.notice || null;
-    await whatsappBot.sendLobbyStatus(whatsappBot.config.targetGroupId, null, activeData.mix, notice);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-app.post('/api/whatsapp/send-message', async (req, res) => {
-  try {
-    const text = req.body.text;
-    const target = req.body.targetGroupId || whatsappBot.config.targetGroupId;
-    const ok = await whatsappBot.sendMessageToGroup(text, target);
-    res.json({ success: ok });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
+app.all('/api/whatsapp/*', (req, res) => {
+  res.json({ success: false, disabled: true, message: 'Bot do WhatsApp desativado permanentemente. Use o bot do Discord.' });
 });
 
 app.post('/api/discord/announce-match', async (req, res) => {
@@ -2309,27 +2144,7 @@ app.post('/api/discord/announce-match', async (req, res) => {
       components,
     });
 
-    whatsappBot.notifyMatchReady(mix).catch(() => {});
-
     res.json({ success: true, messageId: sent.id });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-app.post('/api/whatsapp/connect', async (req, res) => {
-  try {
-    await whatsappBot.connect();
-    res.json({ success: true, status: whatsappBot.status });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-app.post('/api/whatsapp/logout', async (req, res) => {
-  try {
-    await whatsappBot.logout();
-    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -3293,12 +3108,6 @@ server.listen(PORT, '0.0.0.0', () => {
 
   ensureBotOnline();
   setInterval(ensureBotOnline, 30000);
-
-  // Initialize WhatsApp Bot Integration with store references
-  whatsappBot.setStoreRefs(discordBotManager, rooms);
-  whatsappBot.initialize().catch((err) => {
-    console.warn('[WHATSAPP] Erro ao inicializar bot:', err.message);
-  });
 });
 
 // Graceful shutdown for Railway & container orchestrators
