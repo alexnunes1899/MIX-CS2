@@ -1647,7 +1647,7 @@ class DiscordBotManager {
       if (subArg === 'sair') return this.prefixLeave(message);
       if (subArg === 'sortear' || subArg === 'times') return this.prefixDraw(message);
       if (subArg === 'veto' || subArg === 'ban') return this.prefixVeto(message);
-      if (subArg === 'roleta') return this.prefixRoulette(message);
+      if (subArg === 'roleta' || subArg === 'mapa' || subArg === 'map') return this.prefixRoulette(message);
       if (subArg === 'cancelar') return this.prefixCancel(message);
       return this.prefixCreateMix(message, args.slice(1).join(' '));
     }
@@ -1656,9 +1656,23 @@ class DiscordBotManager {
     if (command === 'fila' || command === 'status' || command === 'jogadores') return this.prefixFila(message);
     if (command === 'entrar') return this.prefixJoin(message);
     if (command === 'sair') return this.prefixLeave(message);
-    if (command === 'sortear' || command === 'times') return this.prefixDraw(message);
-    if (command === 'veto' || command === 'ban') return this.prefixVeto(message);
-    if (command === 'roleta') return this.prefixRoulette(message);
+    if (command === 'sortear' || command === 'times') {
+      if (subArg === 'mapa' || subArg === 'map' || subArg === 'roleta') {
+        return this.prefixRoulette(message);
+      }
+      return this.prefixDraw(message);
+    }
+    if (
+      command === 'sortearmapa' ||
+      command === 'sortear-mapa' ||
+      command === 'sorteiomapa' ||
+      command === 'roleta' ||
+      command === 'mapa' ||
+      command === 'map'
+    ) {
+      return this.prefixRoulette(message);
+    }
+    if (command === 'veto' || command === 'ban' || command === 'pick') return this.prefixVeto(message);
     if (command === 'ranking' || command === 'top' || command === 'leaderboard') return this.prefixRanking(message);
     if (command === 'historico' || command === 'history') return this.prefixHistory(message, args.slice(1));
     if (command === 'x1' || command === 'confronto' || command === 'duelo' || command === 'headtohead') return this.prefixHeadToHead(message, args.slice(1));
@@ -1749,8 +1763,36 @@ class DiscordBotManager {
   async prefixCreateMix(message, customName) {
     try {
       const user = message.author;
+      const existing = this.activeMixes.get(message.channelId);
+      if (existing && existing.phase === 'live') {
+        const mapName = existing.finalMap?.name || existing.veto?.deciderMap?.name || 'CS2';
+        return message.reply(
+          `⚔️ **Já existe uma partida 5v5 em andamento neste canal!** (${existing.name})\n` +
+          `🗺️ **Mapa:** **${mapName}** • Conectar: \`connect ${(existing.serverIp || this.config.serverConnect).replace(/^connect\s+/i, '')}\`\n\n` +
+          `👉 Para acompanhar ao vivo: \`!aovivo\` ou \`!fila\`\n` +
+          `👉 Para declarar vitória: \`!vitoria A\` ou \`!vitoria B\`\n` +
+          `👉 Para encerrar ou cancelar: \`!cancelar\``
+        );
+      }
+
+      if (existing && existing.phase === 'lobby' && existing.players.length > 0) {
+        const tutorialEmbed = this.buildMixTutorialEmbed();
+        const embed = this.buildLobbyEmbed(existing);
+        const components = this.buildLobbyButtons(existing);
+        const sent = await message.channel.send({
+          content: `🎮 <@${user.id}> chamou para o **Lobby de Mix CS2 5v5**! (${existing.players.length}/10 confirmados)`,
+          embeds: [tutorialEmbed, embed],
+          components,
+        });
+        if (sent) {
+          existing.lobbyMessageId = sent.id;
+          existing.channelId = message.channelId;
+        }
+        return sent;
+      }
+
       const name = customName || `Mix 5v5 de ${user.username}`;
-      const mix = this.getOrCreateMix(message.channelId, user, { name });
+      const mix = this.getOrCreateMix(message.channelId, user, { name, forceNew: true });
 
       if (mix.players.length === 0 && this.hasSavedLevel(user.id)) {
         mix.players.push({
@@ -1886,7 +1928,10 @@ class DiscordBotManager {
   }
 
   async prefixJoin(message) {
-    const mix = this.activeMixes.get(message.channelId);
+    let mix = this.activeMixes.get(message.channelId);
+    if (!mix && this.activeMixes.size > 0) {
+      mix = Array.from(this.activeMixes.values()).find((m) => m && m.phase !== 'cancelled' && m.phase !== 'finished') || Array.from(this.activeMixes.values())[0];
+    }
     if (!mix) {
       return message.reply('⚠️ Nenhum mix ativo neste canal. Crie um agora com `!mix` ou clicando no botão verde!');
     }
@@ -1933,7 +1978,10 @@ class DiscordBotManager {
   }
 
   async prefixLeave(message) {
-    const mix = this.activeMixes.get(message.channelId);
+    let mix = this.activeMixes.get(message.channelId);
+    if (!mix && this.activeMixes.size > 0) {
+      mix = Array.from(this.activeMixes.values()).find((m) => m && m.phase !== 'cancelled' && m.phase !== 'finished') || Array.from(this.activeMixes.values())[0];
+    }
     if (!mix) return message.reply('⚠️ Nenhum mix ativo neste canal.');
     const idx = mix.players.findIndex((p) => p.id === message.author.id);
     if (idx === -1) return message.reply('⚠️ Você não está no mix.');
@@ -1948,22 +1996,29 @@ class DiscordBotManager {
   }
 
   async prefixDraw(message) {
-    const mix = this.activeMixes.get(message.channelId);
-    if (!mix) return message.reply('⚠️ Nenhum mix ativo neste canal.');
-    if (mix.players.length < 2) return message.reply('⚠️ É necessário pelo menos 2 jogadores para sortear!');
+    let mix = this.activeMixes.get(message.channelId);
+    if (!mix && this.activeMixes.size > 0) {
+      mix = Array.from(this.activeMixes.values()).find((m) => m && m.phase !== 'cancelled' && m.phase !== 'finished') || Array.from(this.activeMixes.values())[0];
+    }
+    if (!mix) return message.reply('⚠️ Nenhum mix ativo no momento. Use `!mix` para abrir uma fila!');
+    if (mix.players.length < 2) return message.reply('⚠️ É necessário pelo menos 2 jogadores para sortear os times!');
     this.balanceTeams(mix);
-    whatsappBot.broadcastTeamsDrawn(mix);
+    whatsappBot.broadcastTeamsDrawn(mix).catch(() => {});
     const embed = this.buildTeamsEmbed(mix);
     const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(`mix_veto:${mix.id}`).setLabel('🗳️ Iniciar Pick & Ban').setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId(`mix_roulette:${mix.id}`).setLabel('🎲 Roleta Rápida').setStyle(ButtonStyle.Secondary)
+      new ButtonBuilder().setCustomId(`mix_veto:${mix.id}`).setLabel('Iniciar Pick & Ban').setEmoji('🗳️').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(`mix_roulette:${mix.id}`).setLabel('Roleta Rápida').setEmoji('🎲').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(`mix_voice:${mix.id}`).setLabel('Mover para Calls').setEmoji('📞').setStyle(ButtonStyle.Secondary)
     );
     return message.reply({ embeds: [embed], components: [row] });
   }
 
   async prefixVeto(message) {
-    const mix = this.activeMixes.get(message.channelId);
-    if (!mix) return message.reply('⚠️ Nenhum mix ativo neste canal.');
+    let mix = this.activeMixes.get(message.channelId);
+    if (!mix && this.activeMixes.size > 0) {
+      mix = Array.from(this.activeMixes.values()).find((m) => m && m.phase !== 'cancelled' && m.phase !== 'finished') || Array.from(this.activeMixes.values())[0];
+    }
+    if (!mix) return message.reply('⚠️ Nenhum mix ativo no momento. Use `!mix` para abrir uma fila!');
     if (mix.teamA.players.length === 0 || mix.teamB.players.length === 0) {
       this.balanceTeams(mix);
     }
@@ -1978,8 +2033,52 @@ class DiscordBotManager {
   }
 
   async prefixRoulette(message) {
+    let mix = this.activeMixes.get(message.channelId);
+    if (!mix && this.activeMixes.size > 0) {
+      mix = Array.from(this.activeMixes.values()).find((m) => m && m.phase !== 'cancelled' && m.phase !== 'finished') || Array.from(this.activeMixes.values())[0];
+    }
+
     const randIdx = Math.floor(Math.random() * OFFICIAL_MAPS.length);
     const drawn = OFFICIAL_MAPS[randIdx];
+
+    if (mix) {
+      mix.veto = mix.veto || {};
+      mix.veto.deciderMap = drawn;
+      mix.finalMap = { name: drawn.name, file: drawn.id };
+      mix.phase = 'live';
+      this.syncToWebRoom(mix);
+      this.updateLobbyInChannels(mix);
+
+      if (this.config.autoMoveVoice && message.guild) {
+        this.executeVoiceMover(message.guild, mix, message.channel).catch(() => {});
+      }
+
+      const readyEmbed = this.buildMatchReadyEmbed(mix);
+      const components = this.buildMatchReadyButtons(mix);
+
+      const serverClean = (mix.serverIp || this.config.serverConnect || '103.14.27.41:25054').replace(/^connect\s+/i, '');
+      const steamDirect = this.getPublicWebUrl(`/connect?ip=${encodeURIComponent(serverClean)}`);
+
+      const sent = await message.channel.send({
+        content:
+          `🎲 **MAPA SORTEADO PELA ROLETA:** ${drawn.emoji} **${drawn.name.toUpperCase()}** (\`${drawn.id}\`)!\n\n` +
+          `🗺️ **MAPA OFICIAL:** **${drawn.name}**\n` +
+          `🛡️ **${mix.teamA.name} (${mix.teamA.side}):** Capitão <@${mix.teamA.captain?.id}>\n` +
+          `💣 **${mix.teamB.name} (${mix.teamB.side}):** Capitão <@${mix.teamB.captain?.id}>\n\n` +
+          `💻 **Comando Console CS2:** \`connect ${serverClean}\`\n` +
+          `🚀 **Steam 1-Clique:** ${steamDirect}`,
+        embeds: [readyEmbed],
+        components,
+      }).catch(() => null);
+
+      whatsappBot.notifyMatchReady(mix).catch(() => {});
+
+      this.startAutomaticLiveMonitoring(mix, message.channel, message.guild).catch((err) => {
+        console.warn('[BOT] Erro ao iniciar monitoramento automático:', err.message);
+      });
+      return sent;
+    }
+
     const embed = new EmbedBuilder()
       .setTitle('🎲 ROLETA OFICIAL DE MAPAS CS2')
       .setColor(0xf59e0b)

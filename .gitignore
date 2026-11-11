@@ -31,4 +31,7 @@ server/data/matchHistory.json
 server/data/leaderboard.json
 server/data/whatsapp_auth/
 server/data/whatsappConfig.json
+server/data/runner.pid
+server/data/activeMixStore.json
+server/logs/
 

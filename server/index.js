@@ -733,19 +733,19 @@ io.on('connection', (socket) => {
           }
         }).catch(() => {});
       }
+
+      // WhatsApp Group Notifications
+      if (room.players.length === 1 && !room._waCreatedNotified) {
+        room._waCreatedNotified = true;
+        whatsappBot.notifyMixCreated(room).catch(() => {});
+      } else if (room.players.length === 8 || room.players.length === 9) {
+        whatsappBot.notifyMissingSlots(room).catch(() => {});
+      } else if (existingIdx === -1) {
+        whatsappBot.broadcastLobbyUpdate(room, `🌐 *${cleanNick}* [Lvl ${playerData.level || 16} GC] entrou no mix pelo site!`).catch(() => {});
+      }
     }
 
     dispatchAutoDiscordLobby(room);
-
-    // WhatsApp Group Notifications
-    if (room.players.length === 1 && !room._waCreatedNotified) {
-      room._waCreatedNotified = true;
-      whatsappBot.notifyMixCreated(room).catch(() => {});
-    } else if (room.players.length === 8 || room.players.length === 9) {
-      whatsappBot.notifyMissingSlots(room).catch(() => {});
-    } else {
-      whatsappBot.broadcastLobbyUpdate(room, `🌐 *${cleanNick}* [Lvl ${playerData.level || 16} GC] entrou no mix pelo site!`);
-    }
 
     emitRoomState(cleanRoomId, room);
     broadcastRoomsList();
