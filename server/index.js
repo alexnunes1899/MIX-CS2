@@ -1,3 +1,4 @@
+﻿import { registerMatchAutomationRoutes } from './matchAutomation.js';
 import express from 'express';
 import http from 'http';
 import fs from 'fs';
@@ -3055,6 +3056,8 @@ app.get('/api/faceit/:steamId', async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
+
+registerMatchAutomationRoutes(app, { io, discordBotManager });
 
 app.use((req, res) => {
   return serveDynamicIndexHtml(req, res);

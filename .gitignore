@@ -35,3 +35,10 @@ server/data/runner.pid
 server/data/activeMixStore.json
 server/logs/
 
+
+server/data/*.db
+server/data/*.db-shm
+server/data/*.db-wal
+server/data/economyStore.json
+server/data/linkedClipsStore.json
+server/data/bagreVotesStore.json
