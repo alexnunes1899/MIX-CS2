@@ -10,6 +10,8 @@ import { execSync } from 'child_process';
 
 const roomGsiStates = new Map();
 const playerHistoricalStats = new Map();
+const matchRosterCache = new Map();
+let currentMatchMeta = { mapName: '', maxRound: 0 };
 
 export function handleGsiPayload(roomId, payload) {
   if (!roomId || !payload) return null;
@@ -27,6 +29,20 @@ export function handleGsiPayload(roomId, payload) {
   const bomb = roundData.bomb || 'none'; // 'planted' | 'exploded' | 'defused'
   const roundPhase = roundData.phase || 'unknown'; // 'freezetime' | 'live' | 'over'
   const winTeam = roundData.win_team || null;
+
+  // Reset match roster cache if a brand new match or map starts
+  if (
+    (phase === 'warmup' && roundNumber === 0) ||
+    (mapName !== 'Indefinido' && currentMatchMeta.mapName && currentMatchMeta.mapName !== mapName) ||
+    (roundNumber === 0 && scoreCT === 0 && scoreTR === 0 && currentMatchMeta.maxRound > 2 && phase === 'live')
+  ) {
+    playerHistoricalStats.clear();
+    matchRosterCache.clear();
+    currentMatchMeta = { mapName: mapName !== 'Indefinido' ? mapName : '', maxRound: 0 };
+  } else {
+    if (mapName !== 'Indefinido') currentMatchMeta.mapName = mapName;
+    if (roundNumber > currentMatchMeta.maxRound) currentMatchMeta.maxRound = roundNumber;
+  }
 
   // 1. Resolve raw stats from player.match_stats or payload.allplayers[player.steamid].match_stats
   let rawStats = player.match_stats || {};
@@ -55,11 +71,6 @@ export function handleGsiPayload(roomId, payload) {
   const incomingMvps = typeof rawStats?.mvps === 'number' ? rawStats.mvps : 0;
   const incomingScore = typeof rawStats?.score === 'number' ? rawStats.score : 0;
 
-  // Reset cache if a brand new map starts in warmup
-  if (phase === 'warmup' && roundNumber === 0) {
-    playerHistoricalStats.delete(pKey);
-  }
-
   // Preserve accumulated stats if incoming packet has zeroes during gameover/intermission or late in game
   let finalKills = incomingKills;
   let finalDeaths = incomingDeaths;
@@ -70,7 +81,7 @@ export function handleGsiPayload(roomId, payload) {
   if (
     incomingKills === 0 &&
     incomingDeaths === 0 &&
-    cached.kills > 0 &&
+    (cached.kills > 0 || cached.deaths > 0) &&
     (phase === 'gameover' || phase === 'intermission' || roundNumber > 1 || scoreCT + scoreTR > 1)
   ) {
     finalKills = cached.kills;
@@ -78,7 +89,7 @@ export function handleGsiPayload(roomId, payload) {
     finalAssists = cached.assists;
     finalMvps = cached.mvps;
     finalScore = cached.score;
-  } else if (incomingKills > 0 || incomingDeaths > 0 || incomingScore > 0) {
+  } else if (incomingKills > 0 || incomingDeaths > 0 || incomingAssists > 0 || incomingScore > 0) {
     finalKills = Math.max(incomingKills, cached.kills);
     finalDeaths = Math.max(incomingDeaths, cached.deaths);
     finalAssists = Math.max(incomingAssists, cached.assists);
@@ -96,84 +107,50 @@ export function handleGsiPayload(roomId, payload) {
 
   const finalKd = finalDeaths > 0 ? Number((finalKills / finalDeaths).toFixed(2)) : Number(finalKills.toFixed(2));
 
-  // Parse all players match statistics (Kills, Deaths, Assists, MVPs, Score, K/D, Health, Money, Weapons)
-  const allPlayersStats = [];
-  const teamCT = [];
-  const teamTR = [];
+  // Helper to upsert any player into the persistent matchRosterCache
+  const upsertRosterPlayer = (steamId, pName, rawTeam, pState = {}, statsObj = {}, weaponsObj = {}) => {
+    const cleanSteam = String(steamId || '').trim();
+    const cleanName = String(pName || '').trim();
+    if (!cleanSteam && !cleanName) return;
 
-  if (payload.allplayers && typeof payload.allplayers === 'object') {
-    Object.entries(payload.allplayers).forEach(([steamId, pData]) => {
-      if (!pData || typeof pData !== 'object') return;
-      const stats = pData.match_stats || {};
-      const pState = pData.state || {};
-      const kills = typeof stats.kills === 'number' ? stats.kills : 0;
-      const deaths = typeof stats.deaths === 'number' ? stats.deaths : 0;
-      const assists = typeof stats.assists === 'number' ? stats.assists : 0;
-      const mvps = typeof stats.mvps === 'number' ? stats.mvps : 0;
-      const score = typeof stats.score === 'number' ? stats.score : 0;
-      const kd = deaths > 0 ? Number((kills / deaths).toFixed(2)) : Number(kills.toFixed(2));
-      const health = typeof pState.health === 'number' ? pState.health : 100;
-      const armor = typeof pState.armor === 'number' ? pState.armor : 0;
-      const helmet = Boolean(pState.helmet);
-      const money = typeof pState.money === 'number' ? pState.money : 0;
-      const equipValue = typeof pState.equip_value === 'number' ? pState.equip_value : 0;
-      const isAlive = health > 0;
-      const team = pData.team === 'CT' ? 'CT' : pData.team === 'T' ? 'TR' : (pData.team || 'Indefinido');
+    const rosterKey = cleanSteam || cleanName.toLowerCase();
+    const prev = matchRosterCache.get(rosterKey) || {};
 
-      const weapons = [];
-      let activeWeapon = null;
-      if (pData.weapons && typeof pData.weapons === 'object') {
-        Object.values(pData.weapons).forEach((w) => {
-          if (!w || !w.name) return;
-          const clean = w.name.replace(/^weapon_/, '').replace('_silencer', '-S').toUpperCase();
-          weapons.push(clean);
-          if (w.state === 'active') activeWeapon = clean;
-        });
-      }
+    const kIn = typeof statsObj.kills === 'number' ? statsObj.kills : 0;
+    const dIn = typeof statsObj.deaths === 'number' ? statsObj.deaths : 0;
+    const aIn = typeof statsObj.assists === 'number' ? statsObj.assists : 0;
+    const mIn = typeof statsObj.mvps === 'number' ? statsObj.mvps : 0;
+    const sIn = typeof statsObj.score === 'number' ? statsObj.score : 0;
 
-      const pObj = {
-        steamId,
-        name: pData.name || 'Jogador',
-        team,
-        health,
-        isAlive,
-        armor,
-        helmet,
-        money,
-        equipValue,
-        kills,
-        deaths,
-        assists,
-        mvps,
-        score,
-        kd,
-        activeWeapon: activeWeapon || weapons[0] || 'Faca',
-        weapons,
-      };
+    const kills = Math.max(kIn, prev.kills || 0);
+    const deaths = Math.max(dIn, prev.deaths || 0);
+    const assists = Math.max(aIn, prev.assists || 0);
+    const mvps = Math.max(mIn, prev.mvps || 0);
+    const score = Math.max(sIn, prev.score || 0);
+    const kd = deaths > 0 ? Number((kills / deaths).toFixed(2)) : Number(kills.toFixed(2));
 
-      allPlayersStats.push(pObj);
-      if (team === 'CT') teamCT.push(pObj);
-      else if (team === 'TR') teamTR.push(pObj);
-    });
-  }
-
-  // Include individual player in allPlayersStats if missing or update if higher stats known
-  const playerInAll = allPlayersStats.find(
-    (p) => (player.steamid && p.steamId === player.steamid) || (player.name && p.name === player.name)
-  );
-  if (!playerInAll && (player.name || player.steamid)) {
-    const pState = player.state || {};
-    const health = typeof pState.health === 'number' ? pState.health : 100;
-    const armor = typeof pState.armor === 'number' ? pState.armor : 0;
-    const helmet = Boolean(pState.helmet);
-    const money = typeof pState.money === 'number' ? pState.money : 0;
-    const equipValue = typeof pState.equip_value === 'number' ? pState.equip_value : 0;
+    const health = typeof pState.health === 'number' ? pState.health : (prev.health ?? 100);
+    const armor = typeof pState.armor === 'number' ? pState.armor : (prev.armor ?? 0);
+    const helmet = pState.helmet !== undefined ? Boolean(pState.helmet) : Boolean(prev.helmet);
+    const money = typeof pState.money === 'number' ? pState.money : (prev.money ?? 0);
+    const equipValue = typeof pState.equip_value === 'number' ? pState.equip_value : (prev.equipValue ?? 0);
     const isAlive = health > 0;
-    const team = player.team === 'CT' ? 'CT' : 'TR';
+    const team = rawTeam === 'CT' ? 'CT' : rawTeam === 'T' || rawTeam === 'TR' ? 'TR' : (prev.team || 'CT');
 
-    const pObj = {
-      steamId: player.steamid || 'local_player',
-      name: player.name || 'Jogador',
+    const weapons = [];
+    let activeWeapon = null;
+    if (weaponsObj && typeof weaponsObj === 'object') {
+      Object.values(weaponsObj).forEach((w) => {
+        if (!w || !w.name) return;
+        const clean = w.name.replace(/^weapon_/, '').replace('_silencer', '-S').toUpperCase();
+        weapons.push(clean);
+        if (w.state === 'active') activeWeapon = clean;
+      });
+    }
+
+    matchRosterCache.set(rosterKey, {
+      steamId: cleanSteam || prev.steamId || '',
+      name: cleanName || prev.name || 'Jogador',
       team,
       health,
       isAlive,
@@ -181,26 +158,55 @@ export function handleGsiPayload(roomId, payload) {
       helmet,
       money,
       equipValue,
-      kills: finalKills,
-      deaths: finalDeaths,
-      assists: finalAssists,
-      mvps: finalMvps,
-      score: finalScore,
-      kd: finalKd,
-      activeWeapon: 'Faca',
-      weapons: [],
-    };
-    allPlayersStats.push(pObj);
-    if (team === 'CT') teamCT.push(pObj);
-    else teamTR.push(pObj);
-  } else if (playerInAll && playerInAll.kills === 0 && finalKills > 0) {
-    playerInAll.kills = finalKills;
-    playerInAll.deaths = finalDeaths;
-    playerInAll.assists = finalAssists;
-    playerInAll.mvps = finalMvps;
-    playerInAll.score = finalScore;
-    playerInAll.kd = finalKd;
+      kills,
+      deaths,
+      assists,
+      mvps,
+      score,
+      kd,
+      activeWeapon: activeWeapon || weapons[0] || prev.activeWeapon || 'Faca',
+      weapons: weapons.length > 0 ? weapons : (prev.weapons || []),
+      lastSeenAt: Date.now(),
+    });
+  };
+
+  // 2. Upsert all players from payload.allplayers (if provided by server/observer/client)
+  if (payload.allplayers && typeof payload.allplayers === 'object') {
+    Object.entries(payload.allplayers).forEach(([steamId, pData]) => {
+      if (!pData || typeof pData !== 'object') return;
+      upsertRosterPlayer(
+        steamId,
+        pData.name,
+        pData.team,
+        pData.state || {},
+        pData.match_stats || {},
+        pData.weapons || {}
+      );
+    });
   }
+
+  // 3. Upsert current payload.player (active player OR teammate currently being spectated while dead!)
+  if (player && (player.name || player.steamid) && player.activity !== 'menu') {
+    upsertRosterPlayer(
+      player.steamid,
+      player.name,
+      player.team,
+      player.state || {},
+      {
+        kills: finalKills,
+        deaths: finalDeaths,
+        assists: finalAssists,
+        mvps: finalMvps,
+        score: finalScore,
+      },
+      player.weapons || {}
+    );
+  }
+
+  // 4. Build full match scoreboard from matchRosterCache so no player is ever lost between packets
+  const allPlayersStats = Array.from(matchRosterCache.values());
+  const teamCT = allPlayersStats.filter((p) => p.team === 'CT');
+  const teamTR = allPlayersStats.filter((p) => p.team === 'TR');
 
   // Sort players by score desc, then kills desc
   allPlayersStats.sort((a, b) => b.score - a.score || b.kills - a.kills);
@@ -436,6 +442,15 @@ export function findCs2CfgDirs() {
  * Installs GSI directly to CS2 on the host PC in 1 click without downloading files
  */
 export function installGsiLocally(serverBaseUrl = 'http://127.0.0.1:3000', roomId = 'MIX-PRO') {
+  if (process.platform !== 'win32') {
+    return {
+      success: false,
+      installed: false,
+      useBrowserSave: true,
+      cfgContent: generateGsiConfig(process.env.RENDER_EXTERNAL_URL || 'https://mix-cs2.onrender.com', roomId),
+      error: 'Servidor em nuvem: usando instalador direto pelo navegador.',
+    };
+  }
   let dirs = findCs2CfgDirs();
   if (dirs.length === 0) {
     const defaultDir = path.join(
@@ -492,6 +507,19 @@ export function installGsiLocally(serverBaseUrl = 'http://127.0.0.1:3000', roomI
  * Checks if GSI CFG is installed in the CS2 folder on the host PC
  */
 export function checkGsiInstalled() {
+  if (process.platform !== 'win32') {
+    for (const state of roomGsiStates.values()) {
+      if (state && (Date.now() - (state.lastUpdate || 0) < 3600000)) {
+        return {
+          installed: true,
+          path: 'C:\\Program Files (x86)\\Steam\\steamapps\\common\\Counter-Strike Global Offensive\\game\\csgo\\cfg\\gamestate_integration_cs2mixhub.cfg',
+          hasMatchStats: true,
+          active: true,
+        };
+      }
+    }
+    return { installed: false, path: null, hasMatchStats: false, active: false };
+  }
   const dirs = findCs2CfgDirs();
   for (const dir of dirs) {
     const cfgPath = path.join(dir, 'gamestate_integration_cs2mixhub.cfg');

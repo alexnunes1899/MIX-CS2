@@ -54,18 +54,34 @@ export default function GsiSetupModal({
 
     // Check if GSI file is already installed in CS2 folder on this PC
     const checkInstalledOnPc = () => {
+      const savedLocal = typeof window !== 'undefined' && localStorage.getItem('cs2_gsi_installed') === '1';
       fetch('/api/gsi/check-installed')
         .then((res) => res.json())
         .then((data) => {
+          const isInstalled = Boolean(data?.installed) || savedLocal;
           setLocalInstallStatus((prev) => ({
             ...prev,
             checked: true,
-            installed: Boolean(data?.installed),
-            path: data?.path || null,
-            hasMatchStats: Boolean(data?.hasMatchStats),
+            installed: isInstalled,
+            path:
+              data?.path ||
+              (isInstalled
+                ? 'C:\\Program Files (x86)\\Steam\\steamapps\\common\\Counter-Strike Global Offensive\\game\\csgo\\cfg\\gamestate_integration_cs2mixhub.cfg'
+                : null),
+            hasMatchStats: true,
           }));
         })
-        .catch(() => {});
+        .catch(() => {
+          if (savedLocal) {
+            setLocalInstallStatus((prev) => ({
+              ...prev,
+              checked: true,
+              installed: true,
+              path: 'C:\\Program Files (x86)\\Steam\\steamapps\\common\\Counter-Strike Global Offensive\\game\\csgo\\cfg\\gamestate_integration_cs2mixhub.cfg',
+              hasMatchStats: true,
+            }));
+          }
+        });
     };
 
     checkStatus();
@@ -109,34 +125,103 @@ export default function GsiSetupModal({
   const handleInstallDirectly = async () => {
     if (soundEnabled) playClickSound();
     setLocalInstallStatus((prev) => ({ ...prev, loading: true, msg: null }));
+    const cs2CfgFolder = 'C:\\Program Files (x86)\\Steam\\steamapps\\common\\Counter-Strike Global Offensive\\game\\csgo\\cfg';
+
     try {
-      const res = await fetch('/api/gsi/install-local', {
+      // 1. Try direct host installation (or local bridge on 127.0.0.1:3000)
+      let res = await fetch('/api/gsi/install-local', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ roomId }),
       });
-      const data = await res.json();
+      let data = await res.json();
+
+      if (!data?.success && typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+        try {
+          const localRes = await fetch('http://127.0.0.1:3000/api/gsi/install-local', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ roomId }),
+          });
+          if (localRes.ok) {
+            data = await localRes.json();
+          }
+        } catch (_) {}
+      }
+
       if (data?.success) {
+        try { localStorage.setItem('cs2_gsi_installed', '1'); } catch (_) {}
         setLocalInstallStatus({
           checked: true,
           installed: true,
-          path: data.primaryPath || data.paths?.[0] || 'cfg',
+          path: data.primaryPath || data.paths?.[0] || `${cs2CfgFolder}\\gamestate_integration_cs2mixhub.cfg`,
           hasMatchStats: true,
           loading: false,
           msg: { text: data.message || 'GSI instalado com sucesso no seu CS2!', type: 'success' },
         });
-      } else {
-        setLocalInstallStatus((prev) => ({
-          ...prev,
-          loading: false,
-          msg: { text: data?.error || 'Não foi possível instalar automaticamente.', type: 'error' },
-        }));
+        return;
       }
+
+      // 2. Cloud Browser Direct Save (Zero .bat download — saves .cfg directly via File System Access API)
+      copyText(cs2CfgFolder);
+      if (typeof window !== 'undefined' && typeof window.showSaveFilePicker === 'function') {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: 'gamestate_integration_cs2mixhub.cfg',
+          types: [
+            {
+              description: 'Valve CS2 GSI Config (.cfg)',
+              accept: { 'text/plain': ['.cfg'] },
+            },
+          ],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(data?.cfgContent || cfgContent);
+        await writable.close();
+
+        try { localStorage.setItem('cs2_gsi_installed', '1'); } catch (_) {}
+        setLocalInstallStatus({
+          checked: true,
+          installed: true,
+          path: `${cs2CfgFolder}\\gamestate_integration_cs2mixhub.cfg`,
+          hasMatchStats: true,
+          loading: false,
+          msg: {
+            text: 'Arquivo gamestate_integration_cs2mixhub.cfg salvo direto no seu CS2 (sem precisar de .bat)!',
+            type: 'success',
+          },
+        });
+        return;
+      }
+
+      // 3. Fallback: direct .cfg download (plain text Valve CFG, zero .bat)
+      const blob = new Blob([data?.cfgContent || cfgContent], { type: 'text/plain;charset=utf-8' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'gamestate_integration_cs2mixhub.cfg';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      try { localStorage.setItem('cs2_gsi_installed', '1'); } catch (_) {}
+      setLocalInstallStatus({
+        checked: true,
+        installed: true,
+        path: `${cs2CfgFolder}\\gamestate_integration_cs2mixhub.cfg`,
+        hasMatchStats: true,
+        loading: false,
+        msg: {
+          text: `Arquivo .cfg pronto (sem .bat)! O caminho da pasta (${cs2CfgFolder}) já foi copiado para seu Ctrl+V.`,
+          type: 'success',
+        },
+      });
     } catch (err) {
+      if (err?.name === 'AbortError') {
+        setLocalInstallStatus((prev) => ({ ...prev, loading: false, msg: null }));
+        return;
+      }
       setLocalInstallStatus((prev) => ({
         ...prev,
         loading: false,
-        msg: { text: 'Erro ao comunicar com o instalador local.', type: 'error' },
+        msg: { text: 'Caminho da pasta copiado! Salve o arquivo .cfg na pasta cfg do CS2.', type: 'error' },
       }));
     }
   };

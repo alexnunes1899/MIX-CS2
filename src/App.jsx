@@ -143,7 +143,13 @@ export default function App() {
       return false;
     }
   });
-  const [gsiModalOpen, setGsiModalOpen] = useState(false);
+  const [gsiModalOpen, setGsiModalOpen] = useState(() => {
+    try {
+      return new URLSearchParams(window.location.search).get('gsi') === '1';
+    } catch (e) {
+      return false;
+    }
+  });
   const [leaderboardOpen, setLeaderboardOpen] = useState(false);
   const [discordModalOpen, setDiscordModalOpen] = useState(false);
   const [whatsappModalOpen, setWhatsappModalOpen] = useState(false);

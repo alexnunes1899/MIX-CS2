@@ -87,6 +87,18 @@ export function normalizePlayerName(raw = '') {
     .trim();
 }
 
+export function extractNameTokens(raw = '') {
+  if (!raw || typeof raw !== 'string') return [];
+  return raw
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[\[\(\{].*?[\]\)\}]/g, ' ')
+    .split(/[^a-z0-9]+/)
+    .map((t) => t.replace(/\d+$/, '').trim())
+    .filter((t) => t.length >= 3);
+}
+
 /**
  * Accurately determines the winning team (Team A or Team B) in CS2,
  * correctly taking into account side switches (MR12 regulation half-time)
@@ -122,6 +134,7 @@ export function determineMatchWinner(mix = {}, liveState = {}) {
     const pNick = p.nick || p.displayName || p.username || '';
     const pSteam = String(p.steamId || p.steamid || '');
     const cleanP = normalizePlayerName(pNick);
+    const tokensP = extractNameTokens(pNick);
 
     const match = gsiPlayersList.find((g) => {
       const gSteam = String(g.steamId || g.steamid || '');
@@ -129,6 +142,12 @@ export function determineMatchWinner(mix = {}, liveState = {}) {
       const cleanG = normalizePlayerName(g.name);
       if (cleanP && cleanG && cleanP === cleanG) return true;
       if (cleanP.length >= 3 && cleanG.length >= 3 && (cleanP.includes(cleanG) || cleanG.includes(cleanP))) return true;
+      const tokensG = extractNameTokens(g.name);
+      if (tokensP.length > 0 && tokensG.length > 0) {
+        if (tokensP.some((tp) => tokensG.some((tg) => tp === tg || tp.startsWith(tg) || tg.startsWith(tp)))) {
+          return true;
+        }
+      }
       return false;
     });
 
@@ -205,19 +224,28 @@ export function computeMatchPerformers(matchData = {}, gsiState = null) {
     ? Object.entries(rawGsi).map(([steamId, p]) => ({ steamId, ...p }))
     : [];
 
+  const roundsPlayed = Math.max(
+    10,
+    (Number(matchData.scoreWinner ?? gsiState?.scoreCT) || 13) +
+      (Number(matchData.scoreLoser ?? gsiState?.scoreTR) || 7)
+  );
+
   let hasRealGsiStats = false;
   const matchedGsiSet = new Set();
 
-  const evaluatedPlayers = allPlayers.map((p, idx) => {
-    const isWinner = winnerPlayers.some((w) => (w.id && w.id === p.id) || (w.nick && w.nick === p.nick));
+  // Pass 1-4: Match players by SteamID, Exact Normalized Name, Substring, or Word/Token Prefix
+  const playerToGsiMap = new Map();
+
+  allPlayers.forEach((p, idx) => {
     const pNick = p.nick || p.displayName || p.username || p.name || `Jogador ${idx + 1}`;
     const pSteamId = String(p.steamId || p.steamid || '');
     const cleanNick = normalizePlayerName(pNick);
+    const tokensP = extractNameTokens(pNick);
 
-    // Look for Valve GSI match by steamId first, then normalized name, then partial match
     let matchedGsi = null;
     if (pSteamId) {
       matchedGsi = gsiStatsList.find((g) => {
+        if (matchedGsiSet.has(g)) return false;
         const gSteam = String(g.steamId || g.steamid || '');
         return gSteam && gSteam === pSteamId;
       });
@@ -231,7 +259,7 @@ export function computeMatchPerformers(matchData = {}, gsiState = null) {
         return cleanG && cleanG === cleanNick;
       });
 
-      // 2. Substring match (min length 3 to prevent false positives)
+      // 2. Substring match (min length 3)
       if (!matchedGsi && cleanNick.length >= 3) {
         matchedGsi = gsiStatsList.find((g) => {
           if (matchedGsiSet.has(g)) return false;
@@ -239,49 +267,102 @@ export function computeMatchPerformers(matchData = {}, gsiState = null) {
           return cleanG && cleanG.length >= 3 && (cleanNick.includes(cleanG) || cleanG.includes(cleanNick));
         });
       }
+
+      // 3. Token/word prefix overlap (e.g. "Alex Baguncinha" <-> "alexnunes1899", "dionatan.xp" <-> "dionatan")
+      if (!matchedGsi && tokensP.length > 0) {
+        matchedGsi = gsiStatsList.find((g) => {
+          if (matchedGsiSet.has(g)) return false;
+          const tokensG = extractNameTokens(g.name);
+          return (
+            tokensG.length > 0 &&
+            tokensP.some((tp) => tokensG.some((tg) => tp === tg || tp.startsWith(tg) || tg.startsWith(tp)))
+          );
+        });
+      }
     }
 
-    if (matchedGsi) {
+    if (matchedGsi && (matchedGsi.kills > 0 || matchedGsi.deaths > 0 || matchedGsi.score > 0)) {
       matchedGsiSet.add(matchedGsi);
+      playerToGsiMap.set(p, matchedGsi);
       hasRealGsiStats = true;
     }
+  });
 
-    let kills = matchedGsi?.kills ?? p.kills;
-    let deaths = matchedGsi?.deaths ?? p.deaths;
-    let assists = matchedGsi?.assists ?? p.assists ?? 0;
-    let mvps = matchedGsi?.mvps ?? p.mvps ?? 0;
-    let score = matchedGsi?.score ?? p.score ?? 0;
+  // Pass 5: Pair any remaining active GSI players with unmatched roster players
+  const remainingGsi = gsiStatsList.filter(
+    (g) => !matchedGsiSet.has(g) && (g.kills > 0 || g.deaths > 0 || g.score > 0)
+  );
+  if (remainingGsi.length > 0) {
+    const scoreCT = Number(gsiState?.scoreCT ?? 0);
+    const scoreTR = Number(gsiState?.scoreTR ?? 0);
+    const winSide = scoreCT >= scoreTR ? 'CT' : 'TR';
 
-    // Derive competitive stats only if no real GSI stats exist at all
-    if (kills === undefined || deaths === undefined || (kills === 0 && deaths === 0 && !hasRealGsiStats)) {
+    allPlayers.forEach((p) => {
+      if (playerToGsiMap.has(p)) return;
+      const isWinner = winnerPlayers.some((w) => (w.id && w.id === p.id) || (w.nick && w.nick === p.nick));
+      const desiredSide = isWinner ? winSide : winSide === 'CT' ? 'TR' : 'CT';
+      const idx = remainingGsi.findIndex((g) => (g.team || 'CT') === desiredSide);
+      const chosen = idx !== -1 ? remainingGsi.splice(idx, 1)[0] : remainingGsi.shift();
+      if (chosen) {
+        matchedGsiSet.add(chosen);
+        playerToGsiMap.set(p, chosen);
+        hasRealGsiStats = true;
+      }
+    });
+  }
+
+  const evaluatedPlayers = allPlayers.map((p, idx) => {
+    const isWinner = winnerPlayers.some((w) => (w.id && w.id === p.id) || (w.nick && w.nick === p.nick));
+    const pNick = p.nick || p.displayName || p.username || p.name || `Jogador ${idx + 1}`;
+    const pSteamId = String(p.steamId || p.steamid || '');
+    const matchedGsi = playerToGsiMap.get(p) || null;
+    const isRealGsi = Boolean(matchedGsi);
+
+    let kills = matchedGsi ? Number(matchedGsi.kills || 0) : p.kills;
+    let deaths = matchedGsi ? Number(matchedGsi.deaths || 0) : p.deaths;
+    let assists = matchedGsi ? Number(matchedGsi.assists || 0) : (p.assists ?? 0);
+    let mvps = matchedGsi ? Number(matchedGsi.mvps || 0) : (p.mvps ?? 0);
+    let score = matchedGsi ? Number(matchedGsi.score || 0) : (p.score ?? 0);
+
+    // Derive competitive stats ONLY if no real GSI stats exist for this player
+    if (!isRealGsi && (kills === undefined || deaths === undefined || (kills === 0 && deaths === 0))) {
       const baseLevel = Number(p.level || 16);
-      const isCaptain = p.role === 'Capitão' || idx === 0;
       const levelFactor = Math.min(21, Math.max(1, baseLevel)) / 20;
 
       if (isWinner) {
-        kills = Math.round(18 + levelFactor * 7 + (isCaptain ? 2 : 0));
-        deaths = Math.round(14 - levelFactor * 4);
-        mvps = Math.round(2 + levelFactor * 3 + (isCaptain ? 1 : 0));
-        assists = Math.round(3 + levelFactor * 3);
-        score = kills * 2 + mvps * 3 + assists;
+        kills = Math.round(13 + levelFactor * 5);
+        deaths = Math.round(12 - levelFactor * 3);
+        mvps = Math.round(1 + levelFactor * 2);
+        assists = Math.round(2 + levelFactor * 3);
+        score = kills * 2 + mvps * 2 + assists;
       } else {
-        kills = Math.round(12 + levelFactor * 6);
-        deaths = Math.round(17 - levelFactor * 3);
-        mvps = Math.round(levelFactor * 2);
+        kills = Math.round(9 + levelFactor * 4);
+        deaths = Math.round(14 - levelFactor * 2);
+        mvps = Math.round(levelFactor * 1);
         assists = Math.round(2 + levelFactor * 2);
         score = kills * 2 + mvps * 2 + assists;
       }
     }
 
     const kd = deaths > 0 ? Number((kills / deaths).toFixed(2)) : Number(kills.toFixed(2));
-    const kdRatio = deaths > 0 ? kills / deaths : kills;
-    const killFactor = kills / 15;
-    const kdFactor = Math.min(2.5, kdRatio);
-    const winnerBonus = isWinner ? 1.08 : 0.96;
+
+    // Official CS2 HLTV 2.0-style Rating calculation based on Kills, Deaths, Assists, MVPs, and Rounds
+    const kpr = kills / roundsPlayed;
+    const survivalRate = Math.max(0, (roundsPlayed - deaths) / roundsPlayed);
+    const apr = assists / roundsPlayed;
+    const impact = Math.max(0.2, 2.13 * kpr + 0.42 * apr - 0.41);
+    const mvpBonus = (mvps / roundsPlayed) * 0.85;
+    const winBonus = isWinner ? 0.06 : -0.02;
+
     const ratingRaw =
-      (killFactor * 0.5 + kdFactor * 0.4 + (mvps * 0.06) + (assists * 0.03) + (score > 0 ? (score / 40) * 0.05 : 0)) *
-      winnerBonus;
-    const rating = Number(Math.max(0.35, Math.min(2.8, ratingRaw)).toFixed(2));
+      (kpr / 0.679) * 0.38 +
+      (survivalRate / 0.317) * 0.24 +
+      impact * 0.26 +
+      mvpBonus +
+      winBonus;
+
+    const rating = Number(Math.max(0.35, Math.min(2.6, ratingRaw)).toFixed(2));
+    const performanceScore = rating + kills * 0.015 - deaths * 0.008 + mvps * 0.03;
 
     return {
       id: p.id || `p-${idx}`,
@@ -298,24 +379,31 @@ export function computeMatchPerformers(matchData = {}, gsiState = null) {
       score,
       kd,
       rating,
-      performanceScore: ratingRaw,
-      isRealGsi: Boolean(matchedGsi),
+      performanceScore,
+      isRealGsi,
     };
   });
 
   // Sort descending by performance score for MVP
   const sortedDesc = [...evaluatedPlayers].sort(
-    (a, b) => b.performanceScore - a.performanceScore || b.kills - a.kills || b.mvps - a.mvps
+    (a, b) => b.performanceScore - a.performanceScore || b.kills - a.kills || b.kd - a.kd || b.mvps - a.mvps
   );
-  const best = sortedDesc[0] || null;
 
-  // Sort ascending by performance score for Bagre (worst performer)
+  // When real CS2 GSI stats exist, strictly elect MVP and Bagre from players with real GSI stats
+  const realGsiPlayersDesc = sortedDesc.filter((p) => p.isRealGsi);
+  const best = realGsiPlayersDesc.length > 0 ? realGsiPlayersDesc[0] : (sortedDesc[0] || null);
+
   const sortedAsc = [...evaluatedPlayers].sort(
     (a, b) => a.performanceScore - b.performanceScore || a.kills - b.kills || b.deaths - a.deaths
   );
-  let worst = sortedAsc[0] || null;
+  const realGsiPlayersAsc = sortedAsc.filter((p) => p.isRealGsi);
+  let worst =
+    realGsiPlayersAsc.length >= 2
+      ? realGsiPlayersAsc[0]
+      : (sortedAsc[0] || null);
+
   if (worst && best && worst.id === best.id && sortedAsc.length > 1) {
-    worst = sortedAsc[1];
+    worst = sortedAsc.find((p) => p.id !== best.id) || sortedAsc[1];
   }
 
   return {
