@@ -1033,30 +1033,39 @@ class DiscordBotManager {
   }
 
   loadConfig() {
-    try {
-      if (fs.existsSync(CONFIG_FILE)) {
-        const raw = fs.readFileSync(CONFIG_FILE, 'utf8');
-        return JSON.parse(raw);
-      }
-    } catch (e) {
-      console.warn('[DISCORD BOT] Falha ao ler discordBotConfig.json:', e.message);
-    }
-    return {
+    let base = {
       token: process.env.DISCORD_BOT_TOKEN || '',
-      clientId: process.env.DISCORD_CLIENT_ID || '',
+      clientId: process.env.DISCORD_CLIENT_ID || '1569029813518336030',
       guildId: process.env.DISCORD_GUILD_ID || '',
       defaultChannelId: process.env.DISCORD_CHANNEL_ID || '',
       lobbyVoiceId: process.env.DISCORD_LOBBY_VOICE || '',
-      teamAVoiceId: process.env.DISCORD_TEAMA_VOICE || '',
-      teamBVoiceId: process.env.DISCORD_TEAMB_VOICE || '',
+      teamAVoiceId: process.env.DISCORD_TEAMA_VOICE || '1569515077269459129',
+      teamBVoiceId: process.env.DISCORD_TEAMB_VOICE || '1569515079248908358',
       autoMoveVoice: true,
       autoStartVetoOnFull: false,
-      serverConnect: '',
+      serverConnect: 'connect 103.14.27.41:25054',
       dealsChannelId: process.env.DISCORD_DEALS_CHANNEL || '',
       dealsChannels: {},
       autoPostDeals: true,
       dealsIntervalMinutes: 60,
     };
+    try {
+      if (fs.existsSync(CONFIG_FILE)) {
+        const raw = fs.readFileSync(CONFIG_FILE, 'utf8');
+        base = { ...base, ...JSON.parse(raw) };
+      } else {
+        const DEFAULT_CONFIG_FILE = path.join(DATA_DIR, 'discordBotConfig.default.json');
+        if (fs.existsSync(DEFAULT_CONFIG_FILE)) {
+          const raw = fs.readFileSync(DEFAULT_CONFIG_FILE, 'utf8');
+          base = { ...base, ...JSON.parse(raw) };
+        }
+      }
+    } catch (e) {
+      console.warn('[DISCORD BOT] Falha ao ler discordBotConfig.json:', e.message);
+    }
+    if (process.env.DISCORD_BOT_TOKEN) base.token = process.env.DISCORD_BOT_TOKEN;
+    if (process.env.DISCORD_CLIENT_ID) base.clientId = process.env.DISCORD_CLIENT_ID;
+    return base;
   }
 
   saveConfig(newConfig) {

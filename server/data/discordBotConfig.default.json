@@ -1,0 +1,34 @@
+{
+  "token": "",
+  "clientId": "1569029813518336030",
+  "guildId": "",
+  "defaultChannelId": "",
+  "lobbyVoiceId": "",
+  "teamAVoiceId": "1569515077269459129",
+  "teamBVoiceId": "1569515079248908358",
+  "autoMoveVoice": true,
+  "autoStartVetoOnFull": false,
+  "serverConnect": "connect 103.14.27.41:25054",
+  "dealsChannels": {
+    "886364895254298644": "1569354063919710210",
+    "933123226647805993": "1569354071255814286",
+    "1178438137672904734": "1569354074430902302"
+  },
+  "guildVoiceChannels": {
+    "886364895254298644": {
+      "teamAVoiceId": "1569515077269459129",
+      "teamBVoiceId": "1569515079248908358",
+      "categoryId": "1569515075994128454"
+    },
+    "933123226647805993": {
+      "teamAVoiceId": "1569515084026478612",
+      "teamBVoiceId": "1569515085322395832",
+      "categoryId": "1569515082348499084"
+    },
+    "1178438137672904734": {
+      "teamAVoiceId": "1569515089386668072",
+      "teamBVoiceId": "1569515090607214662",
+      "categoryId": "1569515088204013570"
+    }
+  }
+}

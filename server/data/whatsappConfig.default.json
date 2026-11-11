@@ -1,11 +1,11 @@
 {
-  "enabled": true,
+  "enabled": false,
   "targetGroupId": "",
   "targetGroupName": "",
-  "notifyOnCreate": true,
-  "notifyOnMissingSlots": true,
-  "notifyOnReady": true,
-  "notifyOnResult": true,
+  "notifyOnCreate": false,
+  "notifyOnMissingSlots": false,
+  "notifyOnReady": false,
+  "notifyOnResult": false,
   "prefix": "!mix",
-  "autoReconnect": true
+  "autoReconnect": false
 }
