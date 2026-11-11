@@ -400,6 +400,11 @@ class WhatsAppBotManager {
   }
 
   async connect() {
+    if (!this.config.enabled) {
+      this.status = 'disabled';
+      console.log('🔇 [WHATSAPP] Bot do WhatsApp desativado conforme solicitado. Operando 100% via Discord Bot.');
+      return;
+    }
     if (this.isConnecting || this.status === 'connected') return;
     this.isConnecting = true;
     this.status = 'connecting';

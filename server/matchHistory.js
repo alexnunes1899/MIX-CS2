@@ -76,11 +76,113 @@ export function getMapImageUrl(mapName = '') {
   return MAP_IMAGES[norm] || MAP_IMAGES[key] || MAP_IMAGES[key.replace('de_', '')] || MAP_IMAGES.mirage;
 }
 
+export function normalizePlayerName(raw = '') {
+  if (!raw || typeof raw !== 'string') return '';
+  return raw
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // remove diacritics/accents
+    .toLowerCase()
+    .replace(/[\[\(\{].*?[\]\)\}]/g, '') // remove clan tags like [TAG] or (Clan)
+    .replace(/[^a-z0-9]/g, '') // strip emojis, symbols, flags, spaces
+    .trim();
+}
+
 /**
- * Automatically elects the Match MVP based on CS2 player performance statistics.
- * Evaluates Kills, Deaths, Assists, Valve Round MVPs, Score, K/D, and eSports Rating.
+ * Accurately determines the winning team (Team A or Team B) in CS2,
+ * correctly taking into account side switches (MR12 regulation half-time)
+ * and player active team rosters at the moment of gameover.
  */
-export function computeMatchMvp(matchData = {}, gsiState = null) {
+export function determineMatchWinner(mix = {}, liveState = {}) {
+  const scoreCT = Number(liveState?.scoreCT ?? liveState?.score_ct ?? 0);
+  const scoreTR = Number(liveState?.scoreTR ?? liveState?.score_t ?? 0);
+  const winningSide = scoreCT > scoreTR ? 'CT' : scoreTR > scoreCT ? 'TR' : 'DRAW';
+
+  if (winningSide === 'DRAW') {
+    return { winnerLetter: 'A', scoreCT, scoreTR, winningSide, method: 'draw_default' };
+  }
+
+  const teamAPlayers = Array.isArray(mix.teamA?.players)
+    ? mix.teamA.players
+    : Array.isArray(mix.teamA)
+    ? mix.teamA
+    : [];
+
+  const gsiStatsList = liveState.allPlayersStats || liveState.allplayers || [];
+  const gsiPlayersList = Array.isArray(gsiStatsList)
+    ? gsiStatsList
+    : typeof gsiStatsList === 'object'
+    ? Object.entries(gsiStatsList).map(([steamId, p]) => ({ steamId, ...p }))
+    : [];
+
+  // Method 1: Check active team affiliation of players in CS2 right now
+  let teamACtCount = 0;
+  let teamATrCount = 0;
+
+  teamAPlayers.forEach((p) => {
+    const pNick = p.nick || p.displayName || p.username || '';
+    const pSteam = String(p.steamId || p.steamid || '');
+    const cleanP = normalizePlayerName(pNick);
+
+    const match = gsiPlayersList.find((g) => {
+      const gSteam = String(g.steamId || g.steamid || '');
+      if (pSteam && gSteam && pSteam === gSteam) return true;
+      const cleanG = normalizePlayerName(g.name);
+      if (cleanP && cleanG && cleanP === cleanG) return true;
+      if (cleanP.length >= 3 && cleanG.length >= 3 && (cleanP.includes(cleanG) || cleanG.includes(cleanP))) return true;
+      return false;
+    });
+
+    if (match) {
+      const team = String(match.team || '').toUpperCase();
+      if (team === 'CT') teamACtCount++;
+      else if (team === 'TR' || team === 'T') teamATrCount++;
+    }
+  });
+
+  if (teamACtCount > 0 || teamATrCount > 0) {
+    const teamACurrentSide = teamACtCount >= teamATrCount ? 'CT' : 'TR';
+    const isWinnerA = teamACurrentSide === winningSide;
+    return {
+      winnerLetter: isWinnerA ? 'A' : 'B',
+      scoreCT,
+      scoreTR,
+      winningSide,
+      teamACurrentSide,
+      method: 'player_side_inspection',
+    };
+  }
+
+  // Method 2: Regulation half-time switch calculation (MR12)
+  const startingSideA =
+    (mix.teamA?.side || (mix.veto?.sidePick?.teamBSide === 'CT' ? 'TR' : 'CT') || 'CT').toUpperCase();
+  const totalRounds = scoreCT + scoreTR;
+
+  let currentSideA = startingSideA;
+  if (totalRounds <= 24) {
+    // Regulation MR12: sides swap after round 12
+    currentSideA = totalRounds > 12 ? (startingSideA === 'CT' ? 'TR' : 'CT') : startingSideA;
+  } else {
+    // Overtime (MR3): 6 rounds per OT (3 rounds per half)
+    const otRounds = (totalRounds - 24) % 6;
+    currentSideA = (otRounds > 0 && otRounds <= 3) ? startingSideA : (startingSideA === 'CT' ? 'TR' : 'CT');
+  }
+
+  const isWinnerA = currentSideA === winningSide;
+  return {
+    winnerLetter: isWinnerA ? 'A' : 'B',
+    scoreCT,
+    scoreTR,
+    winningSide,
+    teamACurrentSide: currentSideA,
+    method: 'halftime_math_calculation',
+  };
+}
+
+/**
+ * Extracts and computes official match performers (MVP and Bagre) with accurate CS2 GSI statistics.
+ * Normalizes player names to match steam accounts despite emojis, clan tags and symbols.
+ */
+export function computeMatchPerformers(matchData = {}, gsiState = null) {
   const winnerPlayers = Array.isArray(matchData.winnerPlayers)
     ? matchData.winnerPlayers
     : Array.isArray(matchData.teamA)
@@ -93,20 +195,56 @@ export function computeMatchMvp(matchData = {}, gsiState = null) {
     : [];
 
   const allPlayers = [...winnerPlayers, ...loserPlayers];
-  if (allPlayers.length === 0) return null;
+  if (allPlayers.length === 0) return { mvp: null, bagre: null, evaluatedPlayers: [], hasRealGsiStats: false };
 
   // Pull real Valve GSI statistics if available
-  const gsiStatsList = gsiState?.allPlayersStats || matchData.allPlayersStats || [];
+  const rawGsi = gsiState?.allPlayersStats || matchData.allPlayersStats || gsiState?.allplayers || [];
+  const gsiStatsList = Array.isArray(rawGsi)
+    ? rawGsi
+    : typeof rawGsi === 'object'
+    ? Object.entries(rawGsi).map(([steamId, p]) => ({ steamId, ...p }))
+    : [];
+
+  let hasRealGsiStats = false;
+  const matchedGsiSet = new Set();
 
   const evaluatedPlayers = allPlayers.map((p, idx) => {
     const isWinner = winnerPlayers.some((w) => (w.id && w.id === p.id) || (w.nick && w.nick === p.nick));
     const pNick = p.nick || p.displayName || p.username || p.name || `Jogador ${idx + 1}`;
     const pSteamId = String(p.steamId || p.steamid || '');
+    const cleanNick = normalizePlayerName(pNick);
 
-    // Look for Valve GSI match by steamId or nick
-    const matchedGsi = gsiStatsList.find(
-      (g) => (pSteamId && g.steamId === pSteamId) || (g.name && g.name.toLowerCase() === pNick.toLowerCase())
-    );
+    // Look for Valve GSI match by steamId first, then normalized name, then partial match
+    let matchedGsi = null;
+    if (pSteamId) {
+      matchedGsi = gsiStatsList.find((g) => {
+        const gSteam = String(g.steamId || g.steamid || '');
+        return gSteam && gSteam === pSteamId;
+      });
+    }
+
+    if (!matchedGsi && cleanNick) {
+      // 1. Exact normalized match
+      matchedGsi = gsiStatsList.find((g) => {
+        if (matchedGsiSet.has(g)) return false;
+        const cleanG = normalizePlayerName(g.name);
+        return cleanG && cleanG === cleanNick;
+      });
+
+      // 2. Substring match (min length 3 to prevent false positives)
+      if (!matchedGsi && cleanNick.length >= 3) {
+        matchedGsi = gsiStatsList.find((g) => {
+          if (matchedGsiSet.has(g)) return false;
+          const cleanG = normalizePlayerName(g.name);
+          return cleanG && cleanG.length >= 3 && (cleanNick.includes(cleanG) || cleanG.includes(cleanNick));
+        });
+      }
+    }
+
+    if (matchedGsi) {
+      matchedGsiSet.add(matchedGsi);
+      hasRealGsiStats = true;
+    }
 
     let kills = matchedGsi?.kills ?? p.kills;
     let deaths = matchedGsi?.deaths ?? p.deaths;
@@ -114,9 +252,8 @@ export function computeMatchMvp(matchData = {}, gsiState = null) {
     let mvps = matchedGsi?.mvps ?? p.mvps ?? 0;
     let score = matchedGsi?.score ?? p.score ?? 0;
 
-    // If no real stats were registered (manual declaration without GSI),
-    // derive realistic competitive stats based on GC level, captaincy and team outcome
-    if (kills === undefined || deaths === undefined || (kills === 0 && deaths === 0)) {
+    // Derive competitive stats only if no real GSI stats exist at all
+    if (kills === undefined || deaths === undefined || (kills === 0 && deaths === 0 && !hasRealGsiStats)) {
       const baseLevel = Number(p.level || 16);
       const isCaptain = p.role === 'Capitão' || idx === 0;
       const levelFactor = Math.min(21, Math.max(1, baseLevel)) / 20;
@@ -137,19 +274,20 @@ export function computeMatchMvp(matchData = {}, gsiState = null) {
     }
 
     const kd = deaths > 0 ? Number((kills / deaths).toFixed(2)) : Number(kills.toFixed(2));
-
-    // Official eSports Performance Rating Proxy (rewards kills, round MVPs, positive K/D, winner bonus)
-    const winnerBonus = isWinner ? 1.15 : 1.0;
+    const kdRatio = deaths > 0 ? kills / deaths : kills;
+    const killFactor = kills / 15;
+    const kdFactor = Math.min(2.5, kdRatio);
+    const winnerBonus = isWinner ? 1.08 : 0.96;
     const ratingRaw =
-      (((kills * 2.1 + mvps * 2.8 + assists * 0.7 + score * 0.35) / Math.max(1, deaths * 1.35))) *
+      (killFactor * 0.5 + kdFactor * 0.4 + (mvps * 0.06) + (assists * 0.03) + (score > 0 ? (score / 40) * 0.05 : 0)) *
       winnerBonus;
-    const rating = Number(Math.max(0.5, Math.min(2.5, ratingRaw / 10)).toFixed(2));
+    const rating = Number(Math.max(0.35, Math.min(2.8, ratingRaw)).toFixed(2));
 
     return {
       id: p.id || `p-${idx}`,
       nick: pNick,
       avatar: p.avatar || '',
-      steamId: pSteamId,
+      steamId: pSteamId || matchedGsi?.steamId || '',
       level: p.level || 16,
       phone: p.phone || null,
       isWinner,
@@ -161,31 +299,40 @@ export function computeMatchMvp(matchData = {}, gsiState = null) {
       kd,
       rating,
       performanceScore: ratingRaw,
+      isRealGsi: Boolean(matchedGsi),
     };
   });
 
-  // Sort descending by performance score, then kills, then MVPs
-  evaluatedPlayers.sort((a, b) => b.performanceScore - a.performanceScore || b.kills - a.kills || b.mvps - a.mvps);
+  // Sort descending by performance score for MVP
+  const sortedDesc = [...evaluatedPlayers].sort(
+    (a, b) => b.performanceScore - a.performanceScore || b.kills - a.kills || b.mvps - a.mvps
+  );
+  const best = sortedDesc[0] || null;
 
-  const best = evaluatedPlayers[0];
-  if (!best) return null;
+  // Sort ascending by performance score for Bagre (worst performer)
+  const sortedAsc = [...evaluatedPlayers].sort(
+    (a, b) => a.performanceScore - b.performanceScore || a.kills - b.kills || b.deaths - a.deaths
+  );
+  let worst = sortedAsc[0] || null;
+  if (worst && best && worst.id === best.id && sortedAsc.length > 1) {
+    worst = sortedAsc[1];
+  }
 
   return {
-    id: best.id,
-    nick: best.nick,
-    avatar: best.avatar,
-    steamId: best.steamId,
-    level: best.level,
-    phone: best.phone,
-    isWinner: best.isWinner,
-    kills: best.kills,
-    deaths: best.deaths,
-    assists: best.assists,
-    mvps: best.mvps,
-    score: best.score,
-    kd: best.kd,
-    rating: best.rating,
+    mvp: best,
+    bagre: worst,
+    evaluatedPlayers: sortedDesc,
+    hasRealGsiStats,
   };
+}
+
+/**
+ * Automatically elects the Match MVP based on CS2 player performance statistics.
+ * Evaluates Kills, Deaths, Assists, Valve Round MVPs, Score, K/D, and eSports Rating.
+ */
+export function computeMatchMvp(matchData = {}, gsiState = null) {
+  const result = computeMatchPerformers(matchData, gsiState);
+  return result.mvp;
 }
 
 /**
@@ -278,12 +425,21 @@ export function normalizeMatchRecord(m = {}) {
     vetoBans: Array.isArray(m.vetoBans) ? m.vetoBans : [],
   };
 
-  const computedMvp = m.mvp || m.mvpStats || computeMatchMvp(record);
+  const computedPerformers = computeMatchPerformers(record, m.gsiState || null);
+  const computedMvp = m.mvp || m.mvpStats || computedPerformers.mvp;
+  const computedBagre = m.bagre || m.bagreStats || computedPerformers.bagre;
+
   record.mvpId = m.mvpId || computedMvp?.id || (m.mvp ? m.mvp.id : null);
   record.mvpNick = m.mvpNick || computedMvp?.nick || (m.mvp ? m.mvp.nick : null);
   record.mvp = computedMvp || (record.mvpNick ? { id: record.mvpId, nick: record.mvpNick } : null);
   record.mvpStats = computedMvp || null;
   record.mvpVotes = m.mvpVotes || (m.mvp ? m.mvp.votes : 0);
+
+  record.bagreId = m.bagreId || computedBagre?.id || (m.bagre ? m.bagre.id : null);
+  record.bagreNick = m.bagreNick || computedBagre?.nick || (m.bagre ? m.bagre.nick : null);
+  record.bagre = computedBagre || (record.bagreNick ? { id: record.bagreId, nick: record.bagreNick } : null);
+  record.bagreStats = computedBagre || null;
+  record.evaluatedPlayers = Array.isArray(m.evaluatedPlayers) && m.evaluatedPlayers.length > 0 ? m.evaluatedPlayers : computedPerformers.evaluatedPlayers;
 
   return record;
 }

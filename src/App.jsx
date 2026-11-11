@@ -1810,6 +1810,27 @@ export default function App() {
     }
   };
 
+  // Rematch with Same Teams
+  const handleRematchSameTeams = () => {
+    if (socket.connected) {
+      socket.emit('rematch_same_teams', { roomId });
+    } else {
+      setRoom((prev) => ({
+        ...prev,
+        phase: 'veto',
+        bannedMaps: [],
+        pickedMaps: [],
+        vetoLog: [],
+        drawnSeries: [],
+        pendingSidePick: null,
+        finalMap: null,
+        startingSideTeamB: prev.startingSideTeamB === 'CT' ? 'TR' : 'CT',
+        currentTurn: 'teamA',
+        liveMatch: null,
+      }));
+    }
+  };
+
   if (view === 'servers') {
     return (
       <>
@@ -2289,6 +2310,7 @@ export default function App() {
           <FinalSummary
             room={room}
             onResetMix={handleResetMix}
+            onRematchSameTeams={handleRematchSameTeams}
             onUpdateServerIp={handleUpdateServerIp}
             onUpdateRconPassword={handleUpdateRconPassword}
             onChangeServerMapRcon={handleChangeServerMapRcon}

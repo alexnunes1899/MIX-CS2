@@ -13,6 +13,7 @@ import { copyText } from '../utils/clipboard';
 export default function FinalSummary({
   room,
   onResetMix,
+  onRematchSameTeams,
   onUpdateServerIp,
   onUpdateRconPassword,
   onChangeServerMapRcon,
@@ -1048,6 +1049,17 @@ export default function FinalSummary({
 
       {/* Bottom Actions */}
       <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-3">
+        <button
+          onClick={() => {
+            if (soundEnabled) playClickSound();
+            if (onRematchSameTeams) onRematchSameTeams();
+          }}
+          className="w-full sm:w-auto px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white shadow-lg shadow-emerald-950/40 text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer border border-emerald-500/30 active:scale-95"
+        >
+          <Swords size={16} />
+          <span>Jogar Revanche (Mesmos Times)</span>
+        </button>
+
         <button
           onClick={() => {
             if (soundEnabled) playClickSound();

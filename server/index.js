@@ -29,6 +29,8 @@ import {
   getMatchHistoryState,
   recordMatchHistoryEntry,
   computeMatchMvp,
+  computeMatchPerformers,
+  determineMatchWinner,
   onMatchHistoryUpdated,
   getMapImageUrl,
   normalizeMapName,
@@ -1748,6 +1750,39 @@ io.on('connection', (socket) => {
     broadcastRoomsList();
   });
 
+  // Rematch with the exact same teams
+  socket.on('rematch_same_teams', ({ roomId }) => {
+    const room = getRoomAndTouch(roomId);
+    if (!room) return;
+
+    room.phase = 'veto';
+    room.bannedMaps = [];
+    room.pickedMaps = [];
+    room.vetoLog = [];
+    room.drawnSeries = [];
+    room.pendingSidePick = null;
+    room.finalMap = null;
+    room.liveMatch = null;
+
+    // Swap starting sides
+    const oldSideB = room.startingSideTeamB || 'CT';
+    room.startingSideTeamB = oldSideB === 'CT' ? 'TR' : 'CT';
+
+    // Reset veto turns
+    room.currentTurn = 'teamA';
+    room.vetoState = {
+      remainingMaps: [...CS2_MAPS],
+      bannedMaps: [],
+      currentTurn: 'teamA',
+      mode: room.matchFormat || 'MD1',
+      firstTeam: room.vetoFirstTeam || 'teamA',
+      bo1Order: room.bo1Order || 'ABABAB',
+    };
+
+    emitRoomState(roomId, room);
+    broadcastRoomsList();
+  });
+
   // Delete Room Manually
   socket.on('delete_room', ({ roomId }) => {
     const cleanRoomId = (roomId || '').trim().toUpperCase();
@@ -2568,7 +2603,11 @@ function processGsiDiscordNotifications(room, liveState, req) {
   ) {
     tracker.gameOverSent = true;
 
-    const winner = liveState.scoreCT > liveState.scoreTR ? 'Time CT' : liveState.scoreTR > liveState.scoreCT ? 'Time TR' : 'Empate';
+    const winnerRes = determineMatchWinner(
+      { teamA: room.teamA, teamB: room.teamB, ...room },
+      liveState
+    );
+    const winner = winnerRes.winnerLetter === 'A' ? (room.nameA || 'Time A') : (room.nameB || 'Time B');
     sendDiscordWebhook({
       webhookUrl: room.discordWebhook,
       eventType: 'gsi_gameover',
@@ -2626,7 +2665,18 @@ app.post('/api/gsi/:roomId', (req, res) => {
 
       // If game ended, record score automatically in history
       if (liveState.isGameOver && liveState.phase === 'gameover') {
-        const matchKey = `${liveState.mapName}-${liveState.scoreCT}-${liveState.scoreTR}`;
+        const winnerRes = determineMatchWinner(
+          { teamA: room.teamA, teamB: room.teamB, ...room },
+          liveState
+        );
+        const isWinnerA = winnerRes.winnerLetter === 'A';
+        const winnerName = isWinnerA ? (room.nameA || 'Time A') : (room.nameB || 'Time B');
+        const loserName = isWinnerA ? (room.nameB || 'Time B') : (room.nameA || 'Time A');
+        const winners = isWinnerA ? (room.teamA || []) : (room.teamB || []);
+        const losers = isWinnerA ? (room.teamB || []) : (room.teamA || []);
+        const scoreWinner = Math.max(liveState.scoreCT || 0, liveState.scoreTR || 0);
+        const scoreLoser = Math.min(liveState.scoreCT || 0, liveState.scoreTR || 0);
+        const matchKey = `${liveState.mapName}-${scoreWinner}-${scoreLoser}`;
         const lastMatch = room.history[0];
         if (!lastMatch || lastMatch.key !== matchKey) {
           room.history.unshift({
@@ -2635,23 +2685,21 @@ app.post('/api/gsi/:roomId', (req, res) => {
             date: new Date().toLocaleDateString('pt-BR'),
             time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
             map: liveState.mapName,
-            scoreA: liveState.scoreCT,
-            scoreB: liveState.scoreTR,
-            winner: liveState.scoreCT > liveState.scoreTR ? 'Time CT' : liveState.scoreTR > liveState.scoreCT ? 'Time TR' : 'Empate',
+            scoreA: isWinnerA ? scoreWinner : scoreLoser,
+            scoreB: isWinnerA ? scoreLoser : scoreWinner,
+            winner: winnerName,
+            loser: loserName,
             source: 'Valve CS2 GSI',
           });
           if (room.history.length > 20) room.history.pop();
-          const isCtWinner = liveState.scoreCT > liveState.scoreTR;
-          const winners = isCtWinner ? (room.teamA || []) : (room.teamB || []);
-          const losers = isCtWinner ? (room.teamB || []) : (room.teamA || []);
           if (winners.length > 0 || losers.length > 0) {
             try {
               recordMatch({
                 winners,
                 losers,
                 map: liveState.mapName,
-                scoreWinners: Math.max(liveState.scoreCT, liveState.scoreTR),
-                scoreLosers: Math.min(liveState.scoreCT, liveState.scoreTR),
+                scoreWinners: scoreWinner,
+                scoreLosers: scoreLoser,
               });
             } catch (err) {
               console.warn('[LEADERBOARD GSI RECORD ERROR]:', err.message);

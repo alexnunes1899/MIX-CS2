@@ -33,6 +33,8 @@ import {
   saveMatchHistory as saveUnifiedMatchHistory,
   recordMatchHistoryEntry,
   computeMatchMvp,
+  computeMatchPerformers,
+  determineMatchWinner,
   updateMatchMvp,
   getMapImageUrl,
   normalizeMapName,
@@ -341,22 +343,13 @@ class DiscordBotManager {
     if (liveState.isGameOver && liveState.phase === 'gameover') {
       for (const [channelId, mix] of this.activeMixes.entries()) {
         if (mix.phase !== 'finished' && mix.phase !== 'lobby') {
-          const isCtWinner = (liveState.scoreCT || 0) > (liveState.scoreTR || 0);
+          const winnerRes = determineMatchWinner(mix, liveState);
           const score = `${Math.max(liveState.scoreCT || 0, liveState.scoreTR || 0)}-${Math.min(liveState.scoreCT || 0, liveState.scoreTR || 0)}`;
-
-          let winnerLetter = 'A';
-          if (mix.veto?.sidePick) {
-            const teamBSide = mix.veto.sidePick.teamBSide || 'CT';
-            const winningSide = isCtWinner ? 'CT' : 'TR';
-            winnerLetter = teamBSide === winningSide ? 'B' : 'A';
-          } else {
-            winnerLetter = isCtWinner ? 'A' : 'B';
-          }
 
           const channel = this.client?.channels?.cache?.get(channelId);
           this.recordMatchResult(
             mix,
-            winnerLetter,
+            winnerRes.winnerLetter,
             score,
             { id: 'gsi_system', username: 'Valve CS2 GSI' },
             channel
@@ -1749,6 +1742,9 @@ class DiscordBotManager {
     if (command === 'inventario' || command === 'inv') {
       return this.prefixInventory(message);
     }
+    if (command === 'revanche' || command === 'rematch') {
+      return this.prefixRematch(message);
+    }
     if (command === 'cancelar') return this.prefixCancel(message);
     if (command === 'ip' || command === 'connect') return this.prefixIp(message);
     if (command === 'comandos') return this.prefixHelp(message);
@@ -2097,6 +2093,17 @@ class DiscordBotManager {
     const mix = this.deleteMix(message.channelId);
     if (!mix) return message.reply('⚠️ Nenhum mix ativo neste canal.');
     return message.reply(`❌ O mix **${mix.name}** foi cancelado com sucesso.`);
+  }
+
+  async prefixRematch(message) {
+    let mix = this.activeMixes.get(message.channelId);
+    if (!mix && this.activeMixes.size > 0) {
+      mix = Array.from(this.activeMixes.values()).find((m) => m && m.teamA?.players?.length > 0) || Array.from(this.activeMixes.values())[0];
+    }
+    if (!mix) {
+      return message.reply('⚠️ Nenhum mix encontrado para iniciar uma revanche neste canal. Crie um mix com `!mix`!');
+    }
+    return this.handleRematch(mix, null, message.author, message.channel, message.guild);
   }
 
   async prefixRanking(message) {
@@ -2769,9 +2776,108 @@ class DiscordBotManager {
     return awarded;
   }
 
+  async awardAutomaticBagre(guild, bagrePlayer, profiles) {
+    if (!bagrePlayer || !bagrePlayer.id) return null;
+    const bagreId = bagrePlayer.id;
+
+    const prof = profiles[bagreId] || { level: bagrePlayer.level || 16, username: bagrePlayer.nick };
+    prof.bagres = (prof.bagres || 0) + 1;
+    profiles[bagreId] = prof;
+
+    if (guild && isSnowflake(bagreId)) {
+      try {
+        let role = guild.roles.cache.find((r) => r.name.toLowerCase().includes('bagre do mix'));
+        if (!role && guild.roles.create) {
+          role = await guild.roles.create({
+            name: 'Bagre do Mix 🐟',
+            color: 0x94a3b8,
+            reason: 'Cargo automático de Bagre da Partida (estatísticas CS2)',
+          }).catch(() => null);
+        }
+        if (role) {
+          const prevHolders = guild.members.cache.filter((m) => m.roles.cache.has(role.id));
+          for (const [, prevMember] of prevHolders) {
+            if (prevMember.id !== bagreId) {
+              await prevMember.roles.remove(role).catch(() => {});
+            }
+          }
+          const member = await guild.members.fetch(bagreId).catch(() => null);
+          if (member) {
+            await member.roles.add(role).catch(() => {});
+          }
+        }
+      } catch (err) {
+        console.warn('[BAGRE ROLE ERROR]:', err.message);
+      }
+    }
+    return prof;
+  }
+
+  async handleRematch(mix, interaction, user, channel, guild) {
+    if (!mix.teamA?.players || mix.teamA.players.length === 0 || !mix.teamB?.players || mix.teamB.players.length === 0) {
+      const msg = '⚠️ Os times precisam estar definidos para jogar uma revanche.';
+      if (interaction) return interaction.reply({ content: msg, ephemeral: true });
+      if (channel) return channel.send(msg);
+      return;
+    }
+
+    // Invert starting sides between Team A and Team B
+    const oldSideA = (mix.teamA.side || 'CT').toUpperCase();
+    const newSideA = oldSideA === 'CT' ? 'TR' : 'CT';
+    const newSideB = newSideA === 'CT' ? 'TR' : 'CT';
+    mix.teamA.side = newSideA;
+    mix.teamB.side = newSideB;
+
+    // Reset match and veto state while preserving all 10 players and captains
+    mix.phase = 'veto';
+    mix.winner = null;
+    mix.finalScore = null;
+    mix.matchMap = null;
+    mix.matchMapImage = null;
+    mix.finalMap = null;
+    mix.mvp = null;
+    mix.mvpVote = null;
+    mix.bagre = null;
+    mix.gsi = null;
+    mix.liveState = null;
+
+    mix.veto = {
+      currentTurn: 'teamA',
+      bannedMaps: [],
+      remainingMaps: [...OFFICIAL_MAPS],
+      deciderMap: null,
+      history: [],
+    };
+
+    this.syncToWebRoom(mix);
+    this.updateLobbyInChannels(mix);
+
+    const embed = this.buildVetoEmbed(mix);
+    const components = this.buildVetoButtons(mix);
+
+    const capAId = mix.teamA.captain?.id;
+    const capBId = mix.teamB.captain?.id;
+    const content =
+      `🔄 🔥 **REVANCHE CONFIRMADA! (MESMOS TIMES)**\n\n` +
+      `⚔️ Os mesmos 10 jogadores continuam na disputa com **lados invertidos**!\n` +
+      `🛡️ **${mix.teamA.name} (${mix.teamA.side}):** Capitão ${isSnowflake(capAId) ? `<@${capAId}>` : `**${mix.teamA.captain?.displayName || mix.teamA.captain?.username || 'Capitão A'}**`}\n` +
+      `💣 **${mix.teamB.name} (${mix.teamB.side}):** Capitão ${isSnowflake(capBId) ? `<@${capBId}>` : `**${mix.teamB.captain?.displayName || mix.teamB.captain?.username || 'Capitão B'}**`}\n\n` +
+      `🗳️ **VETO DE MAPAS REINICIADO:** ${isSnowflake(capAId) ? `<@${capAId}>` : 'Capitão A'}, escolha um mapa para banir!`;
+
+    if (interaction) {
+      if (interaction.deferred || interaction.replied) {
+        return interaction.followUp({ content, embeds: [embed], components }).catch(() => {});
+      }
+      return interaction.reply({ content, embeds: [embed], components }).catch(() => {});
+    } else if (channel) {
+      return channel.send({ content, embeds: [embed], components }).catch(() => {});
+    }
+  }
+
   async recordMatchResult(mix, winnerTeamLetter, scoreInput, declaredByUser, channel, mapInput = null) {
-    const isA = (winnerTeamLetter || '').toUpperCase() === 'A';
-    const isB = (winnerTeamLetter || '').toUpperCase() === 'B';
+    const rawWinner = String(winnerTeamLetter || '').trim().toUpperCase();
+    const isA = rawWinner === 'A' || rawWinner.includes('TIME A') || rawWinner === '1' || rawWinner.includes('TIME 1');
+    const isB = rawWinner === 'B' || rawWinner.includes('TIME B') || rawWinner === '2' || rawWinner.includes('TIME 2');
     if (!isA && !isB) {
       return { success: false, error: 'O vencedor deve ser Time A ou Time B (ex: `!vitoria A 13-9`).' };
     }
@@ -2792,12 +2898,7 @@ class DiscordBotManager {
     const loserTeam = isA ? mix.teamB : mix.teamA;
     const score = (scoreInput || '13-9').trim();
 
-    // Accurately resolve map:
-    // 1. Explicit map input (e.g. from command or modal)
-    // 2. Pick & Ban decider map
-    // 3. Roulette / active match map
-    // 4. Web room final map
-    // 5. Valve CS2 GSI active server map
+    // Accurately resolve map
     let candidateMap =
       mapInput ||
       mix.veto?.deciderMap?.name ||
@@ -2841,8 +2942,6 @@ class DiscordBotManager {
       profiles[p.id] = prof;
     });
 
-    this.savePlayerProfiles(profiles);
-
     // Save match to match history with full rich metadata
     const parsedWinner = parseInt(String(score).split('-')[0], 10) || 13;
     const parsedLoser = parseInt(String(score).split('-')[1], 10) || 8;
@@ -2884,46 +2983,62 @@ class DiscordBotManager {
       })),
       vetoBans: Array.isArray(mix.veto?.bannedMaps) ? mix.veto.bannedMaps : [],
     };
-    // Automatically compute Match MVP based on CS2 player performance statistics
-    const gsiState = mix.gsi || null;
-    const computedMvp = computeMatchMvp(matchRecord, gsiState);
+
+    // Automatically compute BOTH MVP AND BAGRE with accurate CS2 statistics
+    const gsiState = mix.gsi || mix.liveState || this.lastGsiState || null;
+    const { mvp: computedMvp, bagre: computedBagre, evaluatedPlayers } = computeMatchPerformers(matchRecord, gsiState);
+
     if (computedMvp) {
       matchRecord.mvpId = computedMvp.id;
       matchRecord.mvpNick = computedMvp.nick;
       matchRecord.mvp = computedMvp;
       matchRecord.mvpStats = computedMvp;
 
-      // Credit MVP to player's persistent profile
-      if (profiles[computedMvp.id]) {
-        profiles[computedMvp.id].mvps = (profiles[computedMvp.id].mvps || 0) + 1;
-      }
+      const mvpProf = profiles[computedMvp.id] || { level: computedMvp.level || 16, username: computedMvp.nick };
+      mvpProf.mvps = (mvpProf.mvps || 0) + 1;
+      profiles[computedMvp.id] = mvpProf;
     }
 
+    if (computedBagre) {
+      matchRecord.bagreId = computedBagre.id;
+      matchRecord.bagreNick = computedBagre.nick;
+      matchRecord.bagre = computedBagre;
+      matchRecord.bagreStats = computedBagre;
+
+      await this.awardAutomaticBagre(channel?.guild, computedBagre, profiles);
+    }
+
+    matchRecord.evaluatedPlayers = evaluatedPlayers;
+
+    this.savePlayerProfiles(profiles);
     recordMatchHistoryEntry(matchRecord);
     this.updateLeaderboardFile(profiles);
     if (typeof this.onMatchRecorded === 'function') {
       try { this.onMatchRecorded(matchRecord); } catch (e) {}
     }
-    whatsappBot.notifyMatchFinished(mix, {
-      score,
-      winner: winnerTeam.name || (winner === 'A' ? 'Time A' : 'Time B'),
-      map: resolvedMap,
-      mvp: computedMvp || null,
-    }).catch(() => {});
 
     // Check and award tier roles asynchronously to winners
     this.checkAndAwardTierRoles(channel?.guild, winnerTeam.players, profiles).catch((err) => {
       console.warn('[DISCORD BOT] Falha ao atribuir patentes automáticas:', err.message);
     });
 
-    // Build victory embed with crowned MVP
     const mvpUserTag = computedMvp
       ? (isSnowflake(computedMvp.id) ? `<@${computedMvp.id}>` : `**${computedMvp.nick || computedMvp.username}** 💬`)
       : '';
+    const bagreUserTag = computedBagre
+      ? (isSnowflake(computedBagre.id) ? `<@${computedBagre.id}>` : `**${computedBagre.nick || computedBagre.username}** 💬`)
+      : '';
+
     const mvpDescription = computedMvp
       ? `\n\n👑 **MVP DA PARTIDA ELEITO:** ${mvpUserTag}\n` +
-        `⭐ **Estatísticas:** 🎯 **${computedMvp.kills} Kills** • 💀 **${computedMvp.deaths} Mortes** (K/D **${computedMvp.kd}**) • ⭐ **${computedMvp.mvps} MVPs de Round** • 📊 Rating **${computedMvp.rating}**\n` +
-        `🏆 *Eleito automaticamente com o melhor desempenho da partida pelas estatísticas!*`
+        `⭐ **Estatísticas:** 🎯 **${computedMvp.kills} Kills** • 💀 **${computedMvp.deaths} Mortes** (K/D **${computedMvp.kd}**) • ⭐ **${computedMvp.mvps} MVPs de Round** • 📊 Rating **${computedMvp.rating}**\n`
+      : '';
+
+    const bagreQuote = bagreVoteService.getRandomQuote();
+    const bagreDescription = computedBagre
+      ? `\n🐟 **BAGRE DO MIX COROADO:** ${bagreUserTag}\n` +
+        `🎣 **Estatísticas:** 🎯 **${computedBagre.kills} Kills** • 💀 **${computedBagre.deaths} Mortes** (K/D **${computedBagre.kd}**) • 📊 Rating **${computedBagre.rating}**\n` +
+        `*${bagreQuote}*`
       : '';
 
     const declaredTag = isSnowflake(declaredByUser.id) ? `<@${declaredByUser.id}>` : `**${declaredByUser.username || declaredByUser.displayName}**`;
@@ -2935,7 +3050,8 @@ class DiscordBotManager {
         `🗺️ **Mapa:** **${resolvedMap}**\n` +
         `⚔️ **Resultado Oficial:** **${winnerTeam.name}** venceu por **${score}**!\n` +
         `👑 **Declarado por:** ${declaredTag}` +
-        mvpDescription
+        mvpDescription +
+        bagreDescription
       )
       .setColor(0x22c55e)
       .addFields(
@@ -2944,6 +3060,15 @@ class DiscordBotManager {
               {
                 name: `👑 MVP da Partida • ${computedMvp.nick}`,
                 value: `🎯 **${computedMvp.kills} Kills** • 💀 **${computedMvp.deaths} Mortes** • ⚡ **${computedMvp.kd} K/D** • ⭐ **${computedMvp.mvps} MVPs** • 📈 **${computedMvp.rating} Rating**\n🏆 Total na carreira: **${profiles[computedMvp.id]?.mvps || 1}x MVP**`,
+                inline: false,
+              },
+            ]
+          : []),
+        ...(computedBagre
+          ? [
+              {
+                name: `🐟 Bagre do Mix • ${computedBagre.nick}`,
+                value: `🎯 **${computedBagre.kills} Kills** • 💀 **${computedBagre.deaths} Mortes** • ⚡ **${computedBagre.kd} K/D** • 📉 **${computedBagre.rating} Rating**\n🐟 Total de Bagres na carreira: **${profiles[computedBagre.id]?.bagres || 1}x Coroado**`,
                 inline: false,
               },
             ]
@@ -2969,9 +3094,9 @@ class DiscordBotManager {
     const components = [];
     const finishBtn = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId(`mvp_finish:${mix.id}`)
-        .setLabel('Encerrar MVP Agora (60s)')
-        .setEmoji('👑')
+        .setCustomId(`mix_rematch:${mix.id}`)
+        .setLabel('Revanche (Mesmos Times)')
+        .setEmoji('🔄')
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId(`mix_voice_lobby:${mix.id}`)
@@ -2979,13 +3104,8 @@ class DiscordBotManager {
         .setEmoji('🔊')
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
-        .setCustomId(`bagre_vote_start:${mix.id}`)
-        .setLabel('Votar no Bagre do Mix')
-        .setEmoji('🐟')
-        .setStyle(ButtonStyle.Danger),
-      new ButtonBuilder()
         .setCustomId('panel_create_mix')
-        .setLabel('Jogar Outro Mix')
+        .setLabel('Novo Mix (Zerar)')
         .setEmoji('🎮')
         .setStyle(ButtonStyle.Primary)
     );
@@ -4274,8 +4394,11 @@ class DiscordBotManager {
     if ((!mix || mix.id !== mixId) && mixId && action !== 'mix_cancel') {
       mix = this.recoverMixFromMessage(interaction, mixId);
     }
+    if ((!mix || mix.id !== mixId) && mixId) {
+      mix = this.activeMixes.get(mixId) || Array.from(this.activeMixes.values()).find((m) => m && m.id === mixId) || mix;
+    }
 
-    if (!mix || mix.id !== mixId) {
+    if (!mix || (mixId && mix.id !== mixId)) {
       return interaction.reply({
         content: '⚠️ Este mix já foi finalizado ou expirou. Use `/mix criar` para começar outro!',
         ephemeral: true,
@@ -4744,6 +4867,11 @@ class DiscordBotManager {
       );
 
       return interaction.showModal(modal);
+    }
+
+    // 13. REMATCH WITH THE SAME TEAMS
+    if (action === 'mix_rematch') {
+      return this.handleRematch(mix, interaction, user, interaction.channel, interaction.guild);
     }
 
     // 12. FINISH MVP VOTE
