@@ -2094,14 +2094,7 @@ app.post('/api/player/profile', (req, res) => {
   return res.json({ success: true, profile: profileData });
 });
 
-// Permanent redirect for WhatsApp endpoints
-app.get('/whatsapp', (req, res) => {
-  res.redirect('/?notice=whatsapp_bot_disabled');
-});
-
-app.all('/api/whatsapp/*', (req, res) => {
-  res.json({ success: false, disabled: true, message: 'Bot do WhatsApp desativado permanentemente. Use o bot do Discord.' });
-});
+// WhatsApp bot foi removido permanentemente — rotas retornam 404 automaticamente
 
 app.post('/api/discord/announce-match', async (req, res) => {
   try {
