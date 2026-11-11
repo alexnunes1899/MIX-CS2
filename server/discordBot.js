@@ -313,7 +313,8 @@ class DiscordBotManager {
     const base = (
       this.config.publicWebUrl ||
       process.env.PUBLIC_URL ||
-      (process.env.RAILWAY_STATIC_URL ? `https://${process.env.RAILWAY_STATIC_URL}` : 'https://mix-cs2-production.up.railway.app')
+      process.env.RENDER_EXTERNAL_URL ||
+      (process.env.RAILWAY_STATIC_URL ? `https://${process.env.RAILWAY_STATIC_URL}` : 'https://mix-cs2.onrender.com')
     ).replace(/\/+$/, '');
     const cleanPath = path ? (path.startsWith('/') ? path : `/${path}`) : '';
     return `${base}${cleanPath}`;
@@ -3917,7 +3918,7 @@ class DiscordBotManager {
         this.lastGsiState.player?.name
       );
 
-      const domain = this.config.webUrl || 'https://mix-cs2-production.up.railway.app';
+      const domain = this.config.webUrl || this.getPublicWebUrl('');
       const roomId = mix.id || 'MIX-PRO';
       const installerUrl = `${domain}/api/gsi/installer/${roomId}`;
       const cfgUrl = `${domain}/api/gsi/cfg/${roomId}`;

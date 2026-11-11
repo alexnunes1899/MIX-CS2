@@ -78,7 +78,7 @@ export default function FailoverBanner({ roomId = 'MIX-PRO', roomPassword = '', 
   // If on localhost, check if production online is back
   const checkOnlineProduction = async () => {
     try {
-      const res = await fetch('https://mix-cs2-production.up.railway.app/api/health', { mode: 'cors' });
+      const res = await fetch('https://mix-cs2.onrender.com/api/health', { mode: 'cors' });
       if (res.ok) {
         setOnlineAvailable(true);
       } else {

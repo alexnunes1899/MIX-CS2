@@ -2730,8 +2730,8 @@ app.post('/api/gsi', (req, res) => {
   res.json({ success: true });
 });
 
-// Cloud GSI Relay: Automatically bridges GSI telemetry from Railway if local server is active
-const CLOUD_GSI_URL = process.env.CLOUD_GSI_URL || 'https://mix-cs2-production.up.railway.app/api/gsi/status/MIX-PRO';
+// Cloud GSI Relay: Automatically bridges GSI telemetry from Render if local server is active
+const CLOUD_GSI_URL = process.env.CLOUD_GSI_URL || 'https://mix-cs2.onrender.com/api/gsi/status/MIX-PRO';
 let lastCloudGsiSync = 0;
 
 async function syncCloudGsiBridge() {

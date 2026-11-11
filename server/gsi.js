@@ -462,7 +462,7 @@ export function installGsiLocally(serverBaseUrl = 'http://127.0.0.1:3000', roomI
     }
   }
 
-  const cloudCfg = generateGsiConfig('https://mix-cs2-production.up.railway.app', roomId);
+  const cloudCfg = generateGsiConfig(process.env.RENDER_EXTERNAL_URL || 'https://mix-cs2.onrender.com', roomId);
   const localCfg = generateGsiConfig('http://127.0.0.1:3000', roomId);
 
   const written = [];
