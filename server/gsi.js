@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Valve CS2 Game State Integration (GSI) Handler
  * Receives JSON HTTP POST updates directly from Counter-Strike 2
  * Updates room live score and match status in real time.
@@ -12,6 +12,24 @@ const roomGsiStates = new Map();
 const playerHistoricalStats = new Map();
 const matchRosterCache = new Map();
 let currentMatchMeta = { mapName: '', maxRound: 0 };
+let lastValidMatchSnapshot = null;
+
+function isCs2MatchFinishedScore(phase, roundPhase, scoreCT, scoreTR) {
+  if (phase === 'gameover') return true;
+  if (roundPhase !== 'over' && phase !== 'intermission') return false;
+
+  const maxScore = Math.max(scoreCT, scoreTR);
+  const minScore = Math.min(scoreCT, scoreTR);
+  const diff = maxScore - minScore;
+
+  if (minScore < 12) {
+    return maxScore >= 13 && diff >= 2;
+  }
+
+  const otPeriod = Math.floor((minScore - 12) / 3) + 1;
+  const targetScore = 12 + otPeriod * 3 + 1;
+  return maxScore >= targetScore && diff >= 2;
+}
 
 export function handleGsiPayload(roomId, payload) {
   if (!roomId || !payload) return null;
@@ -22,29 +40,27 @@ export function handleGsiPayload(roomId, payload) {
   const player = payload.player || {};
 
   const mapName = mapData.name || 'Indefinido';
-  const phase = mapData.phase || 'unknown'; // 'warmup' | 'live' | 'intermission' | 'gameover'
+  const phase = mapData.phase || 'unknown';
   const roundNumber = typeof mapData.round === 'number' ? mapData.round : 0;
   const scoreCT = mapData.team_ct?.score || 0;
   const scoreTR = mapData.team_t?.score || 0;
-  const bomb = roundData.bomb || 'none'; // 'planted' | 'exploded' | 'defused'
-  const roundPhase = roundData.phase || 'unknown'; // 'freezetime' | 'live' | 'over'
+  const bomb = roundData.bomb || 'none';
+  const roundPhase = roundData.phase || 'unknown';
   const winTeam = roundData.win_team || null;
 
-  // Reset match roster cache if a brand new match or map starts
-  if (
-    (phase === 'warmup' && roundNumber === 0) ||
-    (mapName !== 'Indefinido' && currentMatchMeta.mapName && currentMatchMeta.mapName !== mapName) ||
-    (roundNumber === 0 && scoreCT === 0 && scoreTR === 0 && currentMatchMeta.maxRound > 2 && phase === 'live')
-  ) {
+  const isNewMatchStart =
+    (mapName !== 'Indefinido' && currentMatchMeta.mapName && currentMatchMeta.mapName !== mapName && phase === 'live') ||
+    (phase === 'live' && roundNumber <= 1 && scoreCT + scoreTR <= 1 && currentMatchMeta.maxRound >= 3);
+
+  if (isNewMatchStart) {
     playerHistoricalStats.clear();
     matchRosterCache.clear();
-    currentMatchMeta = { mapName: mapName !== 'Indefinido' ? mapName : '', maxRound: 0 };
+    currentMatchMeta = { mapName: mapName !== 'Indefinido' ? mapName : '', maxRound: roundNumber };
   } else {
     if (mapName !== 'Indefinido') currentMatchMeta.mapName = mapName;
     if (roundNumber > currentMatchMeta.maxRound) currentMatchMeta.maxRound = roundNumber;
   }
 
-  // 1. Resolve raw stats from player.match_stats or payload.allplayers[player.steamid].match_stats
   let rawStats = player.match_stats || {};
   if (
     (!rawStats.kills && !rawStats.score) &&
@@ -71,7 +87,6 @@ export function handleGsiPayload(roomId, payload) {
   const incomingMvps = typeof rawStats?.mvps === 'number' ? rawStats.mvps : 0;
   const incomingScore = typeof rawStats?.score === 'number' ? rawStats.score : 0;
 
-  // Preserve accumulated stats if incoming packet has zeroes during gameover/intermission or late in game
   let finalKills = incomingKills;
   let finalDeaths = incomingDeaths;
   let finalAssists = incomingAssists;
@@ -82,14 +97,14 @@ export function handleGsiPayload(roomId, payload) {
     incomingKills === 0 &&
     incomingDeaths === 0 &&
     (cached.kills > 0 || cached.deaths > 0) &&
-    (phase === 'gameover' || phase === 'intermission' || roundNumber > 1 || scoreCT + scoreTR > 1)
+    phase !== 'warmup'
   ) {
     finalKills = cached.kills;
     finalDeaths = cached.deaths;
     finalAssists = cached.assists;
     finalMvps = cached.mvps;
     finalScore = cached.score;
-  } else if (incomingKills > 0 || incomingDeaths > 0 || incomingAssists > 0 || incomingScore > 0) {
+  } else if (phase !== 'warmup' && (incomingKills > 0 || incomingDeaths > 0 || incomingAssists > 0 || incomingScore > 0)) {
     finalKills = Math.max(incomingKills, cached.kills);
     finalDeaths = Math.max(incomingDeaths, cached.deaths);
     finalAssists = Math.max(incomingAssists, cached.assists);
@@ -107,8 +122,8 @@ export function handleGsiPayload(roomId, payload) {
 
   const finalKd = finalDeaths > 0 ? Number((finalKills / finalDeaths).toFixed(2)) : Number(finalKills.toFixed(2));
 
-  // Helper to upsert any player into the persistent matchRosterCache
   const upsertRosterPlayer = (steamId, pName, rawTeam, pState = {}, statsObj = {}, weaponsObj = {}) => {
+    if (phase === 'warmup') return;
     const cleanSteam = String(steamId || '').trim();
     const cleanName = String(pName || '').trim();
     if (!cleanSteam && !cleanName) return;
@@ -170,7 +185,6 @@ export function handleGsiPayload(roomId, payload) {
     });
   };
 
-  // 2. Upsert all players from payload.allplayers (if provided by server/observer/client)
   if (payload.allplayers && typeof payload.allplayers === 'object') {
     Object.entries(payload.allplayers).forEach(([steamId, pData]) => {
       if (!pData || typeof pData !== 'object') return;
@@ -185,7 +199,6 @@ export function handleGsiPayload(roomId, payload) {
     });
   }
 
-  // 3. Upsert current payload.player (active player OR teammate currently being spectated while dead!)
   if (player && (player.name || player.steamid) && player.activity !== 'menu') {
     upsertRosterPlayer(
       player.steamid,
@@ -203,24 +216,24 @@ export function handleGsiPayload(roomId, payload) {
     );
   }
 
-  // 4. Build full match scoreboard from matchRosterCache so no player is ever lost between packets
-  const allPlayersStats = Array.from(matchRosterCache.values());
+  let allPlayersStats = Array.from(matchRosterCache.values());
+  if (allPlayersStats.length === 0 && lastValidMatchSnapshot?.allPlayersStats?.length > 0 && phase !== 'live') {
+    allPlayersStats = lastValidMatchSnapshot.allPlayersStats;
+  }
+
   const teamCT = allPlayersStats.filter((p) => p.team === 'CT');
   const teamTR = allPlayersStats.filter((p) => p.team === 'TR');
 
-  // Sort players by score desc, then kills desc
-  allPlayersStats.sort((a, b) => b.score - a.score || b.kills - a.kills);
+  allPlayersStats.sort((a, b) => b.score - a.score || b.kills - a.kills || a.deaths - b.deaths);
 
   const topFragger = allPlayersStats.length > 0 ? allPlayersStats[0] : null;
   const matchMvp = allPlayersStats.length > 0
-    ? [...allPlayersStats].sort((a, b) => (b.mvps * 10 + b.score) - (a.mvps * 10 + a.score))[0]
+    ? [...allPlayersStats].sort((a, b) => (b.mvps * 12 + b.kills * 3 - b.deaths + b.score) - (a.mvps * 12 + a.kills * 3 - a.deaths + a.score))[0]
     : null;
 
-  // Parse detailed individual player live telemetry (health, armor, weapons, ammo, money)
   let individualPlayer = null;
   if (player && (player.name || player.steamid)) {
     const pState = player.state || {};
-
     const weaponsList = [];
     let activeWeapon = null;
     let primaryWeapon = null;
@@ -294,15 +307,16 @@ export function handleGsiPayload(roomId, payload) {
   const totalMoneyTR = teamTR.reduce((acc, p) => acc + (p.money || 0), 0);
   const aliveCountCT = teamCT.filter((p) => p.isAlive).length;
   const aliveCountTR = teamTR.filter((p) => p.isAlive).length;
+  const isGameOver = isCs2MatchFinishedScore(phase, roundPhase, scoreCT, scoreTR);
 
   const liveState = {
     connected: true,
     lastUpdate: now,
-    mapName,
+    mapName: mapName !== 'Indefinido' ? mapName : (lastValidMatchSnapshot?.mapName || 'Indefinido'),
     phase,
     roundNumber,
-    scoreCT,
-    scoreTR,
+    scoreCT: scoreCT || (isGameOver && lastValidMatchSnapshot ? lastValidMatchSnapshot.scoreCT : 0),
+    scoreTR: scoreTR || (isGameOver && lastValidMatchSnapshot ? lastValidMatchSnapshot.scoreTR : 0),
     bomb,
     roundPhase,
     winTeam,
@@ -317,13 +331,20 @@ export function handleGsiPayload(roomId, payload) {
     aliveCountTR,
     topFragger,
     matchMvp,
-    isGameOver: phase === 'gameover' || (scoreCT >= 13 && scoreCT - scoreTR >= 2) || (scoreTR >= 13 && scoreTR - scoreCT >= 2),
+    isGameOver,
   };
+
+  if (phase !== 'warmup' && allPlayersStats.length > 0 && (scoreCT + scoreTR >= 1 || roundNumber >= 1)) {
+    lastValidMatchSnapshot = {
+      ...liveState,
+      allPlayersStats: [...allPlayersStats],
+      savedAt: now,
+    };
+  }
 
   roomGsiStates.set(cleanRoomId, liveState);
   return liveState;
 }
-
 export function setGsiState(roomId, liveState) {
   if (!roomId || !liveState) return;
   const clean = roomId.trim().toUpperCase();

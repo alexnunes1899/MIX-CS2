@@ -322,64 +322,112 @@ class DiscordBotManager {
 
   handleGsiEvent(roomId, liveState) {
     if (!liveState) return;
+    const now = Date.now();
     this.lastGsiState = {
       ...liveState,
       roomId: roomId || 'MIX-PRO',
-      receivedAt: Date.now(),
+      receivedAt: now,
     };
+
+    if (
+      Array.isArray(liveState.allPlayersStats) &&
+      liveState.allPlayersStats.length > 0 &&
+      liveState.phase !== 'warmup' &&
+      ((liveState.scoreCT || 0) + (liveState.scoreTR || 0) >= 1 || (liveState.roundNumber || 0) >= 1)
+    ) {
+      this.lastBestGsiState = {
+        ...liveState,
+        allPlayersStats: [...liveState.allPlayersStats],
+        roomId: roomId || 'MIX-PRO',
+        receivedAt: now,
+      };
+    }
 
     const steamId = liveState.player?.steamId || liveState.rawPlayer?.steamId;
     if (steamId) {
       this.playersGsiStates.set(steamId, {
         ...liveState,
         roomId: roomId || 'MIX-PRO',
-        receivedAt: Date.now(),
+        receivedAt: now,
       });
     }
 
-    // Instantly sync active Discord message trackers in real time
+    const uniqueMixes = new Map();
+    for (const [, m] of this.activeMixes.entries()) {
+      if (m && m.id && !uniqueMixes.has(m.id)) {
+        uniqueMixes.set(m.id, m);
+      }
+    }
+
+    for (const mix of uniqueMixes.values()) {
+      if (mix.phase !== 'finished' && mix.phase !== 'cancelled') {
+        if (this.lastBestGsiState) {
+          mix.liveState = this.lastBestGsiState;
+          mix.gsi = this.lastBestGsiState;
+        }
+      }
+    }
+
     if (this.liveTrackers && this.liveTrackers.size > 0) {
       this.syncLiveTrackers(this.lastGsiState).catch(() => {});
     }
 
-    // If match ended in CS2, automatically finalize any active mix
-    if (liveState.isGameOver && liveState.phase === 'gameover') {
-      for (const [channelId, mix] of this.activeMixes.entries()) {
-        if (mix.phase !== 'finished' && mix.phase !== 'lobby') {
-          const winnerRes = determineMatchWinner(mix, liveState);
-          const score = `${Math.max(liveState.scoreCT || 0, liveState.scoreTR || 0)}-${Math.min(liveState.scoreCT || 0, liveState.scoreTR || 0)}`;
+    if (liveState.isGameOver && ((liveState.scoreCT || 0) >= 13 || (liveState.scoreTR || 0) >= 13 || liveState.phase === 'gameover')) {
+      const statsSnapshot = this.lastBestGsiState || liveState;
+      const maxS = Math.max(statsSnapshot.scoreCT || 0, statsSnapshot.scoreTR || 0);
+      const minS = Math.min(statsSnapshot.scoreCT || 0, statsSnapshot.scoreTR || 0);
+      const matchFinishKey = `${statsSnapshot.mapName || 'cs2'}:${maxS}-${minS}`;
 
-          const channel = this.client?.channels?.cache?.get(channelId);
-          this.recordMatchResult(
-            mix,
-            winnerRes.winnerLetter,
-            score,
-            { id: 'gsi_system', username: 'Valve CS2 GSI' },
-            channel
-          )
-            .then((res) => {
-              if (res.success && channel) {
-                channel
-                  .send({
-                    content: `🤖 📡 **[VALVE CS2 GSI DETECTADO]** Partida concluída no mapa **${liveState.mapName || 'CS2'}**!\nPlacar final registrado automaticamente pelo cliente do jogador: **${score}**!`,
-                    embeds: res.embeds,
-                    components: res.components,
-                  })
-                  .catch(() => {});
+      for (const mix of uniqueMixes.values()) {
+        if (mix.phase !== 'finished' && mix.phase !== 'cancelled' && mix._autoFinalizedKey !== matchFinishKey) {
+          if ((!mix.teamA?.players?.length || !mix.teamB?.players?.length) && mix.players?.length >= 2) {
+            this.balanceTeams(mix);
+          }
+          if (!mix.teamA?.players?.length || !mix.teamB?.players?.length) continue;
+
+          mix._autoFinalizedKey = matchFinishKey;
+          mix.liveState = statsSnapshot;
+          mix.gsi = statsSnapshot;
+
+          const winnerRes = determineMatchWinner(mix, statsSnapshot);
+          const score = `${maxS}-${minS}`;
+          const targetChannelId = mix.channelId;
+
+          (async () => {
+            try {
+              let channel = targetChannelId ? this.client?.channels?.cache?.get(targetChannelId) : null;
+              if (!channel && targetChannelId && this.client?.channels?.fetch) {
+                channel = await this.client.channels.fetch(targetChannelId).catch(() => null);
               }
-            })
-            .catch((err) => console.warn('[DISCORD BOT GSI AUTO-RESULT ERROR]:', err.message));
+              const res = await this.recordMatchResult(
+                mix,
+                winnerRes.winnerLetter,
+                score,
+                { id: 'gsi_system', username: 'Valve CS2 GSI (Automático)' },
+                channel,
+                statsSnapshot.mapName
+              );
+              if (res.success && channel) {
+                await channel.send({
+                  content: `\ud83e\udd16 \ud83d\udce1 **[FIM DE JOGO DETECTADO NO CS2]** Partida finalizada automaticamente no mapa **${normalizeMapName(statsSnapshot.mapName || 'CS2')}**!\n\ud83c\udfc6 **Placar Oficial:** \`${score}\` \u2022 **MVP** e **Bagre** coroados automaticamente pelas estat\u00edsticas da partida:`,
+                  embeds: res.embeds,
+                  components: res.components,
+                });
+              }
+              if (this.config.autoMoveVoice && channel?.guild) {
+                await this.executeVoiceReturnToLobby(channel.guild, mix).catch(() => {});
+              }
+            } catch (err) {
+              console.warn('[DISCORD BOT GSI AUTO-RESULT ERROR]:', err.message);
+            }
+          })();
           break;
         }
       }
     }
 
-    // Auto-update registered Discord Live Match Tracker embeds
-    this.syncLiveTrackers(this.lastGsiState).catch((err) =>
-      console.warn('[DISCORD BOT LIVE TRACKER SYNC ERROR]:', err.message)
-    );
+    this.syncLiveTrackers(this.lastGsiState).catch(() => {});
   }
-
   buildGsiEmbed() {
     const isOnline = Boolean(
       this.lastGsiState && Date.now() - (this.lastGsiState.receivedAt || 0) < 60000
@@ -3195,8 +3243,8 @@ class DiscordBotManager {
     };
 
     // Automatically compute BOTH MVP AND BAGRE with accurate CS2 statistics
-    const gsiState = mix.gsi || mix.liveState || this.lastGsiState || null;
-    const { mvp: computedMvp, bagre: computedBagre, evaluatedPlayers } = computeMatchPerformers(matchRecord, gsiState);
+    const gsiState = mix.gsi || mix.liveState || this.lastBestGsiState || this.lastGsiState || null;
+    const { mvp: computedMvp, bagre: computedBagre, evaluatedPlayers, hasRealGsiStats } = computeMatchPerformers(matchRecord, gsiState);
 
     if (computedMvp) {
       matchRecord.mvpId = computedMvp.id;
@@ -3227,74 +3275,89 @@ class DiscordBotManager {
       try { this.onMatchRecorded(matchRecord); } catch (e) {}
     }
 
-    // Check and award tier roles asynchronously to winners
     this.checkAndAwardTierRoles(channel?.guild, winnerTeam.players, profiles).catch((err) => {
-      console.warn('[DISCORD BOT] Falha ao atribuir patentes automáticas:', err.message);
+      console.warn('[DISCORD BOT] Falha ao atribuir patentes automaticas:', err.message);
     });
 
     const mvpUserTag = computedMvp
-      ? (isSnowflake(computedMvp.id) ? `<@${computedMvp.id}>` : `**${computedMvp.nick || computedMvp.username}** 💬`)
+      ? (isSnowflake(computedMvp.id) ? `<@${computedMvp.id}>` : `**${computedMvp.nick || computedMvp.username}**`)
       : '';
     const bagreUserTag = computedBagre
-      ? (isSnowflake(computedBagre.id) ? `<@${computedBagre.id}>` : `**${computedBagre.nick || computedBagre.username}** 💬`)
+      ? (isSnowflake(computedBagre.id) ? `<@${computedBagre.id}>` : `**${computedBagre.nick || computedBagre.username}**`)
       : '';
 
     const mvpDescription = computedMvp
-      ? `\n\n👑 **MVP DA PARTIDA ELEITO:** ${mvpUserTag}\n` +
-        `⭐ **Estatísticas:** 🎯 **${computedMvp.kills} Kills** • 💀 **${computedMvp.deaths} Mortes** (K/D **${computedMvp.kd}**) • ⭐ **${computedMvp.mvps} MVPs de Round** • 📊 Rating **${computedMvp.rating}**\n`
+      ? `\n\n\ud83d\udc51 **MVP DA PARTIDA (AUTOM\u00c1TICO - CS2 STATS):** ${mvpUserTag}\n` +
+        `\u2b50 **Desempenho:** \ud83c\udfaf **${computedMvp.kills} Kills** \u2022 \ud83d\udc80 **${computedMvp.deaths} Mortes** (\ud83d\udd1d **${computedMvp.assists}A**) \u2022 K/D **${computedMvp.kd}** \u2022 \u2b50 **${computedMvp.mvps} MVPs** \u2022 \ud83d\udcca Rating **${computedMvp.rating}**\n`
       : '';
 
     const bagreQuote = bagreVoteService.getRandomQuote();
     const bagreDescription = computedBagre
-      ? `\n🐟 **BAGRE DO MIX COROADO:** ${bagreUserTag}\n` +
-        `🎣 **Estatísticas:** 🎯 **${computedBagre.kills} Kills** • 💀 **${computedBagre.deaths} Mortes** (K/D **${computedBagre.kd}**) • 📊 Rating **${computedBagre.rating}**\n` +
+      ? `\n\ud83d\udc1f **BAGRE DO MIX (AUTOM\u00c1TICO - CS2 STATS):** ${bagreUserTag}\n` +
+        `\ud83c\udfa3 **Desempenho:** \ud83c\udfaf **${computedBagre.kills} Kills** \u2022 \ud83d\udc80 **${computedBagre.deaths} Mortes** (\ud83d\udd1d **${computedBagre.assists}A**) \u2022 K/D **${computedBagre.kd}** \u2022 \ud83d\udcca Rating **${computedBagre.rating}**\n` +
         `*${bagreQuote}*`
       : '';
 
     const declaredTag = isSnowflake(declaredByUser.id) ? `<@${declaredByUser.id}>` : `**${declaredByUser.username || declaredByUser.displayName}**`;
 
+    const scoreboardLines = (evaluatedPlayers || []).slice(0, 10).map((ep, idx) => {
+      const medal = idx === 0 ? '\ud83d\udc51' : (computedBagre && ep.id === computedBagre.id ? '\ud83d\udc1f' : `**${idx + 1}.**`);
+      const pTag = isSnowflake(ep.id) ? `<@${ep.id}>` : `**${ep.nick}**`;
+      const cs2Alias = ep.cs2Name && ep.cs2Name.toLowerCase() !== ep.nick.toLowerCase() ? ` (\`${ep.cs2Name}\`)` : '';
+      return `${medal} ${pTag}${cs2Alias} \u2014 \ud83c\udfaf **${ep.kills}/${ep.deaths}/${ep.assists}** \u2022 K/D \`${ep.kd}\` \u2022 \u2b50 \`${ep.mvps} MVP\` \u2022 Rating **\`${ep.rating}\`**`;
+    }).join('\n');
+
     const victoryEmbed = new EmbedBuilder()
-      .setTitle(`🏆 VITÓRIA DO ${winnerTeam.name.toUpperCase()}! • PLACAR ${score}`)
+      .setTitle(`\ud83c\udfc6 VIT\u00d3RIA DO ${winnerTeam.name.toUpperCase()}! \u2022 PLACAR ${score}`)
       .setDescription(
-        `A partida foi encerrada e as estatísticas de todos os jogadores foram atualizadas no **Ranking Geral**!\n\n` +
-        `🗺️ **Mapa:** **${resolvedMap}**\n` +
-        `⚔️ **Resultado Oficial:** **${winnerTeam.name}** venceu por **${score}**!\n` +
-        `👑 **Declarado por:** ${declaredTag}` +
+        `A partida foi encerrada e as estat\u00edsticas oficiais do CS2 foram computadas no **Ranking Geral**!\n\n` +
+        `\ud83d\uddfa\ufe0f **Mapa:** **${resolvedMap}**\n` +
+        `\u2694\ufe0f **Resultado Oficial:** **${winnerTeam.name}** venceu por **${score}**!\n` +
+        `\ud83d\udce1 **Fonte dos Dados:** ${hasRealGsiStats ? '\ud83d\udfe2 **Telemetria Real CS2 (Valve GSI)**' : declaredTag}` +
         mvpDescription +
         bagreDescription
       )
       .setColor(0x22c55e)
       .addFields(
+        ...(scoreboardLines
+          ? [
+              {
+                name: '\ud83d\udcca Scoreboard Geral da Partida (Kills / Mortes / Assists / Rating)',
+                value: scoreboardLines,
+                inline: false,
+              },
+            ]
+          : []),
         ...(computedMvp
           ? [
               {
-                name: `👑 MVP da Partida • ${computedMvp.nick}`,
-                value: `🎯 **${computedMvp.kills} Kills** • 💀 **${computedMvp.deaths} Mortes** • ⚡ **${computedMvp.kd} K/D** • ⭐ **${computedMvp.mvps} MVPs** • 📈 **${computedMvp.rating} Rating**\n🏆 Total na carreira: **${profiles[computedMvp.id]?.mvps || 1}x MVP**`,
-                inline: false,
+                name: `\ud83d\udc51 Destaque MVP \u2022 ${computedMvp.nick}`,
+                value: `\ud83c\udfaf **${computedMvp.kills}K / ${computedMvp.deaths}D / ${computedMvp.assists}A** \u2022 \u26a1 **${computedMvp.kd} K/D** \u2022 \u2b50 **${computedMvp.mvps} MVPs** \u2022 \ud83d\udcc8 **${computedMvp.rating} Rating**\n\ud83c\udfc6 Total na carreira: **${profiles[computedMvp.id]?.mvps || 1}x MVP**`,
+                inline: true,
               },
             ]
           : []),
         ...(computedBagre
           ? [
               {
-                name: `🐟 Bagre do Mix • ${computedBagre.nick}`,
-                value: `🎯 **${computedBagre.kills} Kills** • 💀 **${computedBagre.deaths} Mortes** • ⚡ **${computedBagre.kd} K/D** • 📉 **${computedBagre.rating} Rating**\n🐟 Total de Bagres na carreira: **${profiles[computedBagre.id]?.bagres || 1}x Coroado**`,
-                inline: false,
+                name: `\ud83d\udc1f Bagre Coroado \u2022 ${computedBagre.nick}`,
+                value: `\ud83c\udfaf **${computedBagre.kills}K / ${computedBagre.deaths}D / ${computedBagre.assists}A** \u2022 \u26a1 **${computedBagre.kd} K/D** \u2022 \ud83d\udcc9 **${computedBagre.rating} Rating**\n\ud83d\udc1f Total na carreira: **${profiles[computedBagre.id]?.bagres || 1}x Bagre**`,
+                inline: true,
               },
             ]
           : []),
         {
-          name: `🥇 Campeões • ${winnerTeam.name} (+1 Vitória)`,
-          value: winnerTeam.players.map((p) => `👑 ${isSnowflake(p.id) ? `<@${p.id}>` : `**${p.username || 'Jogador'}** 💬`} \`[Lvl ${p.level || 16}]\``).join('\n') || '*Sem jogadores*',
-          inline: true,
+          name: `\ud83e\udd47 Campe\u00f5es \u2022 ${winnerTeam.name} (+1 Vit\u00f3ria)`,
+          value: winnerTeam.players.map((p) => `\ud83d\udc51 ${isSnowflake(p.id) ? `<@${p.id}>` : `**${p.username || 'Jogador'}**`} \`[Lvl ${p.level || 16}]\``).join('\n') || '*Sem jogadores*',
+          inline: false,
         },
         {
-          name: `🥈 Vice-Campeões • ${loserTeam.name}`,
-          value: loserTeam.players.map((p) => `💀 ${isSnowflake(p.id) ? `<@${p.id}>` : `**${p.username || 'Jogador'}** 💬`} \`[Lvl ${p.level || 16}]\``).join('\n') || '*Sem jogadores*',
-          inline: true,
+          name: `\ud83e\udd48 Vice-Campe\u00f5es \u2022 ${loserTeam.name}`,
+          value: loserTeam.players.map((p) => `\ud83d\udc80 ${isSnowflake(p.id) ? `<@${p.id}>` : `**${p.username || 'Jogador'}**`} \`[Lvl ${p.level || 16}]\``).join('\n') || '*Sem jogadores*',
+          inline: false,
         }
       )
-      .setFooter({ text: 'CS2 Mix Hub • Partida Concluída' })
+      .setFooter({ text: 'CS2 Mix Hub \u2022 MVP e Bagre Eleitos Automaticamente pelas Estat\u00edsticas do Jogo' })
       .setTimestamp();
 
     if (resolvedImage) {
@@ -3306,24 +3369,23 @@ class DiscordBotManager {
       new ButtonBuilder()
         .setCustomId(`mix_rematch:${mix.id}`)
         .setLabel('Revanche (Mesmos Times)')
-        .setEmoji('🔄')
+        .setEmoji('\ud83d\udd04')
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId(`mix_voice_lobby:${mix.id}`)
         .setLabel('Voltar para o Geral')
-        .setEmoji('🔊')
+        .setEmoji('\ud83d\udd0a')
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId('panel_create_mix')
         .setLabel('Novo Mix (Zerar)')
-        .setEmoji('🎮')
+        .setEmoji('\ud83c\udfae')
         .setStyle(ButtonStyle.Primary)
     );
     components.push(finishBtn);
 
     return { success: true, embeds: [victoryEmbed], components };
   }
-
   async finishMvpVote(mix, channel) {
     if (!mix || !mix.mvpVote) return;
     if (mix.mvpVote.timer) {
@@ -7046,34 +7108,63 @@ class DiscordBotManager {
   // ==========================================
 
   async prefixBagre(message) {
-    const mix = this.activeMixes.get(message.channelId) || Array.from(this.activeMixes.values())[0];
-    if (!mix) {
-      return message.reply('⚠️ Nenhum mix ativo neste canal para eleger o Bagre. Crie um mix com `/mix criar` ou termine uma partida!');
+    const mix = this.resolveActiveMixForChannel(message.channelId);
+    const embed = this.buildAutoBagreAndMvpEmbed(mix);
+    if (!embed) {
+      return message.reply('\u26a0\ufe0f Ainda n\u00e3o h\u00e1 estat\u00edsticas de partida registradas no momento. Assim que o jogo rodar ou finalizar no CS2, o MVP e o Bagre s\u00e3o eleitos automaticamente!');
     }
-    const components = bagreVoteService.buildVoteMenu(mix);
-    return message.reply({
-      content: `🐟 **VOTAÇÃO DE BAGRE DA PARTIDA!** (${mix.name})\nVote no jogador que mais pinou ou entregou a rodada:`,
-      components,
-    });
+    return message.reply({ embeds: [embed] });
   }
 
   async cmdBagre(interaction) {
-    const mix = this.activeMixes.get(interaction.channelId) || Array.from(this.activeMixes.values())[0];
-    if (!mix) {
-      return interaction.reply({ content: '⚠️ Nenhum mix ativo neste canal para votar no Bagre.', ephemeral: true });
+    const mix = this.resolveActiveMixForChannel(interaction.channelId);
+    const embed = this.buildAutoBagreAndMvpEmbed(mix);
+    if (!embed) {
+      return interaction.reply({ content: '\u26a0\ufe0f Ainda n\u00e3o h\u00e1 estat\u00edsticas de partida registradas no momento. Assim que o jogo rodar ou finalizar no CS2, o MVP e o Bagre s\u00e3o eleitos automaticamente!', ephemeral: true });
     }
-    const components = bagreVoteService.buildVoteMenu(mix);
-    return interaction.reply({
-      content: `🐟 **VOTAÇÃO DE BAGRE DA PARTIDA!** (${mix.name})\nVote no jogador que mais pinou ou entregou a rodada:`,
-      components,
-      ephemeral: true,
-    });
+    return interaction.reply({ embeds: [embed] });
   }
 
-  // ==========================================
-  // FREE PC GAMES RADAR (EPIC GAMES & STEAM)
-  // ==========================================
+  buildAutoBagreAndMvpEmbed(mix) {
+    const gsiState = mix?.gsi || mix?.liveState || this.lastBestGsiState || this.lastGsiState || null;
+    const dummyRecord = {
+      winnerPlayers: mix?.teamA?.players || mix?.players?.slice(0, 5) || [],
+      loserPlayers: mix?.teamB?.players || mix?.players?.slice(5, 10) || [],
+      scoreWinner: Math.max(gsiState?.scoreCT || 13, gsiState?.scoreTR || 8),
+      scoreLoser: Math.min(gsiState?.scoreCT || 13, gsiState?.scoreTR || 8),
+    };
 
+    const { mvp, bagre, evaluatedPlayers, hasRealGsiStats } = computeMatchPerformers(dummyRecord, gsiState);
+    if (!mvp && !bagre) return null;
+
+    const quote = bagreVoteService.getRandomQuote();
+    const mvpTag = mvp ? (isSnowflake(mvp.id) ? `<@${mvp.id}>` : `**${mvp.nick}**`) : 'N/A';
+    const bagreTag = bagre ? (isSnowflake(bagre.id) ? `<@${bagre.id}>` : `**${bagre.nick}**`) : 'N/A';
+
+    const lines = (evaluatedPlayers || []).slice(0, 10).map((ep, i) => {
+      const icon = i === 0 ? '\ud83d\udc51' : (bagre && ep.id === bagre.id ? '\ud83d\udc1f' : `**${i + 1}.**`);
+      const tag = isSnowflake(ep.id) ? `<@${ep.id}>` : `**${ep.nick}**`;
+      return `${icon} ${tag} \u2014 \ud83c\udfaf **${ep.kills}/${ep.deaths}/${ep.assists}** \u2022 K/D \`${ep.kd}\` \u2022 \u2b50 \`${ep.mvps}\` \u2022 Rating **\`${ep.rating}\`**`;
+    }).join('\n');
+
+    return new EmbedBuilder()
+      .setTitle(`\ud83d\udcca MVP & BAGRE AUTOM\u00c1TICO (CS2 STATS)`)
+      .setColor(0xf59e0b)
+      .setDescription(
+        `Apura\u00e7\u00e3o **100% autom\u00e1tica** baseada nas estat\u00edsticas da partida (${hasRealGsiStats ? '\ud83d\udfe2 **Dados Reais do CS2 via GSI**' : '\ud83d\udfe1 **Dados do Mix**'}):\n\n` +
+        `\ud83d\udc51 **MVP DA PARTIDA:** ${mvpTag}\n` +
+        (mvp ? `└ \ud83c\udfaf **${mvp.kills} Kills** \u2022 \ud83d\udc80 **${mvp.deaths} Mortes** \u2022 K/D **${mvp.kd}** \u2022 \u2b50 **${mvp.mvps} MVPs** \u2022 Rating **${mvp.rating}**\n\n` : '\n') +
+        `\ud83d\udc1f **BAGRE DO MIX:** ${bagreTag}\n` +
+        (bagre ? `└ \ud83c\udfaf **${bagre.kills} Kills** \u2022 \ud83d\udc80 **${bagre.deaths} Mortes** \u2022 K/D **${bagre.kd}** \u2022 Rating **${bagre.rating}**\n*${quote}*` : '')
+      )
+      .addFields({
+        name: '\ud83d\udccb Classifica\u00e7\u00e3o Geral de Desempenho na Partida',
+        value: lines || '*Sem estat\u00edsticas registradas*',
+        inline: false,
+      })
+      .setFooter({ text: 'CS2 Mix Hub \u2022 Definido 100% pelas estat\u00edsticas do jogo!' })
+      .setTimestamp();
+  }
   async prefixFreeGames(message) {
     try {
       const data = await freeGamesRadar.getAllFreeGames();

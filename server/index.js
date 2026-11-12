@@ -2473,7 +2473,7 @@ app.post('/api/gsi/:roomId', (req, res) => {
       processGsiDiscordNotifications(room, liveState, req);
 
       // If game ended, record score automatically in history
-      if (liveState.isGameOver && liveState.phase === 'gameover') {
+      if (liveState.isGameOver && (liveState.phase === 'gameover' || (liveState.scoreCT || 0) >= 13 || (liveState.scoreTR || 0) >= 13)) {
         const winnerRes = determineMatchWinner(
           { teamA: room.teamA, teamB: room.teamB, ...room },
           liveState
