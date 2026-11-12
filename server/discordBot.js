@@ -343,7 +343,7 @@ class DiscordBotManager {
       mix.narrationEnabled = nextState;
     }
     for (const [, m] of this.activeMixes.entries()) {
-      if (m && m.phase === 'live') {
+      if (m && m.phase !== 'finished' && m.phase !== 'cancelled') {
         m.narrationEnabled = nextState;
       }
     }
@@ -352,22 +352,13 @@ class DiscordBotManager {
 
   getActiveLiveMix(channelId = null, currentCs2Map = null) {
     const now = Date.now();
-    const maxMixAgeMs = 3 * 3600 * 1000;
+    const maxMixAgeMs = 4 * 3600 * 1000;
 
     const isValidLiveMix = (m) => {
-      if (!m || m.phase !== 'live') return false;
+      if (!m || m.phase === 'finished' || m.phase === 'cancelled' || m.phase === 'lobby' || m.phase === 'ready_check') return false;
       if (!m.teamA?.players?.length || !m.teamB?.players?.length) return false;
       if (m.createdAt && (now - m.createdAt > maxMixAgeMs)) return false;
-
-      if (currentCs2Map) {
-        if (!this.isOfficialCompetitiveMap(currentCs2Map)) return false;
-        const mixMapRaw = m.veto?.deciderMap?.id || m.veto?.deciderMap?.name || m.finalMap?.file || m.finalMap?.name || m.matchMap || '';
-        if (mixMapRaw) {
-          const normCs2 = normalizeMapName(currentCs2Map).toLowerCase();
-          const normMix = normalizeMapName(mixMapRaw).toLowerCase();
-          if (normCs2 && normMix && normCs2 !== normMix) return false;
-        }
-      }
+      if (currentCs2Map && !this.isOfficialCompetitiveMap(currentCs2Map)) return false;
       return true;
     };
 
@@ -386,16 +377,12 @@ class DiscordBotManager {
     for (const [, m] of this.activeMixes.entries()) {
       if (m) m.narrationEnabled = false;
     }
-    if (this.liveTrackers && this.liveTrackers.size > 0) {
-      this.liveTrackers.clear();
-    }
   }
 
   processLiveHighlightsAndHalftime(liveState, activeMix) {
     try {
       // SO NARRA SE O BOTAO DE NARRACAO TIVER SIDO ATIVADO PELO USUARIO!
       if (!this.isNarrationActive(activeMix)) return;
-      if (!activeMix || activeMix.phase !== 'live') return;
       if (!liveState || liveState.phase === 'warmup' || !this.isOfficialCompetitiveMap(liveState.mapName)) return;
 
       this._hlTracker = this._hlTracker || {
@@ -450,8 +437,14 @@ class DiscordBotManager {
         }
       }
 
-      const channel = activeMix?.channelId ? this.client?.channels?.cache?.get(activeMix.channelId) : null;
+      let targetChannelId = activeMix?.channelId || null;
+      if (!targetChannelId && this.liveTrackers && this.liveTrackers.size > 0) {
+        const firstTracker = Array.from(this.liveTrackers.values())[0];
+        targetChannelId = firstTracker?.channelId || null;
+      }
+      const channel = targetChannelId ? this.client?.channels?.cache?.get(targetChannelId) : null;
       const cleanMap = normalizeMapName(liveState.mapName);
+      const mixKey = activeMix?.id || 'live';
 
       if (liveState.roundPhase === 'over' && trk.announcedRound !== totalRounds && totalRounds > 0) {
         trk.announcedRound = totalRounds;
@@ -460,17 +453,17 @@ class DiscordBotManager {
 
         if (winSide === 'CT' && trk.clutchCandidateCT) {
           const c = trk.clutchCandidateCT;
-          const evKey = `${activeMix.id}:R${totalRounds}:clutch:${c.player.name}`;
+          const evKey = `${mixKey}:R${totalRounds}:clutch:${c.player.name}`;
           if (!trk.sentEvents.has(evKey)) {
             trk.sentEvents.add(evKey);
-            messages.push(`\ud83e\uddca \ud83d\udd25 **[CLUTCH 1v${c.enemies} NO MIX!]** **${c.player.name}** garantiu o round sozinho de CT em **${cleanMap}**! (\`CT ${sCT} x ${sTR} TR\`)`);
+            messages.push(`\ud83e\uddca \ud83d\udd25 **[CLUTCH 1v${c.enemies}!]** **${c.player.name}** garantiu o round sozinho de CT em **${cleanMap}**! (\`CT ${sCT} x ${sTR} TR\`)`);
           }
         } else if (winSide === 'TR' && trk.clutchCandidateTR) {
           const c = trk.clutchCandidateTR;
-          const evKey = `${activeMix.id}:R${totalRounds}:clutch:${c.player.name}`;
+          const evKey = `${mixKey}:R${totalRounds}:clutch:${c.player.name}`;
           if (!trk.sentEvents.has(evKey)) {
             trk.sentEvents.add(evKey);
-            messages.push(`\ud83e\uddca \ud83d\udd25 **[CLUTCH 1v${c.enemies} NO MIX!]** **${c.player.name}** garantiu o round sozinho de TR em **${cleanMap}**! (\`CT ${sCT} x ${sTR} TR\`)`);
+            messages.push(`\ud83e\uddca \ud83d\udd25 **[CLUTCH 1v${c.enemies}!]** **${c.player.name}** garantiu o round sozinho de TR em **${cleanMap}**! (\`CT ${sCT} x ${sTR} TR\`)`);
           }
         }
 
@@ -496,12 +489,12 @@ class DiscordBotManager {
         });
 
         roundKillers.forEach((k) => {
-          const evKey = `${activeMix.id}:R${totalRounds}:mk:${k.name}`;
+          const evKey = `${mixKey}:R${totalRounds}:mk:${k.name}`;
           if (trk.sentEvents.has(evKey)) return;
           trk.sentEvents.add(evKey);
           const hsTxt = k.hs > 0 ? ` (${k.hs} HS \ud83c\udfaf)` : '';
           if (k.rk >= 5) {
-            messages.push(`\ud83d\udd25 \ud83d\udc80 **[ACE NO MIX! 5 KILLS]** **${k.name}** varreu o time inteiro com **${k.weapon}**${hsTxt} em **${cleanMap}**!`);
+            messages.push(`\ud83d\udd25 \ud83d\udc80 **[ACE NO SERVIDOR! 5 KILLS]** **${k.name}** varreu o time inteiro com **${k.weapon}**${hsTxt} em **${cleanMap}**!`);
           } else if (k.rk === 4) {
             messages.push(`\ud83d\udca5 \ud83c\udfaf **[QUADRA KILL - 4K!]** **${k.name}** levou **4 advers\u00e1rios** no round com **${k.weapon}**${hsTxt}!`);
           }
@@ -514,8 +507,8 @@ class DiscordBotManager {
           channel.send(messages.join('\n')).catch(() => {});
         }
 
-        const halfKey = `${activeMix.id}:${liveState.mapName}:half12`;
-        if (totalRounds === 12 && !trk.sentEvents.has(halfKey)) {
+        const halfKey = `${mixKey}:${liveState.mapName}:half12`;
+        if (totalRounds === 12 && !trk.sentEvents.has(halfKey) && activeMix) {
           trk.sentEvents.add(halfKey);
           const oldSideA = (activeMix.teamA?.side || 'CT').toUpperCase();
           activeMix.teamA.side = oldSideA === 'CT' ? 'TR' : 'CT';
@@ -537,22 +530,31 @@ class DiscordBotManager {
   }
 
   handleGsiEvent(roomId, liveState) {
-    if (!liveState || !this.isOfficialCompetitiveMap(liveState.mapName)) {
-      return;
-    }
-
-    const activeMix = this.getActiveLiveMix(null, liveState.mapName);
-    if (!activeMix) {
-      this.stopAllLiveMonitoring();
-      return;
-    }
+    if (!liveState) return;
 
     const now = Date.now();
+    // SEMPRE atualiza o estado GSI para que o comando !aovivo / /aovivo funcione instantaneamente!
     this.lastGsiState = {
       ...liveState,
       roomId: roomId || 'MIX-PRO',
       receivedAt: now,
     };
+
+    const steamId = liveState.player?.steamId || liveState.rawPlayer?.steamId;
+    if (steamId) {
+      this.playersGsiStates.set(steamId, {
+        ...liveState,
+        roomId: roomId || 'MIX-PRO',
+        receivedAt: now,
+      });
+    }
+
+    // SEMPRE atualiza em tempo real os cards do !aovivo / /aovivo que estiverem abertos no Discord!
+    if (this.liveTrackers && this.liveTrackers.size > 0) {
+      this.syncLiveTrackers(this.lastGsiState).catch(() => {});
+    }
+
+    const activeMix = this.getActiveLiveMix(null, liveState.mapName);
 
     if (
       Array.isArray(liveState.allPlayersStats) &&
@@ -566,35 +568,30 @@ class DiscordBotManager {
         roomId: roomId || 'MIX-PRO',
         receivedAt: now,
       };
-      activeMix.liveState = this.lastBestGsiState;
-      activeMix.gsi = this.lastBestGsiState;
+      if (activeMix) {
+        activeMix.liveState = this.lastBestGsiState;
+        activeMix.gsi = this.lastBestGsiState;
+      }
     }
 
-    const steamId = liveState.player?.steamId || liveState.rawPlayer?.steamId;
-    if (steamId) {
-      this.playersGsiStates.set(steamId, {
-        ...liveState,
-        roomId: roomId || 'MIX-PRO',
-        receivedAt: now,
-      });
-    }
-
-    // So processa narracao se o botao de Narracao tiver sido ativado!
+    // So narra no chat se o Botao de Narracao tiver sido clicado (ON)!
     if (this.isNarrationActive(activeMix)) {
       this.processLiveHighlightsAndHalftime(liveState, activeMix);
     }
 
-    if (this.liveTrackers && this.liveTrackers.size > 0) {
-      this.syncLiveTrackers(this.lastGsiState).catch(() => {});
-    }
-
-    if (liveState.isGameOver && ((liveState.scoreCT || 0) >= 13 || (liveState.scoreTR || 0) >= 13 || liveState.phase === 'gameover')) {
+    // Finalizacao automatica quando um Mix ativo atinge 13+ pontos ou gameover em mapa competitivo
+    if (
+      activeMix &&
+      this.isOfficialCompetitiveMap(liveState.mapName) &&
+      liveState.isGameOver &&
+      ((liveState.scoreCT || 0) >= 13 || (liveState.scoreTR || 0) >= 13 || liveState.phase === 'gameover')
+    ) {
       const statsSnapshot = this.lastBestGsiState || liveState;
       const maxS = Math.max(statsSnapshot.scoreCT || 0, statsSnapshot.scoreTR || 0);
       const minS = Math.min(statsSnapshot.scoreCT || 0, statsSnapshot.scoreTR || 0);
       const matchFinishKey = `${activeMix.id}:${statsSnapshot.mapName || 'cs2'}:${maxS}-${minS}`;
 
-      if (activeMix.phase === 'live' && activeMix._autoFinalizedKey !== matchFinishKey) {
+      if (activeMix._autoFinalizedKey !== matchFinishKey) {
         activeMix._autoFinalizedKey = matchFinishKey;
         activeMix.liveState = statsSnapshot;
         activeMix.gsi = statsSnapshot;
@@ -1127,21 +1124,24 @@ class DiscordBotManager {
     );
     return row;
   }
-  registerLiveTracker(messageOrReply, requesterName = 'Jogador', targetQuery = null) {
-    if (!messageOrReply?.id || !messageOrReply?.channelId) return;
+  registerLiveTracker(messageOrReply, requesterName = 'Jogador', targetQuery = null, isExpanded = false) {
+    const msgId = messageOrReply?.id;
+    const chId = messageOrReply?.channelId || messageOrReply?.channel?.id;
+    if (!msgId || !chId) return;
 
     if (this.liveTrackers) {
       for (const [id, t] of this.liveTrackers.entries()) {
-        if (t.channelId === messageOrReply.channelId) {
+        if (t.channelId === chId) {
           this.liveTrackers.delete(id);
         }
       }
 
-      this.liveTrackers.set(messageOrReply.id, {
-        messageId: messageOrReply.id,
-        channelId: messageOrReply.channelId,
+      this.liveTrackers.set(msgId, {
+        messageId: msgId,
+        channelId: chId,
         requester: requesterName,
         targetQuery: targetQuery,
+        isExpanded: Boolean(isExpanded),
         startedAt: Date.now(),
         lastEditedAt: 0,
         lastSignature: '',
@@ -1153,8 +1153,11 @@ class DiscordBotManager {
 
   async syncLiveTrackers(liveState) {
     if (!this.liveTrackers || this.liveTrackers.size === 0) return;
+    const stateToUse = liveState || this.lastGsiState;
+    if (!stateToUse) return;
+
     const now = Date.now();
-    const sig = `${liveState?.roundNumber}_${liveState?.scoreCT}_${liveState?.scoreTR}_${liveState?.bomb}_${liveState?.player?.isAlive}_${liveState?.player?.health}_${liveState?.player?.kills}_${liveState?.player?.deaths}_${liveState?.aliveCountCT}_${liveState?.aliveCountTR}_${liveState?.totalMoneyCT}_${liveState?.totalMoneyTR}_${liveState?.player?.roundKills}_${liveState?.player?.activeWeapon?.name}_${liveState?.player?.team}_${liveState?.phase}_${liveState?.isGameOver}`;
+    const sig = `${stateToUse?.roundNumber}_${stateToUse?.scoreCT}_${stateToUse?.scoreTR}_${stateToUse?.bomb}_${stateToUse?.player?.isAlive}_${stateToUse?.player?.health}_${stateToUse?.player?.kills}_${stateToUse?.player?.deaths}_${stateToUse?.aliveCountCT}_${stateToUse?.aliveCountTR}_${stateToUse?.totalMoneyCT}_${stateToUse?.totalMoneyTR}_${stateToUse?.player?.roundKills}_${stateToUse?.player?.activeWeapon?.name}_${stateToUse?.player?.team}_${stateToUse?.phase}_${stateToUse?.isGameOver}`;
 
     for (const [msgId, tracker] of this.liveTrackers.entries()) {
       if (now - tracker.startedAt > 2.5 * 3600 * 1000) {
@@ -1187,7 +1190,7 @@ class DiscordBotManager {
         const isExpanded = Boolean(tracker.isExpanded);
         const mix = this.activeMixes?.get(tracker.channelId);
         const embed = this.buildLiveMatchEmbed(tracker.requester, tracker.targetQuery, isExpanded, mix);
-        const row = this.buildLiveMatchButtons(Boolean(this.lastGsiState?.player?.name), isExpanded);
+        const row = this.buildLiveMatchButtons(Boolean(stateToUse?.player?.name), isExpanded);
 
         await msg.edit({ embeds: [embed], components: [row] }).catch((e) => {
           if (e.code === 10008) {
@@ -1199,9 +1202,9 @@ class DiscordBotManager {
 
         tracker.lastEditedAt = Date.now();
         tracker.lastSignature = sig;
-        if (liveState?.isGameOver) {
+        if (stateToUse?.isGameOver) {
           tracker.state = 'finished';
-        } else if (liveState?.player?.name) {
+        } else if (stateToUse?.player?.name || stateToUse?.rawPlayer?.name) {
           tracker.state = 'in_game';
         }
       } catch (err) {
@@ -1212,7 +1215,6 @@ class DiscordBotManager {
       }
     }
   }
-
   loadPlayerProfiles() {
     try {
       if (fs.existsSync(PROFILES_FILE)) {
@@ -2660,18 +2662,19 @@ class DiscordBotManager {
           }
         }
       }
-      return message.reply(`⏹️ Monitoramento de partida desativado neste canal (${stopped} rastreador(es) removido(s)).`);
+      this.stopAllLiveMonitoring();
+      return message.reply(`\u23f9\ufe0f Monitoramento de partida desativado neste canal (${stopped} rastreador(es) removido(s)).`);
     }
 
     const targetQuery = args.length > 0 ? args.join(' ') : null;
     const requester = message.author?.username || 'Jogador';
-    const embed = this.buildLiveMatchEmbed(requester, targetQuery);
-    const row = this.buildLiveMatchButtons(Boolean(this.lastGsiState?.player?.name));
+    const mix = this.activeMixes?.get(message.channelId) || null;
+    const embed = this.buildLiveMatchEmbed(requester, targetQuery, false, mix);
+    const row = this.buildLiveMatchButtons(Boolean(this.lastGsiState?.player?.name), false);
     const sent = await message.reply({ embeds: [embed], components: [row] });
-    this.registerLiveTracker(sent, requester, targetQuery);
+    this.registerLiveTracker(sent, requester, targetQuery, false);
     return sent;
   }
-
   async prefixMatchResult(message, args) {
     const mix = this.activeMixes.get(message.channelId);
     if (!mix) {
@@ -5182,18 +5185,18 @@ class DiscordBotManager {
     // Permanent Panel Live Match Monitor Trigger
     if (customId === 'panel_live_radar') {
       const requester = user.username || 'Jogador';
-      const embed = this.buildLiveMatchEmbed(requester);
-      const row = this.buildLiveMatchButtons(Boolean(this.lastGsiState?.player?.name));
+      const mix = this.activeMixes?.get(interaction.channelId) || null;
+      const embed = this.buildLiveMatchEmbed(requester, null, false, mix);
+      const row = this.buildLiveMatchButtons(Boolean(this.lastGsiState?.player?.name), false);
       await interaction.reply({
-        content: `📡 <@${user.id}> ativou o **Monitorar Partida**!`,
+        content: `\ud83d\udce1 <@${user.id}> ativou o **Monitorar Partida**!`,
         embeds: [embed],
         components: [row],
       });
       const sent = await interaction.fetchReply();
-      this.registerLiveTracker(sent, requester);
+      this.registerLiveTracker(sent, requester, null, false);
       return;
     }
-
     // Refresh Hardware Deals
     if (customId === 'deals_refresh_hot') {
       const deals = await hardwareDealsManager.getDeals({ limit: 5 });
@@ -5248,18 +5251,18 @@ class DiscordBotManager {
     // Mix Live Tracker Trigger from Lobby or Match Ready Screen
     if (action === 'mix_live_tracker') {
       const requester = user.username || 'Jogador';
-      const embed = this.buildLiveMatchEmbed(requester);
-      const row = this.buildLiveMatchButtons(Boolean(this.lastGsiState?.player?.name));
+      const mix = this.activeMixes?.get(interaction.channelId) || null;
+      const embed = this.buildLiveMatchEmbed(requester, null, false, mix);
+      const row = this.buildLiveMatchButtons(Boolean(this.lastGsiState?.player?.name), false);
       await interaction.reply({
-        content: `📡 <@${user.id}> ativou o **Monitorar Partida**!`,
+        content: `\ud83d\udce1 <@${user.id}> ativou o **Monitorar Partida**!`,
         embeds: [embed],
         components: [row],
       });
       const sent = await interaction.fetchReply();
-      this.registerLiveTracker(sent, requester);
+      this.registerLiveTracker(sent, requester, null, false);
       return;
     }
-
     let mix = this.activeMixes.get(interaction.channelId);
 
     if ((!mix || mix.id !== mixId) && mixId && action !== 'mix_cancel') {
@@ -7113,14 +7116,14 @@ class DiscordBotManager {
   async cmdLive(interaction) {
     const requester = interaction.user?.username || 'Jogador';
     const targetQuery = interaction.options?.getString('jogador') || null;
-    const embed = this.buildLiveMatchEmbed(requester, targetQuery);
-    const row = this.buildLiveMatchButtons(Boolean(this.lastGsiState?.player?.name));
+    const mix = this.activeMixes?.get(interaction.channelId) || null;
+    const embed = this.buildLiveMatchEmbed(requester, targetQuery, false, mix);
+    const row = this.buildLiveMatchButtons(Boolean(this.lastGsiState?.player?.name), false);
     await interaction.reply({ embeds: [embed], components: [row] });
     const sent = await interaction.fetchReply();
-    this.registerLiveTracker(sent, requester, targetQuery);
+    this.registerLiveTracker(sent, requester, targetQuery, false);
     return sent;
   }
-
   async cmdHelp(interaction) {
     const embed = new EmbedBuilder()
       .setTitle('📖 GUIA DE COMANDOS • CS2 MIX HUB BOT')

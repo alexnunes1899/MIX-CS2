@@ -2455,24 +2455,60 @@ app.get('/api/gsi/check-installed', (req, res) => {
 });
 
 // 1. Valve CS2 Game State Integration (GSI) Webhook
+const CLOUD_BASE_URL = (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || 'https://mix-cs2.onrender.com').replace(/\/+$/, '');
+const CLOUD_HEALTH_URL = `${CLOUD_BASE_URL}/api/health`;
+const CLOUD_GSI_URL = process.env.CLOUD_GSI_URL || `${CLOUD_BASE_URL}/api/gsi/status/MIX-PRO`;
+const IS_LOCAL_PC = process.platform === 'win32' && !process.env.RENDER && !process.env.RAILWAY_ENVIRONMENT;
+let isCloudServerOnline = true;
+let cloudFailCount = 0;
+
+async function checkCloudServerHealth() {
+  if (!IS_LOCAL_PC) return true;
+  try {
+    const res = await fetch(CLOUD_HEALTH_URL, { signal: AbortSignal.timeout(3500) });
+    if (res.ok) {
+      cloudFailCount = 0;
+      isCloudServerOnline = true;
+      return true;
+    }
+  } catch (_) {}
+  cloudFailCount += 1;
+  if (cloudFailCount >= 2) {
+    isCloudServerOnline = false;
+  }
+  return isCloudServerOnline;
+}
+
+function forwardGsiToCloudIfLocal(roomId, rawPayload, req) {
+  if (!IS_LOCAL_PC || !rawPayload) return;
+  if (req?.headers?.['x-gsi-relayed']) return;
+  fetch(`${CLOUD_BASE_URL}/api/gsi/${encodeURIComponent(roomId || 'MIX-PRO')}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-GSI-Relayed': '1',
+    },
+    body: JSON.stringify(rawPayload),
+    signal: AbortSignal.timeout(2000),
+  }).catch(() => {});
+}
+
 app.post('/api/gsi/:roomId', (req, res) => {
   const roomId = (req.params.roomId || req.body?.auth?.token || 'MIX-PRO').trim().toUpperCase();
   const room = getRoomAndTouch(roomId);
 
+  forwardGsiToCloudIfLocal(roomId, req.body, req);
+
   const liveState = handleGsiPayload(roomId, req.body);
   if (liveState) {
-    // ALWAYS forward live telemetry to Discord Bot Manager & Broadcast globally
     discordBotManager.handleGsiEvent(roomId, liveState);
     io.emit('gsi_update', liveState);
 
     if (room) {
       room.liveMatch = liveState;
       io.to(roomId).emit('gsi_update', liveState);
-
-      // Dispara notificações automáticas de round, C4 e vitória no Discord
       processGsiDiscordNotifications(room, liveState, req);
 
-      // If game ended, record score automatically in history
       if (liveState.isGameOver && (liveState.phase === 'gameover' || (liveState.scoreCT || 0) >= 13 || (liveState.scoreTR || 0) >= 13)) {
         const winnerRes = determineMatchWinner(
           { teamA: room.teamA, teamB: room.teamB, ...room },
@@ -2523,9 +2559,10 @@ app.post('/api/gsi/:roomId', (req, res) => {
   res.json({ success: true });
 });
 
-// Fallback GSI endpoint (CS2 sent without roomId in path)
 app.post('/api/gsi', (req, res) => {
   const token = (req.body?.auth?.token || 'MIX-PRO').trim().toUpperCase();
+  forwardGsiToCloudIfLocal(token, req.body, req);
+
   const liveState = handleGsiPayload(token, req.body);
   if (liveState) {
     discordBotManager.handleGsiEvent(token, liveState);
@@ -2539,30 +2576,31 @@ app.post('/api/gsi', (req, res) => {
   res.json({ success: true });
 });
 
-// Cloud GSI Relay: Only bridges GSI if local server is acting as active failover backup (when Cloud is DOWN)
-const CLOUD_BASE_URL = (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || 'https://mix-cs2.onrender.com').replace(/\/+$/, '');
-const CLOUD_HEALTH_URL = `${CLOUD_BASE_URL}/api/health`;
-const CLOUD_GSI_URL = process.env.CLOUD_GSI_URL || `${CLOUD_BASE_URL}/api/gsi/status/MIX-PRO`;
-const IS_LOCAL_PC = process.platform === 'win32' && !process.env.RENDER && !process.env.RAILWAY_ENVIRONMENT;
-let isCloudServerOnline = true;
-let cloudFailCount = 0;
+let lastCloudGsiSync = 0;
 
-async function checkCloudServerHealth() {
-  if (!IS_LOCAL_PC) return true;
-  try {
-    const res = await fetch(CLOUD_HEALTH_URL, { signal: AbortSignal.timeout(3500) });
-    if (res.ok) {
-      cloudFailCount = 0;
-      isCloudServerOnline = true;
-      return true;
-    }
-  } catch (_) {}
-  cloudFailCount += 1;
-  if (cloudFailCount >= 2) {
-    isCloudServerOnline = false;
+async function syncCloudGsiBridge() {
+  if (discordBotManager.lastGsiState && Date.now() - (discordBotManager.lastGsiState.receivedAt || 0) < 1500) {
+    return;
   }
-  return isCloudServerOnline;
+  try {
+    const res = await fetch(CLOUD_GSI_URL, { signal: AbortSignal.timeout(1500) });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.connected && data.lastUpdate && data.lastUpdate > lastCloudGsiSync) {
+        lastCloudGsiSync = data.lastUpdate;
+        const liveState = {
+          ...data,
+          receivedAt: Date.now(),
+        };
+        setGsiState('MIX-PRO', liveState);
+        discordBotManager.handleGsiEvent('MIX-PRO', liveState);
+        io.emit('gsi_update', liveState);
+      }
+    }
+  } catch (err) {}
 }
+
+setInterval(syncCloudGsiBridge, 750);
 // Download ready-to-use CS2 .cfg for FireGames or local client
 app.get('/api/gsi/cfg/:roomId', (req, res) => {
   const roomId = req.params.roomId || 'MIX-PRO';
