@@ -320,6 +320,187 @@ class DiscordBotManager {
     return `${base}${cleanPath}`;
   }
 
+  updateBotLivePresence(liveState) {
+    try {
+      if (!this.client?.user) return;
+      const now = Date.now();
+      this._lastPresenceUpdateAt = this._lastPresenceUpdateAt || 0;
+      if (now - this._lastPresenceUpdateAt < 10000) return;
+      this._lastPresenceUpdateAt = now;
+
+      if (liveState && liveState.mapName && liveState.mapName !== 'Indefinido' && liveState.phase !== 'unknown') {
+        const cleanMap = normalizeMapName(liveState.mapName);
+        const sCT = liveState.scoreCT || 0;
+        const sTR = liveState.scoreTR || 0;
+        const rNum = liveState.roundNumber || (sCT + sTR + 1);
+        const isOt = sCT >= 12 && sTR >= 12;
+        const statusText = liveState.isGameOver
+          ? `\ud83c\udfc6 Fim: ${cleanMap} (${sCT}x${sTR})`
+          : isOt
+          ? `\ud83d\udd25 OT! ${cleanMap} \u2022 CT ${sCT} x ${sTR} TR`
+          : `\ud83d\udd34 ${cleanMap} \u2022 CT ${sCT} x ${sTR} TR (R${rNum})`;
+        this.client.user.setActivity(statusText, { type: 3 });
+      }
+    } catch (_) {}
+  }
+
+  processLiveHighlightsAndHalftime(liveState) {
+    try {
+      if (!liveState || liveState.phase === 'warmup' || !liveState.mapName || liveState.mapName === 'Indefinido') return;
+
+      this._hlTracker = this._hlTracker || {
+        mapName: '',
+        roundNumber: -1,
+        killsAtRoundStart: new Map(),
+        clutchCandidateCT: null,
+        clutchCandidateTR: null,
+        announcedRound: -1,
+        halftimeAnnouncedKey: '',
+        overtimeAnnouncedKey: '',
+      };
+
+      const trk = this._hlTracker;
+      const sCT = Number(liveState.scoreCT || 0);
+      const sTR = Number(liveState.scoreTR || 0);
+      const totalRounds = sCT + sTR;
+      const rNum = Number(liveState.roundNumber || totalRounds + 1);
+      const allStats = Array.isArray(liveState.allPlayersStats) ? liveState.allPlayersStats : [];
+
+      if (trk.mapName !== liveState.mapName || (totalRounds === 0 && liveState.roundPhase === 'freezetime')) {
+        trk.mapName = liveState.mapName;
+        trk.roundNumber = rNum;
+        trk.killsAtRoundStart.clear();
+        allStats.forEach((p) => trk.killsAtRoundStart.set(p.steamId || p.name, p.kills || 0));
+        trk.clutchCandidateCT = null;
+        trk.clutchCandidateTR = null;
+        trk.announcedRound = -1;
+      }
+
+      if (liveState.roundPhase === 'freezetime' && trk.roundNumber !== rNum) {
+        trk.roundNumber = rNum;
+        trk.killsAtRoundStart.clear();
+        allStats.forEach((p) => trk.killsAtRoundStart.set(p.steamId || p.name, p.kills || 0));
+        trk.clutchCandidateCT = null;
+        trk.clutchCandidateTR = null;
+      }
+
+      // Detecta situacao de Clutch (1v2, 1v3, 1v4, 1v5) durante o round vivo
+      if (liveState.roundPhase === 'live') {
+        const aliveCT = (liveState.teamCT || []).filter((p) => p.isAlive);
+        const aliveTR = (liveState.teamTR || []).filter((p) => p.isAlive);
+
+        if (aliveCT.length === 1 && aliveTR.length >= 2) {
+          if (!trk.clutchCandidateCT || aliveTR.length > trk.clutchCandidateCT.enemies) {
+            trk.clutchCandidateCT = { player: aliveCT[0], enemies: aliveTR.length };
+          }
+        }
+        if (aliveTR.length === 1 && aliveCT.length >= 2) {
+          if (!trk.clutchCandidateTR || aliveCT.length > trk.clutchCandidateTR.enemies) {
+            trk.clutchCandidateTR = { player: aliveTR[0], enemies: aliveCT.length };
+          }
+        }
+      }
+
+      // Encontra o mix e canal ativo para narrar os eventos
+      let activeMix = null;
+      for (const [, m] of this.activeMixes.entries()) {
+        if (m && m.phase !== 'finished' && m.phase !== 'cancelled' && m.channelId) {
+          activeMix = m;
+          break;
+        }
+      }
+      const channel = activeMix?.channelId ? this.client?.channels?.cache?.get(activeMix.channelId) : null;
+      const cleanMap = normalizeMapName(liveState.mapName);
+
+      // Ao encerrar o round, verifica se houve ACE (5K), Quadra Kill (4K) ou CLUTCH vencido
+      if (liveState.roundPhase === 'over' && trk.announcedRound !== totalRounds && totalRounds > 0) {
+        trk.announcedRound = totalRounds;
+        const winSide = liveState.winTeam === 'CT' ? 'CT' : liveState.winTeam === 'T' || liveState.winTeam === 'TR' ? 'TR' : null;
+        const messages = [];
+
+        // 1. Verifica Clutch vencido
+        if (winSide === 'CT' && trk.clutchCandidateCT) {
+          const c = trk.clutchCandidateCT;
+          messages.push(`\ud83e\uddca \ud83d\udd25 **[CLUTCH HIST\u00d3RICO 1v${c.enemies}!]** **${c.player.name}** garantiu o round sozinho de CT em **${cleanMap}**! (\`CT ${sCT} x ${sTR} TR\`)`);
+        } else if (winSide === 'TR' && trk.clutchCandidateTR) {
+          const c = trk.clutchCandidateTR;
+          messages.push(`\ud83e\uddca \ud83d\udd25 **[CLUTCH HIST\u00d3RICO 1v${c.enemies}!]** **${c.player.name}** garantiu o round sozinho de TR em **${cleanMap}**! (\`CT ${sCT} x ${sTR} TR\`)`);
+        }
+
+        // 2. Verifica ACE (5 Kills no round) ou 4K (Quadra Kill)
+        const roundKillers = [];
+        if (liveState.player && liveState.player.roundKills >= 4) {
+          roundKillers.push({
+            name: liveState.player.name,
+            rk: liveState.player.roundKills,
+            hs: liveState.player.roundKillHs || 0,
+            weapon: liveState.player.activeWeapon?.name || 'Arma',
+          });
+        }
+
+        allStats.forEach((p) => {
+          const key = p.steamId || p.name;
+          if (trk.killsAtRoundStart.has(key)) {
+            const delta = (p.kills || 0) - (trk.killsAtRoundStart.get(key) || 0);
+            if (delta >= 4 && delta <= 5 && !roundKillers.some((rk) => rk.name === p.name)) {
+              roundKillers.push({ name: p.name, rk: delta, hs: 0, weapon: p.activeWeapon || 'Arma' });
+            }
+          }
+          trk.killsAtRoundStart.set(key, p.kills || 0);
+        });
+
+        roundKillers.forEach((k) => {
+          const hsTxt = k.hs > 0 ? ` (${k.hs} HS \ud83c\udfaf)` : '';
+          if (k.rk >= 5) {
+            messages.push(`\ud83d\udd25 \ud83d\udc80 **[ACE NO SERVIDOR! 5 KILLS]** **${k.name}** varreu o time inteiro com **${k.weapon}**${hsTxt} em **${cleanMap}**!`);
+          } else if (k.rk === 4) {
+            messages.push(`\ud83d\udca5 \ud83c\udfaf **[QUADRA KILL - 4K!]** **${k.name}** levou **4 advers\u00e1rios** no round com **${k.weapon}**${hsTxt}!`);
+          }
+        });
+
+        trk.clutchCandidateCT = null;
+        trk.clutchCandidateTR = null;
+
+        if (channel && messages.length > 0) {
+          channel.send(messages.join('\n')).catch(() => {});
+        }
+
+        // 3. Virada Automatica de Half-Time (Fim do 12o Round: totalRounds === 12)
+        const halfKey = `${liveState.mapName}:half12`;
+        if (totalRounds === 12 && trk.halftimeAnnouncedKey !== halfKey && activeMix) {
+          trk.halftimeAnnouncedKey = halfKey;
+          const oldSideA = (activeMix.teamA?.side || 'CT').toUpperCase();
+          activeMix.teamA.side = oldSideA === 'CT' ? 'TR' : 'CT';
+          activeMix.teamB.side = activeMix.teamA.side === 'CT' ? 'TR' : 'CT';
+          this.syncToWebRoom(activeMix);
+          this.applyCs2TeamNamesRcon(activeMix).catch(() => {});
+
+          if (channel) {
+            channel.send(
+              `\ud83d\udd04 \u23f1\ufe0f **[FIM DO 1\u00ba TEMPO \u2022 VIRADA DE LADO (HALF-TIME)]**\n` +
+              `Placar parcial em **${cleanMap}**: **CT ${sCT} x ${sTR} TR**!\n` +
+              `Os lados foram invertidos automaticamente para o 2\u00ba tempo: **${activeMix.teamA.name}** agora joga de **${activeMix.teamA.side}** e **${activeMix.teamB.name}** joga de **${activeMix.teamB.side}**!`
+            ).catch(() => {});
+          }
+        }
+
+        // 4. Alerta de Overtime (12 x 12)
+        const otKey = `${liveState.mapName}:ot:${sCT}x${sTR}`;
+        if (sCT >= 12 && sTR >= 12 && sCT === sTR && (sCT - 12) % 3 === 0 && trk.overtimeAnnouncedKey !== otKey) {
+          trk.overtimeAnnouncedKey = otKey;
+          if (channel) {
+            channel.send(
+              `\ud83d\udd25 \ud83d\udea8 **[OVERTIME (PRORROGA\u00c7\u00c3O) \u2022 ${sCT} x ${sTR}!]**\n` +
+              `Jogo tenso em **${cleanMap}**! Tudo empatado em **${sCT} a ${sTR}** \u2014 a decis\u00e3o vai para a prorroga\u00e7\u00e3o!`
+            ).catch(() => {});
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[HIGHLIGHTS/HALFTIME WARN]:', err.message);
+    }
+  }
+
   handleGsiEvent(roomId, liveState) {
     if (!liveState) return;
     const now = Date.now();
@@ -351,6 +532,10 @@ class DiscordBotManager {
         receivedAt: now,
       });
     }
+
+    // Atualiza o Status Ao Vivo do Bot e processa Highlights (Ace, 4K, Clutch) e Virada de Half
+    this.updateBotLivePresence(liveState);
+    this.processLiveHighlightsAndHalftime(liveState);
 
     const uniqueMixes = new Map();
     for (const [, m] of this.activeMixes.entries()) {
@@ -3875,6 +4060,36 @@ class DiscordBotManager {
     return { embed, components: [selectRow, btnRow] };
   }
 
+  async applyCs2TeamNamesRcon(mix) {
+    try {
+      const rawServer = (mix.serverIp || this.config.serverConnect || '').replace(/^connect\s+/i, '').trim();
+      const rconPwd = (mix.rconPassword || this.config.rconPassword || process.env.CS2_RCON_PASSWORD || '').trim();
+      if (!rawServer || !rconPwd) return false;
+
+      const [host, portStr] = rawServer.split(':');
+      const port = parseInt(portStr, 10) || 27015;
+
+      const capA = mix.teamA?.captain?.displayName || mix.teamA?.captain?.username || mix.teamA?.captain?.nick || 'A';
+      const capB = mix.teamB?.captain?.displayName || mix.teamB?.captain?.username || mix.teamB?.captain?.nick || 'B';
+      const cleanNameA = (`TIME ${capA}`).replace(/["';]/g, '').slice(0, 24).toUpperCase();
+      const cleanNameB = (`TIME ${capB}`).replace(/["';]/g, '').slice(0, 24).toUpperCase();
+
+      const isACt = (mix.teamA?.side || 'CT').toUpperCase() === 'CT';
+      const ctName = isACt ? cleanNameA : cleanNameB;
+      const trName = isACt ? cleanNameB : cleanNameA;
+
+      await executeRconCommand({
+        host,
+        port,
+        password: rconPwd,
+        command: `mp_teamname_1 "${ctName}"; mp_teamname_2 "${trName}"`,
+      }).catch(() => {});
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   async triggerAutoRconMapChange(mix, mapObj, channel) {
     try {
       const rawServer = (mix.serverIp || this.config.serverConnect || '').replace(/^connect\s+/i, '').trim();
@@ -3899,8 +4114,13 @@ class DiscordBotManager {
         command: `changelevel ${cleanMap}`,
       });
 
+      // Aplica os nomes dos times no TAB do CS2 apos carregar o mapa (8s)
+      setTimeout(() => {
+        this.applyCs2TeamNamesRcon(mix).catch(() => {});
+      }, 8000);
+
       if (channel) {
-        channel.send(`\ud83d\udfe2 \u26a1 **[RCON AUTOM\u00c1TICO]** Servidor CS2 (\`${rawServer}\`) alterado automaticamente para **${mapObj.emoji || '\ud83d\uddfa\ufe0f'} ${mapObj.name}** (\`${cleanMap}\`)!`).catch(() => {});
+        channel.send(`\ud83d\udfe2 \u26a1 **[RCON AUTOM\u00c1TICO]** Servidor CS2 (\`${rawServer}\`) alterado para **${mapObj.emoji || '\ud83d\uddfa\ufe0f'} ${mapObj.name}** (\`${cleanMap}\`) com placar oficial dos times configurado!`).catch(() => {});
       }
       return true;
     } catch (err) {
@@ -4622,7 +4842,8 @@ class DiscordBotManager {
       const cleanIp = mix.serverIp.replace(/^connect\s+/i, '').trim();
       row1.addComponents(
         new ButtonBuilder()
-          .setLabel('🚀 Conectar Direto no CS2')
+          .setLabel('Conectar Direto no CS2')
+          .setEmoji('\ud83d\ude80')
           .setStyle(ButtonStyle.Link)
           .setURL(this.getPublicWebUrl(`/connect?ip=${encodeURIComponent(cleanIp)}`))
       );
@@ -4631,15 +4852,18 @@ class DiscordBotManager {
     row1.addComponents(
       new ButtonBuilder()
         .setCustomId(`match_result:${mix.id}`)
-        .setLabel('🏆 Declarar Placar')
+        .setLabel('Declarar Placar')
+        .setEmoji('\ud83c\udfc6')
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId(`mix_sub:${mix.id}`)
-        .setLabel('🔄 Substituto')
+        .setLabel('Substituto')
+        .setEmoji('\ud83d\udd04')
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId(`mix_voice:${mix.id}`)
-        .setLabel('📞 Mover Calls')
+        .setLabel('Mover Calls')
+        .setEmoji('\ud83d\udcde')
         .setStyle(ButtonStyle.Secondary)
     );
     rows.push(row1);
@@ -4648,18 +4872,44 @@ class DiscordBotManager {
       new ButtonBuilder()
         .setCustomId(`mix_live_tracker:${mix.id}`)
         .setLabel('Monitorar Partida')
-        .setEmoji('📡')
+        .setEmoji('\ud83d\udce1')
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
-        .setLabel('🌐 Acompanhar no Site')
+        .setLabel('Acompanhar no Site')
+        .setEmoji('\ud83c\udf10')
         .setStyle(ButtonStyle.Link)
         .setURL(this.getPublicWebUrl(`/?room=${mix.id}`)),
       new ButtonBuilder()
         .setCustomId('panel_create_mix')
-        .setLabel('🎮 Novo Mix')
+        .setLabel('Novo Mix')
+        .setEmoji('\ud83c\udfae')
         .setStyle(ButtonStyle.Primary)
     );
     rows.push(row2);
+
+    const row3 = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`rcon_pause:${mix.id}`)
+        .setLabel('Pausar CS2')
+        .setEmoji('\u23f8\ufe0f')
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(`rcon_unpause:${mix.id}`)
+        .setLabel('Despausar')
+        .setEmoji('\u25b6\ufe0f')
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(`rcon_live:${mix.id}`)
+        .setLabel('For\u00e7ar Live/RR')
+        .setEmoji('\ud83d\udd25')
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(`rcon_say_modal:${mix.id}`)
+        .setLabel('Aviso no CS2')
+        .setEmoji('\ud83d\udce2')
+        .setStyle(ButtonStyle.Primary)
+    );
+    rows.push(row3);
 
     return rows;
   }
@@ -4672,6 +4922,89 @@ class DiscordBotManager {
     const customId = interaction.customId;
     const user = interaction.user;
 
+    // RCON In-Game Controls (Pause, Unpause, Restart/Live, Chat Broadcast)
+    if (
+      customId.startsWith('rcon_pause:') ||
+      customId.startsWith('rcon_unpause:') ||
+      customId.startsWith('rcon_live:') ||
+      customId.startsWith('rcon_say_modal:')
+    ) {
+      const [rconAct, rMixId] = customId.split(':');
+      const mix = this.activeMixes.get(rMixId) || this.resolveActiveMixForChannel(interaction.channelId);
+      const isCapOrAdmin =
+        !mix ||
+        user.id === mix.creatorId ||
+        user.id === mix.teamA?.captain?.id ||
+        user.id === mix.teamB?.captain?.id ||
+        Boolean(interaction.memberPermissions?.has(PermissionsBitField.Flags.Administrator));
+
+      if (!isCapOrAdmin) {
+        return interaction.reply({
+          content: '\ud83d\udeab Apenas os **Capit\u00e3es**, o **Criador do Mix** ou **Admins** podem controlar o servidor CS2!',
+          ephemeral: true,
+        });
+      }
+
+      if (rconAct === 'rcon_say_modal') {
+        const modal = new ModalBuilder()
+          .setCustomId(`modal_rcon_say:${mix?.id || 'global'}`)
+          .setTitle('Enviar Aviso na Tela do CS2');
+        const msgInput = new TextInputBuilder()
+          .setCustomId('rcon_say_text')
+          .setLabel('Mensagem para exibir no chat do servidor CS2')
+          .setPlaceholder('Ex: Bora entrar no servidor! Faltam 2 no CT!')
+          .setStyle(TextInputStyle.Short)
+          .setMaxLength(120)
+          .setRequired(true);
+        modal.addComponents(new ActionRowBuilder().addComponents(msgInput));
+        return interaction.showModal(modal);
+      }
+
+      const rawServer = (mix?.serverIp || this.config.serverConnect || '').replace(/^connect\s+/i, '').trim();
+      const rconPwd = (mix?.rconPassword || this.config.rconPassword || process.env.CS2_RCON_PASSWORD || '').trim();
+      if (!rawServer || !rconPwd) {
+        return interaction.reply({
+          content: '\u26a0\ufe0f IP do servidor ou senha RCON ainda n\u00e3o configurados no painel!',
+          ephemeral: true,
+        });
+      }
+
+      const [host, portStr] = rawServer.split(':');
+      const port = parseInt(portStr, 10) || 27015;
+
+      try {
+        if (rconAct === 'rcon_pause') {
+          await executeRconCommand({
+            host,
+            port,
+            password: rconPwd,
+            command: `mp_pause_match; say ">>> [DISCORD MIX HUB] Partida PAUSADA por ${user.username} no proximo freezetime!"`,
+          });
+          return interaction.reply({ content: `\u23f8\ufe0f <@${user.id}> enviou **Pause T\u00e1tico (\`mp_pause_match\`)** para o servidor CS2!` });
+        }
+        if (rconAct === 'rcon_unpause') {
+          await executeRconCommand({
+            host,
+            port,
+            password: rconPwd,
+            command: `mp_unpause_match; say ">>> [DISCORD MIX HUB] Partida DESPAUSADA por ${user.username}! GL & HF!"`,
+          });
+          return interaction.reply({ content: `\u25b6\ufe0f <@${user.id}> **despausou (\`mp_unpause_match\`)** a partida no servidor CS2!` });
+        }
+        if (rconAct === 'rcon_live') {
+          if (mix) await this.applyCs2TeamNamesRcon(mix).catch(() => {});
+          await executeRconCommand({
+            host,
+            port,
+            password: rconPwd,
+            command: `mp_warmup_end; mp_restartgame 1; say ">>> [DISCORD MIX HUB] LIVE! Partida iniciada/reiniciada por ${user.username}!"`,
+          });
+          return interaction.reply({ content: `\ud83d\udd25 <@${user.id}> encerrou o aquecimento e puxou **LIVE (\`mp_restartgame 1\`)** no CS2!` });
+        }
+      } catch (err) {
+        return interaction.reply({ content: `\u274c Falha RCON: ${err.message}`, ephemeral: true });
+      }
+    }
     // Community Clip Voting
     if (customId.startsWith('clip_vote_fire_') || customId.startsWith('clip_vote_bagre_')) {
       const isFire = customId.startsWith('clip_vote_fire_');
@@ -6018,6 +6351,34 @@ class DiscordBotManager {
 
   async handleModalSubmit(interaction) {
     const customId = interaction.customId;
+    if (customId.startsWith('modal_rcon_say:')) {
+      const mixId = customId.split(':')[1];
+      const mix = this.activeMixes.get(mixId) || this.resolveActiveMixForChannel(interaction.channelId);
+      const text = (interaction.fields.getTextInputValue('rcon_say_text') || '').replace(/["';\r\n]/g, ' ').trim();
+      const rawServer = (mix?.serverIp || this.config.serverConnect || '').replace(/^connect\s+/i, '').trim();
+      const rconPwd = (mix?.rconPassword || this.config.rconPassword || process.env.CS2_RCON_PASSWORD || '').trim();
+
+      if (!rawServer || !rconPwd) {
+        return interaction.reply({ content: '\u26a0\ufe0f Servidor ou senha RCON n\u00e3o configurados.', ephemeral: true });
+      }
+
+      const [host, portStr] = rawServer.split(':');
+      const port = parseInt(portStr, 10) || 27015;
+
+      try {
+        await executeRconCommand({
+          host,
+          port,
+          password: rconPwd,
+          command: `say ">>> [DISCORD - ${interaction.user.username}]: ${text}"`,
+        });
+        return interaction.reply({
+          content: `\ud83d\udce2 **Mensagem enviada para o chat do CS2 por <@${interaction.user.id}>:** \`${text}\``,
+        });
+      } catch (err) {
+        return interaction.reply({ content: `\u274c Erro ao enviar para o CS2: ${err.message}`, ephemeral: true });
+      }
+    }
     if (customId.startsWith('modal_set_level')) {
       const raw = interaction.fields.getTextInputValue('gc_level_input');
       const parsed = parseInt(raw?.trim(), 10);
