@@ -1544,25 +1544,6 @@ class DiscordBotManager {
         .addStringOption((opt) => opt.setName('titulo').setDescription('Título ou descrição da jogada (opcional)').setRequired(false)),
 
       new SlashCommandBuilder()
-        .setName('caixa')
-        .setDescription('Simulador oficial de abertura de caixas de CS2 com odds reais da Valve')
-        .addStringOption((opt) =>
-          opt
-            .setName('caixa')
-            .setDescription('Escolha a caixa para abrir')
-            .setRequired(false)
-            .addChoices(
-              { name: '⚡ Caixa Quilowatt (Kilowatt)', value: 'kilowatt' },
-              { name: '🌙 Sonhos e Pesadelos (Dreams & Nightmares)', value: 'dreams' },
-              { name: '💥 Caixa Coice (Recoil)', value: 'recoil' }
-            )
-        ),
-
-      new SlashCommandBuilder()
-        .setName('inventario')
-        .setDescription('Consulta seu inventário de skins, lucro/prejuízo e facas abertas no simulador'),
-
-      new SlashCommandBuilder()
         .setName('calls')
         .setDescription('Configura ou move os jogadores do mix para as calls de voz oficiais Time A e Time B')
         .addChannelOption((opt) =>
@@ -1814,12 +1795,6 @@ class DiscordBotManager {
     }
     if (command === 'clip' || command === 'clipe' || command === 'highlight' || command === 'jogada') {
       return this.prefixClip(message, args.slice(1));
-    }
-    if (command === 'caixa' || command === 'case' || command === 'abrir') {
-      return this.prefixCase(message, args[1]);
-    }
-    if (command === 'inventario' || command === 'inv') {
-      return this.prefixInventory(message);
     }
     if (command === 'revanche' || command === 'rematch') {
       return this.prefixRematch(message);
@@ -2655,8 +2630,6 @@ class DiscordBotManager {
           `• \`!bagre\` — Votação bem-humorada do Bagre da Partida (o jogador que mais pinou no mix)\n` +
           `• \`!jogosgratis\` — Radar de jogos grátis para PC da semana (Epic Games & Steam)\n` +
           `• \`!clip [link]\` — Envia clipes de jogadas da comunidade com votação interativa\n` +
-          `• \`!caixa [nome]\` — Simulador de abertura de caixas de CS2 com odds reais da Valve\n` +
-          `• \`!inventario\` — Consulta seu inventário de caixas e melhor drop\n` +
           `• \`!ofertas [busca]\` — Radar de promoções gamer (KaBuM!, Pichau, Terabyte: GPU, CPU, mesas, cadeiras)`
       )
       .setFooter({ text: 'CS2 Mix Hub • Powered by Discord.js' });
@@ -4742,18 +4715,6 @@ class DiscordBotManager {
       });
     }
 
-    // CS2 Case Simulator Buttons
-    if (customId.startsWith('case_open_')) {
-      const caseId = customId.replace('case_open_', '');
-      const drop = cs2CaseSimulator.openCase(caseId, user);
-      const { embeds, components } = cs2CaseSimulator.buildEmbed(drop);
-      return interaction.reply({ embeds, components });
-    }
-    if (customId === 'case_inventory') {
-      const { embeds, components } = cs2CaseSimulator.buildInventoryEmbed(user);
-      return interaction.reply({ embeds, components, ephemeral: true });
-    }
-
     // Bagre Vote Buttons
     if (customId.startsWith('bagre_vote_start:')) {
       const mixId = customId.split(':')[1];
@@ -5905,8 +5866,6 @@ class DiscordBotManager {
     if (commandName === 'bagre') return this.cmdBagre(interaction);
     if (commandName === 'jogosgratis' || commandName === 'freegames') return this.cmdFreeGames(interaction);
     if (commandName === 'clip') return this.cmdClip(interaction);
-    if (commandName === 'caixa') return this.cmdCase(interaction);
-    if (commandName === 'inventario') return this.cmdInventory(interaction);
     if (commandName === 'ajuda') return this.cmdHelp(interaction);
   }
 
@@ -7229,30 +7188,7 @@ class DiscordBotManager {
   // CS2 CASE OPENING SIMULATOR
   // ==========================================
 
-  async prefixCase(message, caseName) {
-    const selected = (caseName || 'kilowatt').toLowerCase();
-    const drop = cs2CaseSimulator.openCase(selected, message.author);
-    const { embeds, components } = cs2CaseSimulator.buildEmbed(drop);
-    return message.reply({ embeds, components });
   }
-
-  async prefixInventory(message) {
-    const { embeds, components } = cs2CaseSimulator.buildInventoryEmbed(message.author);
-    return message.reply({ embeds, components });
-  }
-
-  async cmdCase(interaction) {
-    const caseName = interaction.options.getString('caixa') || 'kilowatt';
-    const drop = cs2CaseSimulator.openCase(caseName, interaction.user);
-    const { embeds, components } = cs2CaseSimulator.buildEmbed(drop);
-    return interaction.reply({ embeds, components });
-  }
-
-  async cmdInventory(interaction) {
-    const { embeds, components } = cs2CaseSimulator.buildInventoryEmbed(interaction.user);
-    return interaction.reply({ embeds, components, ephemeral: true });
-  }
-}
 
 // Singleton Export
 export const discordBotManager = new DiscordBotManager();

@@ -44,5 +44,33 @@
         "wear": "Veterana de Guerra (BS)"
       }
     ]
+  },
+  "530523476969390080": {
+    "userId": "530523476969390080",
+    "username": "alexnunes1899",
+    "casesOpened": 2,
+    "totalSpent": 28,
+    "totalValue": 245.5,
+    "knivesUnboxed": 0,
+    "bestDrop": {
+      "name": "USP-S | Jawbreaker",
+      "price": 161.5,
+      "tier": "pink",
+      "date": "11/11/2026"
+    },
+    "recentDrops": [
+      {
+        "name": "USP-S | Jawbreaker",
+        "price": 161.5,
+        "tier": "pink",
+        "wear": "Nova de Fábrica (FN)"
+      },
+      {
+        "name": "M4A1-S | Black Lotus",
+        "price": 84,
+        "tier": "pink",
+        "wear": "Veterana de Guerra (BS)"
+      }
+    ]
   }
 }
