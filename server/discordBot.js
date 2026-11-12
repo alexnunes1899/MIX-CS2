@@ -1,4 +1,4 @@
-/**
+﻿/**
  * CS2 Mix Hub • Official Discord Bot Engine (Ultra-Refined & Dynamic eSports Edition)
  * Full-featured competitive Discord Bot with Slash Commands, interactive Buttons,
  * 10/10 Ready Check (Anti-AFK), automatic Snake-Draft Elo balancing,
@@ -49,7 +49,8 @@ import { freeGamesRadar } from './freeGamesRadar.js';
 import { cs2CaseSimulator } from './cs2CaseSimulator.js';
 import { communityClips } from './communityClips.js';
 import { bagreVoteService } from './bagreVote.js';
-
+import { executeRconCommand } from './rcon.js';
+import { getLeaderboard } from './leaderboard.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
@@ -2192,7 +2193,7 @@ class DiscordBotManager {
     if (this.config.autoMoveVoice && guild) {
       this.executeVoiceMover(guild, mix, channel).catch(() => {});
     }
-
+    this.triggerAutoRconMapChange(mix, drawn, channel).catch(() => {});
     const readyEmbed = this.buildMatchReadyEmbed(mix);
     readyEmbed.setImage(drawn.image);
     const components = this.buildMatchReadyButtons(mix);
@@ -3565,7 +3566,7 @@ class DiscordBotManager {
         creatorId: creator.id,
         creatorNick: creator.username,
         players: Array.isArray(options.players) ? options.players : [],
-        phase: 'lobby', // 'lobby' | 'ready_check' | 'teams' | 'veto' | 'side_pick' | 'live'
+        waitlist: [],        phase: 'lobby', // 'lobby' | 'ready_check' | 'teams' | 'veto' | 'side_pick' | 'live'
         readyCheck: {
           active: false,
           confirmed: new Set(),
@@ -3660,53 +3661,218 @@ class DiscordBotManager {
     return mix;
   }
 
+  getEffectivePlayerScore(p) {
+    const baseLvl = Number(p.level || this.getPlayerLevel(p.id) || 16);
+    try {
+      const lb = typeof getLeaderboard === 'function' ? getLeaderboard() : [];
+      const entry = lb.find(
+        (item) => item.id === p.id || (item.nick && p.username && item.nick.toLowerCase() === p.username.toLowerCase())
+      );
+      if (entry && entry.matchesPlayed >= 3) {
+        const confidence = Math.min(1, entry.matchesPlayed / 8);
+        const winRateDelta = ((Number(entry.winRate ?? 50) - 50) / 50) * 1.8;
+        return Math.max(1, Number((baseLvl + winRateDelta * confidence).toFixed(2)));
+      }
+    } catch (_) {}
+    return baseLvl;
+  }
+
   balanceTeams(mix) {
     if (!mix.players || mix.players.length < 2) return;
 
-    // Refresh every player's level from their persistent profile
     mix.players.forEach((p) => {
       if (this.hasSavedLevel(p.id)) {
         p.level = this.getPlayerLevel(p.id);
       } else {
         p.level = p.level || 16;
       }
+      p.effectiveScore = this.getEffectivePlayerScore(p);
     });
 
-    const sorted = [...mix.players].sort((a, b) => (b.level || 16) - (a.level || 16));
-    const teamA = [];
-    const teamB = [];
+    const players = [...mix.players];
+    const n = players.length;
+    const half = Math.floor(n / 2);
 
-    // Competitive Snake Draft (0 -> A, 1 -> B, 2 -> B, 3 -> A, 4 -> A...)
-    sorted.forEach((p, i) => {
-      const mod = i % 4;
-      if (mod === 0 || mod === 3) teamA.push(p);
-      else teamB.push(p);
-    });
+    const combinations = [];
+    const backtrack = (start, combo) => {
+      if (combo.length === half) {
+        combinations.push([...combo]);
+        return;
+      }
+      for (let i = start; i < n; i++) {
+        combo.push(players[i]);
+        backtrack(i + 1, combo);
+        combo.pop();
+      }
+    };
+    backtrack(0, []);
 
-    const sumA = teamA.reduce((acc, p) => acc + (p.level || 16), 0);
-    const sumB = teamB.reduce((acc, p) => acc + (p.level || 16), 0);
-    const avgA = (sumA / (teamA.length || 1)).toFixed(1);
-    const avgB = (sumB / (teamB.length || 1)).toFixed(1);
+    let bestA = [];
+    let bestB = [];
+    let minPenalty = Infinity;
+
+    for (const comboA of combinations) {
+      const idsA = new Set(comboA.map((p) => p.id));
+      const comboB = players.filter((p) => !idsA.has(p.id));
+
+      const sumEffA = comboA.reduce((acc, p) => acc + (p.effectiveScore || p.level || 16), 0);
+      const sumEffB = comboB.reduce((acc, p) => acc + (p.effectiveScore || p.level || 16), 0);
+      const maxA = Math.max(...comboA.map((p) => p.effectiveScore || p.level || 16), 0);
+      const maxB = Math.max(...comboB.map((p) => p.effectiveScore || p.level || 16), 0);
+
+      const starDiffPenalty = Math.abs(maxA - maxB) * 0.2;
+      const totalPenalty = Math.abs(sumEffA - sumEffB) + starDiffPenalty;
+
+      if (totalPenalty < minPenalty) {
+        minPenalty = totalPenalty;
+        bestA = [...comboA];
+        bestB = [...comboB];
+      }
+    }
+
+    bestA.sort((a, b) => (b.level || 16) - (a.level || 16));
+    bestB.sort((a, b) => (b.level || 16) - (a.level || 16));
+
+    const sumA = bestA.reduce((acc, p) => acc + (p.level || 16), 0);
+    const sumB = bestB.reduce((acc, p) => acc + (p.level || 16), 0);
+    const avgA = (sumA / (bestA.length || 1)).toFixed(1);
+    const avgB = (sumB / (bestB.length || 1)).toFixed(1);
     const diff = Math.abs(sumA - sumB);
     const balancePct = Math.max(75, Math.min(100, Math.round(100 - diff * 3.5)));
 
-    // Ensure each team is sorted by Gamers Club level descending so top level is Captain
-    teamA.sort((a, b) => (b.level || 16) - (a.level || 16));
-    teamB.sort((a, b) => (b.level || 16) - (a.level || 16));
-
-    mix.teamA.players = teamA;
-    mix.teamA.captain = teamA[0] || null; // Maior Nível Gamers Club do Time A eleito Capitão
+    mix.teamA.players = bestA;
+    mix.teamA.captain = bestA[0] || null;
     mix.teamA.avgLevel = avgA;
-    mix.teamB.players = teamB;
-    mix.teamB.captain = teamB[0] || null; // Maior Nível Gamers Club do Time B eleito Capitão
+    mix.teamB.players = bestB;
+    mix.teamB.captain = bestB[0] || null;
     mix.teamB.avgLevel = avgB;
     mix.balancePct = balancePct;
     mix.phase = 'teams';
 
-    // Synchronize to web rooms store
     this.syncToWebRoom(mix);
   }
 
+  startCaptainDraft1v1(mix) {
+    if (!mix.players || mix.players.length < 4) return false;
+    mix.players.forEach((p) => {
+      if (this.hasSavedLevel(p.id)) p.level = this.getPlayerLevel(p.id);
+      else p.level = p.level || 16;
+    });
+    const sorted = [...mix.players].sort((a, b) => (b.level || 16) - (a.level || 16));
+    const capA = sorted[0];
+    const capB = sorted[1];
+    const pool = sorted.slice(2);
+
+    mix.phase = 'captain_draft';
+    mix.teamA.captain = capA;
+    mix.teamA.players = [capA];
+    mix.teamB.captain = capB;
+    mix.teamB.players = [capB];
+    mix.captainDraft = {
+      pool,
+      turnOrder: ['teamA', 'teamB', 'teamB', 'teamA', 'teamA', 'teamB', 'teamB', 'teamA'],
+      step: 0,
+    };
+    this.syncToWebRoom(mix);
+    return true;
+  }
+
+  buildCaptainDraftEmbedAndComponents(mix) {
+    const draft = mix.captainDraft || { pool: [], turnOrder: ['teamA'], step: 0 };
+    const currentTeamKey = draft.turnOrder[draft.step] || (mix.teamA.players.length <= mix.teamB.players.length ? 'teamA' : 'teamB');
+    const currentCap = currentTeamKey === 'teamA' ? mix.teamA.captain : mix.teamB.captain;
+    const capMention = isSnowflake(currentCap?.id) ? `<@${currentCap.id}>` : `**${currentCap?.displayName || currentCap?.username || 'Capitao'}**`;
+
+    const fmtPlayer = (p) => {
+      const lvl = p.level || 16;
+      return isSnowflake(p.id) ? `<@${p.id}> (Lvl ${lvl})` : `**${p.displayName || p.username}** (Lvl ${lvl})`;
+    };
+
+    const embed = new EmbedBuilder()
+      .setTitle(`\ud83d\udc51 DRAFT DE CAPIT\u00c3ES 1v1 \u2022 ${mix.name.toUpperCase()}`)
+      .setColor(currentTeamKey === 'teamA' ? 0x38bdf8 : 0xf59e0b)
+      .setDescription(
+        `\u26a1 **Vez de escolher:** ${currentTeamKey === 'teamA' ? '\ud83d\udee1\ufe0f **Time A**' : '\ud83d\udca3 **Time B**'} \u2014 Capit\u00e3o ${capMention}\n` +
+        `Selecione no menu abaixo o pr\u00f3ximo jogador para o seu time!`
+      )
+      .addFields(
+        {
+          name: `\ud83d\udee1\ufe0f ${mix.teamA.name} (${mix.teamA.players.length}/5)`,
+          value: mix.teamA.players.map((p, i) => `${i === 0 ? '\ud83d\udc51' : '\u2022'} ${fmtPlayer(p)}`).join('\n') || '*Vazio*',
+          inline: true,
+        },
+        {
+          name: `\ud83d\udca3 ${mix.teamB.name} (${mix.teamB.players.length}/5)`,
+          value: mix.teamB.players.map((p, i) => `${i === 0 ? '\ud83d\udc51' : '\u2022'} ${fmtPlayer(p)}`).join('\n') || '*Vazio*',
+          inline: true,
+        },
+        {
+          name: `\ud83d\udccb Jogadores Dispon\u00edveis no Pool (${draft.pool.length})`,
+          value: draft.pool.map((p) => `\u2022 ${fmtPlayer(p)}`).join('\n') || '*Nenhum*',
+          inline: false,
+        }
+      )
+      .setFooter({ text: 'Ordem Oficial Snake Draft: A -> B -> B -> A -> A -> B -> B' })
+      .setTimestamp();
+
+    const options = draft.pool.slice(0, 25).map((p) => ({
+      label: `${(p.displayName || p.username || 'Jogador').slice(0, 45)} (Lvl ${p.level || 16} GC)`,
+      value: String(p.id),
+      description: `Escolher para o ${currentTeamKey === 'teamA' ? mix.teamA.name : mix.teamB.name}`,
+      emoji: '\ud83c\udfaf',
+    }));
+
+    const selectRow = new ActionRowBuilder().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId(`captain_pick_select:${mix.id}`)
+        .setPlaceholder(`Vez de ${currentCap?.displayName || currentCap?.username || 'Capitao'}: escolha um jogador...`)
+        .addOptions(options)
+    );
+
+    const btnRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`mix_teams:${mix.id}`)
+        .setLabel('Auto-Completar Equilibrado')
+        .setEmoji('\u2696\ufe0f')
+        .setStyle(ButtonStyle.Secondary)
+    );
+
+    return { embed, components: [selectRow, btnRow] };
+  }
+
+  async triggerAutoRconMapChange(mix, mapObj, channel) {
+    try {
+      const rawServer = (mix.serverIp || this.config.serverConnect || '').replace(/^connect\s+/i, '').trim();
+      const rconPwd = (mix.rconPassword || this.config.rconPassword || process.env.CS2_RCON_PASSWORD || '').trim();
+      if (!rawServer || !rconPwd || !mapObj?.id) return false;
+
+      const [host, portStr] = rawServer.split(':');
+      const port = parseInt(portStr, 10) || 27015;
+      const cleanMap = mapObj.id.startsWith('de_') ? mapObj.id : `de_${mapObj.id}`;
+
+      await executeRconCommand({
+        host,
+        port,
+        password: rconPwd,
+        command: `say ">>> [CS2 MIX HUB] Mapa definido: ${mapObj.name.toUpperCase()} (${cleanMap}) | Trocando mapa automaticamente..."`,
+      }).catch(() => {});
+
+      await executeRconCommand({
+        host,
+        port,
+        password: rconPwd,
+        command: `changelevel ${cleanMap}`,
+      });
+
+      if (channel) {
+        channel.send(`\ud83d\udfe2 \u26a1 **[RCON AUTOM\u00c1TICO]** Servidor CS2 (\`${rawServer}\`) alterado automaticamente para **${mapObj.emoji || '\ud83d\uddfa\ufe0f'} ${mapObj.name}** (\`${cleanMap}\`)!`).catch(() => {});
+      }
+      return true;
+    } catch (err) {
+      console.warn('[AUTO RCON MAP CHANGE] Aviso:', err.message);
+      return false;
+    }
+  }
   syncToWebRoom(mix) {
     if (!this.webRoomsRef) return null;
     try {
@@ -3789,48 +3955,107 @@ class DiscordBotManager {
     if (mix.readyCheck?.timer) {
       clearTimeout(mix.readyCheck.timer);
     }
+    const expiresAt = Date.now() + 60000;
     mix.phase = 'ready_check';
     mix.readyCheck = {
       active: true,
       confirmed: new Set(),
-      expiresAt: null,
+      expiresAt,
       timer: null,
     };
 
+    const unixExpire = Math.floor(expiresAt / 1000);
     const mentions = mix.players.map((p) => `<@${p.id}>`).join(' ');
     channel.send({
-      content: `🚨 **LOBBY CHEIO (10/10)!** ${mentions}\nTodos os 10 jogadores podem clicar em **Confirmar Presença** no botão abaixo quando estiverem prontos, ou sortear os times para jogar!`,
+      content: `\ud83d\udea8 **LOBBY CHEIO (10/10)!** ${mentions}\n\u23f1\ufe0f Voc\u00eas t\u00eam **60 segundos** (expira <t:${unixExpire}:R>) para clicar em **Confirmar Presen\u00e7a** abaixo! Quem ficar AFK dar\u00e1 vaga para a Fila de Reserva.`,
     }).catch(() => {});
+
+    mix.readyCheck.timer = setTimeout(async () => {
+      try {
+        if (!mix || mix.phase !== 'ready_check' || !mix.readyCheck?.active) return;
+        mix.readyCheck.active = false;
+        mix.readyCheck.timer = null;
+
+        const confirmedIds = mix.readyCheck.confirmed || new Set();
+        const afkPlayers = mix.players.filter((p) => !confirmedIds.has(p.id) && !String(p.id).startsWith('wa_'));
+
+        if (afkPlayers.length === 0) {
+          this.balanceTeams(mix);
+          const embed = this.buildTeamsEmbed(mix);
+          const row = new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setCustomId(`mix_veto:${mix.id}`).setLabel('Iniciar Pick & Ban').setEmoji('\ud83d\uddf3\ufe0f').setStyle(ButtonStyle.Success),
+            new ButtonBuilder().setCustomId(`mix_captain_draft:${mix.id}`).setLabel('Draft 1v1 Capit\u00e3es').setEmoji('\ud83d\udc51').setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId(`mix_roulette:${mix.id}`).setLabel('Roleta R\u00e1pida').setEmoji('\ud83c\udfb2').setStyle(ButtonStyle.Primary),
+            new ButtonBuilder().setCustomId(`mix_voice:${mix.id}`).setLabel('Mover para Calls').setEmoji('\ud83d\udcde').setStyle(ButtonStyle.Secondary)
+          );
+          await channel.send({ content: '\u26a1 **Check-in encerrado!** Times sorteados:', embeds: [embed], components: [row] }).catch(() => {});
+          return;
+        }
+
+        mix.players = mix.players.filter((p) => confirmedIds.has(p.id) || String(p.id).startsWith('wa_'));
+        mix.waitlist = Array.isArray(mix.waitlist) ? mix.waitlist : [];
+        const promoted = [];
+        while (mix.players.length < 10 && mix.waitlist.length > 0) {
+          const nextSub = mix.waitlist.shift();
+          mix.players.push(nextSub);
+          promoted.push(nextSub);
+        }
+
+        mix.phase = 'lobby';
+        this.syncToWebRoom(mix);
+        this.updateLobbyInChannels(mix);
+
+        const afkMentions = afkPlayers.map((p) => `<@${p.id}>`).join(', ');
+        const promoText = promoted.length > 0
+          ? `\n\ud83d\udd04 **Suplente(s) promovido(s) da Reserva:** ${promoted.map((p) => `<@${p.id}>`).join(', ')}!`
+          : '';
+
+        const embed = this.buildLobbyEmbed(mix);
+        const components = this.buildLobbyButtons(mix);
+        await channel.send({
+          content: `\u23f0 **TEMPO DE CHECK-IN ESGOTADO!**\n\ud83d\udeab Removido(s) por inatividade (AFK): ${afkMentions}${promoText}\n\ud83d\udd13 O lobby voltou para **${mix.players.length}/10** jogadores!`,
+          embeds: [embed],
+          components,
+        }).catch(() => {});
+
+        if (mix.players.length === 10) {
+          this.startReadyCheck(mix, channel);
+        }
+      } catch (e) {
+        console.warn('[READY CHECK TIMEOUT]', e.message);
+      }
+    }, 60000);
   }
 
   buildReadyCheckEmbed(mix) {
     const confirmedCount = mix.readyCheck?.confirmed?.size || 0;
+    const unixExpire = Math.floor((mix.readyCheck?.expiresAt || Date.now() + 60000) / 1000);
 
     const statusList = mix.players.map((p) => {
-      const isConfirmed = mix.readyCheck?.confirmed?.has(p.id);
-      return `${isConfirmed ? '🟢' : '⏳'} <@${p.id}> - ${isConfirmed ? '**CONFIRMADO**' : '*Aguardando clique...*'}`;
+      const isConfirmed = mix.readyCheck?.confirmed?.has(p.id) || String(p.id).startsWith('wa_');
+      return `${isConfirmed ? '\ud83d\udfe2' : '\u23f3'} <@${p.id}> - ${isConfirmed ? '**CONFIRMADO**' : '*Aguardando clique...*'}`;
     });
 
     const embed = new EmbedBuilder()
-      .setTitle(`🚨 CHECK-IN DE CONFIRMAÇÃO • ${mix.name.toUpperCase()}`)
+      .setTitle(`\ud83d\udea8 CHECK-IN ANTI-AFK (60s) \u2022 ${mix.name.toUpperCase()}`)
       .setDescription(
-        `O lobby atingiu 10 jogadores! Confirmem presença nos botões abaixo ou iniciem o sorteio dos times quando todos estiverem prontos.\n\n` +
-        `📊 **Confirmados:** \`${confirmedCount}/10\``
+        `O lobby atingiu 10 jogadores! Confirmem presen\u00e7a antes que o tempo acabe.\n\n` +
+        `\ud83d\udcca **Confirmados:** \`${confirmedCount}/10\` \u2022 \u23f1\ufe0f **Expira:** <t:${unixExpire}:R>`
       )
       .setColor(confirmedCount === 10 ? 0x10b981 : 0xeab308)
       .addFields(
         {
-          name: '👥 Status dos Concorrentes',
+          name: '\ud83d\udc65 Titulares (1 a 5)',
           value: statusList.slice(0, 5).join('\n') || '*Nenhum*',
           inline: true,
         },
         {
-          name: '\u200B',
+          name: '\ud83d\udc65 Titulares (6 a 10)',
           value: statusList.slice(5, 10).join('\n') || '*Nenhum*',
           inline: true,
         }
       )
-      .setFooter({ text: 'CS2 Mix Hub • Confirmação de Presença' })
+      .setFooter({ text: 'CS2 Mix Hub \u2022 Quem n\u00e3o confirmar em 60s cede a vaga para a Reserva' })
       .setTimestamp();
 
     return embed;
@@ -3842,23 +4067,27 @@ class DiscordBotManager {
       new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId(`ready_confirm:${mix.id}`)
-          .setLabel(`Confirmar Presença (${confirmedCount}/10)`)
-          .setEmoji('✅')
+          .setLabel(`Confirmar Presen\u00e7a (${confirmedCount}/10)`)
+          .setEmoji('\u2705')
           .setStyle(ButtonStyle.Success),
         new ButtonBuilder()
           .setCustomId(`mix_teams:${mix.id}`)
-          .setLabel('Sortear Times')
-          .setEmoji('⚔️')
+          .setLabel('Sortear Equilibrado')
+          .setEmoji('\u2694\ufe0f')
+          .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+          .setCustomId(`mix_captain_draft:${mix.id}`)
+          .setLabel('Draft 1v1 Capit\u00e3es')
+          .setEmoji('\ud83d\udc51')
           .setStyle(ButtonStyle.Primary),
         new ButtonBuilder()
           .setCustomId(`mix_leave:${mix.id}`)
           .setLabel('Desistir / Sair')
-          .setEmoji('🚪')
+          .setEmoji('\ud83d\udeaa')
           .setStyle(ButtonStyle.Danger)
       ),
     ];
   }
-
   async startAutomaticLiveMonitoring(mix, channel, guild) {
     if (!channel || !mix) return;
 
@@ -4019,6 +4248,7 @@ class DiscordBotManager {
 
   buildLobbyEmbed(mix) {
     const total = mix.players.length;
+    const waitlist = Array.isArray(mix.waitlist) ? mix.waitlist : [];
     const isFull = total >= 10;
     const color = isFull ? 0x10b981 : 0xf59e0b;
 
@@ -4027,53 +4257,64 @@ class DiscordBotManager {
       const p = mix.players[i];
       if (p) {
         const lvl = p.level || this.getPlayerLevel(p.id) || 16;
-        const gcEmoji = lvl >= 20 ? '👑' : lvl >= 18 ? '🏆' : lvl >= 14 ? '🥇' : '🥈';
+        const gcEmoji = lvl >= 20 ? '\ud83d\udc51' : lvl >= 18 ? '\ud83c\udfc6' : lvl >= 14 ? '\ud83e\udd47' : '\ud83e\udd48';
         const isWa = p.source === 'whatsapp' || String(p.id).startsWith('wa_') || Boolean(p.phone);
-        const capTag = (i === 0 || p.isCaptain) ? '👑 ' : '';
+        const capTag = (i === 0 || p.isCaptain) ? '\ud83d\udc51 ' : '';
         const name = p.displayName || p.nick || p.name || p.username || 'Jogador';
         if (isWa) {
-          playerList.push(`**${i + 1}.** ${capTag}💬 **${name}** \`[WhatsApp • Lvl ${lvl} GC ${gcEmoji}]\``);
+          playerList.push(`**${i + 1}.** ${capTag}\ud83d\udcac **${name}** \`[WhatsApp \u2022 Lvl ${lvl} GC ${gcEmoji}]\``);
         } else {
-          playerList.push(`**${i + 1}.** ${capTag}🎮 <@${p.id}> \`[Discord • Lvl ${lvl} GC ${gcEmoji}]\``);
+          playerList.push(`**${i + 1}.** ${capTag}\ud83c\udfae <@${p.id}> \`[Discord \u2022 Lvl ${lvl} GC ${gcEmoji}]\``);
         }
       } else {
-        playerList.push(`**${i + 1}.** ⏳ *[Vazio - Disponível]*`);
+        playerList.push(`**${i + 1}.** \u23f3 *[Vazio - Dispon\u00edvel]*`);
       }
     }
 
-    const creatorDisplay = mix.creatorNick || (String(mix.creatorId).startsWith('wa_') ? '💬 WhatsApp' : `<@${mix.creatorId}>`);
+    const creatorDisplay = mix.creatorNick || (String(mix.creatorId).startsWith('wa_') ? '\ud83d\udcac WhatsApp' : `<@${mix.creatorId}>`);
+
+    const fields = [
+      {
+        name: `\ud83d\udc65 Jogadores Conectados (${total}/10)`,
+        value: playerList.slice(0, 5).join('\n'),
+        inline: true,
+      },
+      {
+        name: '\u200B',
+        value: playerList.slice(5, 10).join('\n'),
+        inline: true,
+      },
+    ];
+
+    if (waitlist.length > 0) {
+      fields.push({
+        name: `\ud83d\udccb Fila de Reserva / Suplentes (${waitlist.length}/3)`,
+        value: waitlist.map((w, idx) => `**R${idx + 1}.** <@${w.id}> \`[Lvl ${w.level || 16} GC]\``).join(' \u2022 '),
+        inline: false,
+      });
+    }
+
+    fields.push({
+      name: '\u2699\ufe0f Configura\u00e7\u00f5es da Partida',
+      value:
+        `\ud83c\udfc6 **Formato:** ${mix.format || 'MD1'}\n` +
+        `\ud83d\udee1\ufe0f **Status:** ${isFull ? '\ud83d\udfe2 **LOBBY LOTADO (10/10)! Vagas abertas na Reserva**' : `\ud83d\udfe1 Aguardando jogadores (${10 - total} restante(s))`}\n` +
+        `\ud83d\udcbb **Servidor:** ${mix.serverIp ? `\`${mix.serverIp}\`` : '*A definir ou host local*'}\n` +
+        `\ud83d\udc51 **Criador:** ${creatorDisplay}`,
+      inline: false,
+    });
 
     const embed = new EmbedBuilder()
-      .setTitle(`🎮 CS2 MIX HUB • ${mix.name.toUpperCase()}`)
+      .setTitle(`\ud83c\udfae CS2 MIX HUB \u2022 ${mix.name.toUpperCase()}`)
       .setDescription(
         `Fila oficial de Mix 5v5 para Counter-Strike 2.\n` +
-        `🌐 **Sincronização Ativa:** Jogadores do **Discord** e **Web Hub** jogam no mesmo lobby!\n` +
-        `Clique nos botões abaixo para entrar ou gerenciar a partida!`
+        `\ud83c\udf10 **Sincroniza\u00e7\u00e3o Ativa:** Jogadores do **Discord** e **Web Hub** jogam no mesmo lobby!\n` +
+        `Clique nos bot\u00f5es abaixo para entrar como titular, entrar na reserva ou sortear!`
       )
       .setColor(color)
-      .addFields(
-        {
-          name: `👥 Jogadores Conectados (${total}/10)`,
-          value: playerList.slice(0, 5).join('\n'),
-          inline: true,
-        },
-        {
-          name: '\u200B',
-          value: playerList.slice(5, 10).join('\n'),
-          inline: true,
-        },
-        {
-          name: '⚙️ Configurações da Partida',
-          value:
-            `🏆 **Formato:** ${mix.format || 'MD1'}\n` +
-            `🛡️ **Status:** ${isFull ? '🟢 **LOBBY LOTADO (10/10)!**' : `🟡 Aguardando jogadores (${10 - total} restante(s))`}\n` +
-            `💻 **Servidor:** ${mix.serverIp ? `\`${mix.serverIp}\`` : '*A definir ou host local*'}\n` +
-            `👑 **Criador:** ${creatorDisplay}`,
-          inline: false,
-        }
-      )
+      .addFields(fields)
       .setFooter({
-        text: `ID do Mix: ${mix.id} • Sincronizado Discord + Web`,
+        text: `ID do Mix: ${mix.id} \u2022 Sincronizado Discord + Web`,
       })
       .setTimestamp();
 
@@ -4082,70 +4323,72 @@ class DiscordBotManager {
 
   buildLobbyButtons(mix) {
     const total = mix.players.length;
+    const waitlistCount = Array.isArray(mix.waitlist) ? mix.waitlist.length : 0;
     const isFull = total >= 10;
+    const isWaitlistFull = waitlistCount >= 3;
 
     const row1 = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId(`mix_join:${mix.id}`)
-        .setLabel(`Entrar (${total}/10)`)
-        .setEmoji('➕')
-        .setStyle(isFull ? ButtonStyle.Secondary : ButtonStyle.Success)
-        .setDisabled(isFull),
+        .setLabel(isFull ? `Reserva (${waitlistCount}/3)` : `Entrar (${total}/10)`)
+        .setEmoji(isFull ? '\ud83d\udccb' : '\u2795')
+        .setStyle(isFull ? ButtonStyle.Primary : ButtonStyle.Success)
+        .setDisabled(isFull && isWaitlistFull),
       new ButtonBuilder()
         .setCustomId(`mix_leave:${mix.id}`)
         .setLabel('Sair')
-        .setEmoji('➖')
+        .setEmoji('\u2796')
         .setStyle(ButtonStyle.Secondary)
-        .setDisabled(total === 0),
+        .setDisabled(total === 0 && waitlistCount === 0),
       new ButtonBuilder()
         .setCustomId(`mix_teams:${mix.id}`)
         .setLabel('Sortear Times')
-        .setEmoji('⚔️')
+        .setEmoji('\u2694\ufe0f')
         .setStyle(ButtonStyle.Primary)
         .setDisabled(total < 2),
       new ButtonBuilder()
+        .setCustomId(`mix_captain_draft:${mix.id}`)
+        .setLabel('Draft 1v1')
+        .setEmoji('\ud83d\udc51')
+        .setStyle(ButtonStyle.Primary)
+        .setDisabled(total < 4),
+      new ButtonBuilder()
         .setCustomId(`mix_veto:${mix.id}`)
         .setLabel('Pick & Ban')
-        .setEmoji('🗳️')
-        .setStyle(ButtonStyle.Primary),
-      new ButtonBuilder()
-        .setCustomId(`mix_pick_map:${mix.id}`)
-        .setLabel('Escolher Mapa')
-        .setEmoji('🗺️')
+        .setEmoji('\ud83d\uddf3\ufe0f')
         .setStyle(ButtonStyle.Primary)
     );
 
     const row2 = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId(`mix_set_level:${mix.id}`)
-        .setLabel('Meu Nível GC')
-        .setEmoji('⭐')
+        .setLabel('Meu N\u00edvel GC')
+        .setEmoji('\u2b50')
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
-        .setCustomId(`mix_live_tracker:${mix.id}`)
-        .setLabel('Monitorar Partida')
-        .setEmoji('📡')
+        .setCustomId(`mix_pick_map:${mix.id}`)
+        .setLabel('Escolher Mapa')
+        .setEmoji('\ud83d\uddfa\ufe0f')
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId(`mix_roulette:${mix.id}`)
         .setLabel('Roleta de Mapa')
-        .setEmoji('🎲')
+        .setEmoji('\ud83c\udfb2')
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId(`mix_voice:${mix.id}`)
         .setLabel('Mover Calls')
-        .setEmoji('📞')
+        .setEmoji('\ud83d\udcde')
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId(`mix_cancel:${mix.id}`)
         .setLabel('Cancelar')
-        .setEmoji('❌')
+        .setEmoji('\u274c')
         .setStyle(ButtonStyle.Danger)
     );
 
     return [row1, row2];
   }
-
   buildTeamsEmbed(mix) {
     const teamA = mix.teamA;
     const teamB = mix.teamB;
@@ -4614,19 +4857,20 @@ class DiscordBotManager {
       });
     }
 
-    // 1. JOIN MIX
+    // 1. JOIN MIX (TITULAR OU FILA DE RESERVA)
     if (action === 'mix_join') {
-      const alreadyIn = mix.players.some((p) => p.id === user.id);
+      mix.waitlist = Array.isArray(mix.waitlist) ? mix.waitlist : [];
+      const alreadyIn = mix.players.some((p) => p.id === user.id) || mix.waitlist.some((p) => p.id === user.id);
       if (alreadyIn) {
         return interaction.reply({
-          content: '⚠️ Você já está na fila deste mix!',
+          content: '\u26a0\ufe0f Voc\u00ea j\u00e1 est\u00e1 inscrito neste mix (titular ou reserva)!',
           ephemeral: true,
         });
       }
 
-      if (mix.players.length >= 10) {
+      if (mix.players.length >= 10 && mix.waitlist.length >= 3) {
         return interaction.reply({
-          content: '🚫 O lobby já está lotado com 10 jogadores!',
+          content: '\ud83d\udeab O lobby (10/10) e a Fila de Reserva (3/3) j\u00e1 est\u00e3o lotados!',
           ephemeral: true,
         });
       }
@@ -4634,13 +4878,13 @@ class DiscordBotManager {
       if (!this.hasSavedLevel(user.id)) {
         const modal = new ModalBuilder()
           .setCustomId(`modal_join_set_level:${mix.id}`)
-          .setTitle('Cadastre seu Nível GC (1 a 21)');
+          .setTitle('Cadastre seu N\u00edvel GC (1 a 21)');
 
         const levelInput = new TextInputBuilder()
           .setCustomId('gc_level_input')
-          .setLabel('Seu Nível Gamers Club (1 a 21)')
+          .setLabel('Seu N\u00edvel Gamers Club (1 a 21)')
           .setStyle(TextInputStyle.Short)
-          .setPlaceholder('Ex: 16 (ficará salvo no seu perfil)')
+          .setPlaceholder('Ex: 16 (ficar\u00e1 salvo no seu perfil)')
           .setRequired(true)
           .setMinLength(1)
           .setMaxLength(2);
@@ -4651,18 +4895,32 @@ class DiscordBotManager {
       }
 
       const userLvl = this.getPlayerLevel(user.id);
-      mix.players.push({
+      const newEntry = {
         id: user.id,
         username: user.username,
         displayName: interaction.member?.displayName || user.username,
         avatar: user.displayAvatarURL({ dynamic: true }),
         level: userLvl,
         ready: true,
-      });
+      };
+
+      if (mix.players.length >= 10) {
+        mix.waitlist.push(newEntry);
+        this.syncToWebRoom(mix);
+        this.updateLobbyInChannels(mix);
+        const embed = mix.phase === 'ready_check' ? this.buildReadyCheckEmbed(mix) : this.buildLobbyEmbed(mix);
+        const components = mix.phase === 'ready_check' ? this.buildReadyCheckButtons(mix) : this.buildLobbyButtons(mix);
+        await interaction.update({ embeds: [embed], components });
+        return interaction.followUp({
+          content: `\ud83d\udccb <@${user.id}> entrou na **Fila de Reserva (Suplente #${mix.waitlist.length})**! Se algu\u00e9m sair ou ficar AFK no check-in, voc\u00ea assume a vaga automaticamente.`,
+          ephemeral: true,
+        });
+      }
+
+      mix.players.push(newEntry);
       this.syncToWebRoom(mix);
       this.updateLobbyInChannels(mix);
 
-      // If 10 players reached, launch Ready Check!
       if (mix.players.length === 8 || mix.players.length === 9) {
         this.notifyMissingSlots(mix, interaction.guild, interaction.channel).catch(() => {});
       }
@@ -4684,11 +4942,11 @@ class DiscordBotManager {
       const current = this.getPlayerLevel(user.id);
       const modal = new ModalBuilder()
         .setCustomId(`modal_set_level:${mix.id}`)
-        .setTitle('Nível Gamers Club (GC)');
+        .setTitle('N\u00edvel Gamers Club (GC)');
 
       const levelInput = new TextInputBuilder()
         .setCustomId('gc_level_input')
-        .setLabel('Seu Nível na Gamers Club (1 a 21)')
+        .setLabel('Seu N\u00edvel na Gamers Club (1 a 21)')
         .setStyle(TextInputStyle.Short)
         .setPlaceholder('Ex: 18')
         .setValue(String(current || 16))
@@ -4705,11 +4963,11 @@ class DiscordBotManager {
     // 2. READY CONFIRM (ANTI-AFK CHECK-IN)
     if (action === 'ready_confirm') {
       if (mix.phase !== 'ready_check') {
-        return interaction.reply({ content: '⚠️ O check-in deste lobby já foi finalizado!', ephemeral: true });
+        return interaction.reply({ content: '\u26a0\ufe0f O check-in deste lobby j\u00e1 foi finalizado!', ephemeral: true });
       }
       const isPlayer = mix.players.some((p) => p.id === user.id);
       if (!isPlayer) {
-        return interaction.reply({ content: '🚫 Você não está participando deste mix!', ephemeral: true });
+        return interaction.reply({ content: '\ud83d\udeab Voc\u00ea n\u00e3o est\u00e1 entre os 10 titulares deste mix!', ephemeral: true });
       }
 
       mix.readyCheck.confirmed.add(user.id);
@@ -4722,13 +4980,15 @@ class DiscordBotManager {
         this.balanceTeams(mix);
         const embed = this.buildTeamsEmbed(mix);
         const row = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId(`mix_veto:${mix.id}`).setLabel('Iniciar Pick & Ban').setEmoji('🗳️').setStyle(ButtonStyle.Success),
-          new ButtonBuilder().setCustomId(`mix_roulette:${mix.id}`).setLabel('Roleta Rápida').setEmoji('🎲').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId(`mix_pick_map:${mix.id}`).setLabel('Escolher Mapa').setEmoji('🗺️').setStyle(ButtonStyle.Primary),
-          new ButtonBuilder().setCustomId(`mix_voice:${mix.id}`).setLabel('Mover para Calls').setEmoji('📞').setStyle(ButtonStyle.Secondary)
+          new ButtonBuilder().setCustomId(`mix_veto:${mix.id}`).setLabel('Iniciar Pick & Ban').setEmoji('\ud83d\uddf3\ufe0f').setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId(`mix_captain_draft:${mix.id}`).setLabel('Draft 1v1 Capit\u00e3es').setEmoji('\ud83d\udc51').setStyle(ButtonStyle.Primary),
+          new ButtonBuilder().setCustomId(`mix_roulette:${mix.id}`).setLabel('Roleta R\u00e1pida').setEmoji('\ud83c\udfb2').setStyle(ButtonStyle.Primary),
+          new ButtonBuilder().setCustomId(`mix_pick_map:${mix.id}`).setLabel('Escolher Mapa').setEmoji('\ud83d\uddfa\ufe0f').setStyle(ButtonStyle.Primary),
+          new ButtonBuilder().setCustomId(`mix_voice:${mix.id}`).setLabel('Mover para Calls').setEmoji('\ud83d\udcde').setStyle(ButtonStyle.Secondary)
         );
 
         return interaction.update({
-          content: `🎉 **TODOS OS JOGADORES CONFIRMARAM PRESENÇA!**\nTimes balanceados pelo algoritmo de elo. Capitães, podem iniciar o Veto!`,
+          content: `\ud83c\udf89 **TODOS OS JOGADORES CONFIRMARAM PRESEN\u00c7A!**\nTimes equilibrados matematicamente (N\u00edvel GC + Winrate Hist\u00f3rico). Capit\u00e3es, podem iniciar o Veto ou mudar para Draft 1v1!`,
           embeds: [embed],
           components: [row],
         });
@@ -4739,16 +4999,35 @@ class DiscordBotManager {
       return interaction.update({ embeds: [embed], components });
     }
 
-    // 3. LEAVE MIX
+    // 3. LEAVE MIX (PROMOVE SUPLENTE DA RESERVA AUTOMATICAMENTE)
     if (action === 'mix_leave') {
+      mix.waitlist = Array.isArray(mix.waitlist) ? mix.waitlist : [];
       const idx = mix.players.findIndex((p) => p.id === user.id);
-      if (idx === -1) {
-        return interaction.reply({ content: '⚠️ Você não está na fila deste mix.', ephemeral: true });
+      const waitIdx = mix.waitlist.findIndex((p) => p.id === user.id);
+
+      if (idx === -1 && waitIdx === -1) {
+        return interaction.reply({ content: '\u26a0\ufe0f Voc\u00ea n\u00e3o est\u00e1 na fila deste mix.', ephemeral: true });
+      }
+
+      if (waitIdx !== -1) {
+        mix.waitlist.splice(waitIdx, 1);
+        this.syncToWebRoom(mix);
+        this.updateLobbyInChannels(mix);
+        const embed = this.buildLobbyEmbed(mix);
+        const components = this.buildLobbyButtons(mix);
+        return interaction.update({ embeds: [embed], components });
       }
 
       mix.players.splice(idx, 1);
       if (mix.readyCheck?.confirmed) {
         mix.readyCheck.confirmed.delete(user.id);
+      }
+
+      let promotedMsg = '';
+      if (mix.waitlist.length > 0 && mix.players.length < 10) {
+        const nextSub = mix.waitlist.shift();
+        mix.players.push(nextSub);
+        promotedMsg = `\ud83d\udd04 <@${nextSub.id}> foi promovido automaticamente da **Fila de Reserva** para titular!`;
       }
 
       if (mix.players.length <= 7 && mix.notifiedMissing) {
@@ -4757,37 +5036,57 @@ class DiscordBotManager {
       this.syncToWebRoom(mix);
       this.updateLobbyInChannels(mix);
 
-      if (mix.phase === 'ready_check') {
+      if (mix.phase === 'ready_check' && mix.players.length < 10) {
         if (mix.readyCheck?.timer) clearTimeout(mix.readyCheck.timer);
         mix.phase = 'lobby';
         mix.readyCheck.active = false;
       }
 
-      const embed = this.buildLobbyEmbed(mix);
-      const components = this.buildLobbyButtons(mix);
-      return interaction.update({ embeds: [embed], components });
+      const embed = mix.phase === 'ready_check' ? this.buildReadyCheckEmbed(mix) : this.buildLobbyEmbed(mix);
+      const components = mix.phase === 'ready_check' ? this.buildReadyCheckButtons(mix) : this.buildLobbyButtons(mix);
+      await interaction.update({ content: promotedMsg || undefined, embeds: [embed], components });
+      return;
     }
 
-    // 4. DRAW TEAMS
+    // 4. DRAW TEAMS (COMBINATORIO EXATO) & CAPTAIN DRAFT 1V1
+    if (action === 'mix_captain_draft') {
+      if (mix.players.length < 4) {
+        return interaction.reply({
+          content: '\u26a0\ufe0f S\u00e3o necess\u00e1rios pelo menos 4 jogadores no lobby para iniciar o Draft 1v1 de Capit\u00e3es!',
+          ephemeral: true,
+        });
+      }
+      if (mix.readyCheck?.timer) clearTimeout(mix.readyCheck.timer);
+      this.startCaptainDraft1v1(mix);
+      const { embed, components } = this.buildCaptainDraftEmbedAndComponents(mix);
+      return interaction.update({
+        content: `\ud83d\udc51 **MODO DRAFT DE CAPIT\u00c3ES 1v1 INICIADO!**\nOs dois maiores n\u00edveis foram eleitos Capit\u00e3es. Escolham seus jogadores no menu abaixo!`,
+        embeds: [embed],
+        components,
+      });
+    }
+
     if (action === 'mix_teams') {
       if (mix.players.length < 2) {
         return interaction.reply({
-          content: '⚠️ É necessário pelo menos 2 jogadores para formar times!',
+          content: '\u26a0\ufe0f \u00c9 necess\u00e1rio pelo menos 2 jogadores para formar times!',
           ephemeral: true,
         });
       }
 
+      if (mix.readyCheck?.timer) clearTimeout(mix.readyCheck.timer);
       this.balanceTeams(mix);
       const embed = this.buildTeamsEmbed(mix);
       const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`mix_veto:${mix.id}`).setLabel('Iniciar Pick & Ban').setEmoji('🗳️').setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId(`mix_roulette:${mix.id}`).setLabel('Roleta Rápida').setEmoji('🎲').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId(`mix_pick_map:${mix.id}`).setLabel('Escolher Mapa').setEmoji('🗺️').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId(`mix_voice:${mix.id}`).setLabel('Mover para Calls').setEmoji('📞').setStyle(ButtonStyle.Secondary)
+        new ButtonBuilder().setCustomId(`mix_veto:${mix.id}`).setLabel('Iniciar Pick & Ban').setEmoji('\ud83d\uddf3\ufe0f').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId(`mix_captain_draft:${mix.id}`).setLabel('Draft 1v1 Capit\u00e3es').setEmoji('\ud83d\udc51').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId(`mix_roulette:${mix.id}`).setLabel('Roleta R\u00e1pida').setEmoji('\ud83c\udfb2').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId(`mix_pick_map:${mix.id}`).setLabel('Escolher Mapa').setEmoji('\ud83d\uddfa\ufe0f').setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId(`mix_voice:${mix.id}`).setLabel('Mover para Calls').setEmoji('\ud83d\udcde').setStyle(ButtonStyle.Secondary)
       );
 
       return interaction.update({ embeds: [embed], components: [row] });
     }
-
     // 5. START VETO
     if (action === 'mix_veto') {
       if (mix.teamA.players.length === 0 || mix.teamB.players.length === 0) {
@@ -4917,7 +5216,9 @@ class DiscordBotManager {
       if (this.config.autoMoveVoice) {
         this.executeVoiceMover(interaction.guild, mix, interaction.channel).catch(() => {});
       }
-
+      if (mix.veto?.deciderMap) {
+        this.triggerAutoRconMapChange(mix, mix.veto.deciderMap, interaction.channel).catch(() => {});
+      }
       const finalEmbed = this.buildMatchReadyEmbed(mix);
       const components = this.buildMatchReadyButtons(mix);
 
@@ -5218,77 +5519,86 @@ class DiscordBotManager {
 
     const { channelA, channelB } = resolved;
 
-    // Apply exclusive private permissions for each team (Only Team A players access Call/Chat A, only Team B access B)
-    try {
-      if (channelA && channelA.manageable) {
-        const overwritesA = [
-          {
-            id: guild.id, // @everyone: cannot connect or send messages
-            deny: [PermissionsBitField.Flags.Connect, PermissionsBitField.Flags.SendMessages],
-            allow: [PermissionsBitField.Flags.ViewChannel],
-          },
-          {
-            id: this.client.user.id,
-            allow: [
-              PermissionsBitField.Flags.ViewChannel,
-              PermissionsBitField.Flags.Connect,
-              PermissionsBitField.Flags.Speak,
-              PermissionsBitField.Flags.MoveMembers,
-              PermissionsBitField.Flags.ManageChannels,
-            ],
-          },
-          ...(mix.teamA.players || []).filter((p) => isSnowflake(p.id)).map((p) => ({
-            id: p.id,
-            allow: [
-              PermissionsBitField.Flags.ViewChannel,
-              PermissionsBitField.Flags.Connect,
-              PermissionsBitField.Flags.Speak,
-              PermissionsBitField.Flags.SendMessages,
-              PermissionsBitField.Flags.ReadMessageHistory,
-            ],
-          })),
-        ];
-        await channelA.permissionOverwrites.set(overwritesA).catch((e) => {
-          console.warn('[VOICE OVERWRITES] Time A:', e.message);
-        });
-      }
+    this._voiceOverwriteCache = this._voiceOverwriteCache || new Map();
+    const nowTs = Date.now();
+    const cacheKey = `${guild.id}:${channelA.id}:${channelB.id}`;
+    const lastOverwriteAt = this._voiceOverwriteCache.get(cacheKey) || 0;
+    const canEditOverwrites = (nowTs - lastOverwriteAt) > 10 * 60 * 1000;
 
-      if (channelB && channelB.manageable) {
-        const overwritesB = [
-          {
-            id: guild.id, // @everyone: cannot connect or send messages
-            deny: [PermissionsBitField.Flags.Connect, PermissionsBitField.Flags.SendMessages],
-            allow: [PermissionsBitField.Flags.ViewChannel],
-          },
-          {
-            id: this.client.user.id,
-            allow: [
-              PermissionsBitField.Flags.ViewChannel,
-              PermissionsBitField.Flags.Connect,
-              PermissionsBitField.Flags.Speak,
-              PermissionsBitField.Flags.MoveMembers,
-              PermissionsBitField.Flags.ManageChannels,
-            ],
-          },
-          ...(mix.teamB.players || []).filter((p) => isSnowflake(p.id)).map((p) => ({
-            id: p.id,
-            allow: [
-              PermissionsBitField.Flags.ViewChannel,
-              PermissionsBitField.Flags.Connect,
-              PermissionsBitField.Flags.Speak,
-              PermissionsBitField.Flags.SendMessages,
-              PermissionsBitField.Flags.ReadMessageHistory,
-            ],
-          })),
-        ];
-        await channelB.permissionOverwrites.set(overwritesB).catch((e) => {
-          console.warn('[VOICE OVERWRITES] Time B:', e.message);
-        });
+    if (canEditOverwrites) {
+      this._voiceOverwriteCache.set(cacheKey, nowTs);
+      try {
+        if (channelA && channelA.manageable) {
+          const overwritesA = [
+            {
+              id: guild.id,
+              deny: [PermissionsBitField.Flags.Connect, PermissionsBitField.Flags.SendMessages],
+              allow: [PermissionsBitField.Flags.ViewChannel],
+            },
+            {
+              id: this.client.user.id,
+              allow: [
+                PermissionsBitField.Flags.ViewChannel,
+                PermissionsBitField.Flags.Connect,
+                PermissionsBitField.Flags.Speak,
+                PermissionsBitField.Flags.MoveMembers,
+                PermissionsBitField.Flags.ManageChannels,
+              ],
+            },
+            ...(mix.teamA.players || []).filter((p) => isSnowflake(p.id)).map((p) => ({
+              id: p.id,
+              allow: [
+                PermissionsBitField.Flags.ViewChannel,
+                PermissionsBitField.Flags.Connect,
+                PermissionsBitField.Flags.Speak,
+                PermissionsBitField.Flags.SendMessages,
+                PermissionsBitField.Flags.ReadMessageHistory,
+              ],
+            })),
+          ];
+          await Promise.race([
+            channelA.permissionOverwrites.set(overwritesA),
+            new Promise((r) => setTimeout(r, 1500)),
+          ]).catch(() => {});
+        }
+
+        if (channelB && channelB.manageable) {
+          const overwritesB = [
+            {
+              id: guild.id,
+              deny: [PermissionsBitField.Flags.Connect, PermissionsBitField.Flags.SendMessages],
+              allow: [PermissionsBitField.Flags.ViewChannel],
+            },
+            {
+              id: this.client.user.id,
+              allow: [
+                PermissionsBitField.Flags.ViewChannel,
+                PermissionsBitField.Flags.Connect,
+                PermissionsBitField.Flags.Speak,
+                PermissionsBitField.Flags.MoveMembers,
+                PermissionsBitField.Flags.ManageChannels,
+              ],
+            },
+            ...(mix.teamB.players || []).filter((p) => isSnowflake(p.id)).map((p) => ({
+              id: p.id,
+              allow: [
+                PermissionsBitField.Flags.ViewChannel,
+                PermissionsBitField.Flags.Connect,
+                PermissionsBitField.Flags.Speak,
+                PermissionsBitField.Flags.SendMessages,
+                PermissionsBitField.Flags.ReadMessageHistory,
+              ],
+            })),
+          ];
+          await Promise.race([
+            channelB.permissionOverwrites.set(overwritesB),
+            new Promise((r) => setTimeout(r, 1500)),
+          ]).catch(() => {});
+        }
+      } catch (err) {
+        console.warn('[VOICE MOVER] Aviso ao aplicar overwrites:', err.message);
       }
-    } catch (err) {
-      console.warn('[VOICE MOVER] Falha ao configurar permissões exclusivas das calls:', err.message);
     }
-
     let movedCount = 0;
     const movedA = [];
     const movedB = [];
@@ -5540,7 +5850,67 @@ class DiscordBotManager {
 
   async handleSelectMenuInteraction(interaction) {
     const customId = interaction.customId;
-    if (customId === 'hardware_category_filter') {
+    if (customId.startsWith('captain_pick_select:')) {
+      const mixId = customId.split(':')[1];
+      const mix = this.activeMixes.get(mixId) || this.resolveActiveMixForChannel(interaction.channelId);
+      if (!mix || mix.phase !== 'captain_draft' || !mix.captainDraft) {
+        return interaction.reply({ content: '\u26a0\ufe0f Este Draft de Capit\u00e3es j\u00e1 foi encerrado.', ephemeral: true });
+      }
+      const draft = mix.captainDraft;
+      const currentTeamKey = draft.turnOrder[draft.step] || (mix.teamA.players.length <= mix.teamB.players.length ? 'teamA' : 'teamB');
+      const currentCap = currentTeamKey === 'teamA' ? mix.teamA.captain : mix.teamB.captain;
+      const isAllowed = interaction.user.id === currentCap?.id || interaction.user.id === mix.creatorId;
+      if (!isAllowed) {
+        return interaction.reply({
+          content: `\ud83d\udeab Apenas o Capit\u00e3o <@${currentCap?.id}> (ou o criador do mix) pode escolher neste turno!`,
+          ephemeral: true,
+        });
+      }
+
+      const pickedId = interaction.values?.[0];
+      const pIdx = draft.pool.findIndex((p) => String(p.id) === String(pickedId));
+      if (pIdx === -1) {
+        return interaction.reply({ content: '\u26a0\ufe0f Jogador j\u00e1 foi escolhido!', ephemeral: true });
+      }
+      const [pickedPlayer] = draft.pool.splice(pIdx, 1);
+      if (currentTeamKey === 'teamA') mix.teamA.players.push(pickedPlayer);
+      else mix.teamB.players.push(pickedPlayer);
+      draft.step += 1;
+
+      if (draft.pool.length === 1) {
+        const [lastPlayer] = draft.pool.splice(0, 1);
+        if (mix.teamA.players.length <= mix.teamB.players.length) mix.teamA.players.push(lastPlayer);
+        else mix.teamB.players.push(lastPlayer);
+      }
+
+      if (draft.pool.length === 0) {
+        const sumA = mix.teamA.players.reduce((acc, p) => acc + (p.level || 16), 0);
+        const sumB = mix.teamB.players.reduce((acc, p) => acc + (p.level || 16), 0);
+        mix.teamA.avgLevel = (sumA / (mix.teamA.players.length || 1)).toFixed(1);
+        mix.teamB.avgLevel = (sumB / (mix.teamB.players.length || 1)).toFixed(1);
+        const diff = Math.abs(sumA - sumB);
+        mix.balancePct = Math.max(75, Math.min(100, Math.round(100 - diff * 3.5)));
+        mix.phase = 'teams';
+        this.syncToWebRoom(mix);
+
+        const embed = this.buildTeamsEmbed(mix);
+        const row = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId(`mix_veto:${mix.id}`).setLabel('Iniciar Pick & Ban').setEmoji('\ud83d\uddf3\ufe0f').setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId(`mix_roulette:${mix.id}`).setLabel('Roleta R\u00e1pida').setEmoji('\ud83c\udfb2').setStyle(ButtonStyle.Primary),
+          new ButtonBuilder().setCustomId(`mix_pick_map:${mix.id}`).setLabel('Escolher Mapa').setEmoji('\ud83d\uddfa\ufe0f').setStyle(ButtonStyle.Primary),
+          new ButtonBuilder().setCustomId(`mix_voice:${mix.id}`).setLabel('Mover para Calls').setEmoji('\ud83d\udcde').setStyle(ButtonStyle.Secondary)
+        );
+        return interaction.update({
+          content: '\u2705 **DRAFT 1v1 CONCLU\u00cdDO PELOS CAPIT\u00c3ES!** Agora escolham o mapa no Veto ou na Roleta:',
+          embeds: [embed],
+          components: [row],
+        });
+      }
+
+      this.syncToWebRoom(mix);
+      const { embed, components } = this.buildCaptainDraftEmbedAndComponents(mix);
+      return interaction.update({ embeds: [embed], components });
+    }    if (customId === 'hardware_category_filter') {
       const selected = interaction.values[0];
       const category = selected === 'all' ? null : selected;
       const deals = await hardwareDealsManager.getDeals({ category, limit: 5 });
