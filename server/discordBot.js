@@ -314,305 +314,93 @@ class DiscordBotManager {
       this.config.publicWebUrl ||
       process.env.PUBLIC_URL ||
       process.env.RENDER_EXTERNAL_URL ||
-      (process.env.RAILWAY_STATIC_URL ? `https://${process.env.RAILWAY_STATIC_URL}` : 'https://mix-cs2.onrender.com')
+      (process.env.RAILWAY_STATIC_URL ? 'https://' + process.env.RAILWAY_STATIC_URL : 'https://mix-cs2.onrender.com')
     ).replace(/\/+$/, '');
-    const cleanPath = path ? (path.startsWith('/') ? path : `/${path}`) : '';
-    return `${base}${cleanPath}`;
+    const cleanPath = path ? (path.startsWith('/') ? path : '/' + path) : '';
+    return base + cleanPath;
   }
 
-  updateBotLivePresence(liveState) {
-    try {
-      if (!this.client?.user) return;
-      const now = Date.now();
-      this._lastPresenceUpdateAt = this._lastPresenceUpdateAt || 0;
-      if (now - this._lastPresenceUpdateAt < 10000) return;
-      this._lastPresenceUpdateAt = now;
-
-      if (liveState && liveState.mapName && liveState.mapName !== 'Indefinido' && liveState.phase !== 'unknown') {
-        const cleanMap = normalizeMapName(liveState.mapName);
-        const sCT = liveState.scoreCT || 0;
-        const sTR = liveState.scoreTR || 0;
-        const rNum = liveState.roundNumber || (sCT + sTR + 1);
-        const isOt = sCT >= 12 && sTR >= 12;
-        const statusText = liveState.isGameOver
-          ? `\ud83c\udfc6 Fim: ${cleanMap} (${sCT}x${sTR})`
-          : isOt
-          ? `\ud83d\udd25 OT! ${cleanMap} \u2022 CT ${sCT} x ${sTR} TR`
-          : `\ud83d\udd34 ${cleanMap} \u2022 CT ${sCT} x ${sTR} TR (R${rNum})`;
-        this.client.user.setActivity(statusText, { type: 3 });
-      }
-    } catch (_) {}
+  isOfficialCompetitiveMap(rawMapName = '') {
+    const clean = String(rawMapName || '').toLowerCase().trim().replace(/^workshop\/\d+\//, '');
+    if (!clean || clean === 'indefinido') return false;
+    if (clean.startsWith('aim_') || clean.startsWith('fy_') || clean.startsWith('gg_') || clean.startsWith('surf_') || clean.startsWith('kz_')) return false;
+    return /^(de_)?(mirage|inferno|nuke|dust2|ancient|anubis|vertigo|overpass|train|cache)$/.test(clean);
   }
 
-  processLiveHighlightsAndHalftime(liveState) {
-    try {
-      if (!liveState || liveState.phase === 'warmup' || !liveState.mapName || liveState.mapName === 'Indefinido') return;
-
-      this._hlTracker = this._hlTracker || {
-        mapName: '',
-        roundNumber: -1,
-        killsAtRoundStart: new Map(),
-        clutchCandidateCT: null,
-        clutchCandidateTR: null,
-        announcedRound: -1,
-        halftimeAnnouncedKey: '',
-        overtimeAnnouncedKey: '',
-      };
-
-      const trk = this._hlTracker;
-      const sCT = Number(liveState.scoreCT || 0);
-      const sTR = Number(liveState.scoreTR || 0);
-      const totalRounds = sCT + sTR;
-      const rNum = Number(liveState.roundNumber || totalRounds + 1);
-      const allStats = Array.isArray(liveState.allPlayersStats) ? liveState.allPlayersStats : [];
-
-      if (trk.mapName !== liveState.mapName || (totalRounds === 0 && liveState.roundPhase === 'freezetime')) {
-        trk.mapName = liveState.mapName;
-        trk.roundNumber = rNum;
-        trk.killsAtRoundStart.clear();
-        allStats.forEach((p) => trk.killsAtRoundStart.set(p.steamId || p.name, p.kills || 0));
-        trk.clutchCandidateCT = null;
-        trk.clutchCandidateTR = null;
-        trk.announcedRound = -1;
-      }
-
-      if (liveState.roundPhase === 'freezetime' && trk.roundNumber !== rNum) {
-        trk.roundNumber = rNum;
-        trk.killsAtRoundStart.clear();
-        allStats.forEach((p) => trk.killsAtRoundStart.set(p.steamId || p.name, p.kills || 0));
-        trk.clutchCandidateCT = null;
-        trk.clutchCandidateTR = null;
-      }
-
-      // Detecta situacao de Clutch (1v2, 1v3, 1v4, 1v5) durante o round vivo
-      if (liveState.roundPhase === 'live') {
-        const aliveCT = (liveState.teamCT || []).filter((p) => p.isAlive);
-        const aliveTR = (liveState.teamTR || []).filter((p) => p.isAlive);
-
-        if (aliveCT.length === 1 && aliveTR.length >= 2) {
-          if (!trk.clutchCandidateCT || aliveTR.length > trk.clutchCandidateCT.enemies) {
-            trk.clutchCandidateCT = { player: aliveCT[0], enemies: aliveTR.length };
-          }
-        }
-        if (aliveTR.length === 1 && aliveCT.length >= 2) {
-          if (!trk.clutchCandidateTR || aliveCT.length > trk.clutchCandidateTR.enemies) {
-            trk.clutchCandidateTR = { player: aliveTR[0], enemies: aliveCT.length };
-          }
+  getActiveLiveMix(channelId = null, currentCs2Map = null) {
+    const now = Date.now();
+    const isValid = (m) => {
+      if (!m || m.phase !== 'live') return false;
+      if (!m.teamA?.players?.length || !m.teamB?.players?.length) return false;
+      if (m.createdAt && (now - m.createdAt > 3 * 3600 * 1000)) return false;
+      if (currentCs2Map) {
+        if (!this.isOfficialCompetitiveMap(currentCs2Map)) return false;
+        const mixMapRaw = m.veto?.deciderMap?.id || m.veto?.deciderMap?.name || m.finalMap?.file || m.finalMap?.name || m.matchMap || '';
+        if (mixMapRaw) {
+          const n1 = normalizeMapName(currentCs2Map).toLowerCase();
+          const n2 = normalizeMapName(mixMapRaw).toLowerCase();
+          if (n1 && n2 && n1 !== n2) return false;
         }
       }
-
-      // Encontra o mix e canal ativo para narrar os eventos
-      let activeMix = null;
-      for (const [, m] of this.activeMixes.entries()) {
-        if (m && m.phase !== 'finished' && m.phase !== 'cancelled' && m.channelId) {
-          activeMix = m;
-          break;
-        }
-      }
-      const channel = activeMix?.channelId ? this.client?.channels?.cache?.get(activeMix.channelId) : null;
-      const cleanMap = normalizeMapName(liveState.mapName);
-
-      // Ao encerrar o round, verifica se houve ACE (5K), Quadra Kill (4K) ou CLUTCH vencido
-      if (liveState.roundPhase === 'over' && trk.announcedRound !== totalRounds && totalRounds > 0) {
-        trk.announcedRound = totalRounds;
-        const winSide = liveState.winTeam === 'CT' ? 'CT' : liveState.winTeam === 'T' || liveState.winTeam === 'TR' ? 'TR' : null;
-        const messages = [];
-
-        // 1. Verifica Clutch vencido
-        if (winSide === 'CT' && trk.clutchCandidateCT) {
-          const c = trk.clutchCandidateCT;
-          messages.push(`\ud83e\uddca \ud83d\udd25 **[CLUTCH HIST\u00d3RICO 1v${c.enemies}!]** **${c.player.name}** garantiu o round sozinho de CT em **${cleanMap}**! (\`CT ${sCT} x ${sTR} TR\`)`);
-        } else if (winSide === 'TR' && trk.clutchCandidateTR) {
-          const c = trk.clutchCandidateTR;
-          messages.push(`\ud83e\uddca \ud83d\udd25 **[CLUTCH HIST\u00d3RICO 1v${c.enemies}!]** **${c.player.name}** garantiu o round sozinho de TR em **${cleanMap}**! (\`CT ${sCT} x ${sTR} TR\`)`);
-        }
-
-        // 2. Verifica ACE (5 Kills no round) ou 4K (Quadra Kill)
-        const roundKillers = [];
-        if (liveState.player && liveState.player.roundKills >= 4) {
-          roundKillers.push({
-            name: liveState.player.name,
-            rk: liveState.player.roundKills,
-            hs: liveState.player.roundKillHs || 0,
-            weapon: liveState.player.activeWeapon?.name || 'Arma',
-          });
-        }
-
-        allStats.forEach((p) => {
-          const key = p.steamId || p.name;
-          if (trk.killsAtRoundStart.has(key)) {
-            const delta = (p.kills || 0) - (trk.killsAtRoundStart.get(key) || 0);
-            if (delta >= 4 && delta <= 5 && !roundKillers.some((rk) => rk.name === p.name)) {
-              roundKillers.push({ name: p.name, rk: delta, hs: 0, weapon: p.activeWeapon || 'Arma' });
-            }
-          }
-          trk.killsAtRoundStart.set(key, p.kills || 0);
-        });
-
-        roundKillers.forEach((k) => {
-          const hsTxt = k.hs > 0 ? ` (${k.hs} HS \ud83c\udfaf)` : '';
-          if (k.rk >= 5) {
-            messages.push(`\ud83d\udd25 \ud83d\udc80 **[ACE NO SERVIDOR! 5 KILLS]** **${k.name}** varreu o time inteiro com **${k.weapon}**${hsTxt} em **${cleanMap}**!`);
-          } else if (k.rk === 4) {
-            messages.push(`\ud83d\udca5 \ud83c\udfaf **[QUADRA KILL - 4K!]** **${k.name}** levou **4 advers\u00e1rios** no round com **${k.weapon}**${hsTxt}!`);
-          }
-        });
-
-        trk.clutchCandidateCT = null;
-        trk.clutchCandidateTR = null;
-
-        if (channel && messages.length > 0) {
-          channel.send(messages.join('\n')).catch(() => {});
-        }
-
-        // 3. Virada Automatica de Half-Time (Fim do 12o Round: totalRounds === 12)
-        const halfKey = `${liveState.mapName}:half12`;
-        if (totalRounds === 12 && trk.halftimeAnnouncedKey !== halfKey && activeMix) {
-          trk.halftimeAnnouncedKey = halfKey;
-          const oldSideA = (activeMix.teamA?.side || 'CT').toUpperCase();
-          activeMix.teamA.side = oldSideA === 'CT' ? 'TR' : 'CT';
-          activeMix.teamB.side = activeMix.teamA.side === 'CT' ? 'TR' : 'CT';
-          this.syncToWebRoom(activeMix);
-          this.applyCs2TeamNamesRcon(activeMix).catch(() => {});
-
-          if (channel) {
-            channel.send(
-              `\ud83d\udd04 \u23f1\ufe0f **[FIM DO 1\u00ba TEMPO \u2022 VIRADA DE LADO (HALF-TIME)]**\n` +
-              `Placar parcial em **${cleanMap}**: **CT ${sCT} x ${sTR} TR**!\n` +
-              `Os lados foram invertidos automaticamente para o 2\u00ba tempo: **${activeMix.teamA.name}** agora joga de **${activeMix.teamA.side}** e **${activeMix.teamB.name}** joga de **${activeMix.teamB.side}**!`
-            ).catch(() => {});
-          }
-        }
-
-        // 4. Alerta de Overtime (12 x 12)
-        const otKey = `${liveState.mapName}:ot:${sCT}x${sTR}`;
-        if (sCT >= 12 && sTR >= 12 && sCT === sTR && (sCT - 12) % 3 === 0 && trk.overtimeAnnouncedKey !== otKey) {
-          trk.overtimeAnnouncedKey = otKey;
-          if (channel) {
-            channel.send(
-              `\ud83d\udd25 \ud83d\udea8 **[OVERTIME (PRORROGA\u00c7\u00c3O) \u2022 ${sCT} x ${sTR}!]**\n` +
-              `Jogo tenso em **${cleanMap}**! Tudo empatado em **${sCT} a ${sTR}** \u2014 a decis\u00e3o vai para a prorroga\u00e7\u00e3o!`
-            ).catch(() => {});
-          }
-        }
-      }
-    } catch (err) {
-      console.warn('[HIGHLIGHTS/HALFTIME WARN]:', err.message);
+      return true;
+    };
+    if (channelId) {
+      const m = this.activeMixes.get(channelId);
+      if (isValid(m)) return m;
     }
+    for (const [, m] of this.activeMixes.entries()) {
+      if (isValid(m)) return m;
+    }
+    return null;
+  }
+
+  stopAllLiveMonitoring() {
+    if (this.liveTrackers && this.liveTrackers.size > 0) this.liveTrackers.clear();
   }
 
   handleGsiEvent(roomId, liveState) {
-    if (!liveState) return;
+    if (!liveState || !this.isOfficialCompetitiveMap(liveState.mapName)) return;
+    const activeMix = this.getActiveLiveMix(null, liveState.mapName);
+    if (!activeMix) {
+      this.stopAllLiveMonitoring();
+      return;
+    }
     const now = Date.now();
-    this.lastGsiState = {
-      ...liveState,
-      roomId: roomId || 'MIX-PRO',
-      receivedAt: now,
-    };
-
-    if (
-      Array.isArray(liveState.allPlayersStats) &&
-      liveState.allPlayersStats.length > 0 &&
-      liveState.phase !== 'warmup' &&
-      ((liveState.scoreCT || 0) + (liveState.scoreTR || 0) >= 1 || (liveState.roundNumber || 0) >= 1)
-    ) {
-      this.lastBestGsiState = {
-        ...liveState,
-        allPlayersStats: [...liveState.allPlayersStats],
-        roomId: roomId || 'MIX-PRO',
-        receivedAt: now,
-      };
+    this.lastGsiState = { ...liveState, roomId: roomId || 'MIX-PRO', receivedAt: now };
+    if (Array.isArray(liveState.allPlayersStats) && liveState.allPlayersStats.length > 0 && liveState.phase !== 'warmup' && ((liveState.scoreCT || 0) + (liveState.scoreTR || 0) >= 1)) {
+      this.lastBestGsiState = { ...liveState, allPlayersStats: [...liveState.allPlayersStats], roomId: roomId || 'MIX-PRO', receivedAt: now };
+      activeMix.liveState = this.lastBestGsiState;
+      activeMix.gsi = this.lastBestGsiState;
     }
-
-    const steamId = liveState.player?.steamId || liveState.rawPlayer?.steamId;
-    if (steamId) {
-      this.playersGsiStates.set(steamId, {
-        ...liveState,
-        roomId: roomId || 'MIX-PRO',
-        receivedAt: now,
-      });
-    }
-
-    // Atualiza o Status Ao Vivo do Bot e processa Highlights (Ace, 4K, Clutch) e Virada de Half
-    this.updateBotLivePresence(liveState);
-    this.processLiveHighlightsAndHalftime(liveState);
-
-    const uniqueMixes = new Map();
-    for (const [, m] of this.activeMixes.entries()) {
-      if (m && m.id && !uniqueMixes.has(m.id)) {
-        uniqueMixes.set(m.id, m);
-      }
-    }
-
-    for (const mix of uniqueMixes.values()) {
-      if (mix.phase !== 'finished' && mix.phase !== 'cancelled') {
-        if (this.lastBestGsiState) {
-          mix.liveState = this.lastBestGsiState;
-          mix.gsi = this.lastBestGsiState;
-        }
-      }
-    }
-
     if (this.liveTrackers && this.liveTrackers.size > 0) {
       this.syncLiveTrackers(this.lastGsiState).catch(() => {});
     }
-
     if (liveState.isGameOver && ((liveState.scoreCT || 0) >= 13 || (liveState.scoreTR || 0) >= 13 || liveState.phase === 'gameover')) {
-      const statsSnapshot = this.lastBestGsiState || liveState;
-      const maxS = Math.max(statsSnapshot.scoreCT || 0, statsSnapshot.scoreTR || 0);
-      const minS = Math.min(statsSnapshot.scoreCT || 0, statsSnapshot.scoreTR || 0);
-      const matchFinishKey = `${statsSnapshot.mapName || 'cs2'}:${maxS}-${minS}`;
-
-      for (const mix of uniqueMixes.values()) {
-        if (mix.phase !== 'finished' && mix.phase !== 'cancelled' && mix._autoFinalizedKey !== matchFinishKey) {
-          if ((!mix.teamA?.players?.length || !mix.teamB?.players?.length) && mix.players?.length >= 2) {
-            this.balanceTeams(mix);
-          }
-          if (!mix.teamA?.players?.length || !mix.teamB?.players?.length) continue;
-
-          mix._autoFinalizedKey = matchFinishKey;
-          mix.liveState = statsSnapshot;
-          mix.gsi = statsSnapshot;
-
-          const winnerRes = determineMatchWinner(mix, statsSnapshot);
-          const score = `${maxS}-${minS}`;
-          const targetChannelId = mix.channelId;
-
-          (async () => {
-            try {
-              let channel = targetChannelId ? this.client?.channels?.cache?.get(targetChannelId) : null;
-              if (!channel && targetChannelId && this.client?.channels?.fetch) {
-                channel = await this.client.channels.fetch(targetChannelId).catch(() => null);
-              }
-              const res = await this.recordMatchResult(
-                mix,
-                winnerRes.winnerLetter,
-                score,
-                { id: 'gsi_system', username: 'Valve CS2 GSI (Automático)' },
-                channel,
-                statsSnapshot.mapName
-              );
-              if (res.success && channel) {
-                await channel.send({
-                  content: `\ud83e\udd16 \ud83d\udce1 **[FIM DE JOGO DETECTADO NO CS2]** Partida finalizada automaticamente no mapa **${normalizeMapName(statsSnapshot.mapName || 'CS2')}**!\n\ud83c\udfc6 **Placar Oficial:** \`${score}\` \u2022 **MVP** e **Bagre** coroados automaticamente pelas estat\u00edsticas da partida:`,
-                  embeds: res.embeds,
-                  components: res.components,
-                });
-              }
-              if (this.config.autoMoveVoice && channel?.guild) {
-                await this.executeVoiceReturnToLobby(channel.guild, mix).catch(() => {});
-              }
-            } catch (err) {
-              console.warn('[DISCORD BOT GSI AUTO-RESULT ERROR]:', err.message);
-            }
-          })();
-          break;
-        }
+      const snap = this.lastBestGsiState || liveState;
+      const maxS = Math.max(snap.scoreCT || 0, snap.scoreTR || 0);
+      const minS = Math.min(snap.scoreCT || 0, snap.scoreTR || 0);
+      const key = activeMix.id + ':' + (snap.mapName || 'cs2') + ':' + maxS + '-' + minS;
+      if (activeMix.phase === 'live' && activeMix._autoFinalizedKey !== key) {
+        activeMix._autoFinalizedKey = key;
+        activeMix.liveState = snap;
+        activeMix.gsi = snap;
+        const winnerRes = determineMatchWinner(activeMix, snap);
+        const score = maxS + '-' + minS;
+        const chId = activeMix.channelId;
+        (async () => {
+          try {
+            let ch = chId ? this.client?.channels?.cache?.get(chId) : null;
+            if (!ch && chId && this.client?.channels?.fetch) ch = await this.client.channels.fetch(chId).catch(() => null);
+            const res = await this.recordMatchResult(activeMix, winnerRes.winnerLetter, score, { id: 'gsi_system', username: 'Valve CS2 GSI' }, ch, snap.mapName);
+            if (res.success && ch) await ch.send({ content: '**[FIM DO MIX DETECTADO NO CS2]** Placar final: ' + score, embeds: res.embeds, components: res.components });
+            this.stopAllLiveMonitoring();
+            if (this.config.autoMoveVoice && ch?.guild) await this.executeVoiceReturnToLobby(ch.guild, activeMix).catch(() => {});
+          } catch (_) {}
+        })();
       }
     }
-
-    this.syncLiveTrackers(this.lastGsiState).catch(() => {});
   }
+
   buildGsiEmbed() {
     const isOnline = Boolean(
       this.lastGsiState && Date.now() - (this.lastGsiState.receivedAt || 0) < 60000
