@@ -1821,11 +1821,13 @@ class DiscordBotManager {
   setupEventHandlers() {
     const readyEvent = Events.ClientReady || 'clientReady';
     this.client.on(readyEvent, () => {
-      this.client.user?.setActivity('CS2 Mix 5v5 • /mix ou @cs hub', { type: 0 });
+      this.client.user?.setActivity('CS2 Mix 5v5 \u2022 /mix ou @cs hub', { type: 0 });
       this.registerSlashCommands().catch(() => {});
       this.startScheduledDealsMonitor();
+      if (typeof this.startCs2UpdateRadarMonitor === 'function') {
+        this.startCs2UpdateRadarMonitor();
+      }
     });
-
     // Handle Text Messages with Prefix '!'
     this.client.on('messageCreate', async (message) => {
       try {
@@ -7297,20 +7299,6 @@ class DiscordBotManager {
 
         await this.dispatchAutomaticDealsDrop(currentCat);
 
-        // Check for new official CS2 patch updates from Valve
-        try {
-          const patch = await cs2NewsRadar.fetchLatestPatch();
-          if (patch && patch.isNew) {
-            const { embeds, components } = cs2NewsRadar.buildEmbed(patch);
-            for (const [, guild] of this.client.guilds.cache) {
-              const channel = await this.getOrCreateDealsChannel(guild);
-              if (channel) {
-                await channel.send({ content: '🚨 **NOVA ATUALIZAÇÃO OFICIAL DO CS2 LANÇADA PELA VALVE!**', embeds, components }).catch(() => {});
-              }
-            }
-            cs2NewsRadar.saveState(patch.gid);
-          }
-        } catch (e) {}
       } catch (err) {
         console.warn('[DISCORD BOT] Erro ao disparar alertas de ofertas:', err.message);
       }
@@ -7437,14 +7425,128 @@ class DiscordBotManager {
   // CS2 VALVE PATCH NOTES & UPDATE RADAR
   // ==========================================
 
+  async resolveGeneralChatChannel(guild) {
+    if (!guild) return null;
+    try {
+      const customId = this.config.patchNotesChannels?.[guild.id] || this.config.defaultChannelId;
+      if (customId) {
+        const ch = guild.channels.cache.get(customId) || (await guild.channels.fetch(customId).catch(() => null));
+        if (ch && ch.isTextBased()) return ch;
+      }
+
+      if (guild.channels.cache.size === 0) {
+        await guild.channels.fetch().catch(() => {});
+      }
+
+      const textChannels = guild.channels.cache.filter(
+        (c) =>
+          c &&
+          c.type === ChannelType.GuildText &&
+          !/oferta|promoc|desconto|regra|aviso|log/i.test(c.name || '')
+      );
+
+      // Prioridade 1: Canal chamado 'geral', 'chat-geral', 'bate-papo', 'chat', 'principal'
+      const generalCh =
+        textChannels.find((c) => /^(chat[-_]?geral|geral|bate[-_]?papo|chat|principal)$/i.test(c.name.replace(/^[^a-zA-Z0-9]+/, ''))) ||
+        textChannels.find((c) => /geral|bate[-_]?papo|principal/i.test(c.name)) ||
+        textChannels.find((c) => /cs2|mix|lobby/i.test(c.name));
+
+      if (generalCh) return generalCh;
+
+      if (guild.systemChannel && guild.systemChannel.isTextBased()) {
+        return guild.systemChannel;
+      }
+
+      return textChannels.first() || null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  async checkAndDispatchCs2Updates(forcePost = false) {
+    try {
+      if (!this.client || !this.client.isReady()) return false;
+      const patch = await cs2NewsRadar.fetchLatestPatch();
+      if (!patch || !patch.gid) return false;
+
+      if (!forcePost && !patch.isNew) {
+        if (patch.isFirstBoot) {
+          cs2NewsRadar.saveState(patch.gid);
+        }
+        return false;
+      }
+
+      cs2NewsRadar.saveState(patch.gid);
+      const { embeds, components } = cs2NewsRadar.buildEmbed(patch);
+
+      for (const [, guild] of this.client.guilds.cache) {
+        const channel = await this.resolveGeneralChatChannel(guild);
+        if (channel) {
+          await channel
+            .send({
+              content: `\ud83d\udea8 \ud83c\udfae **NOVA ATUALIZA\u00c7\u00c3O OFICIAL DO COUNTER-STRIKE 2 LAN\u00c7ADA PELA VALVE!**\nConfira abaixo todos os detalhes traduzidos para Portugu\u00eas (PT-BR):`,
+              embeds,
+              components,
+            })
+            .catch((e) => console.warn(`[CS2 NEWS] Falha ao enviar no canal #${channel.name}:`, e.message));
+        }
+      }
+      return true;
+    } catch (err) {
+      console.warn('[CS2 NEWS MONITOR] Aviso:', err.message);
+      return false;
+    }
+  }
+
+  startCs2UpdateRadarMonitor() {
+    if (this.cs2UpdateRadarInterval) clearInterval(this.cs2UpdateRadarInterval);
+
+    setTimeout(() => {
+      this.checkAndDispatchCs2Updates(false).catch(() => {});
+    }, 12000);
+
+    // Verifica na API Oficial da Valve a cada 10 minutos
+    this.cs2UpdateRadarInterval = setInterval(() => {
+      this.checkAndDispatchCs2Updates(false).catch(() => {});
+    }, 10 * 60 * 1000);
+  }
+
   async prefixPatchNotes(message) {
     try {
+      const rawText = (message.content || '').trim();
+      const parts = rawText.split(/\s+/);
+      const sub = (parts[1] || '').toLowerCase();
+
+      if (sub === 'canal' || sub === 'channel') {
+        const mentioned = message.mentions.channels.first();
+        const targetCh = mentioned || message.channel;
+        this.config.patchNotesChannels = this.config.patchNotesChannels || {};
+        if (message.guild?.id) {
+          this.config.patchNotesChannels[message.guild.id] = targetCh.id;
+          this.saveConfig({ patchNotesChannels: this.config.patchNotesChannels });
+        }
+        return message.reply(
+          `\u2705 Canal de atualiza\u00e7\u00f5es autom\u00e1ticas do CS2 definido para <#${targetCh.id}>! Assim que a Valve lan\u00e7ar qualquer update novo, o bot postar\u00e1 traduzido aqui.`
+        );
+      }
+
+      if (sub === 'postar' || sub === 'geral' || sub === 'testar') {
+        await this.checkAndDispatchCs2Updates(true);
+        const ch = await this.resolveGeneralChatChannel(message.guild);
+        return message.reply(
+          `\ud83d\udce2 A \u00faltima atualiza\u00e7\u00e3o oficial da Valve traduzida para PT-BR foi publicada no canal ${ch ? `<#${ch.id}>` : 'Geral'}!`
+        );
+      }
+
       const patchData = await cs2NewsRadar.fetchLatestPatch();
-      if (!patchData) return message.reply('⚠️ Nenhuma nota de atualização recente encontrada.');
+      if (!patchData) return message.reply('\u26a0\ufe0f Nenhuma nota de atualiza\u00e7\u00e3o recente encontrada.');
+      if (patchData.isFirstBoot && patchData.gid) {
+        cs2NewsRadar.saveState(patchData.gid);
+      }
       const { embeds, components } = cs2NewsRadar.buildEmbed(patchData);
       return message.reply({ embeds, components });
     } catch (err) {
-      return message.reply(`❌ Erro ao consultar notas de atualização: ${err.message}`);
+      return message.reply(`\u274c Erro ao consultar notas de atualiza\u00e7\u00e3o: ${err.message}`);
     }
   }
 
@@ -7452,18 +7554,20 @@ class DiscordBotManager {
     await interaction.deferReply();
     try {
       const patchData = await cs2NewsRadar.fetchLatestPatch();
-      if (!patchData) return interaction.editReply({ content: '⚠️ Nenhuma nota de atualização recente encontrada.' });
+      if (!patchData) return interaction.editReply({ content: '\u26a0\ufe0f Nenhuma nota de atualiza\u00e7\u00e3o recente encontrada.' });
+      if (patchData.isFirstBoot && patchData.gid) {
+        cs2NewsRadar.saveState(patchData.gid);
+      }
       const { embeds, components } = cs2NewsRadar.buildEmbed(patchData);
       return interaction.editReply({ embeds, components });
     } catch (err) {
-      return interaction.editReply({ content: `❌ Erro ao consultar notas de atualização: ${err.message}` });
+      return interaction.editReply({ content: `\u274c Erro ao consultar notas de atualiza\u00e7\u00e3o: ${err.message}` });
     }
   }
 
   // ==========================================
   // PRO MATCHES & HLTV BR ESPORTS AGENDA
   // ==========================================
-
   async prefixProMatches(message) {
     try {
       const matches = await proMatchesAgenda.getUpcomingMatches();
