@@ -2539,38 +2539,30 @@ app.post('/api/gsi', (req, res) => {
   res.json({ success: true });
 });
 
-// Cloud GSI Relay: Automatically bridges GSI telemetry from Render if local server is active
-const CLOUD_GSI_URL = process.env.CLOUD_GSI_URL || 'https://mix-cs2.onrender.com/api/gsi/status/MIX-PRO';
-let lastCloudGsiSync = 0;
+// Cloud GSI Relay: Only bridges GSI if local server is acting as active failover backup (when Cloud is DOWN)
+const CLOUD_BASE_URL = (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || 'https://mix-cs2.onrender.com').replace(/\/+$/, '');
+const CLOUD_HEALTH_URL = `${CLOUD_BASE_URL}/api/health`;
+const CLOUD_GSI_URL = process.env.CLOUD_GSI_URL || `${CLOUD_BASE_URL}/api/gsi/status/MIX-PRO`;
+const IS_LOCAL_PC = process.platform === 'win32' && !process.env.RENDER && !process.env.RAILWAY_ENVIRONMENT;
+let isCloudServerOnline = true;
+let cloudFailCount = 0;
 
-async function syncCloudGsiBridge() {
-  // If we already received fresh local GSI in the last 1.5 seconds, don't query cloud
-  if (discordBotManager.lastGsiState && Date.now() - (discordBotManager.lastGsiState.receivedAt || 0) < 1500) {
-    return;
-  }
+async function checkCloudServerHealth() {
+  if (!IS_LOCAL_PC) return true;
   try {
-    const res = await fetch(CLOUD_GSI_URL, { signal: AbortSignal.timeout(1500) });
+    const res = await fetch(CLOUD_HEALTH_URL, { signal: AbortSignal.timeout(3500) });
     if (res.ok) {
-      const data = await res.json();
-      if (data && data.connected && data.lastUpdate && data.lastUpdate > lastCloudGsiSync) {
-        lastCloudGsiSync = data.lastUpdate;
-        const liveState = {
-          ...data,
-          receivedAt: Date.now(),
-        };
-        setGsiState('MIX-PRO', liveState);
-        discordBotManager.handleGsiEvent('MIX-PRO', liveState);
-        io.emit('gsi_update', liveState);
-      }
+      cloudFailCount = 0;
+      isCloudServerOnline = true;
+      return true;
     }
-  } catch (err) {
-    // Silently continue if cloud is unreachable
+  } catch (_) {}
+  cloudFailCount += 1;
+  if (cloudFailCount >= 2) {
+    isCloudServerOnline = false;
   }
+  return isCloudServerOnline;
 }
-
-// Background sync every 750 milliseconds (sub-second ultra low latency)
-setInterval(syncCloudGsiBridge, 750);
-
 // Download ready-to-use CS2 .cfg for FireGames or local client
 app.get('/api/gsi/cfg/:roomId', (req, res) => {
   const roomId = req.params.roomId || 'MIX-PRO';
@@ -3095,17 +3087,37 @@ server.listen(PORT, '0.0.0.0', () => {
     const hasLocalToken = Boolean(discordBotManager.config.token || process.env.DISCORD_BOT_TOKEN);
     if (!hasLocalToken) return;
 
+    // Se estiver rodando no PC Local, verifica se o Servidor Online (Render/Railway) esta no ar!
+    // O PC Local fica em Standby e SO assume se o Servidor Online cair!
+    if (IS_LOCAL_PC) {
+      const onlineUp = await checkCloudServerHealth();
+      if (onlineUp) {
+        if (discordBotManager.getStatus().running) {
+          console.log('\u2601\ufe0f [FAILOVER] Servidor Online Principal detectado no ar! Colocando Bot Local em Standby para evitar duplicidade...');
+          await discordBotManager.stop().catch(() => {});
+        }
+        return;
+      }
+      if (!discordBotManager.getStatus().running) {
+        console.warn('\ud83d\udea8 [FAILOVER] Servidor Online fora do ar! Servidor Local assumindo o Bot do Discord automaticamente...');
+        await discordBotManager.start().catch((err) => {
+          console.warn('[DISCORD BOT] Aviso ao inicializar bot local em modo failover:', err.message);
+        });
+      }
+      return;
+    }
+
+    // No Servidor Online (Render/Railway), ele e o Principal e fica sempre ligado
     if (!discordBotManager.getStatus().running) {
       await discordBotManager.start().catch((err) => {
-        console.warn('[DISCORD BOT] Aviso ao inicializar bot local:', err.message);
+        console.warn('[DISCORD BOT] Aviso ao inicializar bot principal:', err.message);
       });
     }
   };
 
   ensureBotOnline();
-  setInterval(ensureBotOnline, 30000);
+  setInterval(ensureBotOnline, 20000);
 });
-
 // Graceful shutdown for Railway & container orchestrators
 const shutdown = (signal) => {
   console.log(`🛑 [CS2 MIX HUB] Recebido ${signal}, salvando mixes e encerrando servidor graciosamente...`);
