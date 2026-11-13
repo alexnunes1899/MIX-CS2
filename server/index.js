@@ -2014,7 +2014,7 @@ app.use(express.static(distPath, {
   }
 }));
 
-// Steam direct connect handler for Discord Bot 1-click launch (Native Steam Protocol Redirect)
+// Steam direct connect handler: Simple 1-click copy IP page
 app.get(['/connect', '/join-cs2'], (req, res) => {
   const rawIp = String(req.query.ip || '').trim();
   const queryPwd = String(req.query.pwd || req.query.password || '').trim();
@@ -2035,12 +2035,50 @@ app.get(['/connect', '/join-cs2'], (req, res) => {
   }
   cleanIp = cleanIp.replace(/[;'"]/g, '').trim();
 
-  const launchArgs = password ? `+connect ${cleanIp} +password ${password}` : `+connect ${cleanIp}`;
-  const steamUrl = `steam://rungame/730/76561202255233023/${encodeURIComponent(launchArgs)}`;
+  const consoleCmd = password ? `connect ${cleanIp}; password ${password}` : `connect ${cleanIp}`;
 
-  // Redirecionamento HTTP nativo direto para o protocolo da Steam (sem travar em pagina web)
-  res.writeHead(302, { Location: steamUrl });
-  res.end();
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.send(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>CS2 Mix Hub - IP Copiado</title>
+  <style>
+    body { background: #0b0f17; color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+    .card { background: #131b2e; border: 1px solid #1e293b; padding: 2.5rem; border-radius: 1rem; text-align: center; max-width: 480px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5); width: 90%; }
+    h1 { color: #10b981; font-size: 1.5rem; margin-bottom: 0.5rem; }
+    p { color: #94a3b8; font-size: 0.95rem; margin-bottom: 1.5rem; }
+    code { background: #0f172a; padding: 0.75rem 1rem; border-radius: 0.5rem; color: #fbbf24; font-size: 1.15rem; display: block; margin-bottom: 1.25rem; font-family: monospace; border: 1px solid #334155; word-break: break-all; }
+    .btn { display: block; width: 100%; box-sizing: border-box; background: #3b82f6; color: #fff; padding: 0.85rem 1.5rem; border-radius: 0.5rem; text-decoration: none; font-weight: bold; font-size: 1rem; border: none; cursor: pointer; transition: background 0.2s; }
+    .btn:hover { background: #2563eb; }
+    .success-badge { background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.4); color: #34d399; padding: 0.5rem 1rem; border-radius: 0.5rem; font-weight: bold; font-size: 0.9rem; margin-bottom: 1rem; display: inline-block; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="success-badge">[OK] IP COPIADO COM SUCESSO!</div>
+    <h1>CONEXAO AO SERVIDOR</h1>
+    <p>O comando de console foi copiado para a sua area de transferencia. Basta colar (Ctrl+V) no console do seu CS2:</p>
+    <code id="ipCode">${consoleCmd}</code>
+    <button onclick="copyIp()" class="btn">Copiar Novamente</button>
+  </div>
+  <script>
+    function copyIp() {
+      var text = ${JSON.stringify(consoleCmd)};
+      navigator.clipboard.writeText(text).then(function() {
+        var badge = document.querySelector('.success-badge');
+        badge.textContent = '[OK] COPIADO NOVAMENTE!';
+        setTimeout(function() { badge.textContent = '[OK] IP COPIADO COM SUCESSO!'; }, 2000);
+      });
+    }
+    window.onload = function() {
+      try {
+        navigator.clipboard.writeText(${JSON.stringify(consoleCmd)});
+      } catch (e) {}
+    };
+  </script>
+</body>
+</html>`);
 });
 
 // ==========================================// PLAYER PROFILE & GAMERS CLUB MODAL
