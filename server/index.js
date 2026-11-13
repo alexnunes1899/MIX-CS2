@@ -2014,7 +2014,7 @@ app.use(express.static(distPath, {
   }
 }));
 
-// Steam direct connect handler for Discord Bot 1-click launch (CS2 Native Protocol + Auto-Close Tab)
+// Steam direct connect handler for Discord Bot 1-click launch (CS2 Native Protocol + Instant Auto-Close)
 app.get(['/connect', '/join-cs2'], (req, res) => {
   const rawIp = String(req.query.ip || '').trim();
   const queryPwd = String(req.query.pwd || req.query.password || '').trim();
@@ -2044,41 +2044,19 @@ app.get(['/connect', '/join-cs2'], (req, res) => {
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Abrindo CS2...</title>
-  <style>
-    body { background: #090d16; color: #cbd5e1; font-family: system-ui, -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-    .box { text-align: center; padding: 1.5rem 2rem; border-radius: 0.75rem; background: #111827; border: 1px solid #1f2937; }
-    .title { color: #10b981; font-weight: 700; font-size: 1rem; margin-bottom: 0.35rem; }
-    .sub { font-size: 0.85rem; color: #94a3b8; margin-bottom: 0.75rem; }
-    a { color: #38bdf8; text-decoration: none; font-size: 0.85rem; font-weight: 600; }
-  </style>
+  <title>CS2</title>
+  <meta http-equiv="refresh" content="0;url=${steamUrl}">
 </head>
-<body>
-  <div class="box">
-    <div class="title">Abrindo mapa no Counter-Strike 2 via Steam...</div>
-    <div class="sub">Esta aba fechara automaticamente.</div>
-    <a id="launchLink" href="${steamUrl}">Clique aqui se a Steam nao abrir sozinha</a>
-  </div>
-  <iframe id="steamFrame" style="display:none;width:0;height:0;border:0;"></iframe>
+<body style="background:#090d16;margin:0;overflow:hidden;">
+  <iframe id="s" src="${steamUrl}" style="display:none;width:0;height:0;border:0;"></iframe>
   <script>
     (function() {
       var uri = ${JSON.stringify(steamUrl)};
       var cmd = ${JSON.stringify(consoleCmd)};
-      try {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(cmd).catch(function(){});
-        }
-      } catch (e) {}
-      try {
-        document.getElementById('steamFrame').src = uri;
-      } catch (e) {}
-      window.location.href = uri;
-      setTimeout(function() {
-        try { window.open('', '_self'); window.close(); } catch (e) {}
-      }, 900);
-      setTimeout(function() {
-        try { window.close(); } catch (e) {}
-      }, 2200);
+      try { if (navigator.clipboard) navigator.clipboard.writeText(cmd).catch(function(){}); } catch (e) {}
+      try { window.location.replace(uri); } catch (e) { window.location.href = uri; }
+      setTimeout(function() { try { window.open('', '_self'); window.close(); } catch (e) {} }, 400);
+      setTimeout(function() { try { window.close(); } catch (e) {} }, 1200);
     })();
   </script>
 </body>
