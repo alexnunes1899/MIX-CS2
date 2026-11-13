@@ -8,43 +8,46 @@ const __dirname = path.dirname(__filename);
 const STATE_FILE = path.join(__dirname, 'data', 'cs2NewsState.json');
 
 const CS2_PROTECTED_TERMS = [
-  { term: 'Dust II', token: '__CS2MAP_DUST2__' },
-  { term: 'Dust 2', token: '__CS2MAP_DUST2B__' },
-  { term: 'Mirage', token: '__CS2MAP_MIRAGE__' },
-  { term: 'Inferno', token: '__CS2MAP_INFERNO__' },
-  { term: 'Nuke', token: '__CS2MAP_NUKE__' },
-  { term: 'Ancient', token: '__CS2MAP_ANCIENT__' },
-  { term: 'Anubis', token: '__CS2MAP_ANUBIS__' },
-  { term: 'Vertigo', token: '__CS2MAP_VERTIGO__' },
-  { term: 'Overpass', token: '__CS2MAP_OVERPASS__' },
-  { term: 'Train', token: '__CS2MAP_TRAIN__' },
-  { term: 'Cache', token: '__CS2MAP_CACHE__' },
-  { term: 'Baggage', token: '__CS2MAP_BAGGAGE__' },
-  { term: 'Shoots', token: '__CS2MAP_SHOOTS__' },
-  { term: 'Italy', token: '__CS2MAP_ITALY__' },
-  { term: 'Office', token: '__CS2MAP_OFFICE__' },
-  { term: 'Pool Day', token: '__CS2MAP_POOLDAY__' },
-  { term: 'Thera', token: '__CS2MAP_THERA__' },
-  { term: 'Mills', token: '__CS2MAP_MILLS__' },
-  { term: 'Basalt', token: '__CS2MAP_BASALT__' },
-  { term: 'Edin', token: '__CS2MAP_EDIN__' },
-  { term: 'Sub-tick', token: '__CS2TERM_SUBTICK__' },
-  { term: 'sub-tick', token: '__CS2TERM_SUBTICK_L__' },
-  { term: 'Jumpthrow', token: '__CS2TERM_JUMPTHROW__' },
-  { term: 'jumpthrow', token: '__CS2TERM_JUMPTHROW_L__' },
-  { term: 'Premier', token: '__CS2TERM_PREMIER__' },
-  { term: 'Retake', token: '__CS2TERM_RETAKE__' },
-  { term: 'Retakes', token: '__CS2TERM_RETAKES__' },
-  { term: 'Deathmatch', token: '__CS2TERM_DM__' },
-  { term: 'Arms Race', token: '__CS2TERM_ARMSRACE__' },
-  { term: 'Wingman', token: '__CS2TERM_WINGMAN__' },
-  { term: 'Flashbang', token: '__CS2TERM_FLASH__' },
-  { term: 'Molotov', token: '__CS2TERM_MOLOTOV__' },
-  { term: 'Smoke', token: '__CS2TERM_SMOKE__' },
-  { term: 'Decoy', token: '__CS2TERM_DECOY__' },
-  { term: 'Zeus x27', token: '__CS2TERM_ZEUS__' },
-  { term: 'Desert Eagle', token: '__CS2TERM_DEAGLE__' },
-  { term: 'StatTrak', token: '__CS2TERM_STATTRAK__' },
+  'Dust II',
+  'Dust 2',
+  'Mirage',
+  'Inferno',
+  'Nuke',
+  'Ancient',
+  'Anubis',
+  'Vertigo',
+  'Overpass',
+  'Train',
+  'Cache',
+  'Baggage',
+  'Shoots',
+  'Italy',
+  'Office',
+  'Pool Day',
+  'Thera',
+  'Mills',
+  'Basalt',
+  'Edin',
+  'Sub-tick',
+  'sub-tick',
+  'Jumpthrow',
+  'jumpthrow',
+  'Premier',
+  'Retake',
+  'Retakes',
+  'Deathmatch',
+  'Arms Race',
+  'Wingman',
+  'Flashbang',
+  'Molotov',
+  'Smoke',
+  'Decoy',
+  'Zeus x27',
+  'Desert Eagle',
+  'StatTrak',
+  'Counter-Strike 2',
+  'Steam Workshop',
+  'Workshop',
 ];
 
 export class CS2NewsRadarService {
@@ -93,71 +96,196 @@ export class CS2NewsRadarService {
       .trim();
   }
 
+  isAlreadyPortuguese(text) {
+    if (!text) return false;
+    const sample = text.toLowerCase();
+    const ptMarkers = [
+      'corrigido',
+      'corrigida',
+      'corrigidos',
+      'adicionado',
+      'adicionada',
+      'adicionados',
+      'atualizado',
+      'atualizada',
+      'atualizados',
+      'ajustado',
+      'ajustada',
+      'melhorado',
+      'melhorada',
+      'reduzido',
+      'aumentado',
+      'removido',
+      'jogadores',
+      'partida',
+      'partidas',
+      'armas',
+      'mapa',
+      'arquivos de',
+      'notas de',
+    ];
+    let hits = 0;
+    for (const w of ptMarkers) {
+      if (sample.includes(w)) hits++;
+    }
+    return hits >= 2;
+  }
+
   protectCs2Terms(text) {
     let out = text;
-    for (const item of CS2_PROTECTED_TERMS) {
-      const regex = new RegExp(`\\b${item.term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g');
-      out = out.replace(regex, item.token);
-    }
+    CS2_PROTECTED_TERMS.forEach((term, idx) => {
+      const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(`\\b${escaped}\\b`, 'g');
+      out = out.replace(regex, `[T${idx}]`);
+    });
     return out;
   }
 
   restoreCs2Terms(text) {
     let out = text;
-    for (const item of CS2_PROTECTED_TERMS) {
-      const regex = new RegExp(item.token, 'gi');
-      out = out.replace(regex, item.term);
-    }
+    CS2_PROTECTED_TERMS.forEach((term, idx) => {
+      const regex = new RegExp(`\\[\\s*T${idx}\\s*\\]`, 'gi');
+      out = out.replace(regex, term);
+    });
     return out;
   }
 
   offlineTranslateFallback(text) {
     return text
-      .replace(/\bRelease Notes for\b/gi, 'Notas de Atualizacao de')
-      .replace(/\bCounter-Strike 2 Update\b/gi, 'Atualizacao do Counter-Strike 2')
-      .replace(/\bFixed a bug where\b/gi, 'Corrigido um bug onde')
-      .replace(/\bFixed a case where\b/gi, 'Corrigido um problema em que')
-      .replace(/\bFixed an issue where\b/gi, 'Corrigido um erro em que')
+      .replace(/\bRelease Notes for\b/gi, 'Notas de Atualiza\u00e7\u00e3o de')
+      .replace(/\bCounter-Strike 2 Update\b/gi, 'Atualiza\u00e7\u00e3o do Counter-Strike 2')
+      .replace(/\bFixed a bug where\b/gi, 'Corrigido um bug em que')
+      .replace(/\bFixed a case where\b/gi, 'Corrigido um caso em que')
+      .replace(/\bFixed an issue where\b/gi, 'Corrigido um problema em que')
+      .replace(/\bFixed an issue with\b/gi, 'Corrigido um problema com')
       .replace(/\bFixed various\b/gi, 'Corrigidos diversos')
-      .replace(/\bFixed\b/g, 'Corrigido:')
-      .replace(/\bAdded\b/g, 'Adicionado:')
-      .replace(/\bUpdated\b/g, 'Atualizado:')
-      .replace(/\bImproved\b/g, 'Melhorado:')
-      .replace(/\bAdjusted\b/g, 'Ajustado:')
-      .replace(/\bReduced\b/g, 'Reduzido:')
-      .replace(/\bIncreased\b/g, 'Aumentado:')
-      .replace(/\bRemoved\b/g, 'Removido:')
-      .replace(/\bEnabled\b/g, 'Ativado:')
-      .replace(/\bDisabled\b/g, 'Desativado:')
-      .replace(/\bUpdated localization files\b/gi, 'Arquivos de traducao e localizacao atualizados');
+      .replace(/\bFixed\b/gi, 'Corrigido')
+      .replace(/\bAdded\b/gi, 'Adicionado')
+      .replace(/\bUpdated localization files\b/gi, 'Arquivos de localiza\u00e7\u00e3o (tradu\u00e7\u00e3o) atualizados')
+      .replace(/\bUpdated\b/gi, 'Atualizado')
+      .replace(/\bImproved\b/gi, 'Melhorado')
+      .replace(/\bAdjusted\b/gi, 'Ajustado')
+      .replace(/\bReduced\b/gi, 'Reduzido')
+      .replace(/\bIncreased\b/gi, 'Aumentado')
+      .replace(/\bRemoved\b/gi, 'Removido')
+      .replace(/\bEnabled\b/gi, 'Ativado')
+      .replace(/\bDisabled\b/gi, 'Desativado')
+      .replace(/\bAllowed\b/gi, 'Permitido')
+      .replace(/\bPrevented\b/gi, 'Impedido')
+      .replace(/\bRestored\b/gi, 'Restaurado')
+      .replace(/\bReplaced\b/gi, 'Substitu\u00eddo')
+      .replace(/\bplayers\b/gi, 'jogadores')
+      .replace(/\bplayer\b/gi, 'jogador')
+      .replace(/\bweapons\b/gi, 'armas')
+      .replace(/\bweapon\b/gi, 'arma')
+      .replace(/\bserver\b/gi, 'servidor')
+      .replace(/\bservers\b/gi, 'servidores')
+      .replace(/\bround\b/gi, 'round')
+      .replace(/\bmatch\b/gi, 'partida')
+      .replace(/\bmatches\b/gi, 'partidas');
   }
 
-  async translateTextToPtBr(rawText) {
-    if (!rawText || !rawText.trim()) return '';
-    try {
-      const protectedText = this.protectCs2Terms(rawText);
-      const url =
-        'https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=pt-BR&dt=t&q=' +
-        encodeURIComponent(protectedText);
+  async translateSingleChunkPtBr(chunkText) {
+    if (!chunkText || !chunkText.trim()) return '';
+    const protectedText = this.protectCs2Terms(chunkText);
 
-      const res = await fetch(url, {
-        headers: { 'User-Agent': 'Mozilla/5.0' },
-        signal: AbortSignal.timeout(4500),
+    // Tentativa 1: Google Translate via POST (sem limite de tamanho de URL)
+    try {
+      const bodyParams = new URLSearchParams();
+      bodyParams.append('client', 'gtx');
+      bodyParams.append('sl', 'en');
+      bodyParams.append('tl', 'pt-BR');
+      bodyParams.append('dt', 't');
+      bodyParams.append('q', protectedText);
+
+      const res = await fetch('https://translate.googleapis.com/translate_a/single', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        },
+        body: bodyParams.toString(),
+        signal: AbortSignal.timeout(5500),
       });
 
-      if (!res.ok) {
-        return this.restoreCs2Terms(this.offlineTranslateFallback(protectedText));
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && Array.isArray(data[0])) {
+          const translated = data[0].map((part) => (Array.isArray(part) ? part[0] : '')).join('');
+          const restored = this.restoreCs2Terms(translated).trim();
+          if (restored && restored.toLowerCase() !== chunkText.trim().toLowerCase()) {
+            return restored;
+          }
+        }
       }
+    } catch (_) {}
 
-      const data = await res.json();
-      if (Array.isArray(data) && Array.isArray(data[0])) {
-        const translated = data[0].map((part) => (Array.isArray(part) ? part[0] : '')).join('');
-        return this.restoreCs2Terms(translated);
+    // Tentativa 2: MyMemory Translation API (Backup gratuito e confiavel)
+    try {
+      const mmUrl =
+        'https://api.mymemory.translated.net/get?q=' +
+        encodeURIComponent(protectedText.slice(0, 480)) +
+        '&langpair=en|pt-BR';
+      const mmRes = await fetch(mmUrl, {
+        headers: { 'User-Agent': 'CS2-Mix-Hub-Bot' },
+        signal: AbortSignal.timeout(5000),
+      });
+      if (mmRes.ok) {
+        const mmData = await mmRes.json();
+        const translatedText = mmData?.responseData?.translatedText;
+        if (translatedText && !/MYMEMORY WARNING/i.test(translatedText)) {
+          const restored = this.restoreCs2Terms(translatedText).trim();
+          if (restored && restored.toLowerCase() !== chunkText.trim().toLowerCase()) {
+            return restored;
+          }
+        }
       }
-      return this.restoreCs2Terms(this.offlineTranslateFallback(protectedText));
-    } catch (e) {
-      return this.offlineTranslateFallback(rawText);
+    } catch (_) {}
+
+    // Tentativa 3: Dicionario offline de termos CS2
+    return this.restoreCs2Terms(this.offlineTranslateFallback(protectedText));
+  }
+
+  async translateLinesToPtBr(linesArray) {
+    if (!Array.isArray(linesArray) || linesArray.length === 0) return [];
+    const results = new Array(linesArray.length);
+
+    // Agrupa em lotes pequenos de ate 420 caracteres para garantir traducao linha a linha sem falha
+    const batches = [];
+    let currentBatch = [];
+    let currentLen = 0;
+
+    for (let i = 0; i < linesArray.length; i++) {
+      const line = linesArray[i];
+      if (currentBatch.length > 0 && currentLen + line.length > 420) {
+        batches.push(currentBatch);
+        currentBatch = [];
+        currentLen = 0;
+      }
+      currentBatch.push({ index: i, text: line });
+      currentLen += line.length + 2;
     }
+    if (currentBatch.length > 0) {
+      batches.push(currentBatch);
+    }
+
+    for (const batch of batches) {
+      const joined = batch.map((item) => item.text).join('\n');
+      const translatedBlock = await this.translateSingleChunkPtBr(joined);
+      const splitLines = translatedBlock.split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+
+      if (splitLines.length === batch.length) {
+        for (let j = 0; j < batch.length; j++) {
+          results[batch[j].index] = splitLines[j];
+        }
+      } else {
+        for (const item of batch) {
+          results[item.index] = await this.translateSingleChunkPtBr(item.text);
+        }
+      }
+    }
+
+    return results;
   }
 
   async formatAndTranslatePatch(gid, rawTitle, rawContents) {
@@ -214,21 +342,23 @@ export class CS2NewsRadarService {
           processedLines.push(`\n__**\ud83d\udccc [${rawH}]**__`);
         }
       } else {
-        const cleanBullet = line.replace(/^[-\u2022]\s*/, '').trim();
+        const cleanBullet = line.replace(/^[-\u2022*]\s*/, '').trim();
+        if (!cleanBullet) continue;
         processedLines.push(`\u2022 ${cleanBullet}`);
         linesToTranslate.push(cleanBullet);
         lineIndicesToTranslate.push(processedLines.length - 1);
       }
     }
 
-    if (linesToTranslate.length > 0) {
-      const joinedToTranslate = linesToTranslate.slice(0, 35).join('\n');
-      const translatedJoined = await this.translateTextToPtBr(joinedToTranslate);
-      const translatedSplits = translatedJoined.split(/\r?\n/);
+    const alreadyPt = this.isAlreadyPortuguese(linesToTranslate.join(' '));
+
+    if (!alreadyPt && linesToTranslate.length > 0) {
+      const targetSlice = linesToTranslate.slice(0, 35);
+      const translatedSplits = await this.translateLinesToPtBr(targetSlice);
 
       for (let idx = 0; idx < Math.min(lineIndicesToTranslate.length, translatedSplits.length); idx++) {
         const targetPos = lineIndicesToTranslate[idx];
-        const trLine = (translatedSplits[idx] || '').replace(/^[-\u2022]\s*/, '').trim();
+        const trLine = (translatedSplits[idx] || '').replace(/^[-\u2022*]\s*/, '').trim();
         if (trLine) {
           processedLines[targetPos] = `\u2022 ${trLine}`;
         }
@@ -240,22 +370,23 @@ export class CS2NewsRadarService {
       finalBody = finalBody.slice(0, 3320) + '\n\n*(...leia a nota completa no link oficial da Valve abaixo)*';
     }
 
-    let translatedTitle = rawTitle || 'Atualizacao Oficial do Counter-Strike 2';
+    let translatedTitle = rawTitle || 'Atualiza\u00e7\u00e3o Oficial do Counter-Strike 2';
     if (/release notes for/i.test(translatedTitle)) {
       const datePart = translatedTitle.replace(/release notes for/i, '').trim();
-      translatedTitle = `Notas de Atualizacao do CS2 (${datePart})`;
+      const ptDate = await this.translateSingleChunkPtBr(datePart);
+      translatedTitle = `Notas de Atualiza\u00e7\u00e3o do CS2 (${ptDate || datePart})`;
     } else if (/counter-strike 2 update/i.test(translatedTitle)) {
-      translatedTitle = 'Atualizacao Oficial do Counter-Strike 2';
-    } else {
-      translatedTitle = await this.translateTextToPtBr(translatedTitle);
+      translatedTitle = 'Atualiza\u00e7\u00e3o Oficial do Counter-Strike 2';
+    } else if (!this.isAlreadyPortuguese(translatedTitle)) {
+      translatedTitle = await this.translateSingleChunkPtBr(translatedTitle);
     }
 
     const result = {
       translatedTitle: translatedTitle.trim(),
-      formattedNotes: finalBody || 'Notas de atualizacao disponibilizadas pela Valve no Steam.',
+      formattedNotes: finalBody || 'Notas de atualiza\u00e7\u00e3o disponibilizadas pela Valve no Steam.',
     };
 
-    if (gid) {
+    if (gid && this.isAlreadyPortuguese(result.formattedNotes)) {
       this.translationCache.set(String(gid), result);
     }
     return result;
@@ -263,9 +394,10 @@ export class CS2NewsRadarService {
 
   async fetchLatestPatch() {
     try {
-      const url = 'https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=730&count=15&feeds=steam_community_announcements&format=json';
+      // 1. Consulta a API Oficial da Valve / Steam para o AppID 730 (Counter-Strike 2) com parametro l=brazilian
+      const url = 'https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=730&count=15&feeds=steam_community_announcements&l=brazilian&format=json';
       const res = await fetch(url, {
-        headers: { 'User-Agent': 'CS2-Mix-Hub-Bot' },
+        headers: { 'User-Agent': 'CS2-Mix-Hub-Bot', 'Accept-Language': 'pt-BR,pt;q=0.9' },
         signal: AbortSignal.timeout(6000),
       });
 
@@ -277,7 +409,7 @@ export class CS2NewsRadarService {
       const newsitems = json.appnews?.newsitems || [];
 
       const officialUpdate =
-        newsitems.find((item) => /release notes|counter-strike 2 update|patch/i.test(item.title)) ||
+        newsitems.find((item) => /release notes|notas de atualiza|counter-strike 2 update|atualiza/i.test(item.title)) ||
         newsitems.find((item) => item.feedname === 'steam_community_announcements') ||
         newsitems[0];
 
@@ -288,17 +420,21 @@ export class CS2NewsRadarService {
       let rawContents = officialUpdate.contents || '';
       let rawTitle = officialUpdate.title || 'Counter-Strike 2 Update';
 
+      // 2. Busca tambem no endpoint oficial Partner Events do Steam com l=brazilian (parametro nativo da Valve)
       try {
-        const ptUrl = 'https://store.steampowered.com/events/ajaxgetadjacentpartnerevents/?appid=730&count_before=0&count_after=5&lang=brazilian';
+        const ptUrl = 'https://store.steampowered.com/events/ajaxgetadjacentpartnerevents/?appid=730&count_before=0&count_after=6&l=brazilian';
         const ptRes = await fetch(ptUrl, {
-          headers: { 'Accept-Language': 'pt-BR,pt;q=0.9' },
-          signal: AbortSignal.timeout(3500),
+          headers: { 'Accept-Language': 'pt-BR,pt;q=0.9', 'User-Agent': 'Mozilla/5.0' },
+          signal: AbortSignal.timeout(4000),
         });
         if (ptRes.ok) {
           const ptJson = await ptRes.json();
           const events = ptJson?.events || [];
           const matchedEvent = events.find(
-            (ev) => String(ev.announcement_body?.gid) === String(officialUpdate.gid) || String(ev.gid) === String(officialUpdate.gid)
+            (ev) =>
+              String(ev.announcement_body?.gid) === String(officialUpdate.gid) ||
+              String(ev.gid) === String(officialUpdate.gid) ||
+              (ev.announcement_body?.posttime && Math.abs(Number(ev.announcement_body.posttime) - Number(officialUpdate.date)) < 1800)
           );
           if (matchedEvent && matchedEvent.announcement_body?.body) {
             rawContents = matchedEvent.announcement_body.body;
@@ -356,12 +492,12 @@ export class CS2NewsRadarService {
       .setThumbnail('https://cdn.cloudflare.steamstatic.com/apps/csgo/images/csgo_react/global/logo_cs_long.svg')
       .setDescription(
         `**\ud83d\udcc5 Lan\u00e7amento:** \`${patchData.formattedDate} (Hor\u00e1rio de Bras\u00edlia)\`\n` +
-        `**\ud83c\udfae Fonte Oficial:** \`Valve Corporation \u2022 Traduzido para PT-BR\`\n` +
+        `**\ud83c\udfae Fonte Oficial:** \`Valve Corporation \u2022 Portugu\u00eas (PT-BR)\`\n` +
         `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\n\n` +
         patchData.formattedNotes
       )
       .setFooter({
-        text: 'Radar Oficial Valve CS2 \u2022 Tradu\u00e7\u00e3o Autom\u00e1tica PT-BR',
+        text: 'Radar Oficial Valve CS2 \u2022 Tradu\u00e7\u00e3o PT-BR',
         iconURL: 'https://cdn.cloudflare.steamstatic.com/apps/csgo/images/csgo_react/icons/valve_logo.png',
       })
       .setTimestamp(new Date(patchData.date * 1000));
