@@ -46,7 +46,6 @@ import { SteamScannerService } from './steamScanner.js';
 import { cs2NewsRadar } from './cs2NewsRadar.js';
 import { proMatchesAgenda } from './proMatchesAgenda.js';
 import { freeGamesRadar } from './freeGamesRadar.js';
-import { cs2CaseSimulator } from './cs2CaseSimulator.js';
 import { communityClips } from './communityClips.js';
 import { bagreVoteService } from './bagreVote.js';
 import { executeRconCommand } from './rcon.js';
@@ -3292,7 +3291,8 @@ class DiscordBotManager {
     mix.bagre = null;
     mix.gsi = null;
     mix.liveState = null;
-
+    mix._autoFinalizedKey = null;
+    mix.narrationEnabled = false;
     mix.veto = {
       currentTurn: 'teamA',
       bannedMaps: [],
@@ -4381,115 +4381,30 @@ class DiscordBotManager {
   }
   async startAutomaticLiveMonitoring(mix, channel, guild) {
     if (!channel || !mix) return;
-
     try {
-      // 1. Send live match tracker message & register it in Discord message tracker engine
-      const embed = this.buildLiveMatchEmbed('Sistema CS2 Mix Hub', null, true, mix);
-      const row = this.buildLiveMatchButtons(Boolean(this.lastGsiState?.player?.name), true);
-
-      const monitorMsg = await channel.send({
-        content: `📡 **MONITORAMENTO AUTOMÁTICO INICIADO!** O bot está acompanhando a partida em tempo real:`,
-        embeds: [embed],
-        components: [row],
-      }).catch((err) => {
-        console.warn('[BOT] Erro ao enviar embed de monitoramento automático:', err.message);
-        return null;
-      });
-
-      if (monitorMsg) {
-        this.registerLiveTracker(monitorMsg, 'Sistema CS2 Mix Hub', null, true);
-      }
-
-      // 2. Check if Server IP is defined. If missing, prompt players in chat with 1-click modal button
       const currentIp = (mix.serverIp || this.config.serverConnect || '').trim();
       if (!currentIp) {
         const ipEmbed = new EmbedBuilder()
           .setColor(0xeab308)
-          .setTitle('⚠️ IP do Servidor CS2 Não Definido')
+          .setTitle('\u26a0\ufe0f IP do Servidor CS2 N\u00e3o Definido')
           .setDescription(
-            `Para que os 10 jogadores possam conectar com 1 clique (Steam Direct) e o bot possa exibir o ping e status do servidor, informe o IP agora!\n\n` +
-            `👉 Clique no botão abaixo para preencher ou digite: \`!servidor <ip:porta>\``
+            'Para liberar a conex\u00e3o 1-Clique (Steam Direct) e o controle RCON, informe o IP abaixo ou digite `!servidor <ip:porta>`.'
           );
 
         const ipRow = new ActionRowBuilder().addComponents(
           new ButtonBuilder()
             .setCustomId(`mix_set_ip:${mix.id}`)
-            .setLabel('⚙️ Definir IP do Servidor')
+            .setLabel('Definir IP do Servidor')
             .setStyle(ButtonStyle.Primary)
-            .setEmoji('⚙️')
+            .setEmoji('\u2699\ufe0f')
         );
 
         await channel.send({ embeds: [ipEmbed], components: [ipRow] }).catch(() => {});
       }
-
-      // 3. Check if Valve GSI signal is currently received from any player's PC
-      const isGsiActive = Boolean(
-        this.lastGsiState &&
-        (Date.now() - (this.lastGsiState.receivedAt || 0) < 60000) &&
-        this.lastGsiState.player?.name
-      );
-
-      const domain = this.config.webUrl || this.getPublicWebUrl('');
-      const roomId = mix.id || 'MIX-PRO';
-      const installerUrl = `${domain}/api/gsi/installer/${roomId}`;
-      const cfgUrl = `${domain}/api/gsi/cfg/${roomId}`;
-
-      if (!isGsiActive) {
-        const gsiAlertEmbed = new EmbedBuilder()
-          .setColor(0xf97316)
-          .setTitle('📡 Aguardando Sinal GSI dos Jogadores (Vida & Dinheiro em Tempo Real)')
-          .setDescription(
-            `Nenhum computador de jogador está enviando telemetria do CS2 no momento.\n\n` +
-            `Para o bot atualizar automaticamente o **placar**, a **vida (HP)**, o **dinheiro ($)** e as **kills** de cada jogador rodada a rodada, basta **1 jogador** da partida ter o GSI ativado!\n\n` +
-            `⚡ **Instalação Rápida em 1 Clique (Automática):**\n` +
-            `Clique no botão abaixo para baixar o instalador automático (\`.bat\`) e execute-o. Ele localiza a pasta do seu CS2 e instala tudo sozinho!`
-          );
-
-        const gsiButtonsRow = new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setLabel('⚡ Instalar GSI (1-Clique .bat)')
-            .setStyle(ButtonStyle.Link)
-            .setURL(installerUrl),
-          new ButtonBuilder()
-            .setLabel('📥 Baixar gamestate_integration.cfg')
-            .setStyle(ButtonStyle.Link)
-            .setURL(cfgUrl),
-          new ButtonBuilder()
-            .setCustomId('gsi_help_info')
-            .setLabel('❓ Como Funciona?')
-            .setStyle(ButtonStyle.Secondary)
-        );
-
-        await channel.send({ embeds: [gsiAlertEmbed], components: [gsiButtonsRow] }).catch(() => {});
-
-        // 4. Follow-up check after 35 seconds to notify if connected or re-prompt captains
-        setTimeout(async () => {
-          try {
-            const activeNow = Boolean(
-              this.lastGsiState &&
-              (Date.now() - (this.lastGsiState.receivedAt || 0) < 60000) &&
-              this.lastGsiState.player?.name
-            );
-
-            if (!activeNow && mix.phase === 'live') {
-              const capA = mix.teamA?.captain?.id ? `<@${mix.teamA.captain.id}>` : 'Time A';
-              const capB = mix.teamB?.captain?.id ? `<@${mix.teamB.captain.id}>` : 'Time B';
-              await channel.send({
-                content: `⚠️ **Aviso GSI**: Ainda não detectamos sinal do CS2 de nenhum jogador. ${capA} e ${capB}, peçam para alguém da partida rodar o instalador de 1-Clique acima para ativar o radar e estatísticas automáticas!`,
-              }).catch(() => {});
-            } else if (activeNow && mix.phase === 'live') {
-              await channel.send({
-                content: `✅ **Sinal GSI detectado com sucesso!** O bot agora está recebendo vida, dinheiro e rounds diretamente do CS2! 🎯`,
-              }).catch(() => {});
-            }
-          } catch (_) {}
-        }, 35000);
-      }
     } catch (err) {
-      console.warn('[BOT] Erro ao executar startAutomaticLiveMonitoring:', err);
+      console.warn('[BOT] Aviso ao verificar IP da partida:', err.message);
     }
   }
-
   buildMixTutorialEmbed() {
     return new EmbedBuilder()
       .setTitle('📖 GUIA RÁPIDO DO CS2 MIX HUB • COMO MEXER NO BOT')
@@ -5114,33 +5029,6 @@ class DiscordBotManager {
       });
     }
 
-    // Bagre Vote Buttons
-    if (customId.startsWith('bagre_vote_start:')) {
-      const mixId = customId.split(':')[1];
-      const mix = Array.from(this.activeMixes.values()).find((m) => m.id === mixId) || this.activeMixes?.get(interaction.channelId);
-      if (!mix) return interaction.reply({ content: 'Mix não encontrado.', ephemeral: true });
-      const components = bagreVoteService.buildVoteMenu(mix);
-      return interaction.reply({
-        content: `🐟 **VOTAÇÃO DE BAGRE DA PARTIDA!** (${mix.name})\nSelecione no menu abaixo quem mais entregou:`,
-        components,
-        ephemeral: true,
-      });
-    }
-
-    if (customId.startsWith('bagre_finish:')) {
-      const mixId = customId.split(':')[1];
-      const mix = Array.from(this.activeMixes.values()).find((m) => m.id === mixId) || this.activeMixes?.get(interaction.channelId);
-      if (!mix) return interaction.reply({ content: 'Mix não encontrado.', ephemeral: true });
-      await bagreVoteService.finishVote(
-        mix,
-        interaction.channel,
-        interaction.guild,
-        this.loadPlayerProfiles(),
-        (p) => this.savePlayerProfiles(p)
-      );
-      return interaction.reply({ content: '✅ Votação de Bagre encerrada e coroada!', ephemeral: true });
-    }
-
     // Permanent Panel Trigger
     if (customId === 'panel_create_mix') {
       const mix = this.getOrCreateMix(interaction.channelId, user, { name: `Mix 5v5 de ${user.username}` });
@@ -5645,22 +5533,10 @@ class DiscordBotManager {
       const components = this.buildMatchReadyButtons(mix);
 
       await interaction.update({
-        content: `🔥 **PARTIDA PRONTA PARA COMEÇAR!** GL & HF!`,
+        content: `\ud83d\udd25 **PARTIDA CONFIRMADA NO CS2!** Mapa: **${mix.veto?.deciderMap?.name?.toUpperCase() || 'CS2'}** \u2022 Comando: \`connect ${(mix.serverIp || this.config.serverConnect || '').replace(/^connect\s+/i, '')}\` \u2022 GL & HF!`,
         embeds: [finalEmbed],
         components,
       });
-
-      await interaction.channel.send({
-        content:
-          `🚨 **PARTIDA CONFIRMADA NO CS2!**\n\n` +
-          `🗺️ **MAPA ESCOLHIDO:** ${veto.deciderMap?.emoji || '🎯'} **${veto.deciderMap?.name?.toUpperCase()}** (\`${veto.deciderMap?.id}\`)\n` +
-          `🛡️ **${mix.teamA.name} (${mix.teamA.side}):** Capitão <@${mix.teamA.captain?.id}>\n` +
-          `💣 **${mix.teamB.name} (${mix.teamB.side}):** Capitão <@${mix.teamB.captain?.id}>\n\n` +
-          `💻 **Comando Console CS2:** \`connect ${(mix.serverIp || this.config.serverConnect).replace(/^connect\s+/i, '')}\``,
-        embeds: [finalEmbed],
-        components,
-      }).catch(() => {});
-
       // INICIAR MONITORAMENTO AUTOMÁTICO EM TEMPO REAL
       this.startAutomaticLiveMonitoring(mix, interaction.channel, interaction.guild).catch((err) => {
         console.warn('[BOT] Erro ao iniciar monitoramento automático:', err.message);
@@ -6375,42 +6251,6 @@ class DiscordBotManager {
         user: interaction.user,
         remainingInCycle,
       });
-      return;
-    }
-    if (customId.startsWith('bagre_select')) {
-      const [_, mixId] = customId.split(':');
-      const selectedId = interaction.values?.[0];
-      if (selectedId && selectedId !== 'none') {
-        bagreVoteService.castVote(mixId, interaction.user.id, selectedId);
-        return interaction.reply({
-          content: `🐟 Seu voto de **Bagre do Mix** para <@${selectedId}> foi computado com sucesso!`,
-          ephemeral: true,
-        });
-      }
-    }
-    if (customId.startsWith('mvp_vote')) {
-      const mix = this.resolveMixFromInteraction(interaction, customId);
-      if (!mix || !mix.mvpVote?.active) {
-        return interaction.reply({ content: '⚠️ Esta votação de MVP já foi encerrada.', ephemeral: true });
-      }
-      const chosenPlayerId = interaction.values[0];
-      mix.mvpVote.votes.set(interaction.user.id, chosenPlayerId);
-      const totalVotes = mix.mvpVote.votes.size;
-      const remainingSeconds = Math.max(0, Math.ceil(((mix.mvpVote.expiresAt || Date.now()) - Date.now()) / 1000));
-
-      await interaction.reply({
-        content: `⭐ Seu voto de MVP para <@${chosenPlayerId}> foi computado com sucesso! (Total: ${totalVotes} voto(s) • Tempo restante: ~${remainingSeconds}s)`,
-        ephemeral: true,
-      });
-
-      // Se todos os jogadores do mix já votaram, encerra e coroa o MVP imediatamente sem esperar o cronômetro
-      if (mix.mvpVote.votes.size >= (mix.players?.length || 10)) {
-        if (mix.mvpVote.timer) {
-          clearTimeout(mix.mvpVote.timer);
-          mix.mvpVote.timer = null;
-        }
-        await this.finishMvpVote(mix, interaction.channel);
-      }
       return;
     }
   }

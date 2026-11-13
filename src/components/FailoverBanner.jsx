@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { AlertTriangle, HardDrive, Wifi, WifiOff, X, ArrowRight, CheckCircle2, RefreshCw } from 'lucide-react';
 
 export default function FailoverBanner({ roomId = 'MIX-PRO', roomPassword = '', socketConnected = true }) {
@@ -91,11 +91,49 @@ export default function FailoverBanner({ roomId = 'MIX-PRO', roomPassword = '', 
 
   if (dismissed) return null;
 
-  // When running locally on the user's PC, localhost is the primary server.
-  if (isLocalHost) {
-    return null;
-  }
+  useEffect(() => {
+    if (!isLocalHost) return;
+    checkOnlineProduction();
+    const timer = setInterval(checkOnlineProduction, 15000);
+    return () => clearInterval(timer);
+  }, [isLocalHost]);
 
+  const handleReturnToCloud = () => {
+    const url = new URL('https://mix-cs2.onrender.com');
+    url.searchParams.set('room', roomId);
+    if (roomPassword) url.searchParams.set('pwd', roomPassword);
+    window.location.href = url.toString();
+  };
+
+  if (isLocalHost) {
+    if (onlineAvailable !== true) return null;
+    return (
+      <div className="bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 text-slate-950 px-4 py-2 text-xs font-bold flex items-center justify-between shadow-xl animate-fadeIn">
+        <div className="flex items-center gap-2">
+          <CheckCircle2 size={16} className="text-slate-950 shrink-0" />
+          <span>
+            <strong>Servidor Online Principal voltou ao ar!</strong> Voce esta rodando no modo backup local do PC.
+          </span>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={handleReturnToCloud}
+            className="px-3 py-1 bg-slate-950 text-white rounded-lg font-bold text-xs hover:bg-slate-900 transition-all cursor-pointer flex items-center gap-1 shadow-md"
+          >
+            <span>Voltar para o Site Online</span>
+            <ArrowRight size={13} />
+          </button>
+          <button
+            onClick={() => setDismissed(true)}
+            className="p-1 hover:bg-black/15 rounded text-slate-950 cursor-pointer"
+            title="Fechar aviso"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      </div>
+    );
+  }
   // CASE 2: Online Server is Disconnected / Down
   if (!socketConnected) {
     if (localAvailable) {

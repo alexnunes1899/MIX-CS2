@@ -2579,14 +2579,15 @@ app.post('/api/gsi', (req, res) => {
 let lastCloudGsiSync = 0;
 
 async function syncCloudGsiBridge() {
-  if (discordBotManager.lastGsiState && Date.now() - (discordBotManager.lastGsiState.receivedAt || 0) < 1500) {
+  if (discordBotManager.lastGsiState && Date.now() - (discordBotManager.lastGsiState.receivedAt || 0) < 15000) {
     return;
   }
   try {
-    const res = await fetch(CLOUD_GSI_URL, { signal: AbortSignal.timeout(1500) });
+    const res = await fetch(CLOUD_GSI_URL, { signal: AbortSignal.timeout(2000) });
     if (res.ok) {
       const data = await res.json();
-      if (data && data.connected && data.lastUpdate && data.lastUpdate > lastCloudGsiSync) {
+      const localLast = discordBotManager.lastGsiState?.lastUpdate || 0;
+      if (data && data.connected && data.lastUpdate && data.lastUpdate > lastCloudGsiSync && data.lastUpdate > localLast) {
         lastCloudGsiSync = data.lastUpdate;
         const liveState = {
           ...data,
@@ -2600,7 +2601,7 @@ async function syncCloudGsiBridge() {
   } catch (err) {}
 }
 
-setInterval(syncCloudGsiBridge, 750);
+setInterval(syncCloudGsiBridge, 1500);
 // Download ready-to-use CS2 .cfg for FireGames or local client
 app.get('/api/gsi/cfg/:roomId', (req, res) => {
   const roomId = req.params.roomId || 'MIX-PRO';
@@ -3176,4 +3177,3 @@ process.on('beforeExit', () => {
     saveActiveMixStateNow();
   } catch (_) {}
 });
-process.on('SIGINT', () => shutdown('SIGINT'));
