@@ -2014,7 +2014,7 @@ app.use(express.static(distPath, {
   }
 }));
 
-// Steam direct connect handler for Discord Bot 1-click launch (CS2 Native Protocol + Instant Auto-Close)
+// Steam direct connect handler for Discord Bot 1-click launch (Native Steam Protocol Redirect)
 app.get(['/connect', '/join-cs2'], (req, res) => {
   const rawIp = String(req.query.ip || '').trim();
   const queryPwd = String(req.query.pwd || req.query.password || '').trim();
@@ -2037,30 +2037,10 @@ app.get(['/connect', '/join-cs2'], (req, res) => {
 
   const launchArgs = password ? `+connect ${cleanIp} +password ${password}` : `+connect ${cleanIp}`;
   const steamUrl = `steam://rungame/730/76561202255233023/${encodeURIComponent(launchArgs)}`;
-  const consoleCmd = password ? `connect ${cleanIp}; password ${password}` : `connect ${cleanIp}`;
 
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
-  res.send(`<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>CS2</title>
-  <meta http-equiv="refresh" content="0;url=${steamUrl}">
-</head>
-<body style="background:#090d16;margin:0;overflow:hidden;">
-  <iframe id="s" src="${steamUrl}" style="display:none;width:0;height:0;border:0;"></iframe>
-  <script>
-    (function() {
-      var uri = ${JSON.stringify(steamUrl)};
-      var cmd = ${JSON.stringify(consoleCmd)};
-      try { if (navigator.clipboard) navigator.clipboard.writeText(cmd).catch(function(){}); } catch (e) {}
-      try { window.location.replace(uri); } catch (e) { window.location.href = uri; }
-      setTimeout(function() { try { window.open('', '_self'); window.close(); } catch (e) {} }, 300);
-      setTimeout(function() { try { window.close(); } catch (e) {} }, 1000);
-    })();
-  </script>
-</body>
-</html>`);
+  // Redirecionamento HTTP nativo direto para o protocolo da Steam (sem travar em pagina web)
+  res.writeHead(302, { Location: steamUrl });
+  res.end();
 });
 
 // ==========================================// PLAYER PROFILE & GAMERS CLUB MODAL
