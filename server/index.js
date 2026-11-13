@@ -2014,45 +2014,78 @@ app.use(express.static(distPath, {
   }
 }));
 
-// Steam direct connect handler for Discord Bot 1-click launch
+// Steam direct connect handler for Discord Bot 1-click launch (CS2 Native Protocol + Auto-Close Tab)
 app.get(['/connect', '/join-cs2'], (req, res) => {
-  const ip = (req.query.ip || '').trim();
-  if (!ip) {
-    return res.status(400).send('IP do servidor CS2 não fornecido.');
+  const rawIp = String(req.query.ip || '').trim();
+  const queryPwd = String(req.query.pwd || req.query.password || '').trim();
+  if (!rawIp) {
+    return res.status(400).send('IP do servidor CS2 nao fornecido.');
   }
-  const cleanIp = ip.replace(/^connect\s+/i, '');
-  const steamUrl = `steam://connect/${cleanIp}`;
+
+  let cleanIp = rawIp.replace(/^connect\s+/i, '').trim();
+  let password = queryPwd;
+
+  const semiParts = cleanIp.split(';');
+  if (semiParts.length >= 2) {
+    cleanIp = semiParts[0].trim();
+    const pwPart = semiParts[1].trim();
+    if (!password && pwPart.toLowerCase().startsWith('password')) {
+      password = pwPart.replace(/^password\s*=?\s*/i, '').replace(/['"]/g, '').trim();
+    }
+  }
+  cleanIp = cleanIp.replace(/[;'"]/g, '').trim();
+
+  const launchArgs = password ? `+connect ${cleanIp} +password ${password}` : `+connect ${cleanIp}`;
+  const steamUrl = `steam://rungame/730/76561202255233023/${encodeURIComponent(launchArgs)}`;
+  const consoleCmd = password ? `connect ${cleanIp}; password ${password}` : `connect ${cleanIp}`;
+
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.send(`<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Conectando ao CS2...</title>
+  <title>Abrindo CS2...</title>
   <style>
-    body { background: #0b0f17; color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-    .card { background: #131b2e; border: 1px solid #1e293b; padding: 2.5rem; border-radius: 1rem; text-align: center; max-width: 480px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5); }
-    h1 { color: #38bdf8; font-size: 1.5rem; margin-bottom: 0.5rem; }
-    p { color: #94a3b8; font-size: 0.95rem; margin-bottom: 1.5rem; }
-    code { background: #0f172a; padding: 0.4rem 0.8rem; border-radius: 0.375rem; color: #fbbf24; font-size: 1.1rem; display: inline-block; margin-bottom: 1rem; }
-    .btn { display: inline-block; margin-top: 1.25rem; background: #22c55e; color: #fff; padding: 0.75rem 1.5rem; border-radius: 0.5rem; text-decoration: none; font-weight: bold; }
+    body { background: #090d16; color: #cbd5e1; font-family: system-ui, -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+    .box { text-align: center; padding: 1.5rem 2rem; border-radius: 0.75rem; background: #111827; border: 1px solid #1f2937; }
+    .title { color: #10b981; font-weight: 700; font-size: 1rem; margin-bottom: 0.35rem; }
+    .sub { font-size: 0.85rem; color: #94a3b8; margin-bottom: 0.75rem; }
+    a { color: #38bdf8; text-decoration: none; font-size: 0.85rem; font-weight: 600; }
   </style>
 </head>
 <body>
-  <div class="card">
-    <h1>🚀 CONECTANDO AO SERVIDOR CS2</h1>
-    <p>Iniciando o Counter-Strike 2 pela Steam...</p>
-    <code>connect ${cleanIp}</code>
-    <br>
-    <a href="${steamUrl}" class="btn">Abrir CS2 Novamente</a>
+  <div class="box">
+    <div class="title">Abrindo mapa no Counter-Strike 2 via Steam...</div>
+    <div class="sub">Esta aba fechara automaticamente.</div>
+    <a id="launchLink" href="${steamUrl}">Clique aqui se a Steam nao abrir sozinha</a>
   </div>
+  <iframe id="steamFrame" style="display:none;width:0;height:0;border:0;"></iframe>
   <script>
-    window.location.href = "${steamUrl}";
+    (function() {
+      var uri = ${JSON.stringify(steamUrl)};
+      var cmd = ${JSON.stringify(consoleCmd)};
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(cmd).catch(function(){});
+        }
+      } catch (e) {}
+      try {
+        document.getElementById('steamFrame').src = uri;
+      } catch (e) {}
+      window.location.href = uri;
+      setTimeout(function() {
+        try { window.open('', '_self'); window.close(); } catch (e) {}
+      }, 900);
+      setTimeout(function() {
+        try { window.close(); } catch (e) {}
+      }, 2200);
+    })();
   </script>
 </body>
 </html>`);
 });
 
-// ==========================================
-// PLAYER PROFILE & GAMERS CLUB MODAL
+// ==========================================// PLAYER PROFILE & GAMERS CLUB MODAL
 // ==========================================
 app.get(['/perfil', '/gc', '/profile'], (req, res) => {
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');

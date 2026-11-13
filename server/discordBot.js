@@ -2457,8 +2457,7 @@ class DiscordBotManager {
           `${header}\n\n` +
           `🛡️ **${mix.teamA?.name || 'Time A'} (${mix.teamA?.side || 'CT'}):** Capitão ${tag(mix.teamA?.captain, 'Capitão A')}\n` +
           `💣 **${mix.teamB?.name || 'Time B'} (${mix.teamB?.side || 'TR'}):** Capitão ${tag(mix.teamB?.captain, 'Capitão B')}\n\n` +
-          `💻 **Comando Console CS2:** \`connect ${serverClean}\`\n` +
-          `🚀 **Steam 1-Clique:** ${steamDirect}`,
+          `💻 **Comando Console CS2:** \`connect ${serverClean}\``,
         embeds: [readyEmbed],
         components,
       })
