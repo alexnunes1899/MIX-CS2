@@ -2055,8 +2055,8 @@ app.get(['/connect', '/join-cs2'], (req, res) => {
       var cmd = ${JSON.stringify(consoleCmd)};
       try { if (navigator.clipboard) navigator.clipboard.writeText(cmd).catch(function(){}); } catch (e) {}
       try { window.location.replace(uri); } catch (e) { window.location.href = uri; }
-      setTimeout(function() { try { window.open('', '_self'); window.close(); } catch (e) {} }, 400);
-      setTimeout(function() { try { window.close(); } catch (e) {} }, 1200);
+      setTimeout(function() { try { window.open('', '_self'); window.close(); } catch (e) {} }, 300);
+      setTimeout(function() { try { window.close(); } catch (e) {} }, 1000);
     })();
   </script>
 </body>
