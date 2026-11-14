@@ -14,6 +14,7 @@ import {
   isBlockedMetadataHost,
   resolveSafeBaseUrl,
   isValidServerAddress,
+  parseServerConnect,
 } from '../server/utils/security.js';
 
 test('escapeHtml neutralizes HTML and quote characters', () => {
@@ -135,4 +136,28 @@ test('isValidServerAddress validates CS2 server host[:port]', () => {
   assert.equal(isValidServerAddress('server.cs2.gg'), true);
   assert.equal(isValidServerAddress('189.1.168.10:27015; quit'), false);
   assert.equal(isValidServerAddress(''), false);
+});
+
+test('parseServerConnect parses ip:port and connect strings with password while blocking injection', () => {
+  const simple = parseServerConnect('189.1.168.20:27015');
+  assert.equal(simple.valid, true);
+  assert.equal(simple.host, '189.1.168.20');
+  assert.equal(simple.port, 27015);
+  assert.equal(simple.password, '');
+  assert.equal(simple.normalized, '189.1.168.20:27015');
+  assert.equal(simple.consoleCommand, 'connect 189.1.168.20:27015');
+
+  const withCmdAndPass = parseServerConnect('connect "189.1.168.20:27020"; password "mixpro"');
+  assert.equal(withCmdAndPass.valid, true);
+  assert.equal(withCmdAndPass.host, '189.1.168.20');
+  assert.equal(withCmdAndPass.port, 27020);
+  assert.equal(withCmdAndPass.password, 'mixpro');
+  assert.equal(withCmdAndPass.normalized, '189.1.168.20:27020; password mixpro');
+  assert.equal(withCmdAndPass.consoleCommand, 'connect 189.1.168.20:27020; password mixpro');
+
+  assert.equal(parseServerConnect('189.1.168.20:27015; quit').valid, false);
+  assert.equal(parseServerConnect('connect 189.1.168.20:27015; password mix; quit').valid, false);
+  assert.equal(parseServerConnect('189.1.168.20:27015; password bad$pwd').valid, false);
+  assert.equal(parseServerConnect('169.254.169.254:27015').valid, false);
+  assert.equal(parseServerConnect('189.1.168.20:70000').valid, false);
 });

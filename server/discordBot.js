@@ -17,6 +17,8 @@ import {
   ButtonStyle,
   EmbedBuilder,
   StringSelectMenuBuilder,
+  UserSelectMenuBuilder,
+  AttachmentBuilder,
   ChannelType,
   PermissionsBitField,
   ModalBuilder,
@@ -36,7 +38,6 @@ import {
   computeMatchMvp,
   computeMatchPerformers,
   determineMatchWinner,
-  updateMatchMvp,
   getMapImageUrl,
   normalizeMapName,
 } from './matchHistory.js';
@@ -50,7 +51,8 @@ import { communityClips } from './communityClips.js';
 import { bagreVoteService } from './bagreVote.js';
 import { executeRconCommand } from './rcon.js';
 import { getLeaderboard, syncDiscordProfilesToLeaderboard } from './leaderboard.js';
-import { sanitizeRconTextArg, isValidServerAddress } from './utils/security.js';
+import { generateGsiConfig, installGsiLocally } from './gsi.js';
+import { sanitizeRconTextArg, isValidServerAddress, normalizeRoomId, parseServerConnect } from './utils/security.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
@@ -125,6 +127,7 @@ const GRENADE_GUIDES = {
   nuke: [
     { title: 'Smoke Fora 1 (Secret Wall)', desc: 'Fora TR ➔ Encoste na grade do caminhão, mire no topo da caixa amarela e Jumpthrow.' },
     { title: 'Smoke Fora 2 (Red Box)', desc: 'Fora TR ➔ Alinhe na quina da cerca e mire na chaminé alta com Jumpthrow.' },
+    { title: 'Smoke Main / Céu (Bomb A)', desc: 'Lobby / Telhado ➔ Quebre o vidro, mire na quina da caixa de ventilação e solte com botão esquerdo.' },
   ],
   dust2: [
     { title: 'Smoke Porta Meio (Mid Doors)', desc: 'Spawn TR ➔ Alinhe no portão de ferro, mire na ponta da antena e solte com botão esquerdo.' },
@@ -134,12 +137,104 @@ const GRENADE_GUIDES = {
   ancient: [
     { title: 'Smoke Donut', desc: 'Pátio A ➔ Suba no degrau, mire na ponta da folha e solte com Jumpthrow.' },
     { title: 'Smoke Red / Meio', desc: 'Spawn TR ➔ Mire no topo da estátua de pedra e solte em movimento suave.' },
+    { title: 'Smoke Caverna / Ramp B', desc: 'Fora B ➔ Encoste na parede esquerda do pilar, mire acima da moldura de pedra e solte com Jumpthrow.' },
   ],
   anubis: [
     { title: 'Smoke Conector / B', desc: 'Ruínas B ➔ Encoste no pilar de pedra, mire no topo do arco e Jumpthrow.' },
     { title: 'Smoke Meio / Canal', desc: 'Canal ➔ Alinhe na escada de madeira e mire na quina da parede.' },
+    { title: 'Smoke Heaven / Câmera A', desc: 'Main A ➔ Encoste na porta dupla e alinhe no topo da pilastra direita com Jumpthrow.' },
+  ],
+  overpass: [
+    { title: 'Smoke Lixeira / Dumpster (A)', desc: 'Fundo / Long A ➔ Encoste no poste da cerca, mire acima do poste elétrico e solte com Jumpthrow.' },
+    { title: 'Smoke Banco (A Site)', desc: 'Banheiro A ➔ Encoste na quina antes da saída, mire no topo do letreiro e Jumpthrow.' },
+    { title: 'Smoke Céu / Passarela (B)', desc: 'Água / Sapo ➔ Alinhe no corrimão de ferro, mire na antena do prédio e solte com Jumpthrow.' },
+  ],
+  train: [
+    { title: 'Smoke Ivy / Olof (A)', desc: 'Saída T-Main ➔ Encoste na parede da direita, mire na quina do prédio industrial e Jumpthrow.' },
+    { title: 'Smoke Z / Conector (A)', desc: 'Pombo / T-Main ➔ Alinhe na caixa elétrica e mire no fio superior direito com Jumpthrow.' },
+    { title: 'Smoke Bomb B (Upper)', desc: 'Rampa B ➔ Encoste na porta antes da passarela, mire na janela alta e clique com botão esquerdo.' },
+  ],
+  cache: [
+    { title: 'Smoke Cruz (Main A)', desc: 'Galpão A ➔ Encoste no muro branco, mire no canto da claraboia e clique com botão esquerdo.' },
+    { title: 'Smoke Empilhadeira / Quad (A)', desc: 'Squeaky ➔ Mire no topo da estrutura de metal à esquerda e solte em passo curto.' },
+    { title: 'Smoke CT / Passarela (B)', desc: 'Checkers / Rampa B ➔ Encoste no engradado, mire na barra de ferro superior e Jumpthrow.' },
+  ],
+  vertigo: [
+    { title: 'Smoke CT / Elevador (A)', desc: 'Rampa A ➔ Encoste no saco de cimento, mire acima do guindaste vermelho e clique com botão esquerdo.' },
+    { title: 'Smoke Sandbag / Esquerda (A)', desc: 'Rampa A ➔ Encoste na parede amarela e alinhe no topo da viga metálica.' },
+    { title: 'Smoke Gerador (B)', desc: 'Escada B ➔ Alinhe no degrau médio, mire na borda da caixa elétrica e clique com botão esquerdo.' },
   ],
 };
+
+const GRENADE_MAP_ALIASES = {
+  mir: 'mirage',
+  mirage: 'mirage',
+  inf: 'inferno',
+  infer: 'inferno',
+  inferno: 'inferno',
+  nuk: 'nuke',
+  nuke: 'nuke',
+  d2: 'dust2',
+  dd2: 'dust2',
+  dust: 'dust2',
+  dust2: 'dust2',
+  dustii: 'dust2',
+  anc: 'ancient',
+  ancient: 'ancient',
+  anu: 'anubis',
+  anubis: 'anubis',
+  ovp: 'overpass',
+  over: 'overpass',
+  overpass: 'overpass',
+  trn: 'train',
+  train: 'train',
+  cac: 'cache',
+  cache: 'cache',
+  vrg: 'vertigo',
+  vert: 'vertigo',
+  vertigo: 'vertigo',
+};
+
+export function resolveGrenadeMapKey(query) {
+  const raw = String(query || '').toLowerCase().trim();
+  if (!raw) return 'mirage';
+  const normalized = raw.replace(/^de_/, '').replace(/[^a-z0-9]/g, '');
+  if (!normalized) return 'mirage';
+  if (GRENADE_MAP_ALIASES[normalized]) return GRENADE_MAP_ALIASES[normalized];
+  const exact = Object.keys(GRENADE_GUIDES).find((k) => k === normalized);
+  if (exact) return exact;
+  const partial = Object.keys(GRENADE_GUIDES).find((k) => k.startsWith(normalized) || normalized.includes(k));
+  return partial || null;
+}
+
+export function extractHostAndPort(rawServer) {
+  const parsed = parseServerConnect(rawServer || '');
+  if (parsed.valid) {
+    return {
+      host: parsed.host,
+      port: parsed.port,
+      hostPort: parsed.hostPort,
+      normalized: parsed.normalized,
+      password: parsed.password,
+    };
+  }
+  const stripped = String(rawServer || '')
+    .replace(/^connect\s+/i, '')
+    .split(';')[0]
+    .replace(/["']/g, '')
+    .trim();
+  const colonIdx = stripped.lastIndexOf(':');
+  const host = colonIdx !== -1 ? stripped.slice(0, colonIdx).trim() : stripped;
+  const portCandidate = colonIdx !== -1 ? parseInt(stripped.slice(colonIdx + 1), 10) : 27015;
+  const port = !Number.isNaN(portCandidate) && portCandidate >= 1 && portCandidate <= 65535 ? portCandidate : 27015;
+  return {
+    host,
+    port,
+    hostPort: host ? `${host}:${port}` : '',
+    normalized: host ? `${host}:${port}` : '',
+    password: '',
+  };
+}
 
 /**
  * Steam A2S_INFO UDP Server Query Protocol
@@ -147,9 +242,7 @@ const GRENADE_GUIDES = {
  */
 export function queryA2SServer(hostWithPort, timeoutMs = 2500) {
   return new Promise((resolve) => {
-    let [host, portStr] = (hostWithPort || '').split(':');
-    host = (host || '').trim();
-    const port = parseInt(portStr, 10) || 27015;
+    const { host, port } = extractHostAndPort(hostWithPort);
 
     if (!host) {
       return resolve({ online: false, error: 'Endereço de IP inválido.' });
@@ -272,7 +365,7 @@ export function queryA2SServer(hostWithPort, timeoutMs = 2500) {
   });
 }
 
-class DiscordBotManager {
+export class DiscordBotManager {
   constructor() {
     this.client = null;
     this.config = this.loadConfig();
@@ -288,10 +381,15 @@ class DiscordBotManager {
     // In-memory active mixes keyed by channelId
     this.activeMixes = new Map();
     this.mixes = this.activeMixes;
+    this.lastFinishedMixes = new Map();
     // Reference to Web Hub rooms store
     this.webRoomsRef = null;
     // Valve CS2 Game State Integration cache
     this.lastGsiState = null;
+    this.lastBestGsiState = null;
+    this.narrationEnabled = false;
+    this.channelNarrationEnabled = new Map();
+    this._hlTrackers = new Map();
     // Multi-player GSI state tracking (keyed by steamId)
     this.playersGsiStates = new Map();
     // Active Live Match Discord message trackers for real-time round-by-round auto-editing
@@ -358,6 +456,114 @@ class DiscordBotManager {
     return `${base}${cleanPath}`;
   }
 
+  isGsiOnline(state = this.lastGsiState) {
+    if (!state) return false;
+    const lastTime = state.receivedAt || state.lastUpdate || 0;
+    return Boolean(
+      Date.now() - lastTime < 90000 &&
+        (state.player?.name || state.rawPlayer?.name)
+    );
+  }
+
+  isLocalWindowsHost() {
+    return (
+      process.platform === 'win32' &&
+      !process.env.RENDER &&
+      !process.env.RAILWAY_ENVIRONMENT
+    );
+  }
+
+  buildGsiAttachment(roomId = 'MIX-PRO') {
+    const safeRoomId = normalizeRoomId(roomId, 'MIX-PRO');
+    const cfgContent = generateGsiConfig(this.getPublicWebUrl(''), safeRoomId);
+    return new AttachmentBuilder(Buffer.from(cfgContent, 'utf8'), {
+      name: 'gamestate_integration_cs2mixhub.cfg',
+    });
+  }
+
+  buildGsiInstallReplyPayload(
+    roomId = 'MIX-PRO',
+    { isHostModerator = false, tryLocalInstall = false } = {}
+  ) {
+    const safeRoomId = normalizeRoomId(roomId, 'MIX-PRO');
+    const baseUrl = this.getPublicWebUrl('');
+    const cfgUrl = `${baseUrl}/api/gsi/cfg/${safeRoomId}`;
+    const ps1Url = `${baseUrl}/api/gsi/installer/ps1/${safeRoomId}`;
+    const webGsiUrl =
+      safeRoomId !== 'MIX-PRO'
+        ? `${baseUrl}/?room=${encodeURIComponent(safeRoomId)}&gsi=1`
+        : `${baseUrl}/?gsi=1`;
+    const ps1Cmd = `powershell -NoP -ExecutionPolicy Bypass -Command "irm '${ps1Url}' | iex"`;
+    const cs2CfgPath =
+      'C:\\Program Files (x86)\\Steam\\steamapps\\common\\Counter-Strike Global Offensive\\game\\csgo\\cfg';
+
+    let localRes = null;
+    if (tryLocalInstall && this.isLocalWindowsHost() && isHostModerator) {
+      localRes = installGsiLocally(baseUrl, safeRoomId);
+    }
+
+    const embed = new EmbedBuilder().setTimestamp();
+
+    if (localRes?.success) {
+      embed
+        .setTitle('✅ GSI INSTALADO NO SEU CS2 (PC HOST)!')
+        .setColor(0x10b981)
+        .setDescription(
+          `O arquivo oficial foi gravado diretamente na pasta do seu Counter-Strike 2 (sem precisar baixar \`.bat\`):\n` +
+            `\`${localRes.primaryPath || `${cs2CfgPath}\\gamestate_integration_cs2mixhub.cfg`}\`\n\n` +
+            `🎮 **Agora é só abrir o CS2 e jogar!** O card do \`/aovivo\` será atualizado automaticamente.\n\n` +
+            `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+            `👥 **Quer passar para um amigo instalar no PC dele (sem \`.bat\`)?**\n` +
+            `• **Automático em 1 comando:** aperte **Win + R**, cole e dê **Enter**:\n` +
+            `\`\`\`powershell\n${ps1Cmd}\n\`\`\`\n` +
+            `• **Ou baixe o \`.cfg\` anexado acima** e salve em:\n\`${cs2CfgPath}\``
+        )
+        .setFooter({ text: `Sala GSI: ${safeRoomId} • Zero .bat` });
+    } else {
+      embed
+        .setTitle('⚡ INSTALAR VALVE GSI (SEM .BAT E SEM BLOQUEIOS)')
+        .setColor(0x38bdf8)
+        .setDescription(
+          `Escolha o jeito mais rápido — **sem arquivo \`.bat\`** e **sem bloqueio do Windows Defender**:\n\n` +
+            `**1️⃣ Instalação Automática em 1 Comando (detecta a Steam sozinho):**\n` +
+            `Pressione **Win + R** no Windows, cole o comando abaixo e aperte **Enter**:\n` +
+            `\`\`\`powershell\n${ps1Cmd}\n\`\`\`\n` +
+            `*(Encontra sua pasta do CS2 em qualquer HD/SSD e instala o \`.cfg\` em 1 segundo!)*\n\n` +
+            `**2️⃣ Baixar o \`.cfg\` Direto aqui no Discord (1 Clique):**\n` +
+            `Clique no ícone de download do arquivo **\`gamestate_integration_cs2mixhub.cfg\`** anexado acima (ou no botão **Baixar .cfg Direto** abaixo) e coloque em:\n` +
+            `\`${cs2CfgPath}\`\n\n` +
+            `💡 *Basta **1 jogador** da partida ter o GSI ativo para o placar, HP, economia e MVP funcionarem ao vivo para todos!*`
+        )
+        .setFooter({ text: `Sala GSI: ${safeRoomId} • Oficial Valve & VAC-Safe` });
+    }
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setLabel('Baixar .cfg Direto')
+        .setEmoji('📥')
+        .setStyle(ButtonStyle.Link)
+        .setURL(cfgUrl),
+      new ButtonBuilder()
+        .setLabel('Painel Web GSI')
+        .setEmoji('🌐')
+        .setStyle(ButtonStyle.Link)
+        .setURL(webGsiUrl)
+    );
+
+    if (this.isLocalWindowsHost() && !localRes?.success && isHostModerator) {
+      row.addComponents(
+        new ButtonBuilder()
+          .setCustomId(`gsi_install_host:${safeRoomId}`)
+          .setLabel('Instalar no PC Host')
+          .setEmoji('💻')
+          .setStyle(ButtonStyle.Success)
+      );
+    }
+
+    const attachment = this.buildGsiAttachment(safeRoomId);
+    return { embeds: [embed], components: [row], files: [attachment] };
+  }
+
   isOfficialCompetitiveMap(rawMapName = '') {
     const clean = String(rawMapName || '').toLowerCase().trim().replace(/^workshop\/\d+\//, '');
     if (!clean || clean === 'indefinido') return false;
@@ -367,28 +573,44 @@ class DiscordBotManager {
     return /^(de_)?(mirage|inferno|nuke|dust2|ancient|anubis|vertigo|overpass|train|cache)$/.test(clean);
   }
 
-  isNarrationActive(mix = null) {
+  isNarrationActive(mix = null, channelId = null) {
     if (mix && typeof mix.narrationEnabled === 'boolean') {
       return mix.narrationEnabled;
+    }
+    const chId = channelId || mix?.channelId;
+    if (chId) {
+      return Boolean(this.channelNarrationEnabled?.get(chId));
     }
     return Boolean(this.narrationEnabled);
   }
 
-  toggleNarration(mix = null) {
-    const nextState = !this.isNarrationActive(mix);
-    this.narrationEnabled = nextState;
+  toggleNarration(mix = null, channelId = null) {
+    const chId = channelId || mix?.channelId || null;
+    const nextState = !this.isNarrationActive(mix, chId);
     if (mix) {
       mix.narrationEnabled = nextState;
-    }
-    for (const m of this.getUniqueActiveMixes()) {
-      if (m && m.phase !== 'finished' && m.phase !== 'cancelled') {
-        m.narrationEnabled = nextState;
+      if (mix.channelId && this.channelNarrationEnabled) {
+        this.channelNarrationEnabled.set(mix.channelId, nextState);
       }
+    } else if (chId && this.channelNarrationEnabled) {
+      this.channelNarrationEnabled.set(chId, nextState);
+    } else {
+      this.narrationEnabled = nextState;
     }
     return nextState;
   }
 
-  getActiveLiveMix(channelId = null, currentCs2Map = null) {
+  stopMixNarration(mix = null, channelId = null) {
+    if (mix) {
+      mix.narrationEnabled = false;
+    }
+    const chId = channelId || mix?.channelId;
+    if (chId && this.channelNarrationEnabled) {
+      this.channelNarrationEnabled.set(chId, false);
+    }
+  }
+
+  getActiveLiveMix(roomOrChannelId = null, currentCs2Map = null, liveState = null) {
     const now = Date.now();
     const maxMixAgeMs = 4 * 3600 * 1000;
 
@@ -400,18 +622,67 @@ class DiscordBotManager {
       return true;
     };
 
-    if (channelId) {
-      const m = this.activeMixes.get(channelId);
-      if (isValidLiveMix(m)) return m;
+    const explicitId = roomOrChannelId && roomOrChannelId !== 'MIX-PRO' ? String(roomOrChannelId) : null;
+    if (explicitId) {
+      const direct =
+        this.activeMixes.get(explicitId) ||
+        this.getUniqueActiveMixes().find((m) => m.id === explicitId || m.channelId === explicitId);
+      return isValidLiveMix(direct) ? direct : null;
     }
-    for (const m of this.getUniqueActiveMixes()) {
-      if (isValidLiveMix(m)) return m;
+
+    const validMixes = this.getUniqueActiveMixes().filter(isValidLiveMix);
+    if (validMixes.length === 0) return null;
+
+    if (liveState) {
+      const gsiNames = new Set();
+      const gsiSteamIds = new Set();
+      const addId = (sid, name) => {
+        const s = String(sid || '').trim();
+        if (s) gsiSteamIds.add(s);
+        const n = String(name || '').toLowerCase().trim();
+        if (n && n.length >= 2) gsiNames.add(n);
+      };
+      if (liveState.player) addId(liveState.player.steamId || liveState.player.steamid, liveState.player.name);
+      if (liveState.rawPlayer) addId(liveState.rawPlayer.steamId || liveState.rawPlayer.steamid, liveState.rawPlayer.name);
+      if (Array.isArray(liveState.allPlayersStats)) {
+        liveState.allPlayersStats.forEach((p) => addId(p?.steamId || p?.steamid, p?.name));
+      }
+
+      if (gsiNames.size > 0 || gsiSteamIds.size > 0) {
+        let bestMix = null;
+        let bestScore = 0;
+        for (const m of validMixes) {
+          let score = 0;
+          const roster = [...(m.teamA?.players || []), ...(m.teamB?.players || [])];
+          for (const pl of roster) {
+            if (!pl) continue;
+            const pSid = String(pl.steamId || pl.steamid || '').trim();
+            if (pSid && gsiSteamIds.has(pSid)) {
+              score += 3;
+              continue;
+            }
+            const names = [pl.displayName, pl.username, pl.nick, pl.name]
+              .map((x) => String(x || '').toLowerCase().trim())
+              .filter((x) => x.length >= 2);
+            if (names.some((pn) => gsiNames.has(pn) || Array.from(gsiNames).some((gn) => gn.includes(pn) || pn.includes(gn)))) {
+              score += 1;
+            }
+          }
+          if (score > bestScore) {
+            bestScore = score;
+            bestMix = m;
+          }
+        }
+        if (bestMix && bestScore > 0) return bestMix;
+      }
     }
-    return null;
+
+    return validMixes.length === 1 ? validMixes[0] : null;
   }
 
   stopAllLiveMonitoring() {
     this.narrationEnabled = false;
+    this.channelNarrationEnabled?.clear?.();
     for (const m of this.getUniqueActiveMixes()) {
       if (m) m.narrationEnabled = false;
     }
@@ -419,21 +690,25 @@ class DiscordBotManager {
 
   processLiveHighlightsAndHalftime(liveState, activeMix) {
     try {
+      const targetCh = activeMix?.channelId || null;
       // SO NARRA SE O BOTAO DE NARRACAO TIVER SIDO ATIVADO PELO USUARIO!
-      if (!this.isNarrationActive(activeMix)) return;
+      if (!this.isNarrationActive(activeMix, targetCh)) return;
       if (!liveState || liveState.phase === 'warmup' || !this.isOfficialCompetitiveMap(liveState.mapName)) return;
 
-      this._hlTracker = this._hlTracker || {
-        mapName: '',
-        roundNumber: -1,
-        killsAtRoundStart: new Map(),
-        clutchCandidateCT: null,
-        clutchCandidateTR: null,
-        announcedRound: -1,
-        sentEvents: new Set(),
-      };
-
-      const trk = this._hlTracker;
+      this._hlTrackers = this._hlTrackers || new Map();
+      const trackerKey = activeMix?.id || activeMix?.channelId || liveState?.roomId || 'global';
+      if (!this._hlTrackers.has(trackerKey)) {
+        this._hlTrackers.set(trackerKey, {
+          mapName: '',
+          roundNumber: -1,
+          killsAtRoundStart: new Map(),
+          clutchCandidateCT: null,
+          clutchCandidateTR: null,
+          announcedRound: -1,
+          sentEvents: new Set(),
+        });
+      }
+      const trk = this._hlTrackers.get(trackerKey);
       const sCT = Number(liveState.scoreCT || 0);
       const sTR = Number(liveState.scoreTR || 0);
       const totalRounds = sCT + sTR;
@@ -476,13 +751,13 @@ class DiscordBotManager {
       }
 
       let targetChannelId = activeMix?.channelId || null;
-      if (!targetChannelId && this.liveTrackers && this.liveTrackers.size > 0) {
-        const firstTracker = Array.from(this.liveTrackers.values())[0];
-        targetChannelId = firstTracker?.channelId || null;
+      if (!targetChannelId && this.liveTrackers && this.liveTrackers.size === 1) {
+        const onlyTracker = Array.from(this.liveTrackers.values())[0];
+        targetChannelId = onlyTracker?.channelId || null;
       }
       const channel = targetChannelId ? this.client?.channels?.cache?.get(targetChannelId) : null;
       const cleanMap = normalizeMapName(liveState.mapName);
-      const mixKey = activeMix?.id || 'live';
+      const mixKey = trackerKey;
 
       if (liveState.roundPhase === 'over' && trk.announcedRound !== totalRounds && totalRounds > 0) {
         trk.announcedRound = totalRounds;
@@ -549,6 +824,14 @@ class DiscordBotManager {
         if (totalRounds === 12 && !trk.sentEvents.has(halfKey) && activeMix) {
           trk.sentEvents.add(halfKey);
           const oldSideA = (activeMix.teamA?.side || 'CT').toUpperCase();
+          if (!activeMix.teamA.startingSide) {
+            activeMix.teamA.startingSide = oldSideA;
+          }
+          if (!activeMix.teamB.startingSide) {
+            activeMix.teamB.startingSide = (activeMix.teamB?.side || (oldSideA === 'CT' ? 'TR' : 'CT')).toUpperCase();
+          }
+          activeMix.teamA.halftimeSwapped = true;
+          activeMix.teamB.halftimeSwapped = true;
           activeMix.teamA.side = oldSideA === 'CT' ? 'TR' : 'CT';
           activeMix.teamB.side = activeMix.teamA.side === 'CT' ? 'TR' : 'CT';
           this.syncToWebRoom(activeMix);
@@ -571,10 +854,11 @@ class DiscordBotManager {
     if (!liveState) return;
 
     const now = Date.now();
+    const safeRoom = roomId || 'MIX-PRO';
     // SEMPRE atualiza o estado GSI para que o comando !aovivo / /aovivo funcione instantaneamente!
     this.lastGsiState = {
       ...liveState,
-      roomId: roomId || 'MIX-PRO',
+      roomId: safeRoom,
       receivedAt: now,
     };
 
@@ -582,7 +866,7 @@ class DiscordBotManager {
     if (steamId) {
       this.playersGsiStates.set(steamId, {
         ...liveState,
-        roomId: roomId || 'MIX-PRO',
+        roomId: safeRoom,
         receivedAt: now,
       });
       if (this.playersGsiStates.size > 200) {
@@ -600,7 +884,8 @@ class DiscordBotManager {
       this.syncLiveTrackers(this.lastGsiState).catch(() => {});
     }
 
-    const activeMix = this.getActiveLiveMix(null, liveState.mapName);
+    const explicitRoom = safeRoom !== 'MIX-PRO' ? safeRoom : null;
+    const activeMix = this.getActiveLiveMix(explicitRoom, liveState.mapName, liveState);
 
     if (
       Array.isArray(liveState.allPlayersStats) &&
@@ -608,21 +893,22 @@ class DiscordBotManager {
       liveState.phase !== 'warmup' &&
       ((liveState.scoreCT || 0) + (liveState.scoreTR || 0) >= 1 || (liveState.roundNumber || 0) >= 1)
     ) {
-      this.lastBestGsiState = {
+      const bestSnapshot = {
         ...liveState,
         allPlayersStats: [...liveState.allPlayersStats],
-        roomId: roomId || 'MIX-PRO',
+        roomId: safeRoom,
         receivedAt: now,
       };
+      this.lastBestGsiState = bestSnapshot;
       if (activeMix) {
-        activeMix.liveState = this.lastBestGsiState;
-        activeMix.gsi = this.lastBestGsiState;
+        activeMix.liveState = bestSnapshot;
+        activeMix.gsi = bestSnapshot;
       }
     }
 
     // So narra no chat se o Botao de Narracao tiver sido clicado (ON)!
-    if (this.isNarrationActive(activeMix)) {
-      this.processLiveHighlightsAndHalftime(liveState, activeMix);
+    if (this.isNarrationActive(activeMix, activeMix?.channelId)) {
+      this.processLiveHighlightsAndHalftime(this.lastGsiState, activeMix);
     }
 
     // Finalizacao automatica quando um Mix ativo atinge 13+ pontos ou gameover em mapa competitivo
@@ -632,7 +918,14 @@ class DiscordBotManager {
       liveState.isGameOver &&
       ((liveState.scoreCT || 0) >= 13 || (liveState.scoreTR || 0) >= 13 || liveState.phase === 'gameover')
     ) {
-      const statsSnapshot = this.lastBestGsiState || liveState;
+      const matchingLastBest =
+        this.lastBestGsiState &&
+        !this.lastBestGsiState._consumedByMixId &&
+        (!activeMix._minGsiTimestamp || (this.lastBestGsiState.receivedAt || 0) >= activeMix._minGsiTimestamp) &&
+        (this.lastBestGsiState.roomId === activeMix.id || (!explicitRoom && this.lastBestGsiState.roomId === 'MIX-PRO'))
+          ? this.lastBestGsiState
+          : null;
+      const statsSnapshot = activeMix.gsi || activeMix.liveState || matchingLastBest || liveState;
       const maxS = Math.max(statsSnapshot.scoreCT || 0, statsSnapshot.scoreTR || 0);
       const minS = Math.min(statsSnapshot.scoreCT || 0, statsSnapshot.scoreTR || 0);
       const matchFinishKey = `${activeMix.id}:${statsSnapshot.mapName || 'cs2'}:${maxS}-${minS}`;
@@ -667,7 +960,7 @@ class DiscordBotManager {
                 components: res.components,
               });
             }
-            this.stopAllLiveMonitoring();
+            this.stopMixNarration(activeMix, targetChannelId);
             if (this.config.autoMoveVoice && channel?.guild) {
               await this.executeVoiceReturnToLobby(channel.guild, activeMix).catch(() => {});
             }
@@ -678,11 +971,12 @@ class DiscordBotManager {
       }
     }
   }
-  buildGsiEmbed() {
-    const isOnline = Boolean(
-      this.lastGsiState && Date.now() - (this.lastGsiState.receivedAt || 0) < 60000
-    );
+  buildGsiEmbed(roomId = 'MIX-PRO') {
+    const safeRoomId = normalizeRoomId(roomId, 'MIX-PRO');
+    const isOnline = this.isGsiOnline();
     const state = this.lastGsiState || {};
+    const ps1Url = this.getPublicWebUrl(`/api/gsi/installer/ps1/${safeRoomId}`);
+    const ps1Cmd = `powershell -NoP -ExecutionPolicy Bypass -Command "irm '${ps1Url}' | iex"`;
 
     const embed = new EmbedBuilder()
       .setTitle('📡 VALVE CS2 GAME STATE INTEGRATION (GSI)')
@@ -701,16 +995,49 @@ class DiscordBotManager {
           `• Não precisa de todos os 10 jogadores! Apenas **1 pessoa** (jogador, admin ou espectador) coloca o arquivo no CS2.\n` +
           `• O CS2 dele transmite automaticamente cada round para o bot via protocolo oficial da Valve.\n` +
           `• O bot encerra o mix **automaticamente** ao final do jogo (\`13-9\`, \`13-11\`) e computa o Ranking e Patentes sem ninguém precisar digitar \`!vitoria\`!\n\n` +
-          `⚡ **INSTALAÇÃO AUTOMÁTICA EM 1 CLIQUE NO SEU PC (ZERO ESFORÇO):**\n` +
-          `1. Clique no botão verde **[⚡ Instalador 1-Clique (.bat)]** abaixo.\n` +
-          `2. Dê 2 cliques no arquivo baixado: **ele detecta a pasta do seu CS2 sozinho** (mesmo em HD ou SSD secundário) e instala tudo em 1 segundo!\n` +
-          `3. Pronto! Abra o CS2 e jogue normalmente.\n\n` +
+          `⚡ **COMO INSTALAR (ZERO \`.bat\`, ZERO BLOQUEIOS DO WINDOWS):**\n` +
+          `• **Opção 1 (1 Clique no Discord):** Clique no botão verde **[⚡ Instalar GSI (1 Clique)]** abaixo ou baixe o arquivo **\`gamestate_integration_cs2mixhub.cfg\`** anexado acima.\n` +
+          `• **Opção 2 (Automático via Win + R):** Aperte **Win + R**, cole o comando abaixo e aperte **Enter** (detecta sua pasta da Steam sozinho):\n` +
+          `\`\`\`powershell\n${ps1Cmd}\n\`\`\`\n` +
           `🛡️ **100% SEGURO & VAC-SAFE:** O GSI é uma funcionalidade nativa oficial desenvolvida pela Valve (usada pela ESL, BLAST e HLTV). Zero risco de ban.`
       )
-      .setFooter({ text: 'CS2 Mix Hub • Engine Oficial Valve GSI' })
+      .setFooter({ text: `CS2 Mix Hub • Engine Oficial Valve GSI • Sala: ${safeRoomId}` })
       .setTimestamp();
 
     return embed;
+  }
+
+  buildGsiGuidePayload(roomId = 'MIX-PRO') {
+    const safeRoomId = normalizeRoomId(roomId, 'MIX-PRO');
+    const embed = this.buildGsiEmbed(safeRoomId);
+    const webGsiUrl =
+      safeRoomId !== 'MIX-PRO'
+        ? this.getPublicWebUrl(`/?room=${encodeURIComponent(safeRoomId)}&gsi=1`)
+        : this.getPublicWebUrl('/?gsi=1');
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`live_install_gsi:${safeRoomId}`)
+        .setLabel('Instalar GSI (1 Clique)')
+        .setEmoji('⚡')
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setLabel('Baixar .cfg Direto')
+        .setEmoji('📥')
+        .setStyle(ButtonStyle.Link)
+        .setURL(this.getPublicWebUrl(`/api/gsi/cfg/${encodeURIComponent(safeRoomId)}`)),
+      new ButtonBuilder()
+        .setLabel('Painel Web GSI')
+        .setEmoji('🌐')
+        .setStyle(ButtonStyle.Link)
+        .setURL(webGsiUrl),
+      new ButtonBuilder()
+        .setCustomId('gsi_help_info')
+        .setLabel('Como Funciona?')
+        .setEmoji('❓')
+        .setStyle(ButtonStyle.Secondary)
+    );
+    const attachment = this.buildGsiAttachment(safeRoomId);
+    return { embeds: [embed], components: [row], files: [attachment] };
   }
 
   buildLiveMatchEmbed(requesterName = 'Jogador', targetPlayerQuery = null, isExpanded = false, mix = null) {
@@ -756,7 +1083,8 @@ class DiscordBotManager {
               `• 💣 **Granadas & Utilitários:** Smokes, flashes e molotovs no inventário\n` +
               `• 💰 **Economia ($):** Dinheiro atual e valor de equipamento\n` +
               `• 📊 **Desempenho:** Kills, Mortes, Assists, MVPs e K/D\n` +
-              `• 🚨 **C4 Status:** Avisos ao vivo de bomba armada ou defusada`
+              `• 🚨 **C4 Status:** Avisos ao vivo de bomba armada ou defusada\n\n` +
+              `⚡ *Ainda não ativou o GSI no CS2? Clique em **Instalar GSI (1 Clique)** ou **Baixar .cfg Direto** logo abaixo (zero \`.bat\`).*`
           )
           .addFields(
             {
@@ -780,7 +1108,8 @@ class DiscordBotManager {
         embed
           .setDescription(
             `⏳ **Monitoramento ativado com sucesso!** Aguardando início da partida no CS2 de **${playerName}**...\n` +
-            `*Assim que entrar no servidor, este card será atualizado automaticamente em tempo real.*`
+            `*Assim que entrar no servidor, este card será atualizado automaticamente em tempo real.*\n\n` +
+            `⚡ *Ainda não ativou o GSI? Clique em **Instalar GSI (1 Clique)** ou **Baixar .cfg Direto** logo abaixo (zero \`.bat\`).*`
           )
           .setFooter({ text: '📡 Painel Discreto • Clique em "Ver Detalhes (+)" para expandir' });
       }
@@ -931,16 +1260,8 @@ class DiscordBotManager {
         : '';
     const nadesText = (player.grenades || []).length > 0 ? player.grenades.join(', ') : 'Nenhum';
 
-    // Resolve active mix context if not explicitly provided
-    let activeMix = mix;
-    if (!activeMix && this.activeMixes && this.activeMixes.size > 0) {
-      for (const m of this.activeMixes.values()) {
-        if (m && (m.phase === 'live' || m.phase === 'teams' || m.phase === 'veto')) {
-          activeMix = m;
-          break;
-        }
-      }
-    }
+    // Keep active mix strictly scoped to the provided channel context
+    const activeMix = mix || null;
 
     const allStats = Array.isArray(state.allPlayersStats) ? state.allPlayersStats : [];
 
@@ -1111,7 +1432,7 @@ class DiscordBotManager {
       }
     );
 
-    // List other online players if multiple people installed the .bat
+    // List other online players if multiple people installed the GSI
     const otherPlayers = [];
     if (this.playersGsiStates && this.playersGsiStates.size > 1) {
       const now = Date.now();
@@ -1139,9 +1460,15 @@ class DiscordBotManager {
     return embed;
   }
 
-  buildLiveMatchButtons(isOnline = false, isExpanded = false) {
-    const narrOn = this.isNarrationActive();
-    const row = new ActionRowBuilder().addComponents(
+  buildLiveMatchButtons(isOnline = false, isExpanded = false, roomId = 'MIX-PRO', mix = null, channelId = null) {
+    const narrOn = this.isNarrationActive(mix, channelId || mix?.channelId);
+    const safeRoomId = normalizeRoomId(roomId, 'MIX-PRO');
+    const hubWebUrl =
+      safeRoomId !== 'MIX-PRO'
+        ? this.getPublicWebUrl(`/?room=${encodeURIComponent(safeRoomId)}`)
+        : this.getPublicWebUrl('/');
+
+    const row1 = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId('live_toggle_expand')
         .setLabel(isExpanded ? 'Modo Compacto' : 'Ver Detalhes (+)')
@@ -1161,15 +1488,35 @@ class DiscordBotManager {
         .setLabel('Hub Web')
         .setEmoji('\ud83c\udf10')
         .setStyle(ButtonStyle.Link)
-        .setURL(this.getPublicWebUrl('/')),
+        .setURL(hubWebUrl),
       new ButtonBuilder()
         .setCustomId('live_stop')
         .setLabel('Parar')
         .setEmoji('\u23f9\ufe0f')
         .setStyle(ButtonStyle.Danger)
     );
-    return row;
+
+    const row2 = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`live_install_gsi:${safeRoomId}`)
+        .setLabel('Instalar GSI (1 Clique)')
+        .setEmoji('⚡')
+        .setStyle(isOnline ? ButtonStyle.Secondary : ButtonStyle.Success),
+      new ButtonBuilder()
+        .setLabel('Baixar .cfg Direto')
+        .setEmoji('📥')
+        .setStyle(ButtonStyle.Link)
+        .setURL(this.getPublicWebUrl(`/api/gsi/cfg/${encodeURIComponent(safeRoomId)}`)),
+      new ButtonBuilder()
+        .setCustomId('gsi_help_info')
+        .setLabel('Como Funciona?')
+        .setEmoji('❓')
+        .setStyle(ButtonStyle.Secondary)
+    );
+
+    return [row1, row2];
   }
+
   registerLiveTracker(messageOrReply, requesterName = 'Jogador', targetQuery = null, isExpanded = false) {
     const msgId = messageOrReply?.id;
     const chId = messageOrReply?.channelId || messageOrReply?.channel?.id;
@@ -1182,6 +1529,7 @@ class DiscordBotManager {
         }
       }
 
+      const initialOnline = this.isGsiOnline();
       this.liveTrackers.set(msgId, {
         messageId: msgId,
         channelId: chId,
@@ -1191,7 +1539,7 @@ class DiscordBotManager {
         startedAt: Date.now(),
         lastEditedAt: 0,
         lastSignature: '',
-        state: this.lastGsiState?.player?.name ? 'in_game' : 'waiting',
+        state: initialOnline ? (this.lastGsiState?.isGameOver ? 'finished' : 'in_game') : 'waiting',
         consecutiveErrors: 0,
       });
     }
@@ -1206,7 +1554,8 @@ class DiscordBotManager {
     this._isSyncingLiveTrackers = true;
     try {
       const now = Date.now();
-      const sig = `${stateToUse?.roundNumber}_${stateToUse?.scoreCT}_${stateToUse?.scoreTR}_${stateToUse?.bomb}_${stateToUse?.player?.isAlive}_${stateToUse?.player?.health}_${stateToUse?.player?.kills}_${stateToUse?.player?.deaths}_${stateToUse?.aliveCountCT}_${stateToUse?.aliveCountTR}_${stateToUse?.totalMoneyCT}_${stateToUse?.totalMoneyTR}_${stateToUse?.player?.roundKills}_${stateToUse?.player?.activeWeapon?.name}_${stateToUse?.player?.team}_${stateToUse?.phase}_${stateToUse?.isGameOver}`;
+      const isStateFresh = this.isGsiOnline(stateToUse);
+      const baseSig = `${isStateFresh}_${stateToUse?.roundNumber}_${stateToUse?.scoreCT}_${stateToUse?.scoreTR}_${stateToUse?.bomb}_${stateToUse?.player?.isAlive}_${stateToUse?.player?.health}_${stateToUse?.player?.kills}_${stateToUse?.player?.deaths}_${stateToUse?.aliveCountCT}_${stateToUse?.aliveCountTR}_${stateToUse?.totalMoneyCT}_${stateToUse?.totalMoneyTR}_${stateToUse?.player?.roundKills}_${stateToUse?.player?.activeWeapon?.name}_${stateToUse?.player?.team}_${stateToUse?.phase}_${stateToUse?.isGameOver}_${stateToUse?.player?.name || stateToUse?.rawPlayer?.name || ''}`;
 
       for (const [msgId, tracker] of this.liveTrackers.entries()) {
         if (now - tracker.startedAt > 2.5 * 3600 * 1000) {
@@ -1219,6 +1568,12 @@ class DiscordBotManager {
         }
 
         if (now - tracker.lastEditedAt < 1000) continue;
+        if (!isStateFresh && tracker.state === 'waiting') continue;
+
+        const isExpanded = Boolean(tracker.isExpanded);
+        const mix = this.resolveActiveMixForChannel(tracker.channelId);
+        const narrOn = this.isNarrationActive(mix, tracker.channelId);
+        const sig = `${baseSig}_${narrOn}_${mix?.id || ''}_${isExpanded}`;
         if (tracker.lastSignature === sig && tracker.state !== 'waiting') continue;
 
         try {
@@ -1236,12 +1591,11 @@ class DiscordBotManager {
             continue;
           }
 
-          const isExpanded = Boolean(tracker.isExpanded);
-          const mix = this.activeMixes?.get(tracker.channelId);
+          const roomId = normalizeRoomId(mix?.id, 'MIX-PRO');
           const embed = this.buildLiveMatchEmbed(tracker.requester, tracker.targetQuery, isExpanded, mix);
-          const row = this.buildLiveMatchButtons(Boolean(stateToUse?.player?.name), isExpanded);
+          const components = this.buildLiveMatchButtons(isStateFresh, isExpanded, roomId, mix, tracker.channelId);
 
-          await msg.edit({ embeds: [embed], components: [row] }).catch((e) => {
+          await msg.edit({ embeds: [embed], components }).catch((e) => {
             if (e.code === 10008) {
               this.liveTrackers.delete(msgId);
             } else {
@@ -1251,9 +1605,11 @@ class DiscordBotManager {
 
           tracker.lastEditedAt = Date.now();
           tracker.lastSignature = sig;
-          if (stateToUse?.isGameOver) {
+          if (!isStateFresh) {
+            tracker.state = 'waiting';
+          } else if (stateToUse?.isGameOver) {
             tracker.state = 'finished';
-          } else if (stateToUse?.player?.name || stateToUse?.rawPlayer?.name) {
+          } else {
             tracker.state = 'in_game';
           }
         } catch (err) {
@@ -1590,7 +1946,11 @@ class DiscordBotManager {
               { name: 'Nuke', value: 'nuke' },
               { name: 'Dust II', value: 'dust2' },
               { name: 'Ancient', value: 'ancient' },
-              { name: 'Anubis', value: 'anubis' }
+              { name: 'Anubis', value: 'anubis' },
+              { name: 'Overpass', value: 'overpass' },
+              { name: 'Train', value: 'train' },
+              { name: 'Cache', value: 'cache' },
+              { name: 'Vertigo', value: 'vertigo' }
             )
         ),
 
@@ -1690,7 +2050,13 @@ class DiscordBotManager {
 
       new SlashCommandBuilder()
         .setName('status-servidor')
-        .setDescription('Consulta ao vivo o servidor CS2 (A2S_INFO Steam UDP: Ping, mapa e players online)'),
+        .setDescription('Consulta ao vivo o servidor CS2 (A2S_INFO Steam UDP: Ping, mapa e players online)')
+        .addStringOption((opt) =>
+          opt
+            .setName('endereco')
+            .setDescription('IP:Porta do servidor CS2 (opcional; usa o servidor do mix/padrão)')
+            .setRequired(false)
+        ),
 
       new SlashCommandBuilder()
         .setName('gsi')
@@ -1898,6 +2264,8 @@ class DiscordBotManager {
           await this.handleModalSubmit(interaction);
         } else if (interaction.isStringSelectMenu()) {
           await this.handleSelectMenuInteraction(interaction);
+        } else if (interaction.isUserSelectMenu()) {
+          await this.handleUserSelectMenuInteraction(interaction);
         }
       } catch (err) {
         console.error('[DISCORD BOT] Erro ao processar interação:', err);
@@ -1999,6 +2367,7 @@ class DiscordBotManager {
     if (command === 'mapas' || command === 'mapstats') return this.prefixMapStats(message);
     if (command === 'status-server' || command === 'status-servidor') return this.prefixServerStatus(message, args.slice(1));
     if (command === 'gsi') return this.prefixGsi(message);
+    if (command === 'ao' && subArg === 'vivo') return this.prefixLive(message, args.slice(2));
     if (
       command === 'aovivo' ||
       command === 'live' ||
@@ -2022,28 +2391,29 @@ class DiscordBotManager {
       if (subArg === 'status') {
         return this.prefixServerStatus(message, args.slice(2));
       }
+      const mix = this.resolveActiveMixForChannel(message.channelId);
       const ip = args.slice(1).join(' ').trim();
       if (ip) {
-        const mix = this.activeMixes.get(message.channelId);
         if (!this.isGuildModerator(message.member, message.guild, mix, message.author?.id)) {
           return message.reply('🚫 Apenas administradores do servidor ou o criador do mix podem alterar o IP do servidor.');
         }
-        const clean = ip.replace(/^connect\s+/i, '').trim();
-        if (!isValidServerAddress(clean)) {
-          return message.reply('⚠️ Endereço de servidor inválido. Use o formato `ip:porta` (ex: `189.1.168.20:27015`).');
+        const parsed = parseServerConnect(ip);
+        if (!parsed.valid) {
+          return message.reply(`⚠️ ${parsed.error || 'Endereço de servidor inválido.'} Use o formato \`ip:porta\` (ex: \`189.1.168.20:27015\` ou \`connect 189.1.168.20:27015; password mix\`).`);
         }
-        this.config.serverConnect = clean;
-        this.saveConfig({ serverConnect: clean });
+        this.config.serverConnect = parsed.normalized;
+        this.saveConfig({ serverConnect: parsed.normalized });
         if (mix) {
-          mix.serverIp = clean;
+          mix.serverIp = parsed.normalized;
           this.syncToWebRoom(mix);
           this.updateLobbyInChannels(mix);
         }
-        return message.reply(`✅ Servidor CS2 configurado com sucesso para os mixes: \`${clean}\``);
+        return message.reply(`✅ Servidor CS2 configurado com sucesso para os mixes: \`${parsed.consoleCommand}\``);
       }
+      const conn = this.resolveMixDisplayConnect(mix);
       return message.reply(
-        this.config.serverConnect
-          ? `💻 **Servidor Atual:** \`${this.config.serverConnect}\`\n👉 Para conectar: \`connect ${this.config.serverConnect}\``
+        conn
+          ? `💻 **Servidor Atual:** \`${conn.normalized}\`\n👉 Para conectar: \`${conn.consoleCommand}\``
           : '⚠️ Nenhum servidor configurado. Use `!servidor 189.1.168.20:27015` para configurar!'
       );
     }
@@ -2086,12 +2456,13 @@ class DiscordBotManager {
   async prefixCreateMix(message, customName) {
     try {
       const user = message.author;
-      const existing = this.activeMixes.get(message.channelId);
+      const existing = this.resolveActiveMixForChannel(message.channelId);
       if (existing && existing.phase === 'live') {
         const mapName = existing.finalMap?.name || existing.veto?.deciderMap?.name || 'CS2';
+        const conn = this.resolveMixDisplayConnect(existing);
         return message.reply(
           `⚔️ **Já existe uma partida 5v5 em andamento neste canal!** (${existing.name})\n` +
-          `🗺️ **Mapa:** **${mapName}** • Conectar: \`connect ${(existing.serverIp || this.config.serverConnect).replace(/^connect\s+/i, '')}\`\n\n` +
+          `🗺️ **Mapa:** **${mapName}** • Conectar: \`${conn ? conn.consoleCommand : 'A definir (!servidor ip:porta)'}\`\n\n` +
           `👉 Para acompanhar ao vivo: \`!aovivo\` ou \`!fila\`\n` +
           `👉 Para declarar vitória: \`!vitoria A\` ou \`!vitoria B\`\n` +
           `👉 Para encerrar ou cancelar: \`!cancelar\``
@@ -2154,7 +2525,7 @@ class DiscordBotManager {
       .setDescription(
         `Bem-vindo à central de partidas 5v5 da comunidade!\n\n` +
           `• **Lobbies Automáticos:** Clique em **Criar Mix** ou digite \`!mix\` para abrir uma fila 5v5.\n` +
-          `• **Check-in Anti-AFK:** Confirmação de 45 segundos para partidas sem ausentes.\n` +
+          `• **Check-in Anti-AFK:** Confirmação em 60 segundos para partidas sem ausentes.\n` +
           `• **Balanceamento Snake-Draft:** Algoritmo Gamers Club e FACEIT oficial.\n` +
           `• **Pick & Ban:** Veto oficial da Valve com escolha de lados CT/TR.\n` +
           `• **Canais de Voz:** Movimentação automática para calls CT e TR na hora do jogo!\n\n` +
@@ -2189,25 +2560,21 @@ class DiscordBotManager {
   }
 
   async prefixFila(message) {
-    let mix = this.activeMixes.get(message.channelId);
-    if (!mix && this.activeMixes.size > 0) {
-      mix = Array.from(this.activeMixes.values()).find((m) => m && m.phase !== 'cancelled' && m.phase !== 'finished') || Array.from(this.activeMixes.values())[0];
-    }
+    let mix = this.resolveActiveMixForChannel(message.channelId);
     if (!mix && this.webRoomsRef && this.webRoomsRef.size > 0) {
       for (const r of this.webRoomsRef.values()) {
-        if (r && r.phase !== 'finished' && r.phase !== 'cancelled') {
+        if (r && r.channelId === message.channelId && r.phase !== 'finished' && r.phase !== 'cancelled') {
           mix = r;
           break;
         }
       }
     }
     if (!mix) {
-      return message.reply('ℹ️ Nenhum mix ativo no momento. Use `!mix` ou `/mix criar` para abrir um!');
+      return message.reply('ℹ️ Nenhum mix ativo neste canal. Use `!mix` ou `/mix criar` para abrir um!');
     }
-    const embed = this.buildLobbyEmbed(mix);
-    const components = this.buildLobbyButtons(mix);
-    const sent = await message.channel.send({ embeds: [embed], components });
-    if (sent) {
+    const payload = this.buildStatusPayloadForMix(mix);
+    const sent = await message.channel.send(payload);
+    if (sent && (mix.phase === 'lobby' || !mix.phase)) {
       mix.lobbyMessageId = sent.id;
       mix.channelId = message.channelId;
     }
@@ -2222,7 +2589,7 @@ class DiscordBotManager {
       const editedTargets = new Set();
 
       const targets = this.getUniqueActiveMixes().filter(
-        (m) => m && m.channelId && m.lobbyMessageId && m.channelId !== 'whatsapp-mix' && (m.id === mix.id || m.phase === 'lobby')
+        (m) => m && m.channelId && m.lobbyMessageId && m.channelId !== 'whatsapp-mix' && m.id === mix.id
       );
       if (mix.channelId && mix.lobbyMessageId && mix.channelId !== 'whatsapp-mix') {
         targets.push(mix);
@@ -2246,18 +2613,17 @@ class DiscordBotManager {
   }
 
   async prefixJoin(message) {
-    let mix = this.activeMixes.get(message.channelId);
-    if (!mix && this.activeMixes.size > 0) {
-      mix = Array.from(this.activeMixes.values()).find((m) => m && m.phase !== 'cancelled' && m.phase !== 'finished') || Array.from(this.activeMixes.values())[0];
-    }
+    const mix = this.resolveActiveMixForChannel(message.channelId);
     if (!mix) {
       return message.reply('⚠️ Nenhum mix ativo neste canal. Crie um agora com `!mix` ou clicando no botão verde!');
     }
-    if (mix.players.some((p) => p.id === message.author.id)) {
-      return message.reply('⚠️ Você já está no mix!');
+    mix.waitlist = Array.isArray(mix.waitlist) ? mix.waitlist : [];
+    const alreadyIn = mix.players.some((p) => p.id === message.author.id) || mix.waitlist.some((p) => p.id === message.author.id);
+    if (alreadyIn) {
+      return message.reply('⚠️ Você já está inscrito neste mix (titular ou reserva)!');
     }
-    if (mix.players.length >= 10) {
-      return message.reply('🚫 O mix já está lotado (10/10)!');
+    if (mix.players.length >= 10 && mix.waitlist.length >= 3) {
+      return message.reply('🚫 O lobby (10/10) e a Fila de Reserva (3/3) já estão lotados!');
     }
 
     if (!this.hasSavedLevel(message.author.id)) {
@@ -2269,14 +2635,25 @@ class DiscordBotManager {
     }
     const playerLvl = this.getPlayerLevel(message.author.id);
     const pName = message.member?.displayName || message.author.username;
-    mix.players.push({
+    const newEntry = {
       id: message.author.id,
       username: message.author.username,
       displayName: pName,
       avatar: message.author.displayAvatarURL({ dynamic: true }),
       level: playerLvl,
       ready: true,
-    });
+    };
+
+    if (mix.players.length >= 10) {
+      mix.waitlist.push(newEntry);
+      this.syncToWebRoom(mix);
+      this.updateLobbyInChannels(mix);
+      return message.reply(
+        `📋 <@${message.author.id}> entrou na **Fila de Reserva (Suplente #${mix.waitlist.length}/3)**! Se alguém sair ou ficar AFK no check-in, você assume a vaga automaticamente.`
+      );
+    }
+
+    mix.players.push(newEntry);
     this.syncToWebRoom(mix);
     this.updateLobbyInChannels(mix);
 
@@ -2295,53 +2672,85 @@ class DiscordBotManager {
   }
 
   async prefixLeave(message) {
-    let mix = this.activeMixes.get(message.channelId);
-    if (!mix && this.activeMixes.size > 0) {
-      mix = Array.from(this.activeMixes.values()).find((m) => m && m.phase !== 'cancelled' && m.phase !== 'finished') || Array.from(this.activeMixes.values())[0];
-    }
+    const mix = this.resolveActiveMixForChannel(message.channelId);
     if (!mix) return message.reply('⚠️ Nenhum mix ativo neste canal.');
+    mix.waitlist = Array.isArray(mix.waitlist) ? mix.waitlist : [];
+
+    const waitIdx = mix.waitlist.findIndex((p) => p.id === message.author.id);
+    if (waitIdx !== -1) {
+      mix.waitlist.splice(waitIdx, 1);
+      this.syncToWebRoom(mix);
+      this.updateLobbyInChannels(mix);
+      return message.reply(`🚪 <@${message.author.id}> saiu da Fila de Reserva (${mix.waitlist.length}/3).`);
+    }
+
     const idx = mix.players.findIndex((p) => p.id === message.author.id);
     if (idx === -1) return message.reply('⚠️ Você não está no mix.');
-    const removed = mix.players.splice(idx, 1)[0];
+    mix.players.splice(idx, 1);
+    if (mix.readyCheck?.confirmed) {
+      mix.readyCheck.confirmed.delete(message.author.id);
+    }
+
+    let promotedMsg = '';
+    if (mix.waitlist.length > 0 && mix.players.length < 10) {
+      const nextSub = mix.waitlist.shift();
+      mix.players.push(nextSub);
+      promotedMsg = `\n🔄 <@${nextSub.id}> foi promovido automaticamente da **Fila de Reserva** para titular!`;
+    }
+
+    if (mix.phase === 'ready_check' && mix.players.length < 10) {
+      if (mix.readyCheck?.timer) {
+        clearTimeout(mix.readyCheck.timer);
+        mix.readyCheck.timer = null;
+      }
+      mix.readyCheck.active = false;
+      mix.phase = 'lobby';
+    }
+
     if (mix.players.length <= 7 && mix.notifiedMissing) {
       mix.notifiedMissing.clear();
     }
     this.syncToWebRoom(mix);
     this.updateLobbyInChannels(mix);
-    return message.reply(`🚪 <@${message.author.id}> saiu do mix. (${mix.players.length}/10)`);
+    return message.reply(`🚪 <@${message.author.id}> saiu do mix. (${mix.players.length}/10)${promotedMsg}`);
   }
 
   async prefixDraw(message) {
-    let mix = this.activeMixes.get(message.channelId);
-    if (!mix && this.activeMixes.size > 0) {
-      mix = Array.from(this.activeMixes.values()).find((m) => m && m.phase !== 'cancelled' && m.phase !== 'finished') || Array.from(this.activeMixes.values())[0];
-    }
-    if (!mix) return message.reply('⚠️ Nenhum mix ativo no momento. Use `!mix` para abrir uma fila!');
+    const mix = this.resolveActiveMixForChannel(message.channelId);
+    if (!mix) return message.reply('⚠️ Nenhum mix ativo neste canal. Use `!mix` para abrir uma fila!');
     if (mix.players.length < 2) return message.reply('⚠️ É necessário pelo menos 2 jogadores para sortear os times!');
+
+    if (mix.readyCheck?.timer) {
+      clearTimeout(mix.readyCheck.timer);
+      mix.readyCheck.timer = null;
+    }
+    if (mix.readyCheck) {
+      mix.readyCheck.active = false;
+    }
+
     this.balanceTeams(mix);
+    this.updateLobbyInChannels(mix);
     const embed = this.buildTeamsEmbed(mix);
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(`mix_veto:${mix.id}`).setLabel('Iniciar Pick & Ban').setEmoji('🗳️').setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId(`mix_roulette:${mix.id}`).setLabel('Roleta Rápida').setEmoji('🎲').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId(`mix_pick_map:${mix.id}`).setLabel('Escolher Mapa').setEmoji('🗺️').setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId(`mix_voice:${mix.id}`).setLabel('Mover para Calls').setEmoji('📞').setStyle(ButtonStyle.Secondary)
-    );
-    return message.reply({ embeds: [embed], components: [row] });
+    return message.reply({ embeds: [embed], components: [this.buildTeamsActionButtons(mix)] });
   }
 
   async prefixVeto(message) {
-    let mix = this.activeMixes.get(message.channelId);
-    if (!mix && this.activeMixes.size > 0) {
-      mix = Array.from(this.activeMixes.values()).find((m) => m && m.phase !== 'cancelled' && m.phase !== 'finished') || Array.from(this.activeMixes.values())[0];
-    }
-    if (!mix) return message.reply('⚠️ Nenhum mix ativo no momento. Use `!mix` para abrir uma fila!');
+    const mix = this.resolveActiveMixForChannel(message.channelId);
+    if (!mix) return message.reply('⚠️ Nenhum mix ativo neste canal. Use `!mix` para abrir uma fila!');
     if (mix.teamA.players.length === 0 || mix.teamB.players.length === 0) {
       this.balanceTeams(mix);
     }
     mix.phase = 'veto';
+    this.syncToWebRoom(mix);
+    this.updateLobbyInChannels(mix);
     const embed = this.buildVetoEmbed(mix);
     const components = this.buildVetoButtons(mix);
+    const turnCap = mix.veto.currentTurn === 'teamA' ? mix.teamA.captain : mix.teamB.captain;
+    const capATag = isSnowflake(mix.teamA.captain?.id) ? `<@${mix.teamA.captain.id}>` : `**${mix.teamA.captain?.displayName || mix.teamA.captain?.username || 'Capitão A'}**`;
+    const capBTag = isSnowflake(mix.teamB.captain?.id) ? `<@${mix.teamB.captain.id}>` : `**${mix.teamB.captain?.displayName || mix.teamB.captain?.username || 'Capitão B'}**`;
+    const turnTag = isSnowflake(turnCap?.id) ? `<@${turnCap.id}>` : `**${turnCap?.displayName || turnCap?.username || 'Capitão'}**`;
     return message.reply({
-      content: `🗳️ **VETO DE MAPAS INICIADO!**\n👑 Capitão A: <@${mix.teamA.captain?.id}> | 👑 Capitão B: <@${mix.teamB.captain?.id}>\n👉 Vez de: <@${(mix.veto.currentTurn === 'teamA' ? mix.teamA.captain : mix.teamB.captain)?.id}> banir um mapa!`,
+      content: `🗳️ **VETO DE MAPAS INICIADO!**\n👑 Capitão A: ${capATag} | 👑 Capitão B: ${capBTag}\n👉 Vez de: ${turnTag} banir um mapa!`,
       embeds: [embed],
       components,
     });
@@ -2459,6 +2868,44 @@ class DiscordBotManager {
     return (mix.players || []).some((p) => p.id === userId);
   }
 
+  resolveMixDisplayConnect(mix, rawOverride = null) {
+    const raw = rawOverride || mix?.serverIp || this.config?.serverConnect || '';
+    if (!String(raw).trim()) return null;
+    const parsed = parseServerConnect(raw);
+    if (parsed.valid) {
+      return {
+        normalized: parsed.normalized,
+        host: parsed.host,
+        port: parsed.port,
+        hostPort: parsed.hostPort,
+        password: parsed.password,
+        consoleCommand: parsed.consoleCommand,
+      };
+    }
+    const fallback = extractHostAndPort(raw);
+    if (!fallback.host) return null;
+    return {
+      normalized: fallback.normalized,
+      host: fallback.host,
+      port: fallback.port,
+      hostPort: fallback.hostPort,
+      password: fallback.password,
+      consoleCommand: fallback.password
+        ? `connect ${fallback.hostPort}; password ${fallback.password}`
+        : `connect ${fallback.hostPort}`,
+    };
+  }
+
+  buildTeamsActionButtons(mix) {
+    return new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`mix_veto:${mix.id}`).setLabel('Iniciar Pick & Ban').setEmoji('🗳️').setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(`mix_captain_draft:${mix.id}`).setLabel('Draft 1v1 Capitães').setEmoji('👑').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(`mix_roulette:${mix.id}`).setLabel('Roleta Rápida').setEmoji('🎲').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(`mix_pick_map:${mix.id}`).setLabel('Escolher Mapa').setEmoji('🗺️').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(`mix_voice:${mix.id}`).setLabel('Mover para Calls').setEmoji('📞').setStyle(ButtonStyle.Secondary)
+    );
+  }
+
   /**
    * Fluxo único para definir o mapa do mix (roleta ou escolha manual) e liberar a partida.
    * Sempre envia o anúncio com o mapa no canal para ninguém ficar sem ver o resultado.
@@ -2468,9 +2915,18 @@ class DiscordBotManager {
       this.balanceTeams(mix);
     }
 
+    if (mix.teamA) {
+      mix.teamA.startingSide = mix.teamA.startingSide || mix.teamA.side || 'CT';
+      mix.teamA.halftimeSwapped = false;
+    }
+    if (mix.teamB) {
+      mix.teamB.startingSide = mix.teamB.startingSide || mix.teamB.side || 'TR';
+      mix.teamB.halftimeSwapped = false;
+    }
+
     mix.veto = mix.veto || { currentTurn: 'teamA', bannedMaps: [], remainingMaps: [...OFFICIAL_MAPS], history: [] };
     mix.veto.deciderMap = drawn;
-    mix.finalMap = { name: drawn.name, file: drawn.id };
+    mix.finalMap = { id: drawn.id, name: drawn.name, file: drawn.id, image: drawn.image };
     mix.matchMap = drawn.name;
     mix.phase = 'live';
 
@@ -2489,8 +2945,7 @@ class DiscordBotManager {
     readyEmbed.setImage(drawn.image);
     const components = this.buildMatchReadyButtons(mix);
 
-    const serverClean = (mix.serverIp || this.config.serverConnect || '103.14.27.41:25054').replace(/^connect\s+/i, '');
-    const steamDirect = this.getPublicWebUrl(`/connect?ip=${encodeURIComponent(serverClean)}`);
+    const conn = this.resolveMixDisplayConnect(mix);
     const tag = (cap, fallback) =>
       isSnowflake(cap?.id) ? `<@${cap.id}>` : `**${cap?.displayName || cap?.username || cap?.nick || fallback}**`;
 
@@ -2506,7 +2961,7 @@ class DiscordBotManager {
           `${header}\n\n` +
           `🛡️ **${mix.teamA?.name || 'Time A'} (${mix.teamA?.side || 'CT'}):** Capitão ${tag(mix.teamA?.captain, 'Capitão A')}\n` +
           `💣 **${mix.teamB?.name || 'Time B'} (${mix.teamB?.side || 'TR'}):** Capitão ${tag(mix.teamB?.captain, 'Capitão B')}\n\n` +
-          `💻 **Comando Console CS2:** \`connect ${serverClean}\``,
+          `💻 **Comando Console CS2:** \`${conn ? conn.consoleCommand : 'A definir (!servidor ip:porta)'}\``,
         embeds: [readyEmbed],
         components,
       })
@@ -2521,14 +2976,16 @@ class DiscordBotManager {
     return sent;
   }
 
-  resolveActiveMixForChannel(channelId) {
-    let mix = this.activeMixes.get(channelId);
-    if (!mix && this.activeMixes.size > 0) {
-      mix =
-        Array.from(this.activeMixes.values()).find((m) => m && m.phase !== 'cancelled' && m.phase !== 'finished') ||
-        Array.from(this.activeMixes.values())[0];
+  resolveActiveMixForChannel(channelId, { includeFinished = false } = {}) {
+    if (!channelId) return null;
+    const mix = this.activeMixes.get(channelId) || null;
+    if (mix && mix.phase !== 'cancelled' && (includeFinished || mix.phase !== 'finished')) {
+      return mix;
     }
-    return mix || null;
+    if (includeFinished && this.lastFinishedMixes?.has(`ch:${channelId}`)) {
+      return this.lastFinishedMixes.get(`ch:${channelId}`);
+    }
+    return null;
   }
 
   async prefixRoulette(message) {
@@ -2560,7 +3017,7 @@ class DiscordBotManager {
 
   async prefixChooseMap(message, mapArg) {
     const mix = this.resolveActiveMixForChannel(message.channelId);
-    if (!mix) return message.reply('⚠️ Nenhum mix ativo no momento. Use `!mix` para abrir uma fila!');
+    if (!mix) return message.reply('⚠️ Nenhum mix ativo neste canal. Use `!mix` para abrir uma fila!');
 
     if (!mapArg) {
       return message.reply({
@@ -2597,10 +3054,7 @@ class DiscordBotManager {
   }
 
   async prefixRematch(message) {
-    let mix = this.activeMixes.get(message.channelId);
-    if (!mix && this.activeMixes.size > 0) {
-      mix = Array.from(this.activeMixes.values()).find((m) => m && m.teamA?.players?.length > 0) || Array.from(this.activeMixes.values())[0];
-    }
+    const mix = this.resolveActiveMixForChannel(message.channelId, { includeFinished: true });
     if (!mix) {
       return message.reply('⚠️ Nenhum mix encontrado para iniciar uma revanche neste canal. Crie um mix com `!mix`!');
     }
@@ -2643,17 +3097,16 @@ class DiscordBotManager {
   }
 
   async prefixIp(message) {
-    const mix = this.activeMixes.get(message.channelId);
-    const ip = (mix?.serverIp || this.config.serverConnect || '').trim();
-    if (!ip) {
+    const mix = this.resolveActiveMixForChannel(message.channelId);
+    const conn = this.resolveMixDisplayConnect(mix);
+    if (!conn) {
       return message.reply('⚠️ Nenhum servidor CS2 configurado no momento. Use `!servidor <ip:porta>` para definir o IP!');
     }
-    const cleanIp = ip.replace(/^connect\s+/i, '');
-    const connectUrl = this.getPublicWebUrl(`/connect?ip=${encodeURIComponent(cleanIp)}`);
+    const connectUrl = this.getPublicWebUrl(`/connect?ip=${encodeURIComponent(conn.normalized)}`);
     const embed = new EmbedBuilder()
       .setTitle('💻 SERVIDOR CS2 DO MIX')
       .setDescription(
-        `🌐 **Comando de Conexão no Console do CS2:**\n\`\`\`bash\nconnect ${cleanIp}\n\`\`\`\n` +
+        `🌐 **Comando de Conexão no Console do CS2:**\n\`\`\`bash\n${conn.consoleCommand}\n\`\`\`\n` +
         `🚀 **Steam 1-Clique:** Clique no botão abaixo para abrir o Counter-Strike 2 e conectar diretamente!`
       )
       .setColor(0x10b981)
@@ -2670,35 +3123,30 @@ class DiscordBotManager {
   }
 
   async prefixServerStatus(message, args) {
-    const address = (args && args[0]) ? args[0].trim() : (this.config.serverConnect || '127.0.0.1:27015');
-    const res = await queryA2SServer(address, 3000);
-    const embed = this.buildServerStatusEmbed(res, address);
+    const mix = this.resolveActiveMixForChannel(message.channelId);
+    const rawAddress = (args && args.length > 0 ? args.join(' ') : '') || mix?.serverIp || this.config.serverConnect || '';
+    if (!rawAddress.trim()) {
+      return message.reply('⚠️ Nenhum servidor configurado. Use `!servidor <ip:porta>` ou `!status-server <ip:porta>`.');
+    }
+    const { hostPort, normalized } = extractHostAndPort(rawAddress);
+    if (!hostPort) {
+      return message.reply('⚠️ Endereço de servidor inválido. Use `!status-server <ip:porta>`.');
+    }
+    const res = await queryA2SServer(hostPort, 3000);
+    const embed = this.buildServerStatusEmbed(res, hostPort);
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setLabel('🚀 Conectar no CS2')
         .setStyle(ButtonStyle.Link)
-        .setURL(this.getPublicWebUrl(`/connect?ip=${encodeURIComponent(address)}`))
+        .setURL(this.getPublicWebUrl(`/connect?ip=${encodeURIComponent(normalized || hostPort)}`))
     );
     return message.reply({ embeds: [embed], components: [row] });
   }
 
   async prefixGsi(message) {
-    const embed = this.buildGsiEmbed();
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setLabel('⚡ Instalador 1-Clique (.bat)')
-        .setStyle(ButtonStyle.Link)
-        .setURL(this.getPublicWebUrl('/api/gsi/installer/MIX-PRO')),
-      new ButtonBuilder()
-        .setLabel('📥 Manual (.cfg)')
-        .setStyle(ButtonStyle.Link)
-        .setURL(this.getPublicWebUrl('/api/gsi/cfg/MIX-PRO')),
-      new ButtonBuilder()
-        .setLabel('🌐 Ver Partida no Hub Web')
-        .setStyle(ButtonStyle.Link)
-        .setURL(this.getPublicWebUrl('/'))
-    );
-    return message.reply({ embeds: [embed], components: [row] });
+    const mix = this.resolveActiveMixForChannel(message.channelId);
+    const roomId = normalizeRoomId(mix?.id, 'MIX-PRO');
+    return message.reply(this.buildGsiGuidePayload(roomId));
   }
 
   async prefixLive(message, args = []) {
@@ -2713,21 +3161,22 @@ class DiscordBotManager {
           }
         }
       }
-      this.stopAllLiveMonitoring();
+      this.stopMixNarration(this.activeMixes?.get(message.channelId), message.channelId);
       return message.reply(`\u23f9\ufe0f Monitoramento de partida desativado neste canal (${stopped} rastreador(es) removido(s)).`);
     }
 
     const targetQuery = args.length > 0 ? args.join(' ') : null;
     const requester = message.author?.username || 'Jogador';
-    const mix = this.activeMixes?.get(message.channelId) || null;
+    const mix = this.resolveActiveMixForChannel(message.channelId);
+    const roomId = normalizeRoomId(mix?.id, 'MIX-PRO');
     const embed = this.buildLiveMatchEmbed(requester, targetQuery, false, mix);
-    const row = this.buildLiveMatchButtons(Boolean(this.lastGsiState?.player?.name), false);
-    const sent = await message.reply({ embeds: [embed], components: [row] });
+    const components = this.buildLiveMatchButtons(this.isGsiOnline(), false, roomId, mix, message.channelId);
+    const sent = await message.reply({ embeds: [embed], components });
     this.registerLiveTracker(sent, requester, targetQuery, false);
     return sent;
   }
   async prefixMatchResult(message, args) {
-    const mix = this.activeMixes.get(message.channelId);
+    const mix = this.resolveActiveMixForChannel(message.channelId);
     if (!mix) {
       return message.reply('⚠️ Nenhum mix ativo encontrado neste canal para registrar vitória.');
     }
@@ -2743,7 +3192,7 @@ class DiscordBotManager {
   }
 
   async prefixSubstitute(message, args) {
-    const mix = this.activeMixes.get(message.channelId);
+    const mix = this.resolveActiveMixForChannel(message.channelId);
     if (!mix) {
       return message.reply('⚠️ Nenhum mix ativo neste canal para fazer substituição.');
     }
@@ -2778,10 +3227,18 @@ class DiscordBotManager {
       username: message.author.username,
     });
 
-    const mix = this.activeMixes.get(message.channelId);
+    const mix = this.resolveActiveMixForChannel(message.channelId);
     if (mix) {
-      const p = mix.players.find((pl) => pl.id === message.author.id);
-      if (p) p.level = parsed;
+      let changed = false;
+      const p = (mix.players || []).find((pl) => pl.id === message.author.id);
+      if (p) { p.level = parsed; changed = true; }
+      const w = (mix.waitlist || []).find((pl) => pl.id === message.author.id);
+      if (w) { w.level = parsed; changed = true; }
+      if (changed) {
+        this.recomputeTeamAverages(mix, message.author.id, parsed);
+        this.syncToWebRoom(mix);
+        this.updateLobbyInChannels(mix);
+      }
     }
 
     const badge = parsed >= 20 ? '👑 Lvl 20+' : parsed >= 18 ? '🏆 Lvl 18-19' : parsed >= 14 ? '🥇 Lvl 14-17' : '🥈 Lvl 1-13';
@@ -2801,16 +3258,23 @@ class DiscordBotManager {
   }
 
   async prefixGrenade(message, query) {
-    const clean = (query || '').toLowerCase().trim();
-    const mapKey = Object.keys(GRENADE_GUIDES).find((k) => clean.includes(k)) || 'mirage';
-    const guides = GRENADE_GUIDES[mapKey] || GRENADE_GUIDES.mirage;
+    const mapKey = resolveGrenadeMapKey(query);
+    if (!mapKey || !GRENADE_GUIDES[mapKey]) {
+      const supported = Object.keys(GRENADE_GUIDES).map((k) => `\`${k}\``).join(', ');
+      return message.reply(
+        `⚠️ Mapa **"${query}"** não encontrado no guia de granadas.\n` +
+        `🗺️ **10 mapas disponíveis:** ${supported}\n` +
+        `👉 Aceita atalhos como \`!smoke d2\`, \`!smoke ovp\`, \`!smoke trn\`, \`!smoke vrg\`, \`!smoke cac\`.`
+      );
+    }
+    const guides = GRENADE_GUIDES[mapKey];
     const list = guides.map((g, i) => `**${i + 1}. ${g.title}**\n👉 ${g.desc}`).join('\n\n');
 
     const embed = new EmbedBuilder()
       .setTitle(`💨 GUIA DE GRANADAS E SMOKES • ${mapKey.toUpperCase()}`)
-      .setDescription(`Lineups essenciais para dominar a ${mapKey.toUpperCase()} no CS2:\n\n${list}`)
+      .setDescription(`Lineups essenciais para dominar a **${mapKey.toUpperCase()}** no CS2:\n\n${list}`)
       .setColor(0x38bdf8)
-      .setFooter({ text: 'CS2 Mix Hub • Guia Tático Oficial' });
+      .setFooter({ text: 'CS2 Mix Hub • 10 Mapas • Guia Tático Oficial' });
 
     return message.reply({ embeds: [embed] });
   }
@@ -2851,6 +3315,9 @@ class DiscordBotManager {
     const hours = Math.floor(uptime / 3600);
     const mins = Math.floor((uptime % 3600) / 60);
     const secs = uptime % 60;
+    const activeCount = this.getUniqueActiveMixes().filter(
+      (m) => m && m.phase !== 'finished' && m.phase !== 'cancelled'
+    ).length;
 
     const embed = new EmbedBuilder()
       .setTitle('⚡ STATUS OPERACIONAL • CS2 MIX HUB BOT')
@@ -2859,7 +3326,7 @@ class DiscordBotManager {
         { name: '📶 Latência (Ping)', value: `\`${ping}ms\``, inline: true },
         { name: '⏱️ Tempo Online', value: `\`${hours}h ${mins}m ${secs}s\``, inline: true },
         { name: '🌐 Servidores Conectados', value: `\`${this.client?.guilds.cache.size || 0}\``, inline: true },
-        { name: '🎮 Mixes Ativos', value: `\`${this.activeMixes.size}\``, inline: true }
+        { name: '🎮 Mixes Ativos', value: `\`${activeCount}\``, inline: true }
       )
       .setFooter({ text: 'CS2 Mix Hub • Engine v14' });
 
@@ -2873,33 +3340,33 @@ class DiscordBotManager {
       .setDescription(
         `Você pode usar o prefixo \`!\` ou barra \`/\` para tudo:\n\n` +
           `• \`!painel\` — Painel fixo com botão verde para abrir mix\n` +
-          `• \`!mix\` ou \`!criar\` — Abre uma nova fila 5v5 com botões interativos\n` +
-          `• \`!entrar\` / \`!sair\` — Gerencia sua vaga no lobby\n` +
+          `• \`!mix\` ou \`!criar\` — Abre uma nova fila 5v5 com botões interativos e modo Equilibrado/Capitães\n` +
+          `• \`!entrar\` / \`!sair\` — Entra no lobby (ou Fila de Reserva até 3/3 quando 10/10)\n` +
           `• \`!sortear\` — Sorteio inteligente e balanceamento snake-draft\n` +
           `• \`!roleta\` — Roleta rápida de mapas justa (não repete até sair todos os 7 mapas)\n` +
           `• \`!escolher [mapa]\` ou \`!mapa [nome]\` — Escolhe diretamente o mapa do mix (ex: \`!mapa mirage\` ou menu interativo)\n` +
           `• \`!veto\` — Pick & Ban oficial da Valve com escolha de lados CT/TR\n` +
           `• \`!revanche\` — Inicia revanche imediata mantendo os 10 jogadores com lados invertidos\n` +
-          `• \`!vitoria [A|B] [placar]\` — Registra a vitória, elege automaticamente MVP e Bagre da Partida e pontua no ranking\n` +
-          `• \`!aovivo\` [parar] — Monitorar Partida com auto-atualização round a round: placar, CT/TR, HP e armas (ative antes ou durante o jogo!)\n` +
-          `• \`!gsi\` — Instruções e download do Valve GSI para transmissão em tempo real\n` +
+          `• \`!vitoria [A|B] [placar]\` — Registra a vitória no ranking, calcula MVP/Bagre via GSI (ou abre voto no Bagre)\n` +
+          `• \`!aovivo\` [parar] — Monitorar Partida com auto-atualização round a round (ou \`!ao vivo\`)\n` +
+          `• \`!gsi\` — Instalação 1-comando ou download direto do \`.cfg\` do Valve GSI (zero \`.bat\`)\n` +
           `• \`!historico [qtde]\` — Histórico das últimas partidas finalizadas\n` +
           `• \`!x1 @amigo\` — Duelo direto Head-to-Head e sinergia de duo\n` +
           `• \`!mapas\` — Estatísticas dos mapas mais disputados no servidor\n` +
           `• \`!status-server\` — Consulta ping, mapa e players online no CS2 (A2S_INFO)\n` +
           `• \`!ranking\` / \`!top\` — Hall da Fama e Top 10 de vitórias e MVPs\n` +
-          `• \`!sub @novo\` — Substitui um jogador ausente por um reserva\n` +
+          `• \`!sub [@antigo] @novo\` — Substitui um jogador (ou use o botão 🔄 Substituir no lobby)\n` +
           `• \`!cargo\` — Ativa/desativa notificações do cargo @Mix CS2 quando faltarem vagas\n` +
           `• \`!stats [@jogador]\` — Perfil competitivo, vitórias reais e medalhas de MVP\n` +
           `• \`!lvl <1-21>\` — Configura seu nível da Gamers Club (GC)\n` +
-          `• \`!smoke [mapa]\` — Lineups de granadas e smokes táticas\n` +
+          `• \`!smoke [mapa]\` — Lineups de granadas em 10 mapas (Mirage, Inferno, Nuke, D2, Ancient, Anubis, Overpass, Train, Cache, Vertigo)\n` +
           `• \`!treino\` — CFG completa de treino para console do CS2\n` +
           `• \`!moeda\` — Sorteio de cara ou coroa para desempates rápidos\n` +
-          `• \`!servidor [ip:porta]\` — Define ou consulta o IP do servidor CS2\n` +
+          `• \`!servidor [ip:porta [senha]]\` — Define ou consulta o IP/senha do servidor CS2\n` +
           `• \`!steam [link/id]\` — Scanner Steam & Anti-Smurf (horas CS2, VAC bans, idade da conta)\n` +
           `• \`!att\` ou \`!patchnotes\` — Últimas notas de atualização oficiais do CS2 pela Valve\n` +
-          `• \`!pro\` ou \`!jogos\` — Agenda dos times BR (FURIA, MIBR, paiN) com horário BRT e Gaules\n` +
-          `• \`!bagre\` — Votação bem-humorada do Bagre da Partida (o jogador que mais pinou no mix)\n` +
+          `• \`!pro\` ou \`!jogos\` — Agenda ao vivo dos times BR e internacionais (PandaScore / Liquipedia)\n` +
+          `• \`!bagre\` — Votação bem-humorada do Bagre da Partida (com contagem real e desduplicação)\n` +
           `• \`!jogosgratis\` — Radar de jogos grátis para PC da semana (Epic Games & Steam)\n` +
           `• \`!clip [link]\` — Envia clipes de jogadas da comunidade com votação interativa\n` +
           `• \`!ofertas [busca]\` — Radar de promoções gamer (KaBuM!, Pichau, Terabyte: GPU, CPU, mesas, cadeiras)`
@@ -3178,7 +3645,7 @@ class DiscordBotManager {
   }
 
   buildServerStatusEmbed(queryResult, serverAddress) {
-    const address = serverAddress || this.config.serverConnect || '127.0.0.1:27015';
+    const address = serverAddress || this.config.serverConnect || 'Não configurado';
     const embed = new EmbedBuilder().setTimestamp();
 
     if (queryResult.online) {
@@ -3325,11 +3792,15 @@ class DiscordBotManager {
     }
 
     // Invert starting sides between Team A and Team B
-    const oldSideA = (mix.teamA.side || 'CT').toUpperCase();
-    const newSideA = oldSideA === 'CT' ? 'TR' : 'CT';
+    const prevStartA = (mix.teamA.startingSide || mix.teamA.side || 'CT').toUpperCase();
+    const newSideA = prevStartA === 'CT' ? 'TR' : 'CT';
     const newSideB = newSideA === 'CT' ? 'TR' : 'CT';
     mix.teamA.side = newSideA;
     mix.teamB.side = newSideB;
+    mix.teamA.startingSide = newSideA;
+    mix.teamB.startingSide = newSideB;
+    mix.teamA.halftimeSwapped = false;
+    mix.teamB.halftimeSwapped = false;
 
     // Reset match and veto state while preserving all 10 players and captains
     mix.phase = 'veto';
@@ -3344,7 +3815,12 @@ class DiscordBotManager {
     mix.gsi = null;
     mix.liveState = null;
     mix._autoFinalizedKey = null;
+    mix._minGsiTimestamp = Date.now();
+    mix.rematchCount = (mix.rematchCount || 0) + 1;
     mix.narrationEnabled = false;
+    if (mix.narrationChannels && mix.channelId) {
+      mix.narrationChannels.delete(mix.channelId);
+    }
     mix.veto = {
       currentTurn: 'teamA',
       bannedMaps: [],
@@ -3352,6 +3828,9 @@ class DiscordBotManager {
       deciderMap: null,
       history: [],
     };
+
+    if (mix.channelId) this.activeMixes.set(mix.channelId, mix);
+    if (mix.id) this.activeMixes.set(mix.id, mix);
 
     this.syncToWebRoom(mix);
     this.updateLobbyInChannels(mix);
@@ -3378,6 +3857,68 @@ class DiscordBotManager {
     }
   }
 
+  resolveGsiSnapshotForMix(mix, { allowConsumedForSameMix = false } = {}) {
+    if (!mix) return null;
+    const minTs = mix._minGsiTimestamp || (mix.createdAt ? mix.createdAt - 60000 : 0);
+
+    const isSnapshotValidForMix = (snap) => {
+      if (!snap || typeof snap !== 'object') return false;
+      if (snap._consumedByMixId && (!allowConsumedForSameMix || snap._consumedByMixId !== mix.id)) {
+        return false;
+      }
+      if (mix._minGsiTimestamp) {
+        if (typeof snap.receivedAt !== 'number' || snap.receivedAt < mix._minGsiTimestamp) {
+          return false;
+        }
+      } else if (typeof snap.receivedAt === 'number' && minTs > 0 && snap.receivedAt < minTs) {
+        return false;
+      }
+
+      const snapRoom = normalizeRoomId(snap.roomId, '');
+      const mixRoom = normalizeRoomId(mix.id, '');
+      if (snapRoom && snapRoom !== 'MIX-PRO' && mixRoom && snapRoom !== mixRoom) {
+        return false;
+      }
+      if (snapRoom && mixRoom && snapRoom === mixRoom) {
+        return true;
+      }
+
+      // Generic or untagged GSI payload: verify roster overlap when multiple mixes are active
+      const mixNames = new Set(
+        [
+          ...(mix.players || []),
+          ...(mix.teamA?.players || []),
+          ...(mix.teamB?.players || []),
+        ]
+          .map((p) => String(p?.displayName || p?.nick || p?.username || p?.name || '').toLowerCase().trim())
+          .filter((s) => s.length >= 2)
+      );
+      const gsiPlayers = Array.isArray(snap.allPlayersStats)
+        ? snap.allPlayersStats
+        : Array.isArray(snap.players)
+        ? snap.players
+        : snap.allplayers
+        ? Object.values(snap.allplayers)
+        : [];
+      const hasRosterOverlap = gsiPlayers.some((gp) => {
+        const gn = String(gp?.name || gp?.nick || '').toLowerCase().trim();
+        return gn.length >= 2 && (mixNames.has(gn) || Array.from(mixNames).some((mn) => gn.includes(mn) || mn.includes(gn)));
+      });
+      if (hasRosterOverlap) return true;
+
+      const activeCount = this.getUniqueActiveMixes
+        ? this.getUniqueActiveMixes().filter((m) => m && m.phase !== 'finished' && m.phase !== 'cancelled').length
+        : 1;
+      return activeCount <= 1;
+    };
+
+    if (isSnapshotValidForMix(mix.gsi)) return mix.gsi;
+    if (isSnapshotValidForMix(mix.liveState)) return mix.liveState;
+    if (isSnapshotValidForMix(this.lastBestGsiState)) return this.lastBestGsiState;
+    if (isSnapshotValidForMix(this.lastGsiState)) return this.lastGsiState;
+    return null;
+  }
+
   async recordMatchResult(mix, winnerTeamLetter, scoreInput, declaredByUser, channel, mapInput = null) {
     const rawWinner = String(winnerTeamLetter || '').trim().toUpperCase();
     const isA = rawWinner === 'A' || rawWinner.includes('TIME A') || rawWinner === '1' || rawWinner.includes('TIME 1');
@@ -3402,6 +3943,8 @@ class DiscordBotManager {
     const loserTeam = isA ? mix.teamB : mix.teamA;
     const score = (scoreInput || '13-9').trim();
 
+    const gsiState = this.resolveGsiSnapshotForMix(mix);
+
     // Accurately resolve map
     let candidateMap =
       mapInput ||
@@ -3411,8 +3954,8 @@ class DiscordBotManager {
       mix.finalMap?.name ||
       mix.finalMap?.id;
 
-    if (!candidateMap && this.lastGsiState?.mapName && this.lastGsiState.mapName !== 'Indefinido') {
-      candidateMap = this.lastGsiState.mapName;
+    if (!candidateMap && gsiState?.mapName && gsiState.mapName !== 'Indefinido') {
+      candidateMap = gsiState.mapName;
     }
 
     const resolvedMap = normalizeMapName(candidateMap || 'Mirage');
@@ -3423,6 +3966,21 @@ class DiscordBotManager {
     mix.finalScore = score;
     mix.matchMap = resolvedMap;
     mix.matchMapImage = resolvedImage;
+
+    // Cache finished mix so post-match Bagre vote, Rematch & Voice Return work cleanly
+    this.lastFinishedMixes = this.lastFinishedMixes || new Map();
+    if (mix.id) {
+      this.lastFinishedMixes.set(mix.id, mix);
+    }
+    if (mix.channelId) {
+      this.lastFinishedMixes.set(`ch:${mix.channelId}`, mix);
+    }
+    while (this.lastFinishedMixes.size > 100) {
+      const oldestKey = this.lastFinishedMixes.keys().next().value;
+      if (oldestKey === undefined) break;
+      this.lastFinishedMixes.delete(oldestKey);
+    }
+    this.syncToWebRoom(mix);
 
     const profiles = this.loadPlayerProfiles();
 
@@ -3446,6 +4004,8 @@ class DiscordBotManager {
       profiles[p.id] = prof;
     });
 
+    const displayConn = this.resolveMixDisplayConnect(mix);
+
     // Save match to match history with full rich metadata
     const parsedWinner = parseInt(String(score).split('-')[0], 10) || 13;
     const parsedLoser = parseInt(String(score).split('-')[1], 10) || 8;
@@ -3460,7 +4020,7 @@ class DiscordBotManager {
       channelId: channel?.id || '',
       format: mix.format || 'MD1',
       balancePct: mix.balancePct || 95,
-      serverConnect: mix.serverIp || this.config.serverConnect || '',
+      serverConnect: displayConn?.normalized || '',
       timestamp: Date.now(),
       map: resolvedMap,
       mapImage: resolvedImage,
@@ -3488,11 +4048,22 @@ class DiscordBotManager {
       vetoBans: Array.isArray(mix.veto?.bannedMaps) ? mix.veto.bannedMaps : [],
     };
 
-    // Automatically compute BOTH MVP AND BAGRE with accurate CS2 statistics
-    const gsiState = mix.gsi || mix.liveState || this.lastBestGsiState || this.lastGsiState || null;
+    // Compute MVP & Bagre ONLY when genuine Valve GSI stats were captured
     const { mvp: computedMvp, bagre: computedBagre, evaluatedPlayers, hasRealGsiStats } = computeMatchPerformers(matchRecord, gsiState);
 
-    if (computedMvp) {
+    if (hasRealGsiStats && gsiState) {
+      gsiState._consumedByMixId = mix.id;
+      if (this.lastBestGsiState && this.lastBestGsiState.receivedAt === gsiState.receivedAt) {
+        this.lastBestGsiState._consumedByMixId = mix.id;
+      }
+      if (this.lastGsiState && this.lastGsiState.receivedAt === gsiState.receivedAt) {
+        this.lastGsiState._consumedByMixId = mix.id;
+      }
+      mix.gsi = gsiState;
+      mix.liveState = gsiState;
+    }
+
+    if (hasRealGsiStats && computedMvp) {
       matchRecord.mvpId = computedMvp.id;
       matchRecord.mvpNick = computedMvp.nick;
       matchRecord.mvp = computedMvp;
@@ -3503,7 +4074,7 @@ class DiscordBotManager {
       profiles[computedMvp.id] = mvpProf;
     }
 
-    if (computedBagre) {
+    if (hasRealGsiStats && computedBagre) {
       matchRecord.bagreId = computedBagre.id;
       matchRecord.bagreNick = computedBagre.nick;
       matchRecord.bagre = computedBagre;
@@ -3512,7 +4083,8 @@ class DiscordBotManager {
       await this.awardAutomaticBagre(channel?.guild, computedBagre, profiles);
     }
 
-    matchRecord.evaluatedPlayers = evaluatedPlayers;
+    matchRecord.hasRealGsiStats = Boolean(hasRealGsiStats);
+    matchRecord.evaluatedPlayers = hasRealGsiStats ? evaluatedPlayers : [];
 
     this.savePlayerProfiles(profiles);
     recordMatchHistoryEntry(matchRecord);
@@ -3532,13 +4104,13 @@ class DiscordBotManager {
       ? (isSnowflake(computedBagre.id) ? `<@${computedBagre.id}>` : `**${computedBagre.nick || computedBagre.username}**`)
       : '';
 
-    const mvpDescription = computedMvp
+    const mvpDescription = hasRealGsiStats && computedMvp
       ? `\n\n\ud83d\udc51 **MVP DA PARTIDA (AUTOM\u00c1TICO - CS2 STATS):** ${mvpUserTag}\n` +
         `\u2b50 **Desempenho:** \ud83c\udfaf **${computedMvp.kills} Kills** \u2022 \ud83d\udc80 **${computedMvp.deaths} Mortes** (\ud83d\udd1d **${computedMvp.assists}A**) \u2022 K/D **${computedMvp.kd}** \u2022 \u2b50 **${computedMvp.mvps} MVPs** \u2022 \ud83d\udcca Rating **${computedMvp.rating}**\n`
       : '';
 
     const bagreQuote = bagreVoteService.getRandomQuote();
-    const bagreDescription = computedBagre
+    const bagreDescription = hasRealGsiStats && computedBagre
       ? `\n\ud83d\udc1f **BAGRE DO MIX (AUTOM\u00c1TICO - CS2 STATS):** ${bagreUserTag}\n` +
         `\ud83c\udfa3 **Desempenho:** \ud83c\udfaf **${computedBagre.kills} Kills** \u2022 \ud83d\udc80 **${computedBagre.deaths} Mortes** (\ud83d\udd1d **${computedBagre.assists}A**) \u2022 K/D **${computedBagre.kd}** \u2022 \ud83d\udcca Rating **${computedBagre.rating}**\n` +
         `*${bagreQuote}*`
@@ -3546,20 +4118,22 @@ class DiscordBotManager {
 
     const declaredTag = isSnowflake(declaredByUser.id) ? `<@${declaredByUser.id}>` : `**${declaredByUser.username || declaredByUser.displayName}**`;
 
-    const scoreboardLines = (evaluatedPlayers || []).slice(0, 10).map((ep, idx) => {
-      const medal = idx === 0 ? '\ud83d\udc51' : (computedBagre && ep.id === computedBagre.id ? '\ud83d\udc1f' : `**${idx + 1}.**`);
-      const pTag = isSnowflake(ep.id) ? `<@${ep.id}>` : `**${ep.nick}**`;
-      const cs2Alias = ep.cs2Name && ep.cs2Name.toLowerCase() !== ep.nick.toLowerCase() ? ` (\`${ep.cs2Name}\`)` : '';
-      return `${medal} ${pTag}${cs2Alias} \u2014 \ud83c\udfaf **${ep.kills}/${ep.deaths}/${ep.assists}** \u2022 K/D \`${ep.kd}\` \u2022 \u2b50 \`${ep.mvps} MVP\` \u2022 Rating **\`${ep.rating}\`**`;
-    }).join('\n');
+    const scoreboardLines = hasRealGsiStats
+      ? (evaluatedPlayers || []).slice(0, 10).map((ep, idx) => {
+          const medal = idx === 0 ? '\ud83d\udc51' : (computedBagre && ep.id === computedBagre.id ? '\ud83d\udc1f' : `**${idx + 1}.**`);
+          const pTag = isSnowflake(ep.id) ? `<@${ep.id}>` : `**${ep.nick}**`;
+          const cs2Alias = ep.cs2Name && ep.cs2Name.toLowerCase() !== ep.nick.toLowerCase() ? ` (\`${ep.cs2Name}\`)` : '';
+          return `${medal} ${pTag}${cs2Alias} \u2014 \ud83c\udfaf **${ep.kills}/${ep.deaths}/${ep.assists}** \u2022 K/D \`${ep.kd}\` \u2022 \u2b50 \`${ep.mvps} MVP\` \u2022 Rating **\`${ep.rating}\`**`;
+        }).join('\n')
+      : '';
 
     const victoryEmbed = new EmbedBuilder()
       .setTitle(`\ud83c\udfc6 VIT\u00d3RIA DO ${winnerTeam.name.toUpperCase()}! \u2022 PLACAR ${score}`)
       .setDescription(
-        `A partida foi encerrada e as estat\u00edsticas oficiais do CS2 foram computadas no **Ranking Geral**!\n\n` +
+        `A partida foi encerrada e as vit\u00f3rias/derrotas oficiais foram computadas no **Ranking Geral**!\n\n` +
         `\ud83d\uddfa\ufe0f **Mapa:** **${resolvedMap}**\n` +
         `\u2694\ufe0f **Resultado Oficial:** **${winnerTeam.name}** venceu por **${score}**!\n` +
-        `\ud83d\udce1 **Fonte dos Dados:** ${hasRealGsiStats ? '\ud83d\udfe2 **Telemetria Real CS2 (Valve GSI)**' : declaredTag}` +
+        `\ud83d\udce1 **Fonte dos Dados:** ${hasRealGsiStats ? '\ud83d\udfe2 **Telemetria Real CS2 (Valve GSI)**' : `Placares manuais (${declaredTag})`}` +
         mvpDescription +
         bagreDescription
       )
@@ -3573,8 +4147,14 @@ class DiscordBotManager {
                 inline: false,
               },
             ]
-          : []),
-        ...(computedMvp
+          : [
+              {
+                name: '\ud83d\udce1 Telemetria / Estat\u00edsticas CS2',
+                value: '\u26a0\ufe0f **Valve GSI n\u00e3o estava ativo nesta partida** \u2014 K/D, MVP e Bagre n\u00e3o foram inventados.\nUse **`[\ud83d\udc1f Votar Bagre do Mix]`** abaixo (ou `!bagre`) para a galera eleger o Bagre!',
+                inline: false,
+              },
+            ]),
+        ...(hasRealGsiStats && computedMvp
           ? [
               {
                 name: `\ud83d\udc51 Destaque MVP \u2022 ${computedMvp.nick}`,
@@ -3583,7 +4163,7 @@ class DiscordBotManager {
               },
             ]
           : []),
-        ...(computedBagre
+        ...(hasRealGsiStats && computedBagre
           ? [
               {
                 name: `\ud83d\udc1f Bagre Coroado \u2022 ${computedBagre.nick}`,
@@ -3603,7 +4183,11 @@ class DiscordBotManager {
           inline: false,
         }
       )
-      .setFooter({ text: 'CS2 Mix Hub \u2022 MVP e Bagre Eleitos Automaticamente pelas Estat\u00edsticas do Jogo' })
+      .setFooter({
+        text: hasRealGsiStats
+          ? 'CS2 Mix Hub \u2022 MVP e Bagre Eleitos via Telemetria Real (Valve GSI)'
+          : 'CS2 Mix Hub \u2022 Vit\u00f3ria Registrada (Use Votar Bagre do Mix abaixo)',
+      })
       .setTimestamp();
 
     if (resolvedImage) {
@@ -3612,6 +4196,11 @@ class DiscordBotManager {
 
     const components = [];
     const finishBtn = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`bagre_open:${mix.id}`)
+        .setLabel('Votar Bagre do Mix')
+        .setEmoji('\ud83d\udc1f')
+        .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId(`mix_rematch:${mix.id}`)
         .setLabel('Revanche (Mesmos Times)')
@@ -3631,69 +4220,6 @@ class DiscordBotManager {
     components.push(finishBtn);
 
     return { success: true, embeds: [victoryEmbed], components };
-  }
-  async finishMvpVote(mix, channel) {
-    if (!mix || !mix.mvpVote) return;
-    if (mix.mvpVote.timer) {
-      clearTimeout(mix.mvpVote.timer);
-      mix.mvpVote.timer = null;
-    }
-    if (!mix.mvpVote.active) return;
-    mix.mvpVote.active = false;
-
-    const voteCounts = new Map();
-    mix.mvpVote.votes.forEach((candidateId) => {
-      voteCounts.set(candidateId, (voteCounts.get(candidateId) || 0) + 1);
-    });
-
-    let bestCandidateId = null;
-    let maxVotes = -1;
-    voteCounts.forEach((count, candidateId) => {
-      if (count > maxVotes) {
-        maxVotes = count;
-        bestCandidateId = candidateId;
-      }
-    });
-
-    if (!bestCandidateId) {
-      bestCandidateId = mix.winner === mix.teamA.name ? (mix.teamA.captain?.id || mix.players[0]?.id) : (mix.teamB.captain?.id || mix.players[1]?.id);
-      maxVotes = 0;
-    }
-
-    const profiles = this.loadPlayerProfiles();
-    const prof = profiles[bestCandidateId] || { level: 16 };
-    prof.mvps = (prof.mvps || 0) + 1;
-    profiles[bestCandidateId] = prof;
-    this.savePlayerProfiles(profiles);
-    this.updateLeaderboardFile(profiles);
-
-    try {
-      updateMatchMvp(mix.id, {
-        id: bestCandidateId,
-        nick: prof.username || `<@${bestCandidateId}>`,
-        votes: maxVotes,
-      });
-    } catch (e) {
-      console.warn('[DISCORD BOT] Falha ao atualizar MVP no histórico:', e.message);
-    }
-
-    const mvpEmbed = new EmbedBuilder()
-      .setTitle('👑 MVP DA PARTIDA COROADO!')
-      .setDescription(
-        `A comunidade votou e escolheu o grande destaque da partida no mapa **${mix.matchMap || mix.veto?.deciderMap?.name || 'Mirage'}**:\n\n` +
-        `⭐ **MVP ELEITO:** <@${bestCandidateId}> (\`${maxVotes} votos\`)\n` +
-        `🏆 **Total de MVPs na Carreira:** **${prof.mvps}x MVP**\n` +
-        `🎖️ **Nível GC:** Lvl ${prof.level || 16}`
-      )
-      .setColor(0xf59e0b)
-      .setThumbnail('https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=200&q=80')
-      .setFooter({ text: 'CS2 Mix Hub • Hall da Fama' })
-      .setTimestamp();
-
-    if (channel) {
-      await channel.send({ embeds: [mvpEmbed] }).catch(() => {});
-    }
-    return mvpEmbed;
   }
 
   async notifyMissingSlots(mix, guild, channel) {
@@ -3756,9 +4282,21 @@ class DiscordBotManager {
     const cleanOut = (outArg || '').replace(/[<@!>]/g, '').trim().toLowerCase();
     const cleanIn = (inArg || '').replace(/[<@!>]/g, '').trim().toLowerCase();
 
-    const outIdx = mix.players.findIndex(
-      (p) => p.id === cleanOut || (p.displayName || p.username || '').toLowerCase().includes(cleanOut)
+    if (!cleanOut || !cleanIn) {
+      return { success: false, message: '⚠️ Informe quem sai e quem entra na substituição.' };
+    }
+
+    let outIdx = mix.players.findIndex(
+      (p) =>
+        String(p.id).toLowerCase() === cleanOut ||
+        (p.displayName || '').toLowerCase() === cleanOut ||
+        (p.username || '').toLowerCase() === cleanOut
     );
+    if (outIdx === -1) {
+      outIdx = mix.players.findIndex(
+        (p) => (p.displayName || p.username || '').toLowerCase().includes(cleanOut)
+      );
+    }
     if (outIdx === -1) {
       return { success: false, message: `❌ Não foi possível encontrar o jogador que vai sair: "${outArg}".` };
     }
@@ -3766,9 +4304,23 @@ class DiscordBotManager {
 
     let newMember = null;
     if (guild) {
-      newMember = guild.members.cache.find(
-        (m) => m.id === cleanIn || m.user.username.toLowerCase().includes(cleanIn) || (m.displayName || '').toLowerCase().includes(cleanIn)
-      );
+      if (isSnowflake(cleanIn) && typeof guild.members?.fetch === 'function') {
+        newMember = await guild.members.fetch(cleanIn).catch(() => null);
+      }
+      if (!newMember && guild.members?.cache) {
+        newMember =
+          guild.members.cache.find(
+            (m) =>
+              m.id === cleanIn ||
+              (m.user?.username || '').toLowerCase() === cleanIn ||
+              (m.displayName || '').toLowerCase() === cleanIn
+          ) ||
+          guild.members.cache.find(
+            (m) =>
+              (m.user?.username || '').toLowerCase().includes(cleanIn) ||
+              (m.displayName || '').toLowerCase().includes(cleanIn)
+          );
+      }
     }
 
     const newId = newMember ? newMember.id : cleanIn;
@@ -3777,7 +4329,7 @@ class DiscordBotManager {
     const newAvatar = newMember ? newMember.user.displayAvatarURL({ dynamic: true }) : null;
 
     if (mix.players.some((p) => p.id === newId)) {
-      return { success: false, message: `⚠️ O substituto <@${newId}> já está participando deste mix!` };
+      return { success: false, message: `⚠️ O substituto ${isSnowflake(newId) ? `<@${newId}>` : `**${newDisplayName}**`} já está participando deste mix!` };
     }
 
     const newLevel = this.getPlayerLevel(newId);
@@ -3791,10 +4343,20 @@ class DiscordBotManager {
     };
 
     mix.players.splice(outIdx, 1, newPlayerObj);
+    if (mix.readyCheck?.confirmed) {
+      mix.readyCheck.confirmed.delete(oldPlayer.id);
+    }
+    if (Array.isArray(mix.waitlist)) {
+      mix.waitlist = mix.waitlist.filter((w) => w.id !== newId);
+    }
+    if (Array.isArray(mix.captainDraft?.pool)) {
+      const poolIdx = mix.captainDraft.pool.findIndex((p) => p.id === oldPlayer.id);
+      if (poolIdx !== -1) mix.captainDraft.pool.splice(poolIdx, 1, newPlayerObj);
+    }
 
     let teamName = 'Lobby';
     let targetTeam = null;
-    const idxA = mix.teamA.players.findIndex((p) => p.id === oldPlayer.id);
+    const idxA = (mix.teamA?.players || []).findIndex((p) => p.id === oldPlayer.id);
     if (idxA !== -1) {
       mix.teamA.players.splice(idxA, 1, newPlayerObj);
       teamName = mix.teamA.name;
@@ -3802,7 +4364,7 @@ class DiscordBotManager {
       if (mix.teamA.captain?.id === oldPlayer.id) mix.teamA.captain = newPlayerObj;
     }
 
-    const idxB = mix.teamB.players.findIndex((p) => p.id === oldPlayer.id);
+    const idxB = (mix.teamB?.players || []).findIndex((p) => p.id === oldPlayer.id);
     if (idxB !== -1) {
       mix.teamB.players.splice(idxB, 1, newPlayerObj);
       teamName = mix.teamB.name;
@@ -3810,18 +4372,35 @@ class DiscordBotManager {
       if (mix.teamB.captain?.id === oldPlayer.id) mix.teamB.captain = newPlayerObj;
     }
 
+    this.recomputeTeamAverages(mix);
+
+    if (guild?.id && this._voiceOverwriteCache) {
+      for (const k of Array.from(this._voiceOverwriteCache.keys())) {
+        if (k.startsWith(`${guild.id}:`)) {
+          this._voiceOverwriteCache.delete(k);
+        }
+      }
+    }
+
     if (this.config.autoMoveVoice && targetTeam && guild && newMember) {
-      const voiceId = targetTeam === 'teamA' ? this.config.teamAVoiceId : this.config.teamBVoiceId;
+      const gVoice = this.config.guildVoiceChannels?.[guild.id] || {};
+      const voiceId = targetTeam === 'teamA'
+        ? (gVoice.teamAVoiceId || this.config.teamAVoiceId)
+        : (gVoice.teamBVoiceId || this.config.teamBVoiceId);
       if (voiceId && newMember.voice?.channelId) {
         newMember.voice.setChannel(voiceId).catch(() => {});
       }
     }
 
     this.syncToWebRoom(mix);
+    this.updateLobbyInChannels(mix);
+
+    const oldTag = isSnowflake(oldPlayer.id) ? `<@${oldPlayer.id}>` : `**${oldPlayer.displayName || oldPlayer.username}**`;
+    const newTag = isSnowflake(newPlayerObj.id) ? `<@${newPlayerObj.id}>` : `**${newPlayerObj.displayName}**`;
 
     return {
       success: true,
-      message: `🔄 **SUBSTITUIÇÃO EFETUADA!**\n<@${oldPlayer.id}> foi substituído por <@${newPlayerObj.id}> \`[Lvl ${newLevel} GC]\` no **${teamName}**!`,
+      message: `🔄 **SUBSTITUIÇÃO EFETUADA!**\n${oldTag} foi substituído por ${newTag} \`[Lvl ${newLevel} GC]\` no **${teamName}**!`,
     };
   }
 
@@ -3832,30 +4411,61 @@ class DiscordBotManager {
   resolveMixFromInteraction(interaction, customId = null) {
     const rawId = customId || (interaction && interaction.customId) || '';
     const targetMixId = rawId.includes(':') ? rawId.split(':')[1] : null;
+    const chanId = interaction?.channelId || null;
 
     if (targetMixId) {
-      if (this.activeMixes.has(targetMixId)) return this.activeMixes.get(targetMixId);
-      const byId = Array.from(this.activeMixes.values()).find((m) => m.id === targetMixId);
+      const direct = this.activeMixes.get(targetMixId);
+      if (direct && (!chanId || !direct.channelId || direct.channelId === chanId)) {
+        return direct;
+      }
+      const byId = Array.from(this.activeMixes.values()).find(
+        (m) => m && m.id === targetMixId && (!chanId || !m.channelId || m.channelId === chanId)
+      );
       if (byId) return byId;
-      if (this.webRoomsRef && this.webRoomsRef.has(targetMixId)) return this.webRoomsRef.get(targetMixId);
+      if (this.webRoomsRef && this.webRoomsRef.has(targetMixId)) {
+        const wr = this.webRoomsRef.get(targetMixId);
+        if (wr && (!chanId || !wr.channelId || wr.channelId === chanId)) {
+          return wr;
+        }
+      }
+      return null;
     }
 
-    if (interaction && interaction.channelId && this.activeMixes.has(interaction.channelId)) {
-      return this.activeMixes.get(interaction.channelId);
+    if (chanId && this.activeMixes.has(chanId)) {
+      return this.activeMixes.get(chanId);
     }
 
-    if (this.activeMixes.size > 0) {
-      const active = Array.from(this.activeMixes.values()).find((m) => m && m.phase !== 'cancelled' && m.phase !== 'finished');
+    if (chanId && this.webRoomsRef && this.webRoomsRef.size > 0) {
+      const active = Array.from(this.webRoomsRef.values()).find(
+        (r) => r && r.channelId === chanId && r.phase !== 'cancelled' && r.phase !== 'finished'
+      );
       if (active) return active;
-      return Array.from(this.activeMixes.values())[0];
     }
 
-    if (this.webRoomsRef && this.webRoomsRef.size > 0) {
-      const active = Array.from(this.webRoomsRef.values()).find((r) => r && r.phase !== 'cancelled' && r.phase !== 'finished');
-      if (active) return active;
-      return Array.from(this.webRoomsRef.values())[0];
-    }
+    return null;
+  }
 
+  resolveMixIncludingFinished(mixId, channelId = null) {
+    if (mixId) {
+      const direct = this.activeMixes.get(mixId);
+      if (direct && (!channelId || !direct.channelId || direct.channelId === channelId)) {
+        return direct;
+      }
+      const activeById = Array.from(this.activeMixes.values()).find(
+        (m) => m && m.id === mixId && (!channelId || !m.channelId || m.channelId === channelId)
+      );
+      if (activeById) return activeById;
+      const finished = this.lastFinishedMixes?.get(mixId);
+      if (finished && (!channelId || !finished.channelId || finished.channelId === channelId)) {
+        return finished;
+      }
+    }
+    if (channelId) {
+      const activeCh = this.activeMixes.get(channelId);
+      if (activeCh) return activeCh;
+      const finishedCh = this.lastFinishedMixes?.get(`ch:${channelId}`);
+      if (finishedCh) return finishedCh;
+    }
     return null;
   }
 
@@ -3871,18 +4481,20 @@ class DiscordBotManager {
         channelId,
         name: options.name || `Mix CS2 #${mixId}`,
         format: options.format || 'MD1',
+        balanceMode: options.balanceMode || 'balanced',
         creatorId: creator.id,
         creatorNick: creator.username,
         players: Array.isArray(options.players) ? options.players : [],
-        waitlist: [],        phase: 'lobby', // 'lobby' | 'ready_check' | 'teams' | 'veto' | 'side_pick' | 'live'
+        waitlist: [],
+        phase: 'lobby', // 'lobby' | 'ready_check' | 'captain_draft' | 'teams' | 'veto' | 'side_pick' | 'live' | 'finished'
         readyCheck: {
           active: false,
           confirmed: new Set(),
           expiresAt: null,
           timer: null,
         },
-        teamA: { name: 'Time A', captain: null, players: [], side: 'CT', avgLevel: 16 },
-        teamB: { name: 'Time B', captain: null, players: [], side: 'TR', avgLevel: 16 },
+        teamA: { name: 'Time A', captain: null, players: [], side: 'CT', startingSide: 'CT', halftimeSwapped: false, avgLevel: 16 },
+        teamB: { name: 'Time B', captain: null, players: [], side: 'TR', startingSide: 'TR', halftimeSwapped: false, avgLevel: 16 },
         balancePct: 95,
         veto: {
           currentTurn: 'teamA',
@@ -3891,7 +4503,7 @@ class DiscordBotManager {
           deciderMap: null,
           history: [],
         },
-        serverIp: this.config.serverConnect || '',
+        serverIp: extractHostAndPort(this.config.serverConnect || '').normalized || '',
         messageId: null,
         createdAt: Date.now(),
       };
@@ -3906,7 +4518,24 @@ class DiscordBotManager {
 
   recoverMixFromMessage(interaction, mixId) {
     if (!interaction?.channelId || !mixId) return null;
+    if (this.lastFinishedMixes?.has(mixId)) return null;
+
     const embeds = interaction.message?.embeds || [];
+    const MIX_HUB_TITLES = [
+      'CS2 MIX HUB',
+      'CHECK-IN ANTI-AFK',
+      'TIMES FORMADOS',
+      'DRAFT DE CAPITÃES',
+      'PICK & BAN',
+      'ESCOLHA DE LADO',
+      'PARTIDA CONFIRMADA',
+    ];
+    const hasMixHubEmbed = embeds.some((emb) => {
+      const t = String(emb?.title || '').toUpperCase();
+      return MIX_HUB_TITLES.some((prefix) => t.includes(prefix));
+    });
+    if (!hasMixHubEmbed) return null;
+
     let recoveredName = `Mix 5v5 #${mixId}`;
     const recoveredPlayers = [];
     const seenIds = new Set();
@@ -3920,8 +4549,8 @@ class DiscordBotManager {
         }
       }
       for (const field of emb.fields || []) {
-        if (field.name?.includes('Jogadores') || field.name === '\u200B') {
-          const matches = String(field.value || '').matchAll(/<@!?(\d+)>[^\n]*?\[Lvl\s+(\d+)/gi);
+        if (field.name?.includes('Jogadores') || field.name?.includes('Titulares') || field.name === '\u200B') {
+          const matches = String(field.value || '').matchAll(/<@!?(\d+)>[^\n]*?(?:Lvl|Lv\.?|N[ií]vel)\s*[:.]?\s*(\d+)/gi);
           for (const m of matches) {
             const pId = m[1];
             const pLvl = parseInt(m[2], 10) || this.getPlayerLevel(pId) || 16;
@@ -3983,6 +4612,40 @@ class DiscordBotManager {
       }
     } catch (_) {}
     return baseLvl;
+  }
+
+  recomputeTeamAverages(mix, updatedUserId = null, newLevel = null) {
+    if (!mix) return;
+    const applyUpdate = (arr) => {
+      if (!Array.isArray(arr)) return;
+      for (const p of arr) {
+        if (!p) continue;
+        if (updatedUserId && p.id === updatedUserId && newLevel !== null) {
+          p.level = newLevel;
+        }
+        p.effectiveScore = this.getEffectivePlayerScore(p);
+      }
+    };
+    applyUpdate(mix.players);
+    applyUpdate(mix.waitlist);
+    applyUpdate(mix.teamA?.players);
+    applyUpdate(mix.teamB?.players);
+    applyUpdate(mix.captainDraft?.pool);
+    if (updatedUserId && newLevel !== null) {
+      if (mix.teamA?.captain?.id === updatedUserId) mix.teamA.captain.level = newLevel;
+      if (mix.teamB?.captain?.id === updatedUserId) mix.teamB.captain.level = newLevel;
+    }
+
+    const aPlayers = mix.teamA?.players || [];
+    const bPlayers = mix.teamB?.players || [];
+    if (aPlayers.length > 0 && bPlayers.length > 0) {
+      const sumA = aPlayers.reduce((acc, p) => acc + (Number(p.level) || 16), 0);
+      const sumB = bPlayers.reduce((acc, p) => acc + (Number(p.level) || 16), 0);
+      mix.teamA.avgLevel = (sumA / aPlayers.length).toFixed(1);
+      mix.teamB.avgLevel = (sumB / bPlayers.length).toFixed(1);
+      const diff = Math.abs(sumA - sumB);
+      mix.balancePct = Math.max(75, Math.min(100, Math.round(100 - diff * 3.5)));
+    }
   }
 
   balanceTeams(mix) {
@@ -4051,9 +4714,13 @@ class DiscordBotManager {
     mix.teamA.players = bestA;
     mix.teamA.captain = bestA[0] || null;
     mix.teamA.avgLevel = avgA;
+    mix.teamA.startingSide = mix.teamA.side || 'CT';
+    mix.teamA.halftimeSwapped = false;
     mix.teamB.players = bestB;
     mix.teamB.captain = bestB[0] || null;
     mix.teamB.avgLevel = avgB;
+    mix.teamB.startingSide = mix.teamB.side || 'TR';
+    mix.teamB.halftimeSwapped = false;
     mix.balancePct = balancePct;
     mix.phase = 'teams';
 
@@ -4150,12 +4817,10 @@ class DiscordBotManager {
 
   async applyCs2TeamNamesRcon(mix) {
     try {
-      const rawServer = (mix.serverIp || this.config.serverConnect || '').replace(/^connect\s+/i, '').trim();
+      const rawServer = mix.serverIp || this.config.serverConnect || '';
       const rconPwd = (mix.rconPassword || this.config.rconPassword || process.env.CS2_RCON_PASSWORD || '').trim();
-      if (!rawServer || !rconPwd) return false;
-
-      const [host, portStr] = rawServer.split(':');
-      const port = parseInt(portStr, 10) || 27015;
+      const { host, port } = extractHostAndPort(rawServer);
+      if (!host || !rconPwd) return false;
 
       const capA = mix.teamA?.captain?.displayName || mix.teamA?.captain?.username || mix.teamA?.captain?.nick || 'A';
       const capB = mix.teamB?.captain?.displayName || mix.teamB?.captain?.username || mix.teamB?.captain?.nick || 'B';
@@ -4180,12 +4845,11 @@ class DiscordBotManager {
 
   async triggerAutoRconMapChange(mix, mapObj, channel) {
     try {
-      const rawServer = (mix.serverIp || this.config.serverConnect || '').replace(/^connect\s+/i, '').trim();
+      const rawServer = mix.serverIp || this.config.serverConnect || '';
       const rconPwd = (mix.rconPassword || this.config.rconPassword || process.env.CS2_RCON_PASSWORD || '').trim();
-      if (!rawServer || !rconPwd || !mapObj?.id) return false;
+      const { host, port, hostPort } = extractHostAndPort(rawServer);
+      if (!host || !rconPwd || !mapObj?.id) return false;
 
-      const [host, portStr] = rawServer.split(':');
-      const port = parseInt(portStr, 10) || 27015;
       const cleanMap = (mapObj.id.startsWith('de_') ? mapObj.id : `de_${mapObj.id}`).replace(/[^a-zA-Z0-9_-]/g, '');
       const safeMapLabel = sanitizeRconTextArg(mapObj.name || cleanMap, 24).toUpperCase();
 
@@ -4204,12 +4868,13 @@ class DiscordBotManager {
       });
 
       // Aplica os nomes dos times no TAB do CS2 apos carregar o mapa (8s)
-      setTimeout(() => {
+      const t = setTimeout(() => {
         this.applyCs2TeamNamesRcon(mix).catch(() => {});
       }, 8000);
+      t.unref?.();
 
       if (channel) {
-        channel.send(`\ud83d\udfe2 \u26a1 **[RCON AUTOM\u00c1TICO]** Servidor CS2 (\`${rawServer}\`) alterado para **${mapObj.emoji || '\ud83d\uddfa\ufe0f'} ${mapObj.name}** (\`${cleanMap}\`) com placar oficial dos times configurado!`).catch(() => {});
+        channel.send(`\ud83d\udfe2 \u26a1 **[RCON AUTOM\u00c1TICO]** Servidor CS2 (\`${hostPort}\`) alterado para **${mapObj.emoji || '\ud83d\uddfa\ufe0f'} ${mapObj.name}** (\`${cleanMap}\`) com placar oficial dos times configurado!`).catch(() => {});
       }
       return true;
     } catch (err) {
@@ -4218,17 +4883,59 @@ class DiscordBotManager {
     }
   }
   syncToWebRoom(mix) {
-    if (!this.webRoomsRef) return null;
+    if (!this.webRoomsRef || !mix) return null;
     try {
       const roomId = mix.id;
       const existing = this.webRoomsRef.get(roomId) || {};
-      const activeWebPhases = ['captains_draft', 'coin_flip', 'veto', 'side_pick', 'finished'];
-      const nextPhase = mix.phase === 'live'
-        ? 'match'
-        : (activeWebPhases.includes(existing.phase) ? existing.phase : 'lobby');
+      const phaseMap = {
+        lobby: 'lobby',
+        ready_check: 'lobby',
+        captain_draft: 'captains_draft',
+        captains_draft: 'captains_draft',
+        teams: existing.phase === 'coin_flip' ? 'coin_flip' : 'teams',
+        veto: 'veto',
+        side_pick: 'side_pick',
+        live: 'finished',
+        finished: 'finished',
+      };
+      const nextPhase = phaseMap[mix.phase] || 'lobby';
+
+      const sumA = (mix.teamA?.players || []).reduce((acc, p) => acc + (Number(p.level) || 16), 0);
+      const sumB = (mix.teamB?.players || []).reduce((acc, p) => acc + (Number(p.level) || 16), 0);
+      const lenA = Math.max(1, (mix.teamA?.players || []).length);
+      const lenB = Math.max(1, (mix.teamB?.players || []).length);
+      const avgA = Number(mix.teamA?.avgLevel || (sumA / lenA).toFixed(1));
+      const avgB = Number(mix.teamB?.avgLevel || (sumB / lenB).toFixed(1));
+      const diff = Number(Math.abs(sumA - sumB).toFixed(1));
+
+      const bannedMaps = (mix.veto?.bannedMaps || []).map((b) => ({
+        mapId: b.map?.id,
+        mapName: b.map?.name,
+        by: b.by,
+        bannedBy: b.team || (b.by === mix.teamB?.captain?.id ? 'teamB' : 'teamA'),
+      }));
+
+      const vetoLog = bannedMaps.map((b) => ({
+        type: 'ban',
+        team: b.bannedBy === 'teamB' ? (mix.teamB?.name || 'Time B') : (mix.teamA?.name || 'Time A'),
+        mapName: b.mapName || b.mapId || 'Mapa',
+        mapId: b.mapId || '',
+      }));
+      if (mix.veto?.deciderMap) {
+        vetoLog.push({
+          type: 'decider',
+          team: 'DECIDER',
+          mapName: mix.veto.deciderMap.name,
+          mapId: mix.veto.deciderMap.id,
+        });
+      }
+
+      const displayConn = this.resolveMixDisplayConnect(mix);
+
       const room = {
         ...existing,
         id: roomId,
+        channelId: mix.channelId || existing.channelId || '',
         name: mix.name,
         createdAt: mix.createdAt || Date.now(),
         lastActivity: Date.now(),
@@ -4237,6 +4944,7 @@ class DiscordBotManager {
         source: 'discord',
         sourceLabel: 'Via Discord',
         phase: nextPhase,
+        balanceMode: mix.balanceMode || 'balanced',
         players: (mix.players || []).map((p) => ({
           id: p.id,
           nick: p.displayName || p.username,
@@ -4244,6 +4952,12 @@ class DiscordBotManager {
           level: p.level || 16,
           side: (mix.teamA?.players || []).some((a) => a.id === p.id) ? (mix.teamA?.side || 'CT') : (mix.teamB?.side || 'TR'),
           ready: true,
+        })),
+        waitlist: (mix.waitlist || []).map((w) => ({
+          id: w.id,
+          nick: w.displayName || w.username,
+          avatar: w.avatar,
+          level: w.level || 16,
         })),
         teamA: (mix.teamA?.players || []).map((p) => ({
           id: p.id,
@@ -4275,12 +4989,38 @@ class DiscordBotManager {
               level: mix.teamB.captain.level || 16,
             }
           : null,
+        captainTurn: mix.captainDraft?.turnOrder?.[mix.captainDraft.step] === 'teamB' ? 'captainB' : 'captainA',
+        unassignedPlayers: (mix.captainDraft?.pool || []).map((p) => ({
+          id: p.id,
+          nick: p.displayName || p.nick || p.username,
+          avatar: p.avatar,
+          level: p.level || 16,
+        })),
         teamAName: mix.teamA?.name || 'Time A',
         teamBName: mix.teamB?.name || 'Time B',
+        metrics: {
+          sumA,
+          sumB,
+          avgA,
+          avgB,
+          diff,
+          balancePercentage: mix.balancePct || 95,
+          rankingSystem: 'gc',
+        },
+        maps: OFFICIAL_MAPS.map((m) => ({ id: m.id, name: m.name, file: m.id, image: m.image })),
+        bannedMaps,
+        vetoLog,
+        currentTurn: mix.veto?.currentTurn || 'teamA',
+        startingSideTeamB: (mix.teamB?.startingSide || mix.teamB?.side || 'TR').toUpperCase(),
         finalMap: mix.veto?.deciderMap
-          ? { name: mix.veto.deciderMap.name, file: mix.veto.deciderMap.id }
-          : null,
-        serverIp: mix.serverIp || this.config.serverConnect || '',
+          ? {
+              id: mix.veto.deciderMap.id,
+              name: mix.veto.deciderMap.name,
+              file: mix.veto.deciderMap.id,
+              image: mix.veto.deciderMap.image,
+            }
+          : (mix.finalMap || null),
+        serverIp: displayConn?.normalized || '',
         matchFormat: mix.format || 'MD1',
       };
       this.webRoomsRef.set(roomId, room);
@@ -4328,15 +5068,25 @@ class DiscordBotManager {
         const afkPlayers = mix.players.filter((p) => !confirmedIds.has(p.id) && !String(p.id).startsWith('wa_'));
 
         if (afkPlayers.length === 0) {
+          if (mix.balanceMode === 'captains' && mix.players.length >= 4) {
+            this.startCaptainDraft1v1(mix);
+            this.updateLobbyInChannels(mix);
+            const { embed, components } = this.buildCaptainDraftEmbedAndComponents(mix);
+            await channel.send({
+              content: '\u26a1 **Check-in encerrado!** Draft 1v1 de Capit\u00e3es iniciado:',
+              embeds: [embed],
+              components,
+            }).catch(() => {});
+            return;
+          }
           this.balanceTeams(mix);
+          this.updateLobbyInChannels(mix);
           const embed = this.buildTeamsEmbed(mix);
-          const row = new ActionRowBuilder().addComponents(
-            new ButtonBuilder().setCustomId(`mix_veto:${mix.id}`).setLabel('Iniciar Pick & Ban').setEmoji('\ud83d\uddf3\ufe0f').setStyle(ButtonStyle.Success),
-            new ButtonBuilder().setCustomId(`mix_captain_draft:${mix.id}`).setLabel('Draft 1v1 Capit\u00e3es').setEmoji('\ud83d\udc51').setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId(`mix_roulette:${mix.id}`).setLabel('Roleta R\u00e1pida').setEmoji('\ud83c\udfb2').setStyle(ButtonStyle.Primary),
-            new ButtonBuilder().setCustomId(`mix_voice:${mix.id}`).setLabel('Mover para Calls').setEmoji('\ud83d\udcde').setStyle(ButtonStyle.Secondary)
-          );
-          await channel.send({ content: '\u26a1 **Check-in encerrado!** Times sorteados:', embeds: [embed], components: [row] }).catch(() => {});
+          await channel.send({
+            content: '\u26a1 **Check-in encerrado!** Times sorteados:',
+            embeds: [embed],
+            components: [this.buildTeamsActionButtons(mix)],
+          }).catch(() => {});
           return;
         }
 
@@ -4349,14 +5099,26 @@ class DiscordBotManager {
           promoted.push(nextSub);
         }
 
-        mix.phase = 'lobby';
-        this.syncToWebRoom(mix);
-        this.updateLobbyInChannels(mix);
-
         const afkMentions = afkPlayers.map((p) => `<@${p.id}>`).join(', ');
         const promoText = promoted.length > 0
           ? `\n\ud83d\udd04 **Suplente(s) promovido(s) da Reserva:** ${promoted.map((p) => `<@${p.id}>`).join(', ')}!`
           : '';
+
+        if (mix.players.length === 10) {
+          this.startReadyCheck(mix, channel);
+          this.syncToWebRoom(mix);
+          this.updateLobbyInChannels(mix);
+          await channel.send({
+            content: `\u23f0 **TEMPO DE CHECK-IN ESGOTADO!**\n\ud83d\udeab Removido(s) por inatividade (AFK): ${afkMentions}${promoText}\n\ud83d\udd04 Lobby completado novamente (**10/10**)! Novo check-in iniciado:`,
+            embeds: [this.buildReadyCheckEmbed(mix)],
+            components: this.buildReadyCheckButtons(mix),
+          }).catch(() => {});
+          return;
+        }
+
+        mix.phase = 'lobby';
+        this.syncToWebRoom(mix);
+        this.updateLobbyInChannels(mix);
 
         const embed = this.buildLobbyEmbed(mix);
         const components = this.buildLobbyButtons(mix);
@@ -4365,14 +5127,11 @@ class DiscordBotManager {
           embeds: [embed],
           components,
         }).catch(() => {});
-
-        if (mix.players.length === 10) {
-          this.startReadyCheck(mix, channel);
-        }
       } catch (e) {
         console.warn('[READY CHECK TIMEOUT]', e.message);
       }
     }, 60000);
+    mix.readyCheck.timer.unref?.();
   }
 
   buildReadyCheckEmbed(mix) {
@@ -4411,6 +5170,7 @@ class DiscordBotManager {
 
   buildReadyCheckButtons(mix) {
     const confirmedCount = mix.readyCheck?.confirmed?.size || 0;
+    const isCaptainsMode = mix.balanceMode === 'captains';
     return [
       new ActionRowBuilder().addComponents(
         new ButtonBuilder()
@@ -4428,6 +5188,11 @@ class DiscordBotManager {
           .setLabel('Draft 1v1 Capit\u00e3es')
           .setEmoji('\ud83d\udc51')
           .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+          .setCustomId(`mix_toggle_mode:${mix.id}`)
+          .setLabel(isCaptainsMode ? 'Modo: Capit\u00e3es' : 'Modo: Equilibrado')
+          .setEmoji('\ud83c\udfb2')
+          .setStyle(ButtonStyle.Secondary),
         new ButtonBuilder()
           .setCustomId(`mix_leave:${mix.id}`)
           .setLabel('Desistir / Sair')
@@ -4468,41 +5233,35 @@ class DiscordBotManager {
       .setDescription(
         `Seja bem-vindo ao sistema oficial de Mix 5v5 da comunidade!\n` +
           `Aqui está o passo a passo de como funciona a fila e os comandos:\n\n` +
-          `**1️⃣ Como Entrar e Sair da Fila:**\n` +
-          `• Clique no botão verde **\`[➕ Entrar]\`** logo abaixo ou digite \`!entrar\` no chat.\n` +
-          `• Se precisar desmarcar, clique em **\`[➖ Sair]\`** ou digite \`!sair\`.\n\n` +
+          `**1️⃣ Como Entrar e Sair da Fila (Titular ou Reserva):**\n` +
+          `• Clique no botão **\`[➕ Entrar]\`** ou digite \`!entrar\` no chat. Se fechar 10/10, abre **Fila de Reserva (até 3/3)**!\n` +
+          `• Se precisar desmarcar, clique em **\`[➖ Sair]\`** ou digite \`!sair\` (o primeiro suplente sobe na hora).\n\n` +
           `**2️⃣ Cadastre seu Nível da Gamers Club (GC):**\n` +
-          `• Clique no botão azul **\`[⭐ Meu Nível GC]\`** ou digite \`!lvl <1 a 21>\` (ex: \`!lvl 16\`).\n` +
-          `• O bot salva seu nível para sempre! Isso garante que o sorteio forme times equilibrados.\n\n` +
-          `**3️⃣ Confirmação de Presença (Sem Limite de Tempo):**\n` +
-          `• Assim que a fila atingir **10/10 jogadores**, os jogadores podem confirmar presença ou sortear os times direto sem pressa e sem ninguém ser expulso por tempo.\n\n` +
-          `**4️⃣ Sorteio dos Times & Capitães:**\n` +
-          `• Clique em **\`[⚔️ Sortear Times]\`** (ou \`!sortear\`).\n` +
-          `• Os dois jogadores de maior nível viram os Capitães 👑 (Time A e Time B) e o sistema divide os elos igualmente.\n\n` +
-          `**5️⃣ Veto de Mapas (Pick & Ban) e Escolha de Lado:**\n` +
-          `• Clique em **\`[🗳️ Pick & Ban]\`** (ou \`!veto\`) para os capitães banirem os mapas da Valve.\n` +
-          `• No mapa final, o Capitão B escolhe começar de **CT** 🛡️ ou **TR** 💣!\n\n` +
+          `• Clique no botão **\`[⭐ Meu Nível GC]\`** ou digite \`!lvl <1 a 21>\` (ex: \`!lvl 16\`).\n` +
+          `• O bot salva seu nível para sempre e usa no sorteio equilibrado.\n\n` +
+          `**3️⃣ Check-in Anti-AFK (60 segundos):**\n` +
+          `• Ao atingir **10/10 jogadores**, abre um Check-in de **60s**. Quem não confirmar dá lugar automaticamente à Fila de Reserva (ou os capitães podem sortear na hora).\n\n` +
+          `**4️⃣ Sorteio Equilibrado ou Draft 1v1 de Capitães:**\n` +
+          `• Alterne no lobby com **\`[🎲 Modo]\`**, ou clique em **\`[⚔️ Sortear Times]\`** / **\`[👑 Draft 1v1]\`** (\`!sortear\`).\n` +
+          `• No modo Equilibrado, os dois maiores níveis viram Capitães 👑 e o Snake-Draft equilibra os times automaticamente.\n\n` +
+          `**5️⃣ Veto de Mapas (Pick & Ban), Roleta ou Escolha Manual:**\n` +
+          `• Use **\`[🗳️ Pick & Ban]\`** (\`!veto\`), **\`[🎲 Roleta]\`** ou **\`[🗺️ Escolher Mapa]\`**.\n` +
+          `• No mapa final do veto, o Capitão B escolhe começar de **CT** 🛡️ ou **TR** 💣!\n\n` +
           `**6️⃣ Conectar no Servidor & Mover Calls:**\n` +
-          `• Clique em **\`[🚀 Conectar Direto no CS2]\`** para abrir o jogo pela Steam com 1 clique!\n` +
+          `• Clique em **\`[🚀 Conectar Direto no CS2]\`** ou copie o comando \`connect\` exibido no card.\n` +
           `• Clique em **\`[📞 Mover Calls]\`** para o bot puxar cada time para sua sala de voz oficial.\n\n` +
-          `**7️⃣ Placar da Partida, MVP & Ranking Geral:**\n` +
+          `**7️⃣ Placar, MVP & Votação do Bagre do Mix:**\n` +
           `• Ao final do jogo, clique em **\`[🏆 Declarar Placar]\`** ou digite \`!vitoria A 13-9\`.\n` +
-          `• O bot pontua as vitórias no **\`!ranking\`** e abre a eleição do **MVP da Partida** ⭐!\n\n` +
+          `• Com Valve GSI ativo, MVP e Bagre são calculados por stats reais; sem GSI, use **\`[🐟 Votar Bagre do Mix]\`** ou \`!bagre\`!\n\n` +
           `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
           `⚡ **Comandos Oficiais no Chat:**\n` +
-          `• \`!mix\` — Abre um novo lobby 5v5\n` +
-          `• \`!vitoria [A|B] [placar]\` — Registra a vitória, pontua no ranking e inicia votação de MVP\n` +
-          `• \`!aovivo\` [parar] — Monitorar Partida round a round: placar, CT/TR, HP e armas (ative antes da partida!)\n` +
-          `• \`!historico\` — Histórico de partidas recentes com placares e destaques\n` +
-          `• \`!x1 @amigo\` — Duelo direto Head-to-Head e sinergia de duo\n` +
-          `• \`!mapas\` — Estatísticas dos mapas mais disputados no servidor\n` +
-          `• \`!status-server\` — Consulta ping, mapa e players online no CS2 (A2S_INFO)\n` +
-          `• \`!ranking\` / \`!top\` — Hall da Fama e Top 10 com vitórias e medalhas\n` +
-          `• \`!sub @novo\` — Substitui um jogador ausente por um reserva\n` +
-          `• \`!cargo\` — Ativa/desativa notificações de vagas restantes (@Mix CS2)\n` +
-          `• \`!lvl <1-21>\` — Cadastra/atualiza seu nível da Gamers Club\n` +
-          `• \`!stats\` — Exibe suas estatísticas, vitórias, medalhas de MVP e streak\n` +
-          `• \`!smoke <mapa>\` • Lineups | \`!treino\` • CFG console | \`!moeda\` • Cara ou coroa`
+          `• \`!mix\` — Abre um novo lobby 5v5 | \`!fila\` — Mostra o card do mix atual\n` +
+          `• \`!vitoria [A|B] [placar]\` — Registra vitória no ranking e histórico\n` +
+          `• \`!aovivo\` [parar] — Radar da partida em tempo real (Valve GSI)\n` +
+          `• \`!servidor <ip:porta [senha]>\` — Define servidor CS2 (aceita \`password\`)\n` +
+          `• \`!sub @antigo @novo\` — Substituição | \`!bagre\` — Votação do Bagre\n` +
+          `• \`!historico\` | \`!ranking\` | \`!x1 @amigo\` | \`!mapas\` | \`!status-server\`\n` +
+          `• \`!smoke <mapa>\` (10 mapas) | \`!treino\` | \`!moeda\` | \`!cargo\``
       )
       .setColor(0x38bdf8)
       .setThumbnail('https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_mirage_1_png.png')
@@ -4510,7 +5269,7 @@ class DiscordBotManager {
   }
 
   buildLobbyEmbed(mix) {
-    const total = mix.players.length;
+    const total = (mix.players || []).length;
     const waitlist = Array.isArray(mix.waitlist) ? mix.waitlist : [];
     const isFull = total >= 10;
     const color = isFull ? 0x10b981 : 0xf59e0b;
@@ -4557,18 +5316,21 @@ class DiscordBotManager {
       });
     }
 
+    const conn = this.resolveMixDisplayConnect(mix);
+    const modeLabel = mix.balanceMode === 'captains' ? '👑 Draft de Capitães 1v1' : '⚖️ Snake-Draft Equilibrado';
+
     fields.push({
       name: '\u2699\ufe0f Configura\u00e7\u00f5es da Partida',
       value:
-        `\ud83c\udfc6 **Formato:** ${mix.format || 'MD1'}\n` +
+        `\ud83c\udfc6 **Formato:** ${mix.format || 'MD1'} \u2022 **Modo:** ${modeLabel}\n` +
         `\ud83d\udee1\ufe0f **Status:** ${isFull ? '\ud83d\udfe2 **LOBBY LOTADO (10/10)! Vagas abertas na Reserva**' : `\ud83d\udfe1 Aguardando jogadores (${10 - total} restante(s))`}\n` +
-        `\ud83d\udcbb **Servidor:** ${mix.serverIp ? `\`${mix.serverIp}\`` : '*A definir ou host local*'}\n` +
+        `\ud83d\udcbb **Servidor:** ${conn ? `\`${conn.consoleCommand}\`` : '*A definir ou host local*'}\n` +
         `\ud83d\udc51 **Criador:** ${creatorDisplay}`,
       inline: false,
     });
 
     const embed = new EmbedBuilder()
-      .setTitle(`\ud83c\udfae CS2 MIX HUB \u2022 ${mix.name.toUpperCase()}`)
+      .setTitle(`\ud83c\udfae CS2 MIX HUB \u2022 ${(mix.name || 'Mix CS2').toUpperCase()}`)
       .setDescription(
         `Fila oficial de Mix 5v5 para Counter-Strike 2.\n` +
         `\ud83c\udf10 **Sincroniza\u00e7\u00e3o Ativa:** Jogadores do **Discord** e **Web Hub** jogam no mesmo lobby!\n` +
@@ -4585,10 +5347,11 @@ class DiscordBotManager {
   }
 
   buildLobbyButtons(mix) {
-    const total = mix.players.length;
+    const total = (mix.players || []).length;
     const waitlistCount = Array.isArray(mix.waitlist) ? mix.waitlist.length : 0;
     const isFull = total >= 10;
     const isWaitlistFull = waitlistCount >= 3;
+    const isCaptainsMode = mix.balanceMode === 'captains';
 
     const row1 = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
@@ -4650,7 +5413,21 @@ class DiscordBotManager {
         .setStyle(ButtonStyle.Danger)
     );
 
-    return [row1, row2];
+    const row3 = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`mix_toggle_mode:${mix.id}`)
+        .setLabel(isCaptainsMode ? 'Modo: Capit\u00e3es 1v1' : 'Modo: Equilibrado')
+        .setEmoji('\ud83c\udfb2')
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(`mix_sub:${mix.id}`)
+        .setLabel('Substituir')
+        .setEmoji('\ud83d\udd04')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(total === 0)
+    );
+
+    return [row1, row2, row3];
   }
   buildTeamsEmbed(mix) {
     const teamA = mix.teamA;
@@ -4707,7 +5484,7 @@ class DiscordBotManager {
         },
         {
           name: '🎯 Próxima Etapa',
-          value: 'Capitães definidos! Escolham entre **Iniciar Pick & Ban** oficial da Valve ou **Roleta Rápida**.',
+          value: 'Capitães definidos! Escolham entre **Iniciar Pick & Ban**, **Draft 1v1**, **Roleta Rápida** ou **Escolher Mapa**.',
           inline: false,
         }
       )
@@ -4736,12 +5513,13 @@ class DiscordBotManager {
       .setColor(isFinished ? 0x10b981 : 0x38bdf8);
 
     if (isFinished) {
+      const conn = this.resolveMixDisplayConnect(mix);
       embed.setDescription(
         `🏆 **MAPA DEFINIDO COM SUCESSO!**\n\n` +
           `🗺️ **Mapa:** \`${veto.deciderMap.name}\` (${veto.deciderMap.id})\n` +
           `🛡️ **${mix.teamA.name}:** Inicia de **${mix.teamA.side}**\n` +
           `🔥 **${mix.teamB.name}:** Inicia de **${mix.teamB.side}**\n\n` +
-          (mix.serverIp ? `💻 **Conectar no CS2:**\n\`connect ${mix.serverIp}\`\n\n` : '') +
+          (conn ? `💻 **Conectar no CS2:**\n\`${conn.consoleCommand}\`\n\n` : '') +
           `GL & HF! Bom jogo a todos!`
       );
       if (veto.deciderMap.image) embed.setImage(veto.deciderMap.image);
@@ -4802,21 +5580,110 @@ class DiscordBotManager {
     return rows;
   }
 
-  buildMatchReadyEmbed(mix) {
-    const veto = mix.veto;
-    const map = veto.deciderMap || { name: 'Mirage', id: 'de_mirage', emoji: '🏜️', image: OFFICIAL_MAPS[0].image };
+  buildSidePickPayload(mix) {
+    const decider = mix.veto?.deciderMap || mix.finalMap || OFFICIAL_MAPS[0];
+    const captainB = mix.teamB?.captain || mix.players?.[1] || mix.players?.[0];
+    const capBTag = isSnowflake(captainB?.id)
+      ? `<@${captainB.id}>`
+      : `**${captainB?.displayName || captainB?.nick || captainB?.name || captainB?.username || 'Capitão B'}**`;
 
-    const connectCmd = mix.serverIp
-      ? (mix.serverIp.includes('connect') ? mix.serverIp : `connect ${mix.serverIp}`)
-      : null;
+    const embed = new EmbedBuilder()
+      .setTitle(`🪙 ESCOLHA DE LADO (CT / TR) • ${(mix.name || 'Mix CS2').toUpperCase()}`)
+      .setColor(0xf59e0b)
+      .setDescription(
+        `🗺️ **Mapa Definido (Decider):** ${decider?.emoji || '🎯'} **${(decider?.name || 'Mirage').toUpperCase()}** (\`${decider?.id || 'de_mirage'}\`)\n\n` +
+        `👑 **Vez do ${mix.teamB?.name || 'Time B'} escolher o lado inicial!**\n` +
+        `👉 Capitão ${capBTag}, clique abaixo para começar de **CT (Contra-Terrorista)** ou **TR (Terrorista)**:`
+      )
+      .setFooter({ text: 'O lado oposto será atribuído automaticamente ao Time A' })
+      .setTimestamp();
+
+    if (decider?.image) {
+      embed.setImage(decider.image);
+    }
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`side_pick:${mix.id}:CT`)
+        .setLabel('Começar de CT (Contra-Terrorista)')
+        .setEmoji('🛡️')
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId(`side_pick:${mix.id}:TR`)
+        .setLabel('Começar de TR (Terrorista)')
+        .setEmoji('💣')
+        .setStyle(ButtonStyle.Danger)
+    );
+
+    return {
+      content: `🪙 **Pick & Ban finalizado!** ${capBTag}, escolha o lado do **${mix.teamB?.name || 'Time B'}** no mapa **${decider?.name || 'Mirage'}**!`,
+      embeds: [embed],
+      components: [row],
+    };
+  }
+
+  buildStatusPayloadForMix(mix) {
+    if (!mix) return null;
+    const phase = mix.phase || 'lobby';
+
+    if (phase === 'ready_check') {
+      return {
+        embeds: [this.buildReadyCheckEmbed(mix)],
+        components: this.buildReadyCheckButtons(mix),
+      };
+    }
+
+    if (phase === 'captain_draft' || phase === 'captains_draft') {
+      if (mix.captainDraft?.pool?.length) {
+        const { embed, components } = this.buildCaptainDraftEmbedAndComponents(mix);
+        return { embeds: [embed], components };
+      }
+    }
+
+    if (phase === 'teams') {
+      return {
+        embeds: [this.buildTeamsEmbed(mix)],
+        components: [this.buildTeamsActionButtons(mix)],
+      };
+    }
+
+    if (phase === 'veto') {
+      return {
+        embeds: [this.buildVetoEmbed(mix)],
+        components: this.buildVetoButtons(mix),
+      };
+    }
+
+    if (phase === 'side_pick') {
+      return this.buildSidePickPayload(mix);
+    }
+
+    if (phase === 'live') {
+      return {
+        embeds: [this.buildMatchReadyEmbed(mix)],
+        components: this.buildMatchReadyButtons(mix),
+      };
+    }
+
+    return {
+      embeds: [this.buildLobbyEmbed(mix)],
+      components: this.buildLobbyButtons(mix),
+    };
+  }
+
+  buildMatchReadyEmbed(mix) {
+    const veto = mix.veto || {};
+    const map = veto.deciderMap || { name: 'Mirage', id: 'de_mirage', emoji: '🏜️', image: OFFICIAL_MAPS[0].image };
+    const conn = this.resolveMixDisplayConnect(mix);
+    const connectCmd = conn ? conn.consoleCommand : null;
 
     const embed = new EmbedBuilder()
       .setTitle(`🏆 PARTIDA CONFIRMADA • ${mix.name.toUpperCase()}`)
       .setDescription(
         `A fase de Pick & Ban e escolha de lados foi concluída com sucesso!\n\n` +
         `🗺️ **MAPA OFICIAL:** ${map.emoji || '🎯'} **${map.name.toUpperCase()}** (\`${map.id}\`)\n` +
-        `🛡️ **${mix.teamA.name}:** Inicia de **${mix.teamA.side}**\n` +
-        `🔥 **${mix.teamB.name}:** Inicia de **${mix.teamB.side}**\n\n` +
+        `🛡️ **${mix.teamA.name}:** Inicia de **${mix.teamA.side || 'CT'}**\n` +
+        `🔥 **${mix.teamB.name}:** Inicia de **${mix.teamB.side || 'TR'}**\n\n` +
         (connectCmd
           ? `💻 **Comando de Conexão no Console do CS2:**\n\`\`\`bash\n${connectCmd}\n\`\`\`\n*Abra o console com aspas (\`) ou (') e cole o comando acima!*`
           : `⚠️ *IP do servidor não configurado. Use \`!servidor ip:porta\` para definir.*`)
@@ -4824,12 +5691,12 @@ class DiscordBotManager {
       .setColor(0x10b981)
       .addFields(
         {
-          name: `🛡️ ${mix.teamA.name} (${mix.teamA.side})`,
+          name: `🛡️ ${mix.teamA.name} (${mix.teamA.side || 'CT'})`,
           value: mix.teamA.players.map((p) => `${p.id === mix.teamA.captain?.id ? '👑 **Capitão:** ' : '• '}${isSnowflake(p.id) ? `<@${p.id}>` : `**${p.displayName || p.nick || p.name || p.username}** 💬`} \`[Lvl ${p.level || 16} GC]\``).join('\n') || '*Sem jogadores*',
           inline: true,
         },
         {
-          name: `🔥 ${mix.teamB.name} (${mix.teamB.side})`,
+          name: `🔥 ${mix.teamB.name} (${mix.teamB.side || 'TR'})`,
           value: mix.teamB.players.map((p) => `${p.id === mix.teamB.captain?.id ? '👑 **Capitão:** ' : '• '}${isSnowflake(p.id) ? `<@${p.id}>` : `**${p.displayName || p.nick || p.name || p.username}** 💬`} \`[Lvl ${p.level || 16} GC]\``).join('\n') || '*Sem jogadores*',
           inline: true,
         }
@@ -4845,16 +5712,16 @@ class DiscordBotManager {
   buildMatchReadyButtons(mix) {
     const rows = [];
     const row1 = new ActionRowBuilder();
-    const narrOn = this.isNarrationActive(mix);
+    const narrOn = this.isNarrationActive(mix, mix?.channelId);
+    const conn = this.resolveMixDisplayConnect(mix);
 
-    if (mix.serverIp) {
-      const cleanIp = mix.serverIp.replace(/^connect\s+/i, '').trim();
+    if (conn) {
       row1.addComponents(
         new ButtonBuilder()
           .setLabel('Conectar Direto no CS2')
-          .setEmoji('\ud83d\ude80')
+          .setEmoji('🚀')
           .setStyle(ButtonStyle.Link)
-          .setURL(this.getPublicWebUrl(`/connect?ip=${encodeURIComponent(cleanIp)}`))
+          .setURL(this.getPublicWebUrl(`/connect?ip=${encodeURIComponent(conn.normalized)}`))
       );
     }
 
@@ -4862,22 +5729,22 @@ class DiscordBotManager {
       new ButtonBuilder()
         .setCustomId(`match_result:${mix.id}`)
         .setLabel('Declarar Placar')
-        .setEmoji('\ud83c\udfc6')
+        .setEmoji('🏆')
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId(`mix_toggle_narration:${mix.id}`)
-        .setLabel(narrOn ? 'Narra\u00e7\u00e3o: ON' : 'Narra\u00e7\u00e3o: OFF')
-        .setEmoji(narrOn ? '\ud83c\udf99\ufe0f' : '\ud83d\udd07')
+        .setLabel(narrOn ? 'Narração: ON' : 'Narração: OFF')
+        .setEmoji(narrOn ? '🎙️' : '🔇')
         .setStyle(narrOn ? ButtonStyle.Success : ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId(`mix_sub:${mix.id}`)
         .setLabel('Substituto')
-        .setEmoji('\ud83d\udd04')
+        .setEmoji('🔄')
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId(`mix_voice:${mix.id}`)
         .setLabel('Mover Calls')
-        .setEmoji('\ud83d\udcde')
+        .setEmoji('📞')
         .setStyle(ButtonStyle.Secondary)
     );
     rows.push(row1);
@@ -4886,17 +5753,17 @@ class DiscordBotManager {
       new ButtonBuilder()
         .setCustomId(`mix_live_tracker:${mix.id}`)
         .setLabel('Monitorar Partida')
-        .setEmoji('\ud83d\udce1')
+        .setEmoji('📡')
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setLabel('Acompanhar no Site')
-        .setEmoji('\ud83c\udf10')
+        .setEmoji('🌐')
         .setStyle(ButtonStyle.Link)
         .setURL(this.getPublicWebUrl(`/?room=${mix.id}`)),
       new ButtonBuilder()
         .setCustomId('panel_create_mix')
         .setLabel('Novo Mix')
-        .setEmoji('\ud83c\udfae')
+        .setEmoji('🎮')
         .setStyle(ButtonStyle.Primary)
     );
     rows.push(row2);
@@ -4905,22 +5772,22 @@ class DiscordBotManager {
       new ButtonBuilder()
         .setCustomId(`rcon_pause:${mix.id}`)
         .setLabel('Pausar CS2')
-        .setEmoji('\u23f8\ufe0f')
+        .setEmoji('⏸️')
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId(`rcon_unpause:${mix.id}`)
         .setLabel('Despausar')
-        .setEmoji('\u25b6\ufe0f')
+        .setEmoji('▶️')
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId(`rcon_live:${mix.id}`)
-        .setLabel('For\u00e7ar Live/RR')
-        .setEmoji('\ud83d\udd25')
+        .setLabel('Forçar Live/RR')
+        .setEmoji('🔥')
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId(`rcon_say_modal:${mix.id}`)
         .setLabel('Aviso no CS2')
-        .setEmoji('\ud83d\udce2')
+        .setEmoji('📢')
         .setStyle(ButtonStyle.Primary)
     );
     rows.push(row3);
@@ -4939,23 +5806,29 @@ class DiscordBotManager {
     // Botao de Ligar / Desligar Narracao sob demanda (Padrao: OFF)
     if (customId === 'live_toggle_narration' || customId.startsWith('mix_toggle_narration:')) {
       const tMixId = customId.includes(':') ? customId.split(':')[1] : '';
-      const mix = (tMixId && this.activeMixes.get(tMixId)) || this.resolveActiveMixForChannel(interaction.channelId);
-      const isNowOn = this.toggleNarration(mix);
+      const byExplicit = tMixId ? this.activeMixes.get(tMixId) : null;
+      const mix =
+        (byExplicit && (!byExplicit.channelId || byExplicit.channelId === interaction.channelId) ? byExplicit : null) ||
+        this.resolveActiveMixForChannel(interaction.channelId);
+      const isNowOn = this.toggleNarration(mix, interaction.channelId);
 
       if (customId === 'live_toggle_narration') {
         const tracker = this.liveTrackers?.get(interaction.message?.id);
         const isExpanded = tracker ? Boolean(tracker.isExpanded) : false;
-        const row = this.buildLiveMatchButtons(Boolean(this.lastGsiState?.player?.name), isExpanded);
-        await interaction.update({ components: [row] }).catch(() => {});
+        const roomId = normalizeRoomId(mix?.id, 'MIX-PRO');
+        const components = this.buildLiveMatchButtons(this.isGsiOnline(), isExpanded, roomId, mix, interaction.channelId);
+        await interaction.update({ components }).catch(() => {});
       } else if (mix) {
         const components = this.buildMatchReadyButtons(mix);
         await interaction.update({ components }).catch(() => {});
+      } else {
+        await interaction.deferUpdate().catch(() => {});
       }
 
       return interaction.followUp({
         content: isNowOn
-          ? `\ud83c\udf99\ufe0f **Narra\u00e7\u00e3o do Mix ATIVADA por <@${user.id}>!** O bot vai narrar Aces (5K), Quadra Kills (4K), Clutches e Virada de Half desta partida!`
-          : `\ud83d\udd07 **Narra\u00e7\u00e3o do Mix DESATIVADA por <@${user.id}>!** O bot ficar\u00e1 100% silencioso durante os rounds.`,
+          ? `🎙️ **Narração do Mix ATIVADA por <@${user.id}>!** O bot vai narrar Aces (5K), Quadra Kills (4K), Clutches e Virada de Half desta partida!`
+          : `🔇 **Narração do Mix DESATIVADA por <@${user.id}>!** O bot ficará 100% silencioso durante os rounds.`,
         ephemeral: false,
       }).catch(() => {});
     }
@@ -4968,7 +5841,10 @@ class DiscordBotManager {
       customId.startsWith('rcon_say_modal:')
     ) {
       const [rconAct, rMixId] = customId.split(':');
-      const mix = this.activeMixes.get(rMixId) || this.resolveActiveMixForChannel(interaction.channelId);
+      const byExplicit = rMixId ? this.activeMixes.get(rMixId) : null;
+      const mix =
+        (byExplicit && (!byExplicit.channelId || byExplicit.channelId === interaction.channelId) ? byExplicit : null) ||
+        this.resolveActiveMixForChannel(interaction.channelId);
       const isCapOrAdmin =
         !mix ||
         user.id === mix.creatorId ||
@@ -4978,7 +5854,7 @@ class DiscordBotManager {
 
       if (!isCapOrAdmin) {
         return interaction.reply({
-          content: '\ud83d\udeab Apenas os **Capit\u00e3es**, o **Criador do Mix** ou **Admins** podem controlar o servidor CS2!',
+          content: '🚫 Apenas os **Capitães**, o **Criador do Mix** ou **Admins** podem controlar o servidor CS2!',
           ephemeral: true,
         });
       }
@@ -4998,17 +5874,15 @@ class DiscordBotManager {
         return interaction.showModal(modal);
       }
 
-      const rawServer = (mix?.serverIp || this.config.serverConnect || '').replace(/^connect\s+/i, '').trim();
+      const rawServer = mix?.serverIp || this.config.serverConnect || '';
       const rconPwd = (mix?.rconPassword || this.config.rconPassword || process.env.CS2_RCON_PASSWORD || '').trim();
-      if (!rawServer || !rconPwd) {
+      const { host, port } = extractHostAndPort(rawServer);
+      if (!host || !rconPwd) {
         return interaction.reply({
-          content: '\u26a0\ufe0f IP do servidor ou senha RCON ainda n\u00e3o configurados no painel!',
+          content: '⚠️ IP do servidor ou senha RCON ainda não configurados no painel!',
           ephemeral: true,
         });
       }
-
-      const [host, portStr] = rawServer.split(':');
-      const port = parseInt(portStr, 10) || 27015;
 
       const safeActor = sanitizeRconTextArg(user.username, 24) || 'Admin';
       try {
@@ -5019,7 +5893,7 @@ class DiscordBotManager {
             password: rconPwd,
             command: `mp_pause_match; say ">>> [DISCORD MIX HUB] Partida PAUSADA por ${safeActor} no proximo freezetime!"`,
           });
-          return interaction.reply({ content: `\u23f8\ufe0f <@${user.id}> enviou **Pause T\u00e1tico (\`mp_pause_match\`)** para o servidor CS2!` });
+          return interaction.reply({ content: `⏸️ <@${user.id}> enviou **Pause Tático (\`mp_pause_match\`)** para o servidor CS2!` });
         }
         if (rconAct === 'rcon_unpause') {
           await executeRconCommand({
@@ -5028,7 +5902,7 @@ class DiscordBotManager {
             password: rconPwd,
             command: `mp_unpause_match; say ">>> [DISCORD MIX HUB] Partida DESPAUSADA por ${safeActor}! GL & HF!"`,
           });
-          return interaction.reply({ content: `\u25b6\ufe0f <@${user.id}> **despausou (\`mp_unpause_match\`)** a partida no servidor CS2!` });
+          return interaction.reply({ content: `▶️ <@${user.id}> **despausou (\`mp_unpause_match\`)** a partida no servidor CS2!` });
         }
         if (rconAct === 'rcon_live') {
           if (mix && typeof this.applyCs2TeamNamesRcon === 'function') await this.applyCs2TeamNamesRcon(mix).catch(() => {});
@@ -5038,10 +5912,10 @@ class DiscordBotManager {
             password: rconPwd,
             command: `mp_warmup_end; mp_restartgame 1; say ">>> [DISCORD MIX HUB] LIVE! Partida iniciada/reiniciada por ${safeActor}!"`,
           });
-          return interaction.reply({ content: `\ud83d\udd25 <@${user.id}> encerrou o aquecimento e puxou **LIVE (\`mp_restartgame 1\`)** no CS2!` });
+          return interaction.reply({ content: `🔥 <@${user.id}> encerrou o aquecimento e puxou **LIVE (\`mp_restartgame 1\`)** no CS2!` });
         }
       } catch (err) {
-        return interaction.reply({ content: `\u274c Falha RCON: ${err.message}`, ephemeral: true });
+        return interaction.reply({ content: `❌ Falha RCON: ${err.message}`, ephemeral: true });
       }
     }
     // Community Clip Voting
@@ -5074,6 +5948,33 @@ class DiscordBotManager {
       return interaction.showModal(modal);
     }
 
+    // 1-Click GSI Install Button (on Live Match card or /gsi embed)
+    if (
+      customId === 'live_install_gsi' ||
+      customId.startsWith('live_install_gsi:') ||
+      customId === 'gsi_install_host' ||
+      customId.startsWith('gsi_install_host:')
+    ) {
+      const requestedRoom = customId.includes(':') ? customId.split(':')[1] : '';
+      const explicitRoom = requestedRoom && requestedRoom !== 'MIX-PRO' ? requestedRoom : '';
+      const resolvedMix =
+        (explicitRoom && this.activeMixes?.get(explicitRoom)) ||
+        this.activeMixes?.get(interaction.channelId) ||
+        this.resolveActiveMixForChannel(interaction.channelId);
+      const roomId = normalizeRoomId(explicitRoom || resolvedMix?.id, 'MIX-PRO');
+      const isHostModerator = this.isGuildModerator(
+        interaction.member,
+        interaction.guild,
+        resolvedMix,
+        interaction.user?.id
+      );
+      const payload = this.buildGsiInstallReplyPayload(roomId, {
+        isHostModerator,
+        tryLocalInstall: true,
+      });
+      return interaction.reply({ ...payload, ephemeral: true });
+    }
+
     // GSI Help Information Button
     if (customId === 'gsi_help_info') {
       return interaction.reply({
@@ -5081,8 +5982,8 @@ class DiscordBotManager {
           `ℹ️ **O que é Valve GSI e como funciona?**\n\n` +
           `• O **Game State Integration (GSI)** é um recurso nativo e oficial da Valve no CS2 que transmite eventos do jogo em tempo real (vida, colete, dinheiro, kills, rounds, bombas).\n` +
           `• **Basta 1 jogador** da partida estar conectado com o GSI ativo para todo o servidor/Discord e o Hub Web acompanharem o radar e estatísticas ao vivo!\n` +
-          `• O arquivo de configuração (\`gamestate_integration_cs2mixhub.cfg\`) fica salvo na pasta do seu CS2: \`.../steamapps/common/Counter-Strike Global Offensive/game/csgo/cfg\`.\n` +
-          `• O **Instalador de 1-Clique (\`.bat\`)** localiza a sua pasta da Steam e instala tudo automaticamente em 2 segundos — sem programas externos e 100% oficial pela Valve!`,
+          `• **Instalação sem \`.bat\`:** Clique em **\`⚡ Instalar GSI (1 Clique)\`** para baixar o \`.cfg\` direto aqui no Discord ou copiar o comando automático de 1 linha (\`Win + R\`). Se o bot estiver rodando no seu PC Windows, ele instala direto na pasta do CS2!\n` +
+          `• Pasta de destino no CS2: \`.../steamapps/common/Counter-Strike Global Offensive/game/csgo/cfg/gamestate_integration_cs2mixhub.cfg\` — 100% oficial pela Valve (VAC-Safe).`,
         ephemeral: true,
       });
     }
@@ -5131,13 +6032,14 @@ class DiscordBotManager {
     // Permanent Panel Live Match Monitor Trigger
     if (customId === 'panel_live_radar') {
       const requester = user.username || 'Jogador';
-      const mix = this.activeMixes?.get(interaction.channelId) || null;
+      const mix = this.resolveActiveMixForChannel(interaction.channelId);
+      const roomId = normalizeRoomId(mix?.id, 'MIX-PRO');
       const embed = this.buildLiveMatchEmbed(requester, null, false, mix);
-      const row = this.buildLiveMatchButtons(Boolean(this.lastGsiState?.player?.name), false);
+      const components = this.buildLiveMatchButtons(this.isGsiOnline(), false, roomId, mix, interaction.channelId);
       await interaction.reply({
-        content: `\ud83d\udce1 <@${user.id}> ativou o **Monitorar Partida**!`,
+        content: `📡 <@${user.id}> ativou o **Monitorar Partida**!`,
         embeds: [embed],
-        components: [row],
+        components,
       });
       const sent = await interaction.fetchReply();
       this.registerLiveTracker(sent, requester, null, false);
@@ -5160,21 +6062,25 @@ class DiscordBotManager {
         tracker.isExpanded = isExpanded;
       }
       const requester = interaction.user?.username || tracker?.requester || 'Jogador';
-      const embed = this.buildLiveMatchEmbed(requester, tracker?.targetQuery, isExpanded);
-      const row = this.buildLiveMatchButtons(Boolean(this.lastGsiState?.player?.name), isExpanded);
-      return interaction.update({ embeds: [embed], components: [row] });
+      const mix = this.resolveActiveMixForChannel(interaction.channelId);
+      const roomId = normalizeRoomId(mix?.id, 'MIX-PRO');
+      const embed = this.buildLiveMatchEmbed(requester, tracker?.targetQuery, isExpanded, mix);
+      const components = this.buildLiveMatchButtons(this.isGsiOnline(), isExpanded, roomId, mix, interaction.channelId);
+      return interaction.update({ embeds: [embed], components });
     }
 
     if (customId === 'live_refresh') {
       const tracker = this.liveTrackers?.get(interaction.message?.id);
       const requester = interaction.user?.username || tracker?.requester || 'Jogador';
       const isExpanded = tracker ? Boolean(tracker.isExpanded) : false;
-      const embed = this.buildLiveMatchEmbed(requester, tracker?.targetQuery, isExpanded);
-      const row = this.buildLiveMatchButtons(Boolean(this.lastGsiState?.player?.name), isExpanded);
+      const mix = this.resolveActiveMixForChannel(interaction.channelId);
+      const roomId = normalizeRoomId(mix?.id, 'MIX-PRO');
+      const embed = this.buildLiveMatchEmbed(requester, tracker?.targetQuery, isExpanded, mix);
+      const components = this.buildLiveMatchButtons(this.isGsiOnline(), isExpanded, roomId, mix, interaction.channelId);
       if (interaction.message?.id) {
         this.registerLiveTracker(interaction.message, requester, tracker?.targetQuery, isExpanded);
       }
-      return interaction.update({ embeds: [embed], components: [row] });
+      return interaction.update({ embeds: [embed], components });
     }
 
     if (customId === 'live_stop') {
@@ -5194,28 +6100,92 @@ class DiscordBotManager {
 
     const [action, mixId, param] = customId.split(':');
 
+    // Interactive Bagre Vote handlers (work on active OR recently finished mixes)
+    if (action === 'bagre_open') {
+      const targetMix = this.resolveMixIncludingFinished(mixId, interaction.channelId);
+      const candCount = targetMix
+        ? (targetMix.players?.length || ((targetMix.teamA?.players?.length || 0) + (targetMix.teamB?.players?.length || 0)))
+        : 0;
+      if (!targetMix || candCount < 2) {
+        return interaction.reply({
+          content: '⚠️ Não foi possível abrir a votação de Bagre (lobby inválido ou com menos de 2 jogadores).',
+          ephemeral: true,
+        });
+      }
+      const voteEmbed = bagreVoteService.buildVoteEmbed(targetMix);
+      const voteComponents = bagreVoteService.buildVoteMenu(targetMix);
+      return interaction.reply({ embeds: [voteEmbed], components: voteComponents });
+    }
+
+    if (action === 'bagre_finish') {
+      const session = bagreVoteService.activeVotes.get(mixId);
+      if (!session) {
+        return interaction.reply({ content: '⚠️ Esta votação de Bagre já foi encerrada ou expirou.', ephemeral: true });
+      }
+      const targetMix = this.resolveMixIncludingFinished(mixId, interaction.channelId);
+      const canFinish =
+        this.isGuildModerator(interaction.member, interaction.guild, targetMix || { creatorId: session.creatorId }, user.id) ||
+        (!session.creatorId && !targetMix?.creatorId);
+      if (!canFinish) {
+        return interaction.reply({
+          content: '🚫 Apenas o **Criador do Mix** ou **Administradores** podem encerrar a votação e coroar o Bagre.',
+          ephemeral: true,
+        });
+      }
+      await interaction.update({ components: [] }).catch(() => interaction.deferUpdate().catch(() => {}));
+      const profiles = this.loadPlayerProfiles();
+      await bagreVoteService.finishVote(
+        targetMix || mixId,
+        interaction.channel,
+        interaction.guild,
+        profiles,
+        (updatedProfiles) => {
+          this.savePlayerProfiles(updatedProfiles);
+          this.updateLeaderboardFile(updatedProfiles);
+        }
+      );
+      return;
+    }
+
     // Mix Live Tracker Trigger from Lobby or Match Ready Screen
     if (action === 'mix_live_tracker') {
       const requester = user.username || 'Jogador';
-      const mix = this.activeMixes?.get(interaction.channelId) || null;
+      const byExplicit = mixId ? this.activeMixes?.get(mixId) : null;
+      const mix =
+        (byExplicit && (!byExplicit.channelId || byExplicit.channelId === interaction.channelId) ? byExplicit : null) ||
+        this.resolveActiveMixForChannel(interaction.channelId);
+      const roomId = normalizeRoomId(mix?.id || mixId, 'MIX-PRO');
       const embed = this.buildLiveMatchEmbed(requester, null, false, mix);
-      const row = this.buildLiveMatchButtons(Boolean(this.lastGsiState?.player?.name), false);
+      const components = this.buildLiveMatchButtons(this.isGsiOnline(), false, roomId, mix, interaction.channelId);
       await interaction.reply({
-        content: `\ud83d\udce1 <@${user.id}> ativou o **Monitorar Partida**!`,
+        content: `📡 <@${user.id}> ativou o **Monitorar Partida**!`,
         embeds: [embed],
-        components: [row],
+        components,
       });
       const sent = await interaction.fetchReply();
       this.registerLiveTracker(sent, requester, null, false);
       return;
     }
-    let mix = this.activeMixes.get(interaction.channelId);
 
-    if ((!mix || mix.id !== mixId) && mixId && action !== 'mix_cancel') {
-      mix = this.recoverMixFromMessage(interaction, mixId);
+    let mix = this.activeMixes.get(interaction.channelId);
+    const byId = mixId ? this.activeMixes.get(mixId) : null;
+    if ((!mix || (mixId && mix.id !== mixId)) && byId && (!byId.channelId || byId.channelId === interaction.channelId)) {
+      mix = byId;
     }
-    if ((!mix || mix.id !== mixId) && mixId) {
-      mix = this.activeMixes.get(mixId) || Array.from(this.activeMixes.values()).find((m) => m && m.id === mixId) || mix;
+
+    const isFinishedMix = Boolean(mixId && this.lastFinishedMixes?.has(mixId));
+    if ((!mix || (mixId && mix.id !== mixId)) && mixId && action !== 'mix_cancel' && action !== 'mix_rematch' && !isFinishedMix) {
+      mix = this.recoverMixFromMessage(interaction, mixId) || mix;
+    }
+    if ((!mix || (mixId && mix.id !== mixId)) && mixId && (action === 'mix_rematch' || action === 'mix_voice_lobby')) {
+      const finishedMix = this.resolveMixIncludingFinished(mixId, interaction.channelId);
+      if (finishedMix && finishedMix.id === mixId) {
+        mix = finishedMix;
+        if (action === 'mix_rematch') {
+          this.activeMixes.set(interaction.channelId, mix);
+          if (mix.id) this.activeMixes.set(mix.id, mix);
+        }
+      }
     }
 
     if (!mix || (mixId && mix.id !== mixId)) {
@@ -5225,20 +6195,43 @@ class DiscordBotManager {
       });
     }
 
+    // TOGGLE DRAFT MODE (BALANCED SNAKE-DRAFT VS CAPTAINS 1V1)
+    if (action === 'mix_toggle_mode') {
+      if (mix.phase !== 'lobby' && mix.phase !== 'ready_check') {
+        return interaction.reply({
+          content: '⚠️ O modo de divisão só pode ser alterado antes dos times serem formados.',
+          ephemeral: true,
+        });
+      }
+      const isParticipant = (mix.players || []).some((p) => p.id === user.id);
+      if (!this.isGuildModerator(interaction.member, interaction.guild, mix, user.id) && !isParticipant) {
+        return interaction.reply({
+          content: '🚫 Entre no lobby ou seja o criador/admin para alternar o modo de sorteio!',
+          ephemeral: true,
+        });
+      }
+      mix.balanceMode = mix.balanceMode === 'captains' ? 'balanced' : 'captains';
+      this.syncToWebRoom(mix);
+      this.updateLobbyInChannels(mix);
+      const embed = mix.phase === 'ready_check' ? this.buildReadyCheckEmbed(mix) : this.buildLobbyEmbed(mix);
+      const components = mix.phase === 'ready_check' ? this.buildReadyCheckButtons(mix) : this.buildLobbyButtons(mix);
+      return interaction.update({ embeds: [embed], components });
+    }
+
     // 1. JOIN MIX (TITULAR OU FILA DE RESERVA)
     if (action === 'mix_join') {
       mix.waitlist = Array.isArray(mix.waitlist) ? mix.waitlist : [];
       const alreadyIn = mix.players.some((p) => p.id === user.id) || mix.waitlist.some((p) => p.id === user.id);
       if (alreadyIn) {
         return interaction.reply({
-          content: '\u26a0\ufe0f Voc\u00ea j\u00e1 est\u00e1 inscrito neste mix (titular ou reserva)!',
+          content: '⚠️ Você já está inscrito neste mix (titular ou reserva)!',
           ephemeral: true,
         });
       }
 
       if (mix.players.length >= 10 && mix.waitlist.length >= 3) {
         return interaction.reply({
-          content: '\ud83d\udeab O lobby (10/10) e a Fila de Reserva (3/3) j\u00e1 est\u00e3o lotados!',
+          content: '🚫 O lobby (10/10) e a Fila de Reserva (3/3) já estão lotados!',
           ephemeral: true,
         });
       }
@@ -5246,13 +6239,13 @@ class DiscordBotManager {
       if (!this.hasSavedLevel(user.id)) {
         const modal = new ModalBuilder()
           .setCustomId(`modal_join_set_level:${mix.id}`)
-          .setTitle('Cadastre seu N\u00edvel GC (1 a 21)');
+          .setTitle('Cadastre seu Nível GC (1 a 21)');
 
         const levelInput = new TextInputBuilder()
           .setCustomId('gc_level_input')
-          .setLabel('Seu N\u00edvel Gamers Club (1 a 21)')
+          .setLabel('Seu Nível Gamers Club (1 a 21)')
           .setStyle(TextInputStyle.Short)
-          .setPlaceholder('Ex: 16 (ficar\u00e1 salvo no seu perfil)')
+          .setPlaceholder('Ex: 16 (ficará salvo no seu perfil)')
           .setRequired(true)
           .setMinLength(1)
           .setMaxLength(2);
@@ -5280,7 +6273,7 @@ class DiscordBotManager {
         const components = mix.phase === 'ready_check' ? this.buildReadyCheckButtons(mix) : this.buildLobbyButtons(mix);
         await interaction.update({ embeds: [embed], components });
         return interaction.followUp({
-          content: `\ud83d\udccb <@${user.id}> entrou na **Fila de Reserva (Suplente #${mix.waitlist.length})**! Se algu\u00e9m sair ou ficar AFK no check-in, voc\u00ea assume a vaga automaticamente.`,
+          content: `📋 <@${user.id}> entrou na **Fila de Reserva (Suplente #${mix.waitlist.length}/3)**! Se alguém sair ou ficar AFK no check-in, você assume a vaga automaticamente.`,
           ephemeral: true,
         });
       }
@@ -5310,11 +6303,11 @@ class DiscordBotManager {
       const current = this.getPlayerLevel(user.id);
       const modal = new ModalBuilder()
         .setCustomId(`modal_set_level:${mix.id}`)
-        .setTitle('N\u00edvel Gamers Club (GC)');
+        .setTitle('Nível Gamers Club (GC)');
 
       const levelInput = new TextInputBuilder()
         .setCustomId('gc_level_input')
-        .setLabel('Seu N\u00edvel na Gamers Club (1 a 21)')
+        .setLabel('Seu Nível na Gamers Club (1 a 21)')
         .setStyle(TextInputStyle.Short)
         .setPlaceholder('Ex: 18')
         .setValue(String(current || 16))
@@ -5331,34 +6324,41 @@ class DiscordBotManager {
     // 2. READY CONFIRM (ANTI-AFK CHECK-IN)
     if (action === 'ready_confirm') {
       if (mix.phase !== 'ready_check') {
-        return interaction.reply({ content: '\u26a0\ufe0f O check-in deste lobby j\u00e1 foi finalizado!', ephemeral: true });
+        return interaction.reply({ content: '⚠️ O check-in deste lobby já foi finalizado!', ephemeral: true });
       }
       const isPlayer = mix.players.some((p) => p.id === user.id);
       if (!isPlayer) {
-        return interaction.reply({ content: '\ud83d\udeab Voc\u00ea n\u00e3o est\u00e1 entre os 10 titulares deste mix!', ephemeral: true });
+        return interaction.reply({ content: '🚫 Você não está entre os 10 titulares deste mix!', ephemeral: true });
       }
 
       mix.readyCheck.confirmed.add(user.id);
       const confirmedCount = mix.readyCheck.confirmed.size;
 
       if (confirmedCount >= 10 || confirmedCount >= mix.players.length) {
-        if (mix.readyCheck.timer) clearTimeout(mix.readyCheck.timer);
+        if (mix.readyCheck.timer) {
+          clearTimeout(mix.readyCheck.timer);
+          mix.readyCheck.timer = null;
+        }
         mix.readyCheck.active = false;
 
-        this.balanceTeams(mix);
-        const embed = this.buildTeamsEmbed(mix);
-        const row = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId(`mix_veto:${mix.id}`).setLabel('Iniciar Pick & Ban').setEmoji('\ud83d\uddf3\ufe0f').setStyle(ButtonStyle.Success),
-          new ButtonBuilder().setCustomId(`mix_captain_draft:${mix.id}`).setLabel('Draft 1v1 Capit\u00e3es').setEmoji('\ud83d\udc51').setStyle(ButtonStyle.Primary),
-          new ButtonBuilder().setCustomId(`mix_roulette:${mix.id}`).setLabel('Roleta R\u00e1pida').setEmoji('\ud83c\udfb2').setStyle(ButtonStyle.Primary),
-          new ButtonBuilder().setCustomId(`mix_pick_map:${mix.id}`).setLabel('Escolher Mapa').setEmoji('\ud83d\uddfa\ufe0f').setStyle(ButtonStyle.Primary),
-          new ButtonBuilder().setCustomId(`mix_voice:${mix.id}`).setLabel('Mover para Calls').setEmoji('\ud83d\udcde').setStyle(ButtonStyle.Secondary)
-        );
+        if (mix.balanceMode === 'captains' && mix.players.length >= 4) {
+          this.startCaptainDraft1v1(mix);
+          this.updateLobbyInChannels(mix);
+          const { embed, components } = this.buildCaptainDraftEmbedAndComponents(mix);
+          return interaction.update({
+            content: '🎉 **TODOS OS JOGADORES CONFIRMARAM PRESENÇA!**\nModo **Draft 1v1 de Capitães** iniciado!',
+            embeds: [embed],
+            components,
+          });
+        }
 
+        this.balanceTeams(mix);
+        this.updateLobbyInChannels(mix);
+        const embed = this.buildTeamsEmbed(mix);
         return interaction.update({
-          content: `\ud83c\udf89 **TODOS OS JOGADORES CONFIRMARAM PRESEN\u00c7A!**\nTimes equilibrados matematicamente (N\u00edvel GC + Winrate Hist\u00f3rico). Capit\u00e3es, podem iniciar o Veto ou mudar para Draft 1v1!`,
+          content: '🎉 **TODOS OS JOGADORES CONFIRMARAM PRESENÇA!**\nTimes equilibrados matematicamente (Nível GC + Winrate Histórico). Capitães, podem iniciar o Veto ou mudar para Draft 1v1!',
           embeds: [embed],
-          components: [row],
+          components: [this.buildTeamsActionButtons(mix)],
         });
       }
 
@@ -5374,15 +6374,16 @@ class DiscordBotManager {
       const waitIdx = mix.waitlist.findIndex((p) => p.id === user.id);
 
       if (idx === -1 && waitIdx === -1) {
-        return interaction.reply({ content: '\u26a0\ufe0f Voc\u00ea n\u00e3o est\u00e1 na fila deste mix.', ephemeral: true });
+        return interaction.reply({ content: '⚠️ Você não está na fila deste mix.', ephemeral: true });
       }
 
       if (waitIdx !== -1) {
         mix.waitlist.splice(waitIdx, 1);
         this.syncToWebRoom(mix);
         this.updateLobbyInChannels(mix);
-        const embed = this.buildLobbyEmbed(mix);
-        const components = this.buildLobbyButtons(mix);
+        const isRC = mix.phase === 'ready_check';
+        const embed = isRC ? this.buildReadyCheckEmbed(mix) : this.buildLobbyEmbed(mix);
+        const components = isRC ? this.buildReadyCheckButtons(mix) : this.buildLobbyButtons(mix);
         return interaction.update({ embeds: [embed], components });
       }
 
@@ -5395,20 +6396,24 @@ class DiscordBotManager {
       if (mix.waitlist.length > 0 && mix.players.length < 10) {
         const nextSub = mix.waitlist.shift();
         mix.players.push(nextSub);
-        promotedMsg = `\ud83d\udd04 <@${nextSub.id}> foi promovido automaticamente da **Fila de Reserva** para titular!`;
+        promotedMsg = `🔄 <@${nextSub.id}> foi promovido automaticamente da **Fila de Reserva** para titular!`;
       }
 
       if (mix.players.length <= 7 && mix.notifiedMissing) {
         mix.notifiedMissing.clear();
       }
-      this.syncToWebRoom(mix);
-      this.updateLobbyInChannels(mix);
 
       if (mix.phase === 'ready_check' && mix.players.length < 10) {
-        if (mix.readyCheck?.timer) clearTimeout(mix.readyCheck.timer);
+        if (mix.readyCheck?.timer) {
+          clearTimeout(mix.readyCheck.timer);
+          mix.readyCheck.timer = null;
+        }
         mix.phase = 'lobby';
         mix.readyCheck.active = false;
       }
+
+      this.syncToWebRoom(mix);
+      this.updateLobbyInChannels(mix);
 
       const embed = mix.phase === 'ready_check' ? this.buildReadyCheckEmbed(mix) : this.buildLobbyEmbed(mix);
       const components = mix.phase === 'ready_check' ? this.buildReadyCheckButtons(mix) : this.buildLobbyButtons(mix);
@@ -5420,15 +6425,22 @@ class DiscordBotManager {
     if (action === 'mix_captain_draft') {
       if (mix.players.length < 4) {
         return interaction.reply({
-          content: '\u26a0\ufe0f S\u00e3o necess\u00e1rios pelo menos 4 jogadores no lobby para iniciar o Draft 1v1 de Capit\u00e3es!',
+          content: '⚠️ São necessários pelo menos 4 jogadores no lobby para iniciar o Draft 1v1 de Capitães!',
           ephemeral: true,
         });
       }
-      if (mix.readyCheck?.timer) clearTimeout(mix.readyCheck.timer);
+      if (mix.readyCheck?.timer) {
+        clearTimeout(mix.readyCheck.timer);
+        mix.readyCheck.timer = null;
+      }
+      if (mix.readyCheck) {
+        mix.readyCheck.active = false;
+      }
       this.startCaptainDraft1v1(mix);
+      this.updateLobbyInChannels(mix);
       const { embed, components } = this.buildCaptainDraftEmbedAndComponents(mix);
       return interaction.update({
-        content: `\ud83d\udc51 **MODO DRAFT DE CAPIT\u00c3ES 1v1 INICIADO!**\nOs dois maiores n\u00edveis foram eleitos Capit\u00e3es. Escolham seus jogadores no menu abaixo!`,
+        content: '👑 **MODO DRAFT DE CAPITÃES 1v1 INICIADO!**\nOs dois maiores níveis foram eleitos Capitães. Escolham seus jogadores no menu abaixo!',
         embeds: [embed],
         components,
       });
@@ -5437,35 +6449,37 @@ class DiscordBotManager {
     if (action === 'mix_teams') {
       if (mix.players.length < 2) {
         return interaction.reply({
-          content: '\u26a0\ufe0f \u00c9 necess\u00e1rio pelo menos 2 jogadores para formar times!',
+          content: '⚠️ É necessário pelo menos 2 jogadores para formar times!',
           ephemeral: true,
         });
       }
 
-      if (mix.readyCheck?.timer) clearTimeout(mix.readyCheck.timer);
+      if (mix.readyCheck?.timer) {
+        clearTimeout(mix.readyCheck.timer);
+        mix.readyCheck.timer = null;
+      }
+      if (mix.readyCheck) {
+        mix.readyCheck.active = false;
+      }
       this.balanceTeams(mix);
+      this.updateLobbyInChannels(mix);
       const embed = this.buildTeamsEmbed(mix);
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`mix_veto:${mix.id}`).setLabel('Iniciar Pick & Ban').setEmoji('\ud83d\uddf3\ufe0f').setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId(`mix_captain_draft:${mix.id}`).setLabel('Draft 1v1 Capit\u00e3es').setEmoji('\ud83d\udc51').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId(`mix_roulette:${mix.id}`).setLabel('Roleta R\u00e1pida').setEmoji('\ud83c\udfb2').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId(`mix_pick_map:${mix.id}`).setLabel('Escolher Mapa').setEmoji('\ud83d\uddfa\ufe0f').setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId(`mix_voice:${mix.id}`).setLabel('Mover para Calls').setEmoji('\ud83d\udcde').setStyle(ButtonStyle.Secondary)
-      );
-
-      return interaction.update({ embeds: [embed], components: [row] });
+      return interaction.update({ embeds: [embed], components: [this.buildTeamsActionButtons(mix)] });
     }
+
     // 5. START VETO
     if (action === 'mix_veto') {
       if (mix.teamA.players.length === 0 || mix.teamB.players.length === 0) {
         this.balanceTeams(mix);
       }
       mix.phase = 'veto';
+      this.syncToWebRoom(mix);
+      this.updateLobbyInChannels(mix);
       const embed = this.buildVetoEmbed(mix);
       const components = this.buildVetoButtons(mix);
 
       return interaction.update({
-        content: `🎯 **Iniciando Pick & Ban de Mapas!**`,
+        content: '🎯 **Iniciando Pick & Ban de Mapas!**',
         embeds: [embed],
         components,
       });
@@ -5500,7 +6514,7 @@ class DiscordBotManager {
       }
 
       const [banned] = veto.remainingMaps.splice(mapIndex, 1);
-      veto.bannedMaps.push({ map: banned, by: user.id });
+      veto.bannedMaps.push({ map: banned, by: user.id, team: veto.currentTurn });
 
       // Alternate turn
       veto.currentTurn = veto.currentTurn === 'teamA' ? 'teamB' : 'teamA';
@@ -5509,46 +6523,21 @@ class DiscordBotManager {
       if (veto.remainingMaps.length === 1) {
         veto.deciderMap = veto.remainingMaps[0];
         this.registerMapPlayed(interaction.guild?.id || interaction.channelId, veto.deciderMap?.id);
+        mix.finalMap = {
+          id: veto.deciderMap.id,
+          name: veto.deciderMap.name,
+          file: veto.deciderMap.id,
+          image: veto.deciderMap.image,
+        };
+        mix.matchMap = veto.deciderMap.name;
         mix.phase = 'side_pick';
         this.syncToWebRoom(mix);
         this.updateLobbyInChannels(mix);
 
-        const capBTag = isSnowflake(mix.teamB.captain?.id)
-          ? `<@${mix.teamB.captain?.id}>`
-          : (mix.teamB.captain ? `💬 **${mix.teamB.captain.displayName || mix.teamB.captain.nick || mix.teamB.captain.name || 'Capitão'}** [WhatsApp]` : `<@${mix.creatorId}>`);
-
-        const embed = new EmbedBuilder()
-          .setTitle(`🛡️ ESCOLHA DE LADO • ${veto.deciderMap.name.toUpperCase()}`)
-          .setDescription(
-            `🗺️ O mapa decisivo da partida é **${veto.deciderMap.emoji} ${veto.deciderMap.name}** (\`${veto.deciderMap.id}\`)!\n\n` +
-            `👉 Vez do Capitão do **${mix.teamB.name}** (${capBTag}):\n` +
-            `Escolha em qual lado sua equipe deseja começar a partida!`
-          )
-          .setColor(0x38bdf8)
-          .setFooter({ text: 'CS2 Mix Hub • Regras Oficiais Valve Major' });
-
-        if (veto.deciderMap.image) embed.setImage(veto.deciderMap.image);
-
-        const row = new ActionRowBuilder().addComponents(
-          new ButtonBuilder()
-            .setCustomId(`side_pick:${mix.id}:CT`)
-            .setLabel('Começar de Contra-Terrorista (CT)')
-            .setEmoji('🛡️')
-            .setStyle(ButtonStyle.Primary),
-          new ButtonBuilder()
-            .setCustomId(`side_pick:${mix.id}:TR`)
-            .setLabel('Começar de Terrorista (TR)')
-            .setEmoji('💣')
-            .setStyle(ButtonStyle.Danger)
-        );
-
-        return interaction.update({
-          content: `🗳️ **Veto Concluído!** Mapa final: **${veto.deciderMap.name}**!`,
-          embeds: [embed],
-          components: [row],
-        });
+        return interaction.update(this.buildSidePickPayload(mix));
       }
 
+      this.syncToWebRoom(mix);
       const embed = this.buildVetoEmbed(mix);
       const components = this.buildVetoButtons(mix);
       return interaction.update({ embeds: [embed], components });
@@ -5556,6 +6545,9 @@ class DiscordBotManager {
 
     // 7. SIDE PICK (CT OR TR SELECTION)
     if (action === 'side_pick') {
+      if (mix.phase === 'live') {
+        return interaction.reply({ content: '⚠️ Os lados já foram escolhidos e a partida já está ao vivo!', ephemeral: true });
+      }
       const chosenSide = param; // 'CT' or 'TR'
       const oppSide = chosenSide === 'CT' ? 'TR' : 'CT';
 
@@ -5576,6 +6568,10 @@ class DiscordBotManager {
 
       mix.teamB.side = chosenSide;
       mix.teamA.side = oppSide;
+      mix.teamB.startingSide = chosenSide;
+      mix.teamA.startingSide = oppSide;
+      mix.teamA.halftimeSwapped = false;
+      mix.teamB.halftimeSwapped = false;
       mix.phase = 'live';
 
       this.syncToWebRoom(mix);
@@ -5589,9 +6585,10 @@ class DiscordBotManager {
       }
       const finalEmbed = this.buildMatchReadyEmbed(mix);
       const components = this.buildMatchReadyButtons(mix);
+      const conn = this.resolveMixDisplayConnect(mix);
 
       await interaction.update({
-        content: `\ud83d\udd25 **PARTIDA CONFIRMADA NO CS2!** Mapa: **${mix.veto?.deciderMap?.name?.toUpperCase() || 'CS2'}** \u2022 Comando: \`connect ${(mix.serverIp || this.config.serverConnect || '').replace(/^connect\s+/i, '')}\` \u2022 GL & HF!`,
+        content: `🔥 **PARTIDA CONFIRMADA NO CS2!** Mapa: **${mix.veto?.deciderMap?.name?.toUpperCase() || 'CS2'}** • Comando: \`${conn ? conn.consoleCommand : 'A definir (!servidor ip:porta)'}\` • GL & HF!`,
         embeds: [finalEmbed],
         components,
       });
@@ -5693,8 +6690,45 @@ class DiscordBotManager {
       return interaction.showModal(modal);
     }
 
-    // 11. SUBSTITUTE MODAL
+    // 11. SUBSTITUTE INTERACTIVE PICKER OR MANUAL MODAL
     if (action === 'mix_sub') {
+      const candidates = (mix.players || []).slice(0, 25);
+      if (candidates.length === 0) {
+        return interaction.reply({ content: '⚠️ Não há jogadores no lobby para substituir.', ephemeral: true });
+      }
+      const outSelect = new StringSelectMenuBuilder()
+        .setCustomId(`sub_pick_out:${mix.id}`)
+        .setPlaceholder('1️⃣ Selecione quem vai SAIR do mix...')
+        .addOptions(
+          candidates.map((p) => {
+            const teamTag = (mix.teamA?.players || []).some((a) => a.id === p.id)
+              ? mix.teamA?.name || 'Time A'
+              : (mix.teamB?.players || []).some((b) => b.id === p.id)
+              ? mix.teamB?.name || 'Time B'
+              : 'Lobby';
+            return {
+              label: `${(p.displayName || p.username || 'Jogador').slice(0, 50)} (Lvl ${p.level || 16})`,
+              value: String(p.id),
+              description: `${teamTag} • Clique para substituir`,
+              emoji: '🚪',
+            };
+          })
+        );
+      const manualRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`sub_manual_modal:${mix.id}`)
+          .setLabel('Digitar Nick/ID Manualmente')
+          .setEmoji('⌨️')
+          .setStyle(ButtonStyle.Secondary)
+      );
+      return interaction.reply({
+        content: `🔄 **Substituição de Jogador (${mix.name})**\nSelecione primeiro quem vai **sair**:`,
+        components: [new ActionRowBuilder().addComponents(outSelect), manualRow],
+        ephemeral: true,
+      });
+    }
+
+    if (action === 'sub_manual_modal') {
       const modal = new ModalBuilder()
         .setCustomId(`modal_mix_sub:${mix.id}`)
         .setTitle('🔄 Substituição de Jogador');
@@ -5726,21 +6760,15 @@ class DiscordBotManager {
       return this.handleRematch(mix, interaction, user, interaction.channel, interaction.guild);
     }
 
-    // 12. FINISH MVP VOTE
-    if (action === 'mvp_finish') {
-      await interaction.deferUpdate().catch(() => {});
-      return this.finishMvpVote(mix, interaction.channel);
-    }
-
     // 10. CANCEL MIX
     if (action === 'mix_cancel') {
-      if (user.id !== mix.creatorId) {
+      if (!this.isGuildModerator(interaction.member, interaction.guild, mix, user.id)) {
         return interaction.reply({
-          content: '⚠️ Apenas o criador do mix pode cancelá-lo.',
+          content: '🚫 Apenas o **Criador do Mix** ou um **Administrador** pode cancelar este mix.',
           ephemeral: true,
         });
       }
-      this.deleteMix(interaction.channelId);
+      this.deleteMix(mix.channelId || interaction.channelId);
       return interaction.update({
         content: `❌ O mix **${mix.name}** foi cancelado por <@${user.id}>.`,
         embeds: [],
@@ -5878,15 +6906,23 @@ class DiscordBotManager {
     this._voiceOverwriteCache = this._voiceOverwriteCache || new Map();
     const nowTs = Date.now();
     const cacheKey = `${guild.id}:${channelA.id}:${channelB.id}`;
-    const lastOverwriteAt = this._voiceOverwriteCache.get(cacheKey) || 0;
-    const canEditOverwrites = (nowTs - lastOverwriteAt) > 10 * 60 * 1000;
+    const rosterSig = [
+      ...(mix.teamA?.players || []).map((p) => String(p.id || '')).sort(),
+      '|',
+      ...(mix.teamB?.players || []).map((p) => String(p.id || '')).sort(),
+    ].join(',');
+    const prevCache = this._voiceOverwriteCache.get(cacheKey);
+    const prevTs = typeof prevCache === 'number' ? prevCache : (prevCache?.ts || 0);
+    const prevSig = typeof prevCache === 'object' && prevCache ? prevCache.signature : '';
+    const canEditOverwrites = (nowTs - prevTs) > 10 * 60 * 1000 || prevSig !== rosterSig;
 
     if (canEditOverwrites) {
-      this._voiceOverwriteCache.set(cacheKey, nowTs);
+      this._voiceOverwriteCache.set(cacheKey, { ts: nowTs, signature: rosterSig });
       if (this._voiceOverwriteCache.size > 200) {
         const cutoff = nowTs - 30 * 60 * 1000;
-        for (const [k, ts] of this._voiceOverwriteCache.entries()) {
-          if ((ts || 0) < cutoff) this._voiceOverwriteCache.delete(k);
+        for (const [k, v] of this._voiceOverwriteCache.entries()) {
+          const tsVal = typeof v === 'number' ? v : (v?.ts || 0);
+          if (tsVal < cutoff) this._voiceOverwriteCache.delete(k);
         }
       }
       try {
@@ -6089,6 +7125,12 @@ class DiscordBotManager {
 
   async resetVoicePermissions(guild) {
     if (!guild) return;
+    if (this._voiceOverwriteCache) {
+      const prefix = `${guild.id}:`;
+      for (const key of this._voiceOverwriteCache.keys()) {
+        if (key.startsWith(prefix)) this._voiceOverwriteCache.delete(key);
+      }
+    }
     try {
       const guildVoice = this.config.guildVoiceChannels?.[guild.id] || {};
       if (guildVoice.teamAVoiceId) {
@@ -6156,14 +7198,15 @@ class DiscordBotManager {
       return interaction.reply({ embeds: [embed] });
     }
     if (commandName === 'granada') {
-      const mapKey = interaction.options.getString('mapa') || 'mirage';
+      const requestedMap = interaction.options.getString('mapa') || 'mirage';
+      const mapKey = resolveGrenadeMapKey(requestedMap) || 'mirage';
       const guides = GRENADE_GUIDES[mapKey] || GRENADE_GUIDES.mirage;
       const list = guides.map((g, i) => `**${i + 1}. ${g.title}**\n👉 ${g.desc}`).join('\n\n');
       const embed = new EmbedBuilder()
         .setTitle(`💨 GUIA DE GRANADAS E SMOKES • ${mapKey.toUpperCase()}`)
         .setDescription(`Lineups essenciais para dominar a ${mapKey.toUpperCase()} no CS2:\n\n${list}`)
         .setColor(0x38bdf8)
-        .setFooter({ text: 'CS2 Mix Hub • Guia Tático Oficial' });
+        .setFooter({ text: 'CS2 Mix Hub • Guia Tático Oficial • 10 Mapas Suportados' });
       return interaction.reply({ embeds: [embed] });
     }
     if (commandName === 'treino') {
@@ -6211,10 +7254,9 @@ class DiscordBotManager {
   async handleSelectMenuInteraction(interaction) {
     const customId = interaction.customId;
     if (customId.startsWith('captain_pick_select:')) {
-      const mixId = customId.split(':')[1];
-      const mix = this.activeMixes.get(mixId) || this.resolveActiveMixForChannel(interaction.channelId);
+      const mix = this.resolveMixFromInteraction(interaction, customId);
       if (!mix || mix.phase !== 'captain_draft' || !mix.captainDraft) {
-        return interaction.reply({ content: '\u26a0\ufe0f Este Draft de Capit\u00e3es j\u00e1 foi encerrado.', ephemeral: true });
+        return interaction.reply({ content: '⚠️ Este Draft de Capitães já foi encerrado.', ephemeral: true });
       }
       const draft = mix.captainDraft;
       const currentTeamKey = draft.turnOrder[draft.step] || (mix.teamA.players.length <= mix.teamB.players.length ? 'teamA' : 'teamB');
@@ -6222,7 +7264,7 @@ class DiscordBotManager {
       const isAllowed = interaction.user.id === currentCap?.id || interaction.user.id === mix.creatorId;
       if (!isAllowed) {
         return interaction.reply({
-          content: `\ud83d\udeab Apenas o Capit\u00e3o <@${currentCap?.id}> (ou o criador do mix) pode escolher neste turno!`,
+          content: `🚫 Apenas o Capitão <@${currentCap?.id}> (ou o criador do mix) pode escolher neste turno!`,
           ephemeral: true,
         });
       }
@@ -6230,7 +7272,7 @@ class DiscordBotManager {
       const pickedId = interaction.values?.[0];
       const pIdx = draft.pool.findIndex((p) => String(p.id) === String(pickedId));
       if (pIdx === -1) {
-        return interaction.reply({ content: '\u26a0\ufe0f Jogador j\u00e1 foi escolhido!', ephemeral: true });
+        return interaction.reply({ content: '⚠️ Jogador já foi escolhido!', ephemeral: true });
       }
       const [pickedPlayer] = draft.pool.splice(pIdx, 1);
       if (currentTeamKey === 'teamA') mix.teamA.players.push(pickedPlayer);
@@ -6250,27 +7292,26 @@ class DiscordBotManager {
         mix.teamB.avgLevel = (sumB / (mix.teamB.players.length || 1)).toFixed(1);
         const diff = Math.abs(sumA - sumB);
         mix.balancePct = Math.max(75, Math.min(100, Math.round(100 - diff * 3.5)));
+        mix.teamA.halftimeSwapped = false;
+        mix.teamB.halftimeSwapped = false;
         mix.phase = 'teams';
         this.syncToWebRoom(mix);
+        this.updateLobbyInChannels(mix);
 
         const embed = this.buildTeamsEmbed(mix);
-        const row = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId(`mix_veto:${mix.id}`).setLabel('Iniciar Pick & Ban').setEmoji('\ud83d\uddf3\ufe0f').setStyle(ButtonStyle.Success),
-          new ButtonBuilder().setCustomId(`mix_roulette:${mix.id}`).setLabel('Roleta R\u00e1pida').setEmoji('\ud83c\udfb2').setStyle(ButtonStyle.Primary),
-          new ButtonBuilder().setCustomId(`mix_pick_map:${mix.id}`).setLabel('Escolher Mapa').setEmoji('\ud83d\uddfa\ufe0f').setStyle(ButtonStyle.Primary),
-          new ButtonBuilder().setCustomId(`mix_voice:${mix.id}`).setLabel('Mover para Calls').setEmoji('\ud83d\udcde').setStyle(ButtonStyle.Secondary)
-        );
         return interaction.update({
-          content: '\u2705 **DRAFT 1v1 CONCLU\u00cdDO PELOS CAPIT\u00c3ES!** Agora escolham o mapa no Veto ou na Roleta:',
+          content: '✅ **DRAFT 1v1 CONCLUÍDO PELOS CAPITÃES!** Agora escolham o mapa no Veto ou na Roleta:',
           embeds: [embed],
-          components: [row],
+          components: [this.buildTeamsActionButtons(mix)],
         });
       }
 
       this.syncToWebRoom(mix);
       const { embed, components } = this.buildCaptainDraftEmbedAndComponents(mix);
       return interaction.update({ embeds: [embed], components });
-    }    if (customId === 'hardware_category_filter') {
+    }
+
+    if (customId === 'hardware_category_filter') {
       const selected = interaction.values[0];
       const category = selected === 'all' ? null : selected;
       const deals = await hardwareDealsManager.getDeals({ category, limit: 5 });
@@ -6281,11 +7322,58 @@ class DiscordBotManager {
       const actionButtons = hardwareDealsManager.buildActionButtons(deals, { category });
       return interaction.update({ embeds: [embed], components: [selectMenu, ...actionButtons] });
     }
-    if (customId.startsWith('mix_map_select')) {
+
+    if (customId.startsWith('sub_pick_out:')) {
+      const mix = this.resolveMixFromInteraction(interaction, customId);
+      if (!mix) {
+        return interaction.reply({ content: '⚠️ Mix não encontrado ou já encerrado.', ephemeral: true });
+      }
+      const oldId = interaction.values?.[0];
+      if (!oldId) {
+        return interaction.reply({ content: '⚠️ Jogador inválido selecionado.', ephemeral: true });
+      }
+      const userSelect = new UserSelectMenuBuilder()
+        .setCustomId(`sub_pick_in:${mix.id}:${oldId}`)
+        .setPlaceholder('Agora selecione quem vai ENTRAR no lugar...')
+        .setMinValues(1)
+        .setMaxValues(1);
+      const manualRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`sub_manual_modal:${mix.id}`)
+          .setLabel('Digitar Nick/ID Manualmente')
+          .setEmoji('⌨️')
+          .setStyle(ButtonStyle.Secondary)
+      );
+      const oldTag = isSnowflake(oldId) ? `<@${oldId}>` : `**${oldId}**`;
+      return interaction.update({
+        content: `🔄 **Substituir ${oldTag}:**\nSelecione abaixo o **novo jogador (substituto)** do servidor:`,
+        components: [new ActionRowBuilder().addComponents(userSelect), manualRow],
+      });
+    }
+
+    if (customId.startsWith('bagre_select:')) {
       const mixId = customId.split(':')[1];
-      const mix =
-        (mixId && (this.activeMixes.get(mixId) || Array.from(this.activeMixes.values()).find((m) => m && m.id === mixId))) ||
-        this.resolveActiveMixForChannel(interaction.channelId);
+      const candidateId = interaction.values?.[0];
+      const res = bagreVoteService.castVote(mixId, interaction.user.id, candidateId);
+      if (!res.success) {
+        return interaction.reply({ content: `⚠️ ${res.reason}`, ephemeral: true });
+      }
+      const mix = this.resolveMixIncludingFinished(mixId, interaction.channelId) || { id: mixId };
+      const embed = bagreVoteService.buildVoteEmbed(mix);
+      const components = bagreVoteService.buildVoteMenu(mix);
+      if (embed) {
+        await interaction.update({ embeds: [embed], components }).catch(() => interaction.deferUpdate().catch(() => {}));
+      } else {
+        await interaction.deferUpdate().catch(() => {});
+      }
+      return interaction.followUp({
+        content: `🐟 Seu voto foi computado em **${res.candidateName}**! (Total de votos: \`${res.totalVotes}\`)`,
+        ephemeral: true,
+      });
+    }
+
+    if (customId.startsWith('mix_map_select')) {
+      const mix = this.resolveMixFromInteraction(interaction, customId);
       if (!mix) {
         return interaction.reply({ content: '⚠️ Mix não encontrado ou já encerrado.', ephemeral: true });
       }
@@ -6319,21 +7407,45 @@ class DiscordBotManager {
     }
   }
 
+  async handleUserSelectMenuInteraction(interaction) {
+    const customId = interaction.customId || '';
+    if (customId.startsWith('sub_pick_in:')) {
+      const parts = customId.split(':');
+      const oldId = parts.slice(2).join(':');
+      const mix = this.resolveMixFromInteraction(interaction, customId);
+      if (!mix) {
+        return interaction.reply({ content: '⚠️ Mix não encontrado ou já encerrado.', ephemeral: true });
+      }
+      const newUserId = interaction.values?.[0];
+      if (!newUserId) {
+        return interaction.reply({ content: '⚠️ Nenhum jogador selecionado.', ephemeral: true });
+      }
+      const res = await this.executeSubstitute(mix, oldId, newUserId, interaction.guild, interaction.channel);
+      if (!res.success) {
+        return interaction
+          .update({ content: `⚠️ ${res.message}`, components: [] })
+          .catch(() => interaction.reply({ content: res.message, ephemeral: true }));
+      }
+      await interaction.update({ content: '✅ Substituição realizada com sucesso!', components: [] }).catch(() => {});
+      if (interaction.channel?.send) {
+        await interaction.channel.send(res.message).catch(() => {});
+      }
+      return;
+    }
+  }
+
   async handleModalSubmit(interaction) {
     const customId = interaction.customId;
     if (customId.startsWith('modal_rcon_say:')) {
-      const mixId = customId.split(':')[1];
-      const mix = this.activeMixes.get(mixId) || this.resolveActiveMixForChannel(interaction.channelId);
+      const mix = this.resolveMixFromInteraction(interaction, customId);
       const text = (interaction.fields.getTextInputValue('rcon_say_text') || '').replace(/["';\r\n]/g, ' ').trim();
-      const rawServer = (mix?.serverIp || this.config.serverConnect || '').replace(/^connect\s+/i, '').trim();
+      const rawServer = mix?.serverIp || this.config.serverConnect || '';
       const rconPwd = (mix?.rconPassword || this.config.rconPassword || process.env.CS2_RCON_PASSWORD || '').trim();
+      const { host, port } = extractHostAndPort(rawServer);
 
-      if (!rawServer || !rconPwd) {
+      if (!host || !rconPwd) {
         return interaction.reply({ content: '\u26a0\ufe0f Servidor ou senha RCON n\u00e3o configurados.', ephemeral: true });
       }
-
-      const [host, portStr] = rawServer.split(':');
-      const port = parseInt(portStr, 10) || 27015;
 
       try {
         await executeRconCommand({
@@ -6366,9 +7478,13 @@ class DiscordBotManager {
 
       const mix = this.resolveMixFromInteraction(interaction, customId);
       if (mix) {
-        const p = mix.players.find((pl) => pl.id === interaction.user.id);
-        if (p) {
-          p.level = parsed;
+        let changed = false;
+        const p = (mix.players || []).find((pl) => pl.id === interaction.user.id);
+        if (p) { p.level = parsed; changed = true; }
+        const w = (mix.waitlist || []).find((pl) => pl.id === interaction.user.id);
+        if (w) { w.level = parsed; changed = true; }
+        if (changed) {
+          this.recomputeTeamAverages(mix, interaction.user.id, parsed);
           this.syncToWebRoom(mix);
           this.updateLobbyInChannels(mix);
           const embed = this.buildLobbyEmbed(mix);
@@ -6411,9 +7527,13 @@ class DiscordBotManager {
         });
       }
 
-      if (mix.players.some((p) => p.id === interaction.user.id)) {
-        const p = mix.players.find((pl) => pl.id === interaction.user.id);
-        if (p) p.level = parsed;
+      mix.waitlist = Array.isArray(mix.waitlist) ? mix.waitlist : [];
+      const existingPlayer = mix.players.find((pl) => pl.id === interaction.user.id);
+      const existingWaiter = mix.waitlist.find((pl) => pl.id === interaction.user.id);
+      if (existingPlayer || existingWaiter) {
+        if (existingPlayer) existingPlayer.level = parsed;
+        if (existingWaiter) existingWaiter.level = parsed;
+        this.recomputeTeamAverages(mix, interaction.user.id, parsed);
         this.syncToWebRoom(mix);
         this.updateLobbyInChannels(mix);
         return interaction.reply({
@@ -6422,21 +7542,39 @@ class DiscordBotManager {
         });
       }
 
-      if (mix.players.length >= 10) {
+      if (mix.players.length >= 10 && mix.waitlist.length >= 3) {
         return interaction.reply({
-          content: `✅ Nível GC **Lvl ${parsed}** (\`${badge}\`) salvo com sucesso no seu perfil! Porém, o mix acabou de lotar (10/10). Fique atento para o próximo!`,
+          content: `✅ Nível GC **Lvl ${parsed}** (\`${badge}\`) salvo com sucesso no seu perfil! Porém, o lobby (10/10) e a Fila de Reserva (3/3) já estão lotados!`,
           ephemeral: true,
         });
       }
 
-      mix.players.push({
+      const newEntry = {
         id: interaction.user.id,
         username: interaction.user.username,
         displayName: interaction.member?.displayName || interaction.user.username,
         avatar: interaction.user.displayAvatarURL({ dynamic: true }),
         level: parsed,
         ready: true,
-      });
+      };
+
+      if (mix.players.length >= 10) {
+        mix.waitlist.push(newEntry);
+        this.syncToWebRoom(mix);
+        this.updateLobbyInChannels(mix);
+        if (mix.lobbyMessageId && interaction.channel?.messages) {
+          const embed = mix.phase === 'ready_check' ? this.buildReadyCheckEmbed(mix) : this.buildLobbyEmbed(mix);
+          const components = mix.phase === 'ready_check' ? this.buildReadyCheckButtons(mix) : this.buildLobbyButtons(mix);
+          const msg = await interaction.channel.messages.fetch(mix.lobbyMessageId).catch(() => null);
+          if (msg) await msg.edit({ embeds: [embed], components }).catch(() => {});
+        }
+        return interaction.reply({
+          content: `✅ Nível GC salvo como **Lvl ${parsed}** (\`${badge}\`) e você entrou na **Fila de Reserva (Suplente #${mix.waitlist.length}/3)**! Se alguém sair ou ficar AFK no check-in, você assume a vaga automaticamente.`,
+          ephemeral: true,
+        });
+      }
+
+      mix.players.push(newEntry);
       this.syncToWebRoom(mix);
       this.updateLobbyInChannels(mix);
 
@@ -6448,7 +7586,7 @@ class DiscordBotManager {
         this.startReadyCheck(mix, interaction.channel);
         const embed = this.buildReadyCheckEmbed(mix);
         const components = this.buildReadyCheckButtons(mix);
-        if (mix.lobbyMessageId) {
+        if (mix.lobbyMessageId && interaction.channel?.messages) {
           const msg = await interaction.channel.messages.fetch(mix.lobbyMessageId).catch(() => null);
           if (msg) await msg.edit({ embeds: [embed], components }).catch(() => {});
         }
@@ -6460,7 +7598,7 @@ class DiscordBotManager {
 
       const embed = this.buildLobbyEmbed(mix);
       const components = this.buildLobbyButtons(mix);
-      if (mix.lobbyMessageId) {
+      if (mix.lobbyMessageId && interaction.channel?.messages) {
         const msg = await interaction.channel.messages.fetch(mix.lobbyMessageId).catch(() => null);
         if (msg) await msg.edit({ embeds: [embed], components }).catch(() => {});
       }
@@ -6502,11 +7640,11 @@ class DiscordBotManager {
 
     if (customId.startsWith('modal_set_ip')) {
       const rawIp = interaction.fields.getTextInputValue('server_ip_input');
-      const cleanIp = (rawIp || '').replace(/^connect\s+/i, '').trim();
+      const parsed = parseServerConnect(rawIp);
 
-      if (!cleanIp || !cleanIp.includes(':')) {
+      if (!parsed.valid) {
         return interaction.reply({
-          content: '⚠️ Formato de IP inválido! Use o formato `ip:porta`, por exemplo: `177.54.152.82:27015`.',
+          content: `⚠️ ${parsed.error || 'Formato de IP inválido!'} Use o formato \`ip:porta\` (ex: \`177.54.152.82:27015\` ou \`connect 177.54.152.82:27015; password mix\`).`,
           ephemeral: true,
         });
       }
@@ -6514,14 +7652,14 @@ class DiscordBotManager {
       const mix = this.resolveMixFromInteraction(interaction, customId);
 
       if (mix) {
-        mix.serverIp = cleanIp;
+        mix.serverIp = parsed.normalized;
         this.syncToWebRoom(mix);
         this.updateLobbyInChannels(mix);
       }
-      this.config.serverConnect = cleanIp;
-      this.saveConfig({ serverConnect: cleanIp });
+      this.config.serverConnect = parsed.normalized;
+      this.saveConfig({ serverConnect: parsed.normalized });
 
-      const connectUrl = this.getPublicWebUrl(`/connect?ip=${encodeURIComponent(cleanIp)}`);
+      const connectUrl = this.getPublicWebUrl(`/connect?ip=${encodeURIComponent(parsed.normalized)}`);
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setLabel('🚀 Conectar Direto no CS2')
@@ -6532,7 +7670,7 @@ class DiscordBotManager {
       return interaction.reply({
         content:
           `✅ **IP do Servidor CS2 Definido com Sucesso por <@${interaction.user.id}>!**\n\n` +
-          `🌐 **Endereço:** \`connect ${cleanIp}\`\n\n` +
+          `🌐 **Endereço:** \`${parsed.consoleCommand}\`\n\n` +
           `Clique no botão abaixo ou use o console do CS2 (\`~\`) para entrar no servidor!`,
         components: [row],
       });
@@ -6540,7 +7678,7 @@ class DiscordBotManager {
   }
 
   async cmdMatchResult(interaction) {
-    const mix = this.activeMixes.get(interaction.channelId);
+    const mix = this.resolveActiveMixForChannel(interaction.channelId);
     if (!mix) {
       return interaction.reply({ content: '⚠️ Nenhum mix ativo encontrado neste canal para registrar vitória.', ephemeral: true });
     }
@@ -6555,7 +7693,7 @@ class DiscordBotManager {
   }
 
   async cmdSubstitute(interaction) {
-    const mix = this.activeMixes.get(interaction.channelId);
+    const mix = this.resolveActiveMixForChannel(interaction.channelId);
     if (!mix) {
       return interaction.reply({ content: '⚠️ Nenhum mix ativo encontrado neste canal para fazer substituição.', ephemeral: true });
     }
@@ -6601,7 +7739,7 @@ class DiscordBotManager {
       });
     }
 
-    const mix = this.activeMixes.get(interaction.channelId);
+    const mix = this.resolveActiveMixForChannel(interaction.channelId);
     if (mix && (mix.teamA?.players?.length > 0 || mix.teamB?.players?.length > 0)) {
       await interaction.deferReply();
       const res = await this.executeVoiceMover(interaction.guild, mix, interaction.channel);
@@ -6639,10 +7777,18 @@ class DiscordBotManager {
       username: interaction.user.username,
     });
 
-    const mix = this.activeMixes.get(interaction.channelId);
+    const mix = this.resolveActiveMixForChannel(interaction.channelId);
     if (mix) {
-      const p = mix.players.find((pl) => pl.id === interaction.user.id);
-      if (p) p.level = parsed;
+      let changed = false;
+      const p = (mix.players || []).find((pl) => pl.id === interaction.user.id);
+      if (p) { p.level = parsed; changed = true; }
+      const w = (mix.waitlist || []).find((pl) => pl.id === interaction.user.id);
+      if (w) { w.level = parsed; changed = true; }
+      if (changed) {
+        this.recomputeTeamAverages(mix, interaction.user.id, parsed);
+        this.syncToWebRoom(mix);
+        this.updateLobbyInChannels(mix);
+      }
     }
 
     const badge = parsed >= 20 ? '👑 Lvl 20+' : parsed >= 18 ? '🏆 Lvl 18-19' : parsed >= 14 ? '🥇 Lvl 14-17' : '🥈 Lvl 1-13';
@@ -6694,15 +7840,17 @@ class DiscordBotManager {
   }
 
   async cmdJoinMix(interaction) {
-    const mix = this.activeMixes.get(interaction.channelId);
+    const mix = this.resolveActiveMixForChannel(interaction.channelId);
     if (!mix) {
       return interaction.reply({ content: '⚠️ Nenhum mix ativo neste canal. Crie um com `/mix criar`!', ephemeral: true });
     }
-    if (mix.players.some((p) => p.id === interaction.user.id)) {
-      return interaction.reply({ content: '⚠️ Você já está no mix!', ephemeral: true });
+    mix.waitlist = Array.isArray(mix.waitlist) ? mix.waitlist : [];
+    const alreadyIn = mix.players.some((p) => p.id === interaction.user.id) || mix.waitlist.some((p) => p.id === interaction.user.id);
+    if (alreadyIn) {
+      return interaction.reply({ content: '⚠️ Você já está inscrito neste mix (titular ou reserva)!', ephemeral: true });
     }
-    if (mix.players.length >= 10) {
-      return interaction.reply({ content: '🚫 O mix já está lotado (10/10)!', ephemeral: true });
+    if (mix.players.length >= 10 && mix.waitlist.length >= 3) {
+      return interaction.reply({ content: '🚫 O lobby (10/10) e a Fila de Reserva (3/3) já estão lotados!', ephemeral: true });
     }
 
     if (!this.hasSavedLevel(interaction.user.id)) {
@@ -6724,15 +7872,27 @@ class DiscordBotManager {
       return interaction.showModal(modal);
     }
 
-    mix.players.push({
+    const newEntry = {
       id: interaction.user.id,
       username: interaction.user.username,
       displayName: interaction.member?.displayName || interaction.user.username,
       avatar: interaction.user.displayAvatarURL({ dynamic: true }),
       level: this.getPlayerLevel(interaction.user.id),
       ready: true,
-    });
+    };
+
+    if (mix.players.length >= 10) {
+      mix.waitlist.push(newEntry);
+      this.syncToWebRoom(mix);
+      this.updateLobbyInChannels(mix);
+      return interaction.reply({
+        content: `📋 <@${interaction.user.id}> entrou na **Fila de Reserva (Suplente #${mix.waitlist.length}/3)**! Se alguém sair ou ficar AFK no check-in, você assume a vaga automaticamente.`,
+      });
+    }
+
+    mix.players.push(newEntry);
     this.syncToWebRoom(mix);
+    this.updateLobbyInChannels(mix);
 
     if (mix.players.length === 8 || mix.players.length === 9) {
       this.notifyMissingSlots(mix, interaction.guild, interaction.channel).catch(() => {});
@@ -6749,40 +7909,77 @@ class DiscordBotManager {
   }
 
   async cmdLeaveMix(interaction) {
-    const mix = this.activeMixes.get(interaction.channelId);
+    const mix = this.resolveActiveMixForChannel(interaction.channelId);
     if (!mix) return interaction.reply({ content: '⚠️ Nenhum mix ativo neste canal.', ephemeral: true });
+    mix.waitlist = Array.isArray(mix.waitlist) ? mix.waitlist : [];
+
+    const waitIdx = mix.waitlist.findIndex((p) => p.id === interaction.user.id);
+    if (waitIdx !== -1) {
+      mix.waitlist.splice(waitIdx, 1);
+      this.syncToWebRoom(mix);
+      this.updateLobbyInChannels(mix);
+      return interaction.reply({ content: `🚪 <@${interaction.user.id}> saiu da Fila de Reserva (${mix.waitlist.length}/3).` });
+    }
+
     const idx = mix.players.findIndex((p) => p.id === interaction.user.id);
     if (idx === -1) return interaction.reply({ content: '⚠️ Você não está no mix.', ephemeral: true });
     mix.players.splice(idx, 1);
+    if (mix.readyCheck?.confirmed) {
+      mix.readyCheck.confirmed.delete(interaction.user.id);
+    }
+
+    let promotedMsg = '';
+    if (mix.waitlist.length > 0 && mix.players.length < 10) {
+      const nextSub = mix.waitlist.shift();
+      mix.players.push(nextSub);
+      promotedMsg = `\n🔄 <@${nextSub.id}> foi promovido da **Fila de Reserva** para titular!`;
+    }
+
+    if (mix.phase === 'ready_check' && mix.players.length < 10) {
+      if (mix.readyCheck?.timer) {
+        clearTimeout(mix.readyCheck.timer);
+        mix.readyCheck.timer = null;
+      }
+      mix.readyCheck.active = false;
+      mix.phase = 'lobby';
+    }
+
     if (mix.players.length <= 7 && mix.notifiedMissing) {
       mix.notifiedMissing.clear();
     }
     this.syncToWebRoom(mix);
-    return interaction.reply({ content: `🚪 <@${interaction.user.id}> saiu do mix. (${mix.players.length}/10)` });
+    this.updateLobbyInChannels(mix);
+    return interaction.reply({ content: `🚪 <@${interaction.user.id}> saiu do mix. (${mix.players.length}/10)${promotedMsg}` });
   }
 
   async cmdDrawTeams(interaction) {
-    const mix = this.activeMixes.get(interaction.channelId);
+    const mix = this.resolveActiveMixForChannel(interaction.channelId);
     if (!mix) return interaction.reply({ content: '⚠️ Nenhum mix ativo neste canal.', ephemeral: true });
     if (mix.players.length < 2) return interaction.reply({ content: '⚠️ Mínimo de 2 jogadores para sortear!', ephemeral: true });
 
+    if (mix.readyCheck?.timer) {
+      clearTimeout(mix.readyCheck.timer);
+      mix.readyCheck.timer = null;
+    }
+    if (mix.readyCheck) {
+      mix.readyCheck.active = false;
+    }
+
     this.balanceTeams(mix);
+    this.updateLobbyInChannels(mix);
     const embed = this.buildTeamsEmbed(mix);
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(`mix_veto:${mix.id}`).setLabel('Iniciar Pick & Ban').setEmoji('🗳️').setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId(`mix_roulette:${mix.id}`).setLabel('Roleta Rápida').setEmoji('🎲').setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId(`mix_pick_map:${mix.id}`).setLabel('Escolher Mapa').setEmoji('🗺️').setStyle(ButtonStyle.Primary)
-    );
-    return interaction.reply({ embeds: [embed], components: [row] });
+    return interaction.reply({ embeds: [embed], components: [this.buildTeamsActionButtons(mix)] });
   }
 
   async cmdStartVeto(interaction) {
-    const mix = this.activeMixes.get(interaction.channelId);
+    const mix = this.resolveActiveMixForChannel(interaction.channelId);
     if (!mix) return interaction.reply({ content: '⚠️ Nenhum mix ativo neste canal.', ephemeral: true });
     if (mix.teamA.players.length === 0 || mix.teamB.players.length === 0) {
       this.balanceTeams(mix);
     }
     mix.phase = 'veto';
+    this.syncToWebRoom(mix);
+    this.updateLobbyInChannels(mix);
     const embed = this.buildVetoEmbed(mix);
     const components = this.buildVetoButtons(mix);
     return interaction.reply({ embeds: [embed], components });
@@ -6833,25 +8030,21 @@ class DiscordBotManager {
   }
 
   async cmdStatus(interaction) {
-    let mix = this.activeMixes.get(interaction.channelId);
-    if (!mix && this.activeMixes.size > 0) {
-      mix = Array.from(this.activeMixes.values()).find((m) => m && m.phase !== 'cancelled' && m.phase !== 'finished') || Array.from(this.activeMixes.values())[0];
-    }
+    let mix = this.resolveActiveMixForChannel(interaction.channelId);
     if (!mix && this.webRoomsRef && this.webRoomsRef.size > 0) {
       for (const r of this.webRoomsRef.values()) {
-        if (r && r.phase !== 'finished' && r.phase !== 'cancelled') {
+        if (r && r.channelId === interaction.channelId && r.phase !== 'finished' && r.phase !== 'cancelled') {
           mix = r;
           break;
         }
       }
     }
     if (!mix) {
-      return interaction.reply({ content: 'ℹ️ Nenhum mix ativo no momento. Crie um com `/mix criar` ou digite `!mix`!', ephemeral: true });
+      return interaction.reply({ content: 'ℹ️ Nenhum mix ativo neste canal. Crie um com `/mix criar` ou digite `!mix`!', ephemeral: true });
     }
-    const embed = this.buildLobbyEmbed(mix);
-    const components = this.buildLobbyButtons(mix);
-    const reply = await interaction.reply({ embeds: [embed], components, fetchReply: true });
-    if (reply) {
+    const payload = this.buildStatusPayloadForMix(mix);
+    const reply = await interaction.reply({ ...payload, fetchReply: true });
+    if (reply && mix.phase === 'lobby') {
       mix.lobbyMessageId = reply.id;
       mix.channelId = interaction.channelId;
     }
@@ -6859,9 +8052,16 @@ class DiscordBotManager {
   }
 
   async cmdCancelMix(interaction) {
-    const mix = this.deleteMix(interaction.channelId);
-    if (!mix) return interaction.reply({ content: '⚠️ Nenhum mix ativo neste canal.', ephemeral: true });
-    return interaction.reply({ content: `❌ O mix **${mix.name}** foi cancelado com sucesso.` });
+    const existing = this.resolveActiveMixForChannel(interaction.channelId);
+    if (!existing) return interaction.reply({ content: '⚠️ Nenhum mix ativo neste canal.', ephemeral: true });
+    if (!this.isGuildModerator(interaction.member, interaction.guild, existing, interaction.user?.id)) {
+      return interaction.reply({
+        content: '🚫 Apenas o **Criador do Mix** ou um **Administrador** pode cancelar este mix.',
+        ephemeral: true,
+      });
+    }
+    const mix = this.deleteMix(existing.channelId || interaction.channelId);
+    return interaction.reply({ content: `❌ O mix **${mix?.name || existing.name}** foi cancelado com sucesso.` });
   }
 
   async cmdSendPermanentPanel(interaction) {
@@ -6870,7 +8070,7 @@ class DiscordBotManager {
       .setDescription(
         `Bem-vindo à central de partidas 5v5 da comunidade!\n\n` +
           `• **Lobbies Automáticos:** Clique em **Criar Mix** ou digite \`!mix\` para abrir uma fila 5v5.\n` +
-          `• **Check-in Anti-AFK:** Confirmação em 45 segundos para partidas sem ausentes.\n` +
+          `• **Check-in Anti-AFK:** Confirmação em 60 segundos para partidas sem ausentes.\n` +
           `• **Balanceamento Snake-Draft:** Algoritmo competitivo Gamers Club e FACEIT.\n` +
           `• **Pick & Ban:** Veto oficial da Valve com escolha de lados CT/TR.\n` +
           `• **Canais de Voz:** Movimentação automática para calls CT e TR na hora do jogo!\n\n` +
@@ -6911,71 +8111,44 @@ class DiscordBotManager {
 
   async cmdServer(interaction) {
     const input = interaction.options.getString('ip_porta');
+    const mix = this.resolveActiveMixForChannel(interaction.channelId);
     if (input) {
-      const mix = this.activeMixes.get(interaction.channelId);
       if (!this.isGuildModerator(interaction.member, interaction.guild, mix, interaction.user?.id)) {
         return interaction.reply({
           content: '🚫 Apenas administradores do servidor ou o criador do mix podem alterar o IP do servidor.',
           ephemeral: true,
         });
       }
-      const clean = input.replace(/^connect\s+/i, '').trim();
-      if (!isValidServerAddress(clean)) {
+      const parsed = parseServerConnect(input);
+      if (!parsed.valid) {
         return interaction.reply({
-          content: '⚠️ Endereço de servidor inválido. Use o formato `ip:porta` (ex: `189.1.168.20:27015`).',
+          content: `⚠️ ${parsed.error || 'Endereço de servidor inválido.'} Use o formato \`ip:porta\` (ex: \`189.1.168.20:27015\` ou \`connect 189.1.168.20:27015; password mix\`).`,
           ephemeral: true,
         });
       }
-      this.config.serverConnect = clean;
-      this.saveConfig({ serverConnect: clean });
+      this.config.serverConnect = parsed.normalized;
+      this.saveConfig({ serverConnect: parsed.normalized });
       if (mix) {
-        mix.serverIp = clean;
+        mix.serverIp = parsed.normalized;
         this.syncToWebRoom(mix);
         this.updateLobbyInChannels(mix);
       }
       return interaction.reply({
-        content: `✅ Servidor CS2 configurado com sucesso para os mixes: \`${this.config.serverConnect}\``,
+        content: `✅ Servidor CS2 configurado com sucesso para os mixes: \`${parsed.consoleCommand}\``,
       });
     }
 
-    const current = this.config.serverConnect;
+    const conn = this.resolveMixDisplayConnect(mix);
     return interaction.reply({
-      content: current
-        ? `💻 **Servidor Atual:** \`${current}\`\n👉 Para conectar: \`connect ${current}\``
+      content: conn
+        ? `💻 **Servidor Atual:** \`${conn.normalized}\`\n👉 Para conectar: \`${conn.consoleCommand}\``
         : '⚠️ Nenhum servidor configurado ainda. Use `/servidor ip_porta: 189.1.168.20:27015` para configurar!',
     });
   }
 
   async cmdRanking(interaction) {
-    try {
-      const lb = getLeaderboard();
-      const data = Array.isArray(lb?.players) ? lb.players : (Array.isArray(lb) ? lb : []);
-
-      if (data.length === 0) {
-        return interaction.reply({
-          content: '🏆 **Hall da Fama:** Ainda não há partidas registradas. Jogue o primeiro mix para pontuar!',
-        });
-      }
-
-      const top5 = data.slice(0, 5);
-      const list = top5
-        .map(
-          (p, i) =>
-            `**${i + 1}º** ${p.nick} • **${p.wins || 0}V** / ${p.losses || 0}D (\`${p.winRate || 0}%\` Win Rate) - Lvl ${p.level || 16}`
-        )
-        .join('\n');
-
-      const embed = new EmbedBuilder()
-        .setTitle('🏆 HALL DA FAMA & RANKING DA COMUNIDADE')
-        .setDescription(list)
-        .setColor(0xf59e0b)
-        .setFooter({ text: 'CS2 Mix Hub • Leaderboard' })
-        .setTimestamp();
-
-      return interaction.reply({ embeds: [embed] });
-    } catch (e) {
-      return interaction.reply({ content: `❌ Erro ao buscar ranking: ${e.message}`, ephemeral: true });
-    }
+    const embed = this.buildRankingEmbed();
+    return interaction.reply({ embeds: [embed] });
   }
 
   async cmdHistory(interaction) {
@@ -7002,44 +8175,45 @@ class DiscordBotManager {
 
   async cmdServerStatus(interaction) {
     await interaction.deferReply();
-    const address = this.config.serverConnect || '127.0.0.1:27015';
-    const res = await queryA2SServer(address, 3000);
-    const embed = this.buildServerStatusEmbed(res, address);
+    const mix = this.resolveActiveMixForChannel(interaction.channelId, { includeFinished: true });
+    const rawAddress = interaction.options?.getString?.('endereco') || mix?.serverIp || this.config.serverConnect || '';
+    if (!String(rawAddress).trim()) {
+      return interaction.editReply({
+        content: '⚠️ Nenhum servidor CS2 configurado. Use `/servidor ip_porta: 189.1.168.20:27015` ou informe o parâmetro `endereco`.',
+      });
+    }
+    const { hostPort, normalized } = extractHostAndPort(rawAddress);
+    if (!hostPort) {
+      return interaction.editReply({
+        content: '⚠️ Endereço de servidor inválido. Use o formato `ip:porta` (ex: `189.1.168.20:27015`).',
+      });
+    }
+    const displayConnect = normalized || hostPort;
+    const res = await queryA2SServer(hostPort, 3000);
+    const embed = this.buildServerStatusEmbed(res, hostPort);
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setLabel('🚀 Conectar no CS2')
         .setStyle(ButtonStyle.Link)
-        .setURL(this.getPublicWebUrl(`/connect?ip=${encodeURIComponent(address)}`))
+        .setURL(this.getPublicWebUrl(`/connect?ip=${encodeURIComponent(displayConnect)}`))
     );
     return interaction.editReply({ embeds: [embed], components: [row] });
   }
 
   async cmdGsi(interaction) {
-    const embed = this.buildGsiEmbed();
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setLabel('⚡ Instalador 1-Clique (.bat)')
-        .setStyle(ButtonStyle.Link)
-        .setURL(this.getPublicWebUrl('/api/gsi/installer/MIX-PRO')),
-      new ButtonBuilder()
-        .setLabel('📥 Manual (.cfg)')
-        .setStyle(ButtonStyle.Link)
-        .setURL(this.getPublicWebUrl('/api/gsi/cfg/MIX-PRO')),
-      new ButtonBuilder()
-        .setLabel('🌐 Ver Partida no Hub Web')
-        .setStyle(ButtonStyle.Link)
-        .setURL(this.getPublicWebUrl('/'))
-    );
-    return interaction.reply({ embeds: [embed], components: [row] });
+    const mix = this.resolveActiveMixForChannel(interaction.channelId);
+    const roomId = normalizeRoomId(mix?.id, 'MIX-PRO');
+    return interaction.reply(this.buildGsiGuidePayload(roomId));
   }
 
   async cmdLive(interaction) {
     const requester = interaction.user?.username || 'Jogador';
     const targetQuery = interaction.options?.getString('jogador') || null;
-    const mix = this.activeMixes?.get(interaction.channelId) || null;
+    const mix = this.resolveActiveMixForChannel(interaction.channelId);
+    const roomId = normalizeRoomId(mix?.id, 'MIX-PRO');
     const embed = this.buildLiveMatchEmbed(requester, targetQuery, false, mix);
-    const row = this.buildLiveMatchButtons(Boolean(this.lastGsiState?.player?.name), false);
-    await interaction.reply({ embeds: [embed], components: [row] });
+    const components = this.buildLiveMatchButtons(this.isGsiOnline(), false, roomId, mix, interaction.channelId);
+    await interaction.reply({ embeds: [embed], components });
     const sent = await interaction.fetchReply();
     this.registerLiveTracker(sent, requester, targetQuery, false);
     return sent;
@@ -7052,25 +8226,26 @@ class DiscordBotManager {
         `O bot permite organizar mixes 5v5 completos sem precisar sair do Discord!\n\n` +
           `**Comandos Principais (use com ! ou /):**\n` +
           `• \`!painel\` ou \`/painel\` - Cria o painel fixo da comunidade com botão\n` +
-          `• \`!mix\` ou \`/mix criar\` - Inicia uma nova fila de mix 5v5\n` +
-          `• \`!entrar\` / \`!sair\` - Gerencia sua vaga no lobby\n` +
-          `• \`!sortear\` - Sorteio snake-draft balanceado por elo\n` +
+          `• \`!mix\` ou \`/mix criar\` - Inicia uma nova fila de mix 5v5 (suporta Reserva 3/3)\n` +
+          `• \`!fila\` ou \`/mix status\` - Exibe o lobby/fase atual do mix do canal\n` +
+          `• \`!entrar\` / \`!sair\` - Gerencia sua vaga no lobby ou fila de reserva\n` +
+          `• \`!sortear\` - Sorteio snake-draft balanceado por elo (ou use Draft 1v1)\n` +
+          `• \`!roleta\` ou \`/roleta\` - Roleta justa de mapas (sem repetir) ou escolha manual\n` +
           `• \`!veto\` - Pick & Ban de mapas oficial com escolha de lados CT/TR\n` +
-          `• \`!vitoria [A|B] [placar]\` - Registra a vitória, pontua no ranking e inicia votação de MVP\n` +
-          `• \`!aovivo\` ou \`/aovivo\` - Monitorar Partida com auto-atualização round a round: placar, CT/TR, HP e armas (ative antes ou durante o jogo!)\n` +
+          `• \`!revanche\` - Inicia revanche com os mesmos 10 jogadores e lados invertidos\n` +
+          `• \`!vitoria [A|B] [placar]\` - Registra a vitória no ranking, computa MVP/Bagre (GSI) ou abre votação\n` +
+          `• \`!bagre\` ou \`/bagre\` - Ranking de Bagre/MVP automático (GSI) ou votação interativa\n` +
+          `• \`!aovivo\` ou \`/aovivo\` - Monitorar Partida ao vivo round a round\n` +
           `• \`!gsi\` ou \`/gsi\` - Instruções e download do arquivo CFG do Valve GSI\n` +
-          `• \`!historico\` ou \`/historico\` - Histórico de partidas recentes e placares\n` +
-          `• \`!x1 @amigo\` ou \`/x1\` - Duelo Head-to-Head e sinergia de vitórias juntos\n` +
-          `• \`!mapas\` ou \`/mapas\` - Estatísticas dos mapas mais disputados\n` +
+          `• \`!servidor [ip:porta]\` / \`!ip\` - Define ou consulta o IP/senha do servidor CS2\n` +
           `• \`!status-server\` ou \`/status-servidor\` - Consulta ping, mapa e players no servidor CS2\n` +
-          `• \`!sub @novo\` - Substitui jogador ausente por um reserva\n` +
+          `• \`!historico\` / \`!x1\` / \`!mapas\` - Histórico, confronto direto e estatísticas de mapas\n` +
+          `• \`!sub [@novo]\` - Substitui jogador ausente (botão interativo ou comando)\n` +
           `• \`!cargo\` - Ativa/desativa notificações de vagas restantes (@Mix CS2)\n` +
-          `• \`!ranking\` - Mostra os líderes do Hall da Fama\n` +
-          `• \`!stats [@jogador]\` - Consulta estatísticas, vitórias e elo\n` +
-          `• \`!smoke [mapa]\` - Lineups de granadas\n` +
-          `• \`!treino\` - CFG completa de treino do CS2\n` +
-          `• \`!moeda\` - Cara ou coroa com animação\n` +
-          `• \`!ofertas [busca]\` ou \`/ofertas\` - Busca promoções de hardware gamer (KaBuM!, Pichau, Terabyte)`
+          `• \`!ranking\` / \`!stats\` / \`!lvl <1-21>\` - Hall da Fama, perfil e nível GC\n` +
+          `• \`!smoke [mapa]\` ou \`/granada\` - Lineups em 10 mapas (Mirage, Inferno, Nuke, Dust2, Ancient, Anubis, Overpass, Train, Cache, Vertigo)\n` +
+          `• \`!treino\` / \`!moeda\` - CFG completa de treino e Cara ou Coroa\n` +
+          `• \`!steam\` / \`!att\` / \`!pro\` / \`!clip\` / \`!ofertas\` - Scanner Steam, Patches CS2, Agenda Pro e Ofertas`
       )
       .setFooter({ text: 'CS2 Mix Hub • eSports Competitive Engine' });
 
@@ -7536,12 +8711,13 @@ class DiscordBotManager {
   }
 
   async cmdProMatches(interaction) {
+    await interaction.deferReply();
     try {
       const matches = await proMatchesAgenda.getUpcomingMatches();
       const { embeds, components } = proMatchesAgenda.buildEmbed(matches);
-      return interaction.reply({ embeds, components });
+      return interaction.editReply({ embeds, components });
     } catch (err) {
-      return interaction.reply({ content: `❌ Erro ao consultar agenda: ${err.message}`, ephemeral: true });
+      return interaction.editReply({ content: `❌ Erro ao consultar agenda: ${err.message}` });
     }
   }
 
@@ -7550,34 +8726,60 @@ class DiscordBotManager {
   // ==========================================
 
   async prefixBagre(message) {
-    const mix = this.resolveActiveMixForChannel(message.channelId);
-    const embed = this.buildAutoBagreAndMvpEmbed(mix);
-    if (!embed) {
-      return message.reply('\u26a0\ufe0f Ainda n\u00e3o h\u00e1 estat\u00edsticas de partida registradas no momento. Assim que o jogo rodar ou finalizar no CS2, o MVP e o Bagre s\u00e3o eleitos automaticamente!');
+    const mix = this.resolveActiveMixForChannel(message.channelId, { includeFinished: true });
+    const embed = mix ? this.buildAutoBagreAndMvpEmbed(mix) : null;
+    if (embed) {
+      return message.reply({ embeds: [embed] });
     }
-    return message.reply({ embeds: [embed] });
+    const candidateCount = mix
+      ? (mix.players?.length || ((mix.teamA?.players?.length || 0) + (mix.teamB?.players?.length || 0)))
+      : 0;
+    if (mix && candidateCount >= 2) {
+      const voteEmbed = bagreVoteService.buildVoteEmbed(mix);
+      const components = bagreVoteService.buildVoteMenu(mix);
+      if (voteEmbed) {
+        return message.reply({ embeds: [voteEmbed], components });
+      }
+    }
+    return message.reply('⚠️ Nenhum mix com estatísticas do CS2 ou jogadores suficientes neste canal. Abra um mix com `!mix` ou ative o Valve GSI (`/gsi`)!');
   }
 
   async cmdBagre(interaction) {
-    const mix = this.resolveActiveMixForChannel(interaction.channelId);
-    const embed = this.buildAutoBagreAndMvpEmbed(mix);
-    if (!embed) {
-      return interaction.reply({ content: '\u26a0\ufe0f Ainda n\u00e3o h\u00e1 estat\u00edsticas de partida registradas no momento. Assim que o jogo rodar ou finalizar no CS2, o MVP e o Bagre s\u00e3o eleitos automaticamente!', ephemeral: true });
+    const mix = this.resolveActiveMixForChannel(interaction.channelId, { includeFinished: true });
+    const embed = mix ? this.buildAutoBagreAndMvpEmbed(mix) : null;
+    if (embed) {
+      return interaction.reply({ embeds: [embed] });
     }
-    return interaction.reply({ embeds: [embed] });
+    const candidateCount = mix
+      ? (mix.players?.length || ((mix.teamA?.players?.length || 0) + (mix.teamB?.players?.length || 0)))
+      : 0;
+    if (mix && candidateCount >= 2) {
+      const voteEmbed = bagreVoteService.buildVoteEmbed(mix);
+      const components = bagreVoteService.buildVoteMenu(mix);
+      if (voteEmbed) {
+        return interaction.reply({ embeds: [voteEmbed], components });
+      }
+    }
+    return interaction.reply({
+      content: '⚠️ Nenhum mix com estatísticas do CS2 ou jogadores suficientes neste canal. Abra um mix com `/mix criar` ou ative o Valve GSI (`/gsi`)!',
+      ephemeral: true,
+    });
   }
 
   buildAutoBagreAndMvpEmbed(mix) {
-    const gsiState = mix?.gsi || mix?.liveState || this.lastBestGsiState || this.lastGsiState || null;
+    const gsiState = this.resolveGsiSnapshotForMix(mix, { allowConsumedForSameMix: true });
+    if (!gsiState) return null;
+    const scoreA = Number(gsiState?.scoreCT || 0) || 0;
+    const scoreB = Number(gsiState?.scoreTR || 0) || 0;
     const dummyRecord = {
       winnerPlayers: mix?.teamA?.players || mix?.players?.slice(0, 5) || [],
       loserPlayers: mix?.teamB?.players || mix?.players?.slice(5, 10) || [],
-      scoreWinner: Math.max(gsiState?.scoreCT || 13, gsiState?.scoreTR || 8),
-      scoreLoser: Math.min(gsiState?.scoreCT || 13, gsiState?.scoreTR || 8),
+      scoreWinner: Math.max(scoreA, scoreB),
+      scoreLoser: Math.min(scoreA, scoreB),
     };
 
     const { mvp, bagre, evaluatedPlayers, hasRealGsiStats } = computeMatchPerformers(dummyRecord, gsiState);
-    if (!mvp && !bagre) return null;
+    if (!hasRealGsiStats || (!mvp && !bagre)) return null;
 
     const quote = bagreVoteService.getRandomQuote();
     const mvpTag = mvp ? (isSnowflake(mvp.id) ? `<@${mvp.id}>` : `**${mvp.nick}**`) : 'N/A';
@@ -7593,7 +8795,7 @@ class DiscordBotManager {
       .setTitle(`\ud83d\udcca MVP & BAGRE AUTOM\u00c1TICO (CS2 STATS)`)
       .setColor(0xf59e0b)
       .setDescription(
-        `Apura\u00e7\u00e3o **100% autom\u00e1tica** baseada nas estat\u00edsticas da partida (${hasRealGsiStats ? '\ud83d\udfe2 **Dados Reais do CS2 via GSI**' : '\ud83d\udfe1 **Dados do Mix**'}):\n\n` +
+        `Apura\u00e7\u00e3o **100% autom\u00e1tica** baseada nas estat\u00edsticas reais da partida (\ud83d\udfe2 **Dados Reais do CS2 via GSI**):\n\n` +
         `\ud83d\udc51 **MVP DA PARTIDA:** ${mvpTag}\n` +
         (mvp ? `└ \ud83c\udfaf **${mvp.kills} Kills** \u2022 \ud83d\udc80 **${mvp.deaths} Mortes** \u2022 K/D **${mvp.kd}** \u2022 \u2b50 **${mvp.mvps} MVPs** \u2022 Rating **${mvp.rating}**\n\n` : '\n') +
         `\ud83d\udc1f **BAGRE DO MIX:** ${bagreTag}\n` +
@@ -7604,7 +8806,7 @@ class DiscordBotManager {
         value: lines || '*Sem estat\u00edsticas registradas*',
         inline: false,
       })
-      .setFooter({ text: 'CS2 Mix Hub \u2022 Definido 100% pelas estat\u00edsticas do jogo!' })
+      .setFooter({ text: 'CS2 Mix Hub \u2022 Definido 100% pelas estat\u00edsticas reais do CS2!' })
       .setTimestamp();
   }
   async prefixFreeGames(message) {
@@ -7666,10 +8868,6 @@ class DiscordBotManager {
       return interaction.reply({ content: `❌ ${err.message}`, ephemeral: true });
     }
   }
-
-  // ==========================================
-  // CS2 CASE OPENING SIMULATOR
-  // ==========================================
 
   }
 

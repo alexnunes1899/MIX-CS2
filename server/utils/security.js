@@ -192,3 +192,70 @@ export function isValidServerAddress(addr) {
   if (!clean || clean.length > 100) return false;
   return /^[a-zA-Z0-9.-]+(:\d{1,5})?$/.test(clean);
 }
+
+/**
+ * Parses and validates CS2 server connection strings such as:
+ * - "189.1.168.10:27015"
+ * - "connect 189.1.168.10:27015"
+ * - "connect 189.1.168.10:27015; password mix"
+ * Rejects command chaining (e.g. "; quit") or invalid hosts/ports.
+ */
+export function parseServerConnect(raw) {
+  if (typeof raw !== 'string') {
+    return { valid: false, error: 'Endereço de servidor inválido.' };
+  }
+  const trimmed = raw.replace(/[\r\n\u0000-\u001F\u007F]/g, '').trim();
+  if (!trimmed || trimmed.length > 180) {
+    return { valid: false, error: 'Endereço de servidor vazio ou muito longo.' };
+  }
+
+  let body = trimmed.replace(/^connect\s+/i, '').trim();
+  const segments = body.split(';').map((s) => s.trim());
+  const nonEmptyTail = segments.slice(1).filter(Boolean);
+
+  if (nonEmptyTail.length > 1) {
+    return { valid: false, error: 'Comando inválido após ponto e vírgula.' };
+  }
+
+  const hostPort = (segments[0] || '').replace(/^["']+|["']+$/g, '').trim();
+  if (!isValidServerAddress(hostPort)) {
+    return { valid: false, error: 'Endereço IP:porta inválido.' };
+  }
+
+  const colonIdx = hostPort.lastIndexOf(':');
+  const host = colonIdx !== -1 ? hostPort.slice(0, colonIdx) : hostPort;
+  const port = colonIdx !== -1 ? parseInt(hostPort.slice(colonIdx + 1), 10) : 27015;
+
+  if (!host || isBlockedMetadataHost(host)) {
+    return { valid: false, error: 'Host do servidor inválido ou bloqueado.' };
+  }
+  if (Number.isNaN(port) || port < 1 || port > 65535) {
+    return { valid: false, error: 'Porta do servidor inválida (use 1 a 65535).' };
+  }
+
+  let password = '';
+  if (nonEmptyTail.length === 1) {
+    const pwClause = nonEmptyTail[0];
+    if (!/^password\s+/i.test(pwClause)) {
+      return { valid: false, error: 'Parâmetro inválido após `;`. Apenas `password <senha>` é permitido.' };
+    }
+    const rawPw = pwClause.replace(/^password\s*=?\s*/i, '').trim();
+    const unquotedPw = rawPw.replace(/^["']|["']$/g, '').trim();
+    if (!unquotedPw || /[;"'<>\r\n$`]/.test(unquotedPw) || unquotedPw.length > 64) {
+      return { valid: false, error: 'Senha do servidor CS2 inválida.' };
+    }
+    password = unquotedPw;
+  }
+
+  const normalized = password ? `${hostPort}; password ${password}` : hostPort;
+  return {
+    valid: true,
+    hostPort,
+    host,
+    port,
+    password,
+    normalized,
+    consoleCommand: `connect ${normalized}`,
+  };
+}
+

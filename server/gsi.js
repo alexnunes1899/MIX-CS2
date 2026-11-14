@@ -531,8 +531,13 @@ export function installGsiLocally(serverBaseUrl = 'http://127.0.0.1:3000', roomI
     }
   }
 
-  const cloudCfg = generateGsiConfig(process.env.RENDER_EXTERNAL_URL || 'https://mix-cs2.onrender.com', roomId);
-  const localCfg = generateGsiConfig('http://127.0.0.1:3000', roomId);
+  const publicBaseUrl =
+    serverBaseUrl && !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(serverBaseUrl)
+      ? serverBaseUrl
+      : process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || 'https://mix-cs2.onrender.com';
+  const localPort = Number(process.env.PORT) || 3000;
+  const cloudCfg = generateGsiConfig(publicBaseUrl, roomId);
+  const localCfg = generateGsiConfig(`http://127.0.0.1:${localPort}`, roomId);
 
   const written = [];
   for (const dir of dirs) {
@@ -614,7 +619,7 @@ echo.
 echo [1/2] Localizando a pasta do Counter-Strike 2 no seu computador...
 echo.
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference = 'SilentlyContinue'; [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $b64 = '${b64}'; $cfg = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($b64)); function Get-Cs2Paths { $paths = [System.Collections.Generic.List[string]]::new(); $steamReg = (Get-ItemProperty -Path 'HKCU:\\Software\\Valve\\Steam' -ErrorAction SilentlyContinue).SteamPath; if ($steamReg) { $steamReg = $steamReg -replace '/', '\\\\'; $p1 = Join-Path $steamReg 'steamapps\\common\\Counter-Strike Global Offensive\\game\\csgo\\cfg'; if (Test-Path $p1) { $paths.Add($p1) }; $vdf = Join-Path $steamReg 'steamapps\\libraryfolders.vdf'; if (Test-Path $vdf) { foreach ($line in (Get-Content $vdf)) { if ($line -match '\\\"path\\\"\\s+\\\"([^\\\"]+)\\\"') { $lib = $matches[1] -replace '\\\\\\\\', '\\\\' -replace '/', '\\\\'; $p2 = Join-Path $lib 'steamapps\\common\\Counter-Strike Global Offensive\\game\\csgo\\cfg'; if ((Test-Path $p2) -and (-not $paths.Contains($p2))) { $paths.Add($p2) } } } } }; foreach ($d in 'C','D','E','F','G','H','I') { $chk1 = ($d + ':\\Program Files (x86)\\Steam\\steamapps\\common\\Counter-Strike Global Offensive\\game\\csgo\\cfg'); if ((Test-Path $chk1) -and (-not $paths.Contains($chk1))) { $paths.Add($chk1) }; $chk2 = ($d + ':\\SteamLibrary\\steamapps\\common\\Counter-Strike Global Offensive\\game\\csgo\\cfg'); if ((Test-Path $chk2) -and (-not $paths.Contains($chk2))) { $paths.Add($chk2) }; $chk3 = ($d + ':\\Steam\\steamapps\\common\\Counter-Strike Global Offensive\\game\\csgo\\cfg'); if ((Test-Path $chk3) -and (-not $paths.Contains($chk3))) { $paths.Add($chk3) }; $chk4 = ($d + ':\\Jogos\\SteamLibrary\\steamapps\\common\\Counter-Strike Global Offensive\\game\\csgo\\cfg'); if ((Test-Path $chk4) -and (-not $paths.Contains($chk4))) { $paths.Add($chk4) } }; return $paths }; $targetDirs = Get-Cs2Paths; if ($targetDirs.Count -eq 0) { Write-Host ' [X] Nao foi possivel encontrar a pasta do CS2 automaticamente.' -ForegroundColor Yellow; Write-Host '     Verifique se o Counter-Strike 2 esta instalado via Steam neste PC.' -ForegroundColor Yellow; exit 1 }; foreach ($dir in $targetDirs) { if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }; $file = Join-Path $dir 'gamestate_integration_cs2mixhub.cfg'; try { [System.IO.File]::WriteAllText($file, $cfg, [System.Text.Encoding]::UTF8); Write-Host (\\\" [OK] Instalado com sucesso em: \\\" + $file) -ForegroundColor Green } catch { Write-Host (\\\" [!] Permissao negada em: \\\" + $file) -ForegroundColor Yellow; Write-Host '     Dica: Clique com o botao direito no arquivo .bat e escolha Executar como Administrador.' -ForegroundColor Cyan } }; Write-Host ''; Write-Host ' =======================================================================' -ForegroundColor Green; Write-Host '  TUDO PRONTO! O MONITORAMENTO FOI INSTALADO NO SEU CS2 COM SUCESSO!   ' -ForegroundColor Green; Write-Host ' =======================================================================' -ForegroundColor Green; Write-Host '  Agora e so abrir o Counter-Strike 2 e jogar normalmente!' -ForegroundColor Cyan; Write-Host '  Seus amigos ja podem acompanhar seu placar, vida e armas ao vivo!' -ForegroundColor Cyan; Write-Host ''; exit 0"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference = 'SilentlyContinue'; [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $b64 = '${b64}'; $cfg = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($b64)); $utf8NoBom = New-Object System.Text.UTF8Encoding($false); function Get-Cs2Paths { $paths = [System.Collections.Generic.List[string]]::new(); $steamReg = (Get-ItemProperty -Path 'HKCU:\\Software\\Valve\\Steam' -ErrorAction SilentlyContinue).SteamPath; if ($steamReg) { $steamReg = $steamReg -replace '/', '\\\\'; $p1 = Join-Path $steamReg 'steamapps\\common\\Counter-Strike Global Offensive\\game\\csgo\\cfg'; if (Test-Path $p1) { $paths.Add($p1) }; $vdf = Join-Path $steamReg 'steamapps\\libraryfolders.vdf'; if (Test-Path $vdf) { foreach ($line in (Get-Content $vdf)) { if ($line -match '\\\"path\\\"\\s+\\\"([^\\\"]+)\\\"') { $lib = $matches[1] -replace '\\\\\\\\', '\\\\' -replace '/', '\\\\'; $p2 = Join-Path $lib 'steamapps\\common\\Counter-Strike Global Offensive\\game\\csgo\\cfg'; if ((Test-Path $p2) -and (-not $paths.Contains($p2))) { $paths.Add($p2) } } } } }; foreach ($d in 'C','D','E','F','G','H','I') { $chk1 = ($d + ':\\Program Files (x86)\\Steam\\steamapps\\common\\Counter-Strike Global Offensive\\game\\csgo\\cfg'); if ((Test-Path $chk1) -and (-not $paths.Contains($chk1))) { $paths.Add($chk1) }; $chk2 = ($d + ':\\SteamLibrary\\steamapps\\common\\Counter-Strike Global Offensive\\game\\csgo\\cfg'); if ((Test-Path $chk2) -and (-not $paths.Contains($chk2))) { $paths.Add($chk2) }; $chk3 = ($d + ':\\Steam\\steamapps\\common\\Counter-Strike Global Offensive\\game\\csgo\\cfg'); if ((Test-Path $chk3) -and (-not $paths.Contains($chk3))) { $paths.Add($chk3) }; $chk4 = ($d + ':\\Jogos\\SteamLibrary\\steamapps\\common\\Counter-Strike Global Offensive\\game\\csgo\\cfg'); if ((Test-Path $chk4) -and (-not $paths.Contains($chk4))) { $paths.Add($chk4) } }; return $paths }; $targetDirs = Get-Cs2Paths; if ($targetDirs.Count -eq 0) { Write-Host ' [X] Nao foi possivel encontrar a pasta do CS2 automaticamente.' -ForegroundColor Yellow; Write-Host '     Verifique se o Counter-Strike 2 esta instalado via Steam neste PC.' -ForegroundColor Yellow; exit 1 }; foreach ($dir in $targetDirs) { if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }; $file = Join-Path $dir 'gamestate_integration_cs2mixhub.cfg'; try { [System.IO.File]::WriteAllText($file, $cfg, $utf8NoBom); Write-Host (\\\" [OK] Instalado com sucesso em: \\\" + $file) -ForegroundColor Green } catch { Write-Host (\\\" [!] Permissao negada em: \\\" + $file) -ForegroundColor Yellow; Write-Host '     Dica: Clique com o botao direito no arquivo .bat e escolha Executar como Administrador.' -ForegroundColor Cyan } }; Write-Host ''; Write-Host ' =======================================================================' -ForegroundColor Green; Write-Host '  TUDO PRONTO! O MONITORAMENTO FOI INSTALADO NO SEU CS2 COM SUCESSO!   ' -ForegroundColor Green; Write-Host ' =======================================================================' -ForegroundColor Green; Write-Host '  Agora e so abrir o Counter-Strike 2 e jogar normalmente!' -ForegroundColor Cyan; Write-Host '  Seus amigos ja podem acompanhar seu placar, vida e armas ao vivo!' -ForegroundColor Cyan; Write-Host ''; exit 0"
 
 if %ERRORLEVEL% NEQ 0 (
     echo.
@@ -641,6 +646,7 @@ export function generateGsiPowerShellInstaller(serverBaseUrl, roomId) {
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8;
 $b64 = '${b64}';
 $cfg = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($b64));
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false);
 
 function Get-Cs2Paths {
     $paths = [System.Collections.Generic.List[string]]::new();
@@ -652,8 +658,8 @@ function Get-Cs2Paths {
         $vdf = Join-Path $steamReg 'steamapps\\libraryfolders.vdf';
         if (Test-Path $vdf) {
             foreach ($line in (Get-Content $vdf)) {
-                if ($line -match '"path"\s+"([^"]+)"') {
-                    $lib = $matches[1] -replace '\\\\', '\\' -replace '/', '\\';
+                if ($line -match '"path"\\s+"([^"]+)"') {
+                    $lib = $matches[1] -replace '\\\\\\\\', '\\' -replace '/', '\\';
                     $p2 = Join-Path $lib 'steamapps\\common\\Counter-Strike Global Offensive\\game\\csgo\\cfg';
                     if ((Test-Path $p2) -and (-not $paths.Contains($p2))) { $paths.Add($p2) }
                 }
@@ -661,10 +667,17 @@ function Get-Cs2Paths {
         }
     }
     foreach ($d in 'C','D','E','F','G','H','I') {
-        $chk1 = ($d + ':\\Program Files (x86)\\Steam\\steamapps\\common\\Counter-Strike Global Offensive\\game\\csgo\\cfg');
-        if ((Test-Path $chk1) -and (-not $paths.Contains($chk1))) { $paths.Add($chk1) };
-        $chk2 = ($d + ':\\SteamLibrary\\steamapps\\common\\Counter-Strike Global Offensive\\game\\csgo\\cfg');
-        if ((Test-Path $chk2) -and (-not $paths.Contains($chk2))) { $paths.Add($chk2) };
+        foreach ($sub in @(
+            'Program Files (x86)\\Steam',
+            'Program Files\\Steam',
+            'Steam',
+            'SteamLibrary',
+            'Jogos\\SteamLibrary',
+            'Games\\SteamLibrary'
+        )) {
+            $chk = Join-Path ($d + ':\\') (Join-Path $sub 'steamapps\\common\\Counter-Strike Global Offensive\\game\\csgo\\cfg');
+            if ((Test-Path $chk) -and (-not $paths.Contains($chk))) { $paths.Add($chk) }
+        }
     }
     return $paths
 };
@@ -673,13 +686,14 @@ $targetDirs = Get-Cs2Paths;
 if ($targetDirs.Count -eq 0) {
     Write-Host '❌ Não foi possível encontrar a pasta do CS2 automaticamente.' -ForegroundColor Yellow;
     Write-Host '   Verifique se o Counter-Strike 2 está instalado via Steam neste computador.' -ForegroundColor Yellow;
+    Start-Sleep -Seconds 4;
     return;
 }
 
 foreach ($dir in $targetDirs) {
     if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null };
     $file = Join-Path $dir 'gamestate_integration_cs2mixhub.cfg';
-    [System.IO.File]::WriteAllText($file, $cfg, [System.Text.Encoding]::UTF8);
+    [System.IO.File]::WriteAllText($file, $cfg, $utf8NoBom);
     Write-Host "✅ Instalado com sucesso em: $file" -ForegroundColor Green;
 }
 
@@ -690,5 +704,6 @@ Write-Host '====================================================================
 Write-Host ' Agora é só abrir o Counter-Strike 2 e jogar normalmente!' -ForegroundColor Cyan;
 Write-Host ' Seus amigos já podem acompanhar seu placar, vida e armas ao vivo!' -ForegroundColor Cyan;
 Write-Host '';
+Start-Sleep -Seconds 3;
 `;
 }
