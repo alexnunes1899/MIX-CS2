@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { playClickSound, playReadySound } from '../utils/audio';
 import { copyText } from '../utils/clipboard';
+import { cryptoShuffle } from '../utils/random';
 import { DEFAULT_TOURNAMENT_TEAMS, PRESET_LOGOS } from '../data/tournamentTeams';
 import { drawTournamentBracketCanvas, drawMatchVersusCardCanvas } from '../utils/tournamentCanvas';
 import { getTournamentRecommendation, buildMatchesStructure } from '../utils/tournamentAdvisor';
@@ -44,7 +45,13 @@ export default function TournamentBracketModal({
     } catch (e) {}
     return 8;
   });
-  const [tournamentName, setTournamentName] = useState('COPA DE MIX CS2 2026');
+  const [tournamentName, setTournamentName] = useState(() => {
+    try {
+      return localStorage.getItem(`cs2_tournament_name_${roomId}`) || 'COPA DE MIX CS2 2026';
+    } catch (e) {
+      return 'COPA DE MIX CS2 2026';
+    }
+  });
   const [isEditingName, setIsEditingName] = useState(false);
 
   // Teams with custom rosters, tags and logos
@@ -108,74 +115,106 @@ export default function TournamentBracketModal({
     } catch (e) {}
   }, [teams, matches, tournamentName, teamCount, roomId]);
 
+  const getNextSlotTarget = useCallback((matchId, count) => {
+    if (count === 4) {
+      if (matchId === 'm1') return { nextId: 'm3', slot: 'teamA', placeholder: 'Vencedor SF1' };
+      if (matchId === 'm2') return { nextId: 'm3', slot: 'teamB', placeholder: 'Vencedor SF2' };
+      return null;
+    }
+    if (count === 5) {
+      if (matchId === 'pi1') return { nextId: 'm1', slot: 'teamB', placeholder: 'Vencedor Play-in' };
+      if (matchId === 'm1') return { nextId: 'm3', slot: 'teamA', placeholder: 'Vencedor SF1' };
+      if (matchId === 'm2') return { nextId: 'm3', slot: 'teamB', placeholder: 'Vencedor SF2' };
+      return null;
+    }
+    if (count === 6) {
+      if (matchId === 'q1') return { nextId: 'm1', slot: 'teamB', placeholder: 'Vencedor QF1' };
+      if (matchId === 'q2') return { nextId: 'm2', slot: 'teamB', placeholder: 'Vencedor QF2' };
+      if (matchId === 'm1') return { nextId: 'm3', slot: 'teamA', placeholder: 'Vencedor SF1' };
+      if (matchId === 'm2') return { nextId: 'm3', slot: 'teamB', placeholder: 'Vencedor SF2' };
+      return null;
+    }
+    if (count === 7) {
+      if (matchId === 'q1') return { nextId: 'm1', slot: 'teamB', placeholder: 'Vencedor QF1' };
+      if (matchId === 'q2') return { nextId: 'm2', slot: 'teamA', placeholder: 'Vencedor QF2' };
+      if (matchId === 'q3') return { nextId: 'm2', slot: 'teamB', placeholder: 'Vencedor QF3' };
+      if (matchId === 'm1') return { nextId: 'm3', slot: 'teamA', placeholder: 'Vencedor SF1' };
+      if (matchId === 'm2') return { nextId: 'm3', slot: 'teamB', placeholder: 'Vencedor SF2' };
+      return null;
+    }
+    if (count === 8) {
+      if (matchId === 'q1') return { nextId: 's1', slot: 'teamA', placeholder: 'Vencedor Q1' };
+      if (matchId === 'q2') return { nextId: 's1', slot: 'teamB', placeholder: 'Vencedor Q2' };
+      if (matchId === 'q3') return { nextId: 's2', slot: 'teamA', placeholder: 'Vencedor Q3' };
+      if (matchId === 'q4') return { nextId: 's2', slot: 'teamB', placeholder: 'Vencedor Q4' };
+      if (matchId === 's1') return { nextId: 'f1', slot: 'teamA', placeholder: 'Vencedor SF1' };
+      if (matchId === 's2') return { nextId: 'f1', slot: 'teamB', placeholder: 'Vencedor SF2' };
+      return null;
+    }
+    if (count >= 9 && count <= 12) {
+      if (matchId === 'pi1') return { nextId: 'q1', slot: 'teamB', placeholder: 'Vencedor Play-in 1' };
+      if (matchId === 'pi2') return { nextId: 'q3', slot: 'teamB', placeholder: 'Vencedor Play-in 2' };
+      if (matchId === 'q1') return { nextId: 's1', slot: 'teamA', placeholder: 'Vencedor Q1' };
+      if (matchId === 'q2') return { nextId: 's1', slot: 'teamB', placeholder: 'Vencedor Q2' };
+      if (matchId === 'q3') return { nextId: 's2', slot: 'teamA', placeholder: 'Vencedor Q3' };
+      if (matchId === 'q4') return { nextId: 's2', slot: 'teamB', placeholder: 'Vencedor Q4' };
+      if (matchId === 's1') return { nextId: 'f1', slot: 'teamA', placeholder: 'Vencedor SF1' };
+      if (matchId === 's2') return { nextId: 'f1', slot: 'teamB', placeholder: 'Vencedor SF2' };
+      return null;
+    }
+    if (count >= 13) {
+      if (matchId === 'o1') return { nextId: 'q1', slot: 'teamA', placeholder: 'Vencedor O1' };
+      if (matchId === 'o2') return { nextId: 'q1', slot: 'teamB', placeholder: 'Vencedor O2' };
+      if (matchId === 'o3') return { nextId: 'q2', slot: 'teamA', placeholder: 'Vencedor O3' };
+      if (matchId === 'o4') return { nextId: 'q2', slot: 'teamB', placeholder: 'Vencedor O4' };
+      if (matchId === 'o5') return { nextId: 'q3', slot: 'teamA', placeholder: 'Vencedor O5' };
+      if (matchId === 'o6') return { nextId: 'q3', slot: 'teamB', placeholder: 'Vencedor O6' };
+      if (matchId === 'o7') return { nextId: 'q4', slot: 'teamA', placeholder: 'Vencedor O7' };
+      if (matchId === 'o8') return { nextId: 'q4', slot: 'teamB', placeholder: 'Vencedor O8' };
+      if (matchId === 'q1') return { nextId: 's1', slot: 'teamA', placeholder: 'Vencedor Q1' };
+      if (matchId === 'q2') return { nextId: 's1', slot: 'teamB', placeholder: 'Vencedor Q2' };
+      if (matchId === 'q3') return { nextId: 's2', slot: 'teamA', placeholder: 'Vencedor Q3' };
+      if (matchId === 'q4') return { nextId: 's2', slot: 'teamB', placeholder: 'Vencedor Q4' };
+      if (matchId === 's1') return { nextId: 'f1', slot: 'teamA', placeholder: 'Vencedor SF1' };
+      if (matchId === 's2') return { nextId: 'f1', slot: 'teamB', placeholder: 'Vencedor SF2' };
+      return null;
+    }
+    return null;
+  }, []);
+
+  const clearDownstreamWinner = useCallback((next, matchId, oldWinner, count) => {
+    const target = getNextSlotTarget(matchId, count);
+    if (!target || !next[target.nextId]) return next;
+
+    const downstream = { ...next[target.nextId] };
+    const hadOldWinnerInSlot = !oldWinner || downstream[target.slot] === oldWinner;
+    if (hadOldWinnerInSlot) {
+      downstream[target.slot] = target.placeholder;
+    }
+
+    const previousDownstreamWinner = downstream.winner;
+    if (previousDownstreamWinner && (!oldWinner || previousDownstreamWinner === oldWinner)) {
+      downstream.winner = null;
+      downstream.status = (downstream.scoreA > 0 || downstream.scoreB > 0) ? 'live' : 'pending';
+      next[target.nextId] = downstream;
+      return clearDownstreamWinner(next, target.nextId, previousDownstreamWinner, count);
+    }
+
+    next[target.nextId] = downstream;
+    return next;
+  }, [getNextSlotTarget]);
+
   // Propagador Inteligente de Vencedores entre Chaves
   const propagateWinner = useCallback((next, matchId, winnerTeam, count) => {
     if (!winnerTeam) return next;
-    if (count === 4) {
-      if (matchId === 'm1' && next.m3) next.m3.teamA = winnerTeam;
-      if (matchId === 'm2' && next.m3) next.m3.teamB = winnerTeam;
-      return next;
-    }
-    if (count === 5) {
-      if (matchId === 'pi1' && next.m1) next.m1.teamB = winnerTeam;
-      if (matchId === 'm1' && next.m3) next.m3.teamA = winnerTeam;
-      if (matchId === 'm2' && next.m3) next.m3.teamB = winnerTeam;
-      return next;
-    }
-    if (count === 6) {
-      if (matchId === 'q1' && next.m1) next.m1.teamB = winnerTeam;
-      if (matchId === 'q2' && next.m2) next.m2.teamB = winnerTeam;
-      if (matchId === 'm1' && next.m3) next.m3.teamA = winnerTeam;
-      if (matchId === 'm2' && next.m3) next.m3.teamB = winnerTeam;
-      return next;
-    }
-    if (count === 7) {
-      if (matchId === 'q1' && next.m1) next.m1.teamB = winnerTeam;
-      if (matchId === 'q2' && next.m2) next.m2.teamA = winnerTeam;
-      if (matchId === 'q3' && next.m2) next.m2.teamB = winnerTeam;
-      if (matchId === 'm1' && next.m3) next.m3.teamA = winnerTeam;
-      if (matchId === 'm2' && next.m3) next.m3.teamB = winnerTeam;
-      return next;
-    }
-    if (count === 8) {
-      if (matchId === 'q1' && next.s1) next.s1.teamA = winnerTeam;
-      if (matchId === 'q2' && next.s1) next.s1.teamB = winnerTeam;
-      if (matchId === 'q3' && next.s2) next.s2.teamA = winnerTeam;
-      if (matchId === 'q4' && next.s2) next.s2.teamB = winnerTeam;
-      if (matchId === 's1' && next.f1) next.f1.teamA = winnerTeam;
-      if (matchId === 's2' && next.f1) next.f1.teamB = winnerTeam;
-      return next;
-    }
-    if (count >= 9 && count <= 12) {
-      if (matchId === 'pi1' && next.q1) next.q1.teamB = winnerTeam;
-      if (matchId === 'pi2' && next.q3) next.q3.teamB = winnerTeam;
-      if (matchId === 'q1' && next.s1) next.s1.teamA = winnerTeam;
-      if (matchId === 'q2' && next.s1) next.s1.teamB = winnerTeam;
-      if (matchId === 'q3' && next.s2) next.s2.teamA = winnerTeam;
-      if (matchId === 'q4' && next.s2) next.s2.teamB = winnerTeam;
-      if (matchId === 's1' && next.f1) next.f1.teamA = winnerTeam;
-      if (matchId === 's2' && next.f1) next.f1.teamB = winnerTeam;
-      return next;
-    }
-    if (count >= 13) {
-      if (matchId === 'o1' && next.q1) next.q1.teamA = winnerTeam;
-      if (matchId === 'o2' && next.q1) next.q1.teamB = winnerTeam;
-      if (matchId === 'o3' && next.q2) next.q2.teamA = winnerTeam;
-      if (matchId === 'o4' && next.q2) next.q2.teamB = winnerTeam;
-      if (matchId === 'o5' && next.q3) next.q3.teamA = winnerTeam;
-      if (matchId === 'o6' && next.q3) next.q3.teamB = winnerTeam;
-      if (matchId === 'o7' && next.q4) next.q4.teamA = winnerTeam;
-      if (matchId === 'o8' && next.q4) next.q4.teamB = winnerTeam;
-      if (matchId === 'q1' && next.s1) next.s1.teamA = winnerTeam;
-      if (matchId === 'q2' && next.s1) next.s1.teamB = winnerTeam;
-      if (matchId === 'q3' && next.s2) next.s2.teamA = winnerTeam;
-      if (matchId === 'q4' && next.s2) next.s2.teamB = winnerTeam;
-      if (matchId === 's1' && next.f1) next.f1.teamA = winnerTeam;
-      if (matchId === 's2' && next.f1) next.f1.teamB = winnerTeam;
-      return next;
-    }
+    const target = getNextSlotTarget(matchId, count);
+    if (!target || !next[target.nextId]) return next;
+    next[target.nextId] = {
+      ...next[target.nextId],
+      [target.slot]: winnerTeam,
+    };
     return next;
-  }, []);
+  }, [getNextSlotTarget]);
 
   // Initialize Matches using buildMatchesStructure
   const initBracketMatches = useCallback((count, currentTeams = teams) => {
@@ -205,33 +244,43 @@ export default function TournamentBracketModal({
   // Handle Team Shuffling
   const handleShuffleTeams = () => {
     if (soundEnabled) playClickSound();
-    const shuffled = [...teams].sort(() => Math.random() - 0.5);
+    const shuffled = cryptoShuffle(teams);
     setTeams(shuffled);
     initBracketMatches(teamCount, shuffled);
   };
 
-  // Update Score & Propagate Winner
+  // Update Score & Propagate/Reset Winner (CS2 MR12: >= 13 rounds with >= 2-round lead)
   const updateMatchScore = (matchId, side, score) => {
     const num = Math.max(0, parseInt(score, 10) || 0);
     setMatches((prev) => {
+      if (!prev[matchId]) return prev;
       const match = { ...prev[matchId] };
-      if (!match) return prev;
+      const previousWinner = match.winner;
       if (side === 'A') match.scoreA = num;
       if (side === 'B') match.scoreB = num;
 
-      // Determine Winner
-      if (match.scoreA >= 13 && match.scoreA > match.scoreB) {
+      const scoreA = Number(match.scoreA) || 0;
+      const scoreB = Number(match.scoreB) || 0;
+
+      if (scoreA >= 13 && scoreA - scoreB >= 2) {
         match.winner = match.teamA;
         match.status = 'finished';
-      } else if (match.scoreB >= 13 && match.scoreB > match.scoreA) {
+      } else if (scoreB >= 13 && scoreB - scoreA >= 2) {
         match.winner = match.teamB;
         match.status = 'finished';
-      } else if (match.scoreA > 0 || match.scoreB > 0) {
-        match.status = 'live';
+      } else {
+        match.winner = null;
+        match.status = (scoreA > 0 || scoreB > 0) ? 'live' : 'pending';
       }
 
       const next = { ...prev, [matchId]: match };
-      return propagateWinner(next, matchId, match.winner, teamCount);
+      if (previousWinner && previousWinner !== match.winner) {
+        clearDownstreamWinner(next, matchId, previousWinner, teamCount);
+      }
+      if (match.winner) {
+        return propagateWinner(next, matchId, match.winner, teamCount);
+      }
+      return next;
     });
   };
 
@@ -394,7 +443,12 @@ export default function TournamentBracketModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-fadeIn">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-fadeIn"
+      role="dialog"
+      aria-modal="true"
+      aria-label={tournamentName}
+    >
       <div className="bg-slate-900 border border-amber-500/30 rounded-3xl w-full max-w-6xl max-h-[94vh] flex flex-col shadow-2xl overflow-hidden">
         
         {/* Header with Editable Tournament Name */}
@@ -435,6 +489,8 @@ export default function TournamentBracketModal({
             </div>
           </div>
           <button
+            type="button"
+            aria-label="Fechar janela de torneio"
             onClick={() => {
               if (soundEnabled) playClickSound();
               onClose();

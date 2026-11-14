@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { AlertTriangle, Trash2, X } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
 
@@ -10,6 +10,18 @@ export default function DeleteRoomModal({
   roomName,
   soundEnabled,
 }) {
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        if (soundEnabled) playClickSound();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose, soundEnabled]);
+
   if (!isOpen) return null;
 
   const handleConfirm = () => {
@@ -19,14 +31,21 @@ export default function DeleteRoomModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm animate-fadeIn">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm animate-fadeIn"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="delete-room-modal-title"
+    >
       <div className="relative w-full max-w-md bg-[#0d131f] border-2 border-red-500/60 rounded-3xl p-6 text-center shadow-2xl">
         {/* Glow */}
         <div className="absolute top-0 right-0 w-40 h-40 bg-red-500/15 rounded-full blur-3xl pointer-events-none" />
 
         {/* Close Button */}
         <button
+          type="button"
           onClick={onClose}
+          aria-label="Fechar janela de exclusão"
           className="absolute top-4 right-4 p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
         >
           <X size={18} />

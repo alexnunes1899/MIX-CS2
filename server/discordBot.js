@@ -1,4 +1,4 @@
-﻿/**
+/**
  * CS2 Mix Hub • Official Discord Bot Engine (Ultra-Refined & Dynamic eSports Edition)
  * Full-featured competitive Discord Bot with Slash Commands, interactive Buttons,
  * 10/10 Ready Check (Anti-AFK), automatic Snake-Draft Elo balancing,
@@ -49,7 +49,8 @@ import { freeGamesRadar } from './freeGamesRadar.js';
 import { communityClips } from './communityClips.js';
 import { bagreVoteService } from './bagreVote.js';
 import { executeRconCommand } from './rcon.js';
-import { getLeaderboard } from './leaderboard.js';
+import { getLeaderboard, syncDiscordProfilesToLeaderboard } from './leaderboard.js';
+import { sanitizeRconTextArg, isValidServerAddress } from './utils/security.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
@@ -295,13 +296,51 @@ class DiscordBotManager {
     this.playersGsiStates = new Map();
     // Active Live Match Discord message trackers for real-time round-by-round auto-editing
     this.liveTrackers = new Map();
+    this.liveTrackersSyncInterval = null;
+    this._isSyncingLiveTrackers = false;
+    this._isDispatchingDeals = false;
+    this._isCheckingCs2Updates = false;
+    this._initialDealsTimeout = null;
+    this._initialUpdatesTimeout = null;
 
+    this.startLiveTrackersSyncLoop();
+  }
+
+  startLiveTrackersSyncLoop() {
+    if (this.liveTrackersSyncInterval) {
+      clearInterval(this.liveTrackersSyncInterval);
+    }
     // Auto-sync live trackers periodically every 1.0 second (real-time Discord rate)
-    setInterval(() => {
+    this.liveTrackersSyncInterval = setInterval(() => {
       if (this.liveTrackers && this.liveTrackers.size > 0 && this.lastGsiState) {
         this.syncLiveTrackers(this.lastGsiState).catch(() => {});
       }
     }, 1000);
+    this.liveTrackersSyncInterval.unref?.();
+  }
+
+  getUniqueActiveMixes() {
+    const seen = new Set();
+    const list = [];
+    for (const m of this.activeMixes.values()) {
+      if (!m || seen.has(m)) continue;
+      seen.add(m);
+      list.push(m);
+    }
+    return list;
+  }
+
+  isGuildModerator(member, guild, mix = null, userId = null) {
+    const uid = userId || member?.id || member?.user?.id;
+    if (mix && uid && mix.creatorId === uid) return true;
+    if (guild && uid && guild.ownerId === uid) return true;
+    const perms = member?.permissions;
+    if (perms && typeof perms.has === 'function') {
+      if (perms.has(PermissionsBitField.Flags.ManageGuild) || perms.has(PermissionsBitField.Flags.Administrator)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   setWebRoomsReference(roomsRef) {
@@ -341,7 +380,7 @@ class DiscordBotManager {
     if (mix) {
       mix.narrationEnabled = nextState;
     }
-    for (const [, m] of this.activeMixes.entries()) {
+    for (const m of this.getUniqueActiveMixes()) {
       if (m && m.phase !== 'finished' && m.phase !== 'cancelled') {
         m.narrationEnabled = nextState;
       }
@@ -365,7 +404,7 @@ class DiscordBotManager {
       const m = this.activeMixes.get(channelId);
       if (isValidLiveMix(m)) return m;
     }
-    for (const [, m] of this.activeMixes.entries()) {
+    for (const m of this.getUniqueActiveMixes()) {
       if (isValidLiveMix(m)) return m;
     }
     return null;
@@ -373,7 +412,7 @@ class DiscordBotManager {
 
   stopAllLiveMonitoring() {
     this.narrationEnabled = false;
-    for (const [, m] of this.activeMixes.entries()) {
+    for (const m of this.getUniqueActiveMixes()) {
       if (m) m.narrationEnabled = false;
     }
   }
@@ -546,6 +585,14 @@ class DiscordBotManager {
         roomId: roomId || 'MIX-PRO',
         receivedAt: now,
       });
+      if (this.playersGsiStates.size > 200) {
+        const cutoff = now - 6 * 3600 * 1000;
+        for (const [k, v] of this.playersGsiStates.entries()) {
+          if (!v || (v.receivedAt || 0) < cutoff) {
+            this.playersGsiStates.delete(k);
+          }
+        }
+      }
     }
 
     // SEMPRE atualiza em tempo real os cards do !aovivo / /aovivo que estiverem abertos no Discord!
@@ -1151,67 +1198,73 @@ class DiscordBotManager {
   }
 
   async syncLiveTrackers(liveState) {
+    if (this._isSyncingLiveTrackers) return;
     if (!this.liveTrackers || this.liveTrackers.size === 0) return;
     const stateToUse = liveState || this.lastGsiState;
     if (!stateToUse) return;
 
-    const now = Date.now();
-    const sig = `${stateToUse?.roundNumber}_${stateToUse?.scoreCT}_${stateToUse?.scoreTR}_${stateToUse?.bomb}_${stateToUse?.player?.isAlive}_${stateToUse?.player?.health}_${stateToUse?.player?.kills}_${stateToUse?.player?.deaths}_${stateToUse?.aliveCountCT}_${stateToUse?.aliveCountTR}_${stateToUse?.totalMoneyCT}_${stateToUse?.totalMoneyTR}_${stateToUse?.player?.roundKills}_${stateToUse?.player?.activeWeapon?.name}_${stateToUse?.player?.team}_${stateToUse?.phase}_${stateToUse?.isGameOver}`;
+    this._isSyncingLiveTrackers = true;
+    try {
+      const now = Date.now();
+      const sig = `${stateToUse?.roundNumber}_${stateToUse?.scoreCT}_${stateToUse?.scoreTR}_${stateToUse?.bomb}_${stateToUse?.player?.isAlive}_${stateToUse?.player?.health}_${stateToUse?.player?.kills}_${stateToUse?.player?.deaths}_${stateToUse?.aliveCountCT}_${stateToUse?.aliveCountTR}_${stateToUse?.totalMoneyCT}_${stateToUse?.totalMoneyTR}_${stateToUse?.player?.roundKills}_${stateToUse?.player?.activeWeapon?.name}_${stateToUse?.player?.team}_${stateToUse?.phase}_${stateToUse?.isGameOver}`;
 
-    for (const [msgId, tracker] of this.liveTrackers.entries()) {
-      if (now - tracker.startedAt > 2.5 * 3600 * 1000) {
-        this.liveTrackers.delete(msgId);
-        continue;
-      }
-      if (tracker.state === 'finished' && now - tracker.lastEditedAt > 5 * 60 * 1000) {
-        this.liveTrackers.delete(msgId);
-        continue;
-      }
-
-      if (now - tracker.lastEditedAt < 1000) continue;
-      if (tracker.lastSignature === sig && tracker.state !== 'waiting') continue;
-
-      try {
-        const channel =
-          this.client?.channels?.cache?.get(tracker.channelId) ||
-          (await this.client?.channels?.fetch(tracker.channelId).catch(() => null));
-        if (!channel) {
+      for (const [msgId, tracker] of this.liveTrackers.entries()) {
+        if (now - tracker.startedAt > 2.5 * 3600 * 1000) {
+          this.liveTrackers.delete(msgId);
+          continue;
+        }
+        if (tracker.state === 'finished' && now - tracker.lastEditedAt > 5 * 60 * 1000) {
           this.liveTrackers.delete(msgId);
           continue;
         }
 
-        const msg = await channel.messages.fetch(msgId).catch(() => null);
-        if (!msg) {
-          this.liveTrackers.delete(msgId);
-          continue;
-        }
+        if (now - tracker.lastEditedAt < 1000) continue;
+        if (tracker.lastSignature === sig && tracker.state !== 'waiting') continue;
 
-        const isExpanded = Boolean(tracker.isExpanded);
-        const mix = this.activeMixes?.get(tracker.channelId);
-        const embed = this.buildLiveMatchEmbed(tracker.requester, tracker.targetQuery, isExpanded, mix);
-        const row = this.buildLiveMatchButtons(Boolean(stateToUse?.player?.name), isExpanded);
-
-        await msg.edit({ embeds: [embed], components: [row] }).catch((e) => {
-          if (e.code === 10008) {
+        try {
+          const channel =
+            this.client?.channels?.cache?.get(tracker.channelId) ||
+            (await this.client?.channels?.fetch(tracker.channelId).catch(() => null));
+          if (!channel) {
             this.liveTrackers.delete(msgId);
-          } else {
-            console.warn('[DISCORD BOT LIVE TRACKER EDIT WARNING]:', e.message);
+            continue;
           }
-        });
 
-        tracker.lastEditedAt = Date.now();
-        tracker.lastSignature = sig;
-        if (stateToUse?.isGameOver) {
-          tracker.state = 'finished';
-        } else if (stateToUse?.player?.name || stateToUse?.rawPlayer?.name) {
-          tracker.state = 'in_game';
-        }
-      } catch (err) {
-        tracker.consecutiveErrors = (tracker.consecutiveErrors || 0) + 1;
-        if (tracker.consecutiveErrors > 5) {
-          this.liveTrackers.delete(msgId);
+          const msg = await channel.messages.fetch(msgId).catch(() => null);
+          if (!msg) {
+            this.liveTrackers.delete(msgId);
+            continue;
+          }
+
+          const isExpanded = Boolean(tracker.isExpanded);
+          const mix = this.activeMixes?.get(tracker.channelId);
+          const embed = this.buildLiveMatchEmbed(tracker.requester, tracker.targetQuery, isExpanded, mix);
+          const row = this.buildLiveMatchButtons(Boolean(stateToUse?.player?.name), isExpanded);
+
+          await msg.edit({ embeds: [embed], components: [row] }).catch((e) => {
+            if (e.code === 10008) {
+              this.liveTrackers.delete(msgId);
+            } else {
+              console.warn('[DISCORD BOT LIVE TRACKER EDIT WARNING]:', e.message);
+            }
+          });
+
+          tracker.lastEditedAt = Date.now();
+          tracker.lastSignature = sig;
+          if (stateToUse?.isGameOver) {
+            tracker.state = 'finished';
+          } else if (stateToUse?.player?.name || stateToUse?.rawPlayer?.name) {
+            tracker.state = 'in_game';
+          }
+        } catch (err) {
+          tracker.consecutiveErrors = (tracker.consecutiveErrors || 0) + 1;
+          if (tracker.consecutiveErrors > 5) {
+            this.liveTrackers.delete(msgId);
+          }
         }
       }
+    } finally {
+      this._isSyncingLiveTrackers = false;
     }
   }
   loadPlayerProfiles() {
@@ -1269,30 +1322,7 @@ class DiscordBotManager {
 
   updateLeaderboardFile(profiles) {
     try {
-      const list = Object.entries(profiles)
-        .map(([id, p]) => {
-          const wins = p.wins || 0;
-          const losses = p.losses || 0;
-          const total = wins + losses;
-          const winRate = total > 0 ? Math.round((wins / total) * 100) : 0;
-          return {
-            id,
-            nick: p.username || `<@${id}>`,
-            level: p.level || 16,
-            wins,
-            losses,
-            total,
-            winRate,
-            mvps: p.mvps || 0,
-            streak: p.streak || 0,
-          };
-        })
-        .filter((p) => p.total > 0 || p.wins > 0 || p.mvps > 0)
-        .sort((a, b) => (b.wins || 0) - (a.wins || 0) || (b.winRate || 0) - (a.winRate || 0));
-
-      const dataDir = path.dirname(LEADERBOARD_FILE);
-      if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-      fs.writeFileSync(LEADERBOARD_FILE, JSON.stringify(list, null, 2), 'utf8');
+      syncDiscordProfilesToLeaderboard(profiles);
     } catch (e) {
       console.warn('[DISCORD BOT] Falha ao atualizar leaderboard.json:', e.message);
     }
@@ -1347,6 +1377,7 @@ class DiscordBotManager {
 
   getStatus() {
     const isReady = Boolean(this.client && this.client.isReady());
+    const uniqueMixesCount = this.getUniqueActiveMixes().length;
     const safeConfig = {
       hasToken: Boolean(this.config.token),
       clientId: this.config.clientId || '',
@@ -1369,14 +1400,14 @@ class DiscordBotManager {
         guildCount: this.client.guilds.cache.size,
         ping: this.client.ws.ping,
         config: safeConfig,
-        activeMixesCount: this.activeMixes.size,
+        activeMixesCount: uniqueMixesCount,
       };
     }
     return {
       ...this.status,
       running: false,
       config: safeConfig,
-      activeMixesCount: this.activeMixes.size,
+      activeMixesCount: uniqueMixesCount,
     };
   }
 
@@ -1445,6 +1476,7 @@ class DiscordBotManager {
       this.status.running = true;
       this.status.startedAt = new Date().toISOString();
       this.status.lastError = null;
+      this.startLiveTrackersSyncLoop();
 
       // Register or update Slash Commands
       await this.registerSlashCommands();
@@ -1462,6 +1494,22 @@ class DiscordBotManager {
     if (this.dealsMonitorInterval) {
       clearInterval(this.dealsMonitorInterval);
       this.dealsMonitorInterval = null;
+    }
+    if (this.cs2UpdateRadarInterval) {
+      clearInterval(this.cs2UpdateRadarInterval);
+      this.cs2UpdateRadarInterval = null;
+    }
+    if (this.liveTrackersSyncInterval) {
+      clearInterval(this.liveTrackersSyncInterval);
+      this.liveTrackersSyncInterval = null;
+    }
+    if (this._initialDealsTimeout) {
+      clearTimeout(this._initialDealsTimeout);
+      this._initialDealsTimeout = null;
+    }
+    if (this._initialUpdatesTimeout) {
+      clearTimeout(this._initialUpdatesTimeout);
+      this._initialUpdatesTimeout = null;
     }
     if (this.client) {
       try {
@@ -1976,10 +2024,16 @@ class DiscordBotManager {
       }
       const ip = args.slice(1).join(' ').trim();
       if (ip) {
+        const mix = this.activeMixes.get(message.channelId);
+        if (!this.isGuildModerator(message.member, message.guild, mix, message.author?.id)) {
+          return message.reply('🚫 Apenas administradores do servidor ou o criador do mix podem alterar o IP do servidor.');
+        }
         const clean = ip.replace(/^connect\s+/i, '').trim();
+        if (!isValidServerAddress(clean)) {
+          return message.reply('⚠️ Endereço de servidor inválido. Use o formato `ip:porta` (ex: `189.1.168.20:27015`).');
+        }
         this.config.serverConnect = clean;
         this.saveConfig({ serverConnect: clean });
-        const mix = this.activeMixes.get(message.channelId);
         if (mix) {
           mix.serverIp = clean;
           this.syncToWebRoom(mix);
@@ -2165,27 +2219,22 @@ class DiscordBotManager {
     try {
       const embed = this.buildLobbyEmbed(mix);
       const components = this.buildLobbyButtons(mix);
+      const editedTargets = new Set();
 
-      // 1. Atualiza mensagens nos canais registrados em activeMixes
-      if (this.activeMixes && this.activeMixes.size > 0) {
-        for (const m of this.activeMixes.values()) {
-          if (m && m.channelId && m.lobbyMessageId && (m.id === mix.id || m.phase === 'lobby')) {
-            const channel = await this.client.channels.fetch(m.channelId).catch(() => null);
-            if (channel && channel.isTextBased()) {
-              const msg = await channel.messages.fetch(m.lobbyMessageId).catch(() => null);
-              if (msg) {
-                await msg.edit({ embeds: [embed], components }).catch(() => {});
-              }
-            }
-          }
-        }
+      const targets = this.getUniqueActiveMixes().filter(
+        (m) => m && m.channelId && m.lobbyMessageId && m.channelId !== 'whatsapp-mix' && (m.id === mix.id || m.phase === 'lobby')
+      );
+      if (mix.channelId && mix.lobbyMessageId && mix.channelId !== 'whatsapp-mix') {
+        targets.push(mix);
       }
 
-      // 2. Atualiza diretamente se o próprio mix tiver channelId e lobbyMessageId
-      if (mix.channelId && mix.lobbyMessageId && mix.channelId !== 'whatsapp-mix') {
-        const channel = await this.client.channels.fetch(mix.channelId).catch(() => null);
+      for (const m of targets) {
+        const key = `${m.channelId}:${m.lobbyMessageId}`;
+        if (editedTargets.has(key)) continue;
+        editedTargets.add(key);
+        const channel = await this.client.channels.fetch(m.channelId).catch(() => null);
         if (channel && channel.isTextBased()) {
-          const msg = await channel.messages.fetch(mix.lobbyMessageId).catch(() => null);
+          const msg = await channel.messages.fetch(m.lobbyMessageId).catch(() => null);
           if (msg) {
             await msg.edit({ embeds: [embed], components }).catch(() => {});
           }
@@ -2538,9 +2587,13 @@ class DiscordBotManager {
   }
 
   async prefixCancel(message) {
+    const existing = this.activeMixes.get(message.channelId);
+    if (!existing) return message.reply('⚠️ Nenhum mix ativo neste canal.');
+    if (!this.isGuildModerator(message.member, message.guild, existing, message.author?.id)) {
+      return message.reply('🚫 Apenas o **Criador do Mix** ou um **Administrador** pode cancelar este mix.');
+    }
     const mix = this.deleteMix(message.channelId);
-    if (!mix) return message.reply('⚠️ Nenhum mix ativo neste canal.');
-    return message.reply(`❌ O mix **${mix.name}** foi cancelado com sucesso.`);
+    return message.reply(`❌ O mix **${mix?.name || existing.name}** foi cancelado com sucesso.`);
   }
 
   async prefixRematch(message) {
@@ -4106,8 +4159,8 @@ class DiscordBotManager {
 
       const capA = mix.teamA?.captain?.displayName || mix.teamA?.captain?.username || mix.teamA?.captain?.nick || 'A';
       const capB = mix.teamB?.captain?.displayName || mix.teamB?.captain?.username || mix.teamB?.captain?.nick || 'B';
-      const cleanNameA = (`TIME ${capA}`).replace(/["';]/g, '').slice(0, 24).toUpperCase();
-      const cleanNameB = (`TIME ${capB}`).replace(/["';]/g, '').slice(0, 24).toUpperCase();
+      const cleanNameA = sanitizeRconTextArg(`TIME ${capA}`, 24).toUpperCase() || 'TIME A';
+      const cleanNameB = sanitizeRconTextArg(`TIME ${capB}`, 24).toUpperCase() || 'TIME B';
 
       const isACt = (mix.teamA?.side || 'CT').toUpperCase() === 'CT';
       const ctName = isACt ? cleanNameA : cleanNameB;
@@ -4133,13 +4186,14 @@ class DiscordBotManager {
 
       const [host, portStr] = rawServer.split(':');
       const port = parseInt(portStr, 10) || 27015;
-      const cleanMap = mapObj.id.startsWith('de_') ? mapObj.id : `de_${mapObj.id}`;
+      const cleanMap = (mapObj.id.startsWith('de_') ? mapObj.id : `de_${mapObj.id}`).replace(/[^a-zA-Z0-9_-]/g, '');
+      const safeMapLabel = sanitizeRconTextArg(mapObj.name || cleanMap, 24).toUpperCase();
 
       await executeRconCommand({
         host,
         port,
         password: rconPwd,
-        command: `say ">>> [CS2 MIX HUB] Mapa definido: ${mapObj.name.toUpperCase()} (${cleanMap}) | Trocando mapa automaticamente..."`,
+        command: `say ">>> [CS2 MIX HUB] Mapa definido: ${safeMapLabel} (${cleanMap}) | Trocando mapa automaticamente..."`,
       }).catch(() => {});
 
       await executeRconCommand({
@@ -4168,6 +4222,10 @@ class DiscordBotManager {
     try {
       const roomId = mix.id;
       const existing = this.webRoomsRef.get(roomId) || {};
+      const activeWebPhases = ['captains_draft', 'coin_flip', 'veto', 'side_pick', 'finished'];
+      const nextPhase = mix.phase === 'live'
+        ? 'match'
+        : (activeWebPhases.includes(existing.phase) ? existing.phase : 'lobby');
       const room = {
         ...existing,
         id: roomId,
@@ -4178,7 +4236,7 @@ class DiscordBotManager {
         creatorNick: mix.creatorNick,
         source: 'discord',
         sourceLabel: 'Via Discord',
-        phase: mix.phase === 'live' ? 'match' : 'lobby',
+        phase: nextPhase,
         players: (mix.players || []).map((p) => ({
           id: p.id,
           nick: p.displayName || p.username,
@@ -4952,13 +5010,14 @@ class DiscordBotManager {
       const [host, portStr] = rawServer.split(':');
       const port = parseInt(portStr, 10) || 27015;
 
+      const safeActor = sanitizeRconTextArg(user.username, 24) || 'Admin';
       try {
         if (rconAct === 'rcon_pause') {
           await executeRconCommand({
             host,
             port,
             password: rconPwd,
-            command: `mp_pause_match; say ">>> [DISCORD MIX HUB] Partida PAUSADA por ${user.username} no proximo freezetime!"`,
+            command: `mp_pause_match; say ">>> [DISCORD MIX HUB] Partida PAUSADA por ${safeActor} no proximo freezetime!"`,
           });
           return interaction.reply({ content: `\u23f8\ufe0f <@${user.id}> enviou **Pause T\u00e1tico (\`mp_pause_match\`)** para o servidor CS2!` });
         }
@@ -4967,7 +5026,7 @@ class DiscordBotManager {
             host,
             port,
             password: rconPwd,
-            command: `mp_unpause_match; say ">>> [DISCORD MIX HUB] Partida DESPAUSADA por ${user.username}! GL & HF!"`,
+            command: `mp_unpause_match; say ">>> [DISCORD MIX HUB] Partida DESPAUSADA por ${safeActor}! GL & HF!"`,
           });
           return interaction.reply({ content: `\u25b6\ufe0f <@${user.id}> **despausou (\`mp_unpause_match\`)** a partida no servidor CS2!` });
         }
@@ -4977,7 +5036,7 @@ class DiscordBotManager {
             host,
             port,
             password: rconPwd,
-            command: `mp_warmup_end; mp_restartgame 1; say ">>> [DISCORD MIX HUB] LIVE! Partida iniciada/reiniciada por ${user.username}!"`,
+            command: `mp_warmup_end; mp_restartgame 1; say ">>> [DISCORD MIX HUB] LIVE! Partida iniciada/reiniciada por ${safeActor}!"`,
           });
           return interaction.reply({ content: `\ud83d\udd25 <@${user.id}> encerrou o aquecimento e puxou **LIVE (\`mp_restartgame 1\`)** no CS2!` });
         }
@@ -5824,6 +5883,12 @@ class DiscordBotManager {
 
     if (canEditOverwrites) {
       this._voiceOverwriteCache.set(cacheKey, nowTs);
+      if (this._voiceOverwriteCache.size > 200) {
+        const cutoff = nowTs - 30 * 60 * 1000;
+        for (const [k, ts] of this._voiceOverwriteCache.entries()) {
+          if ((ts || 0) < cutoff) this._voiceOverwriteCache.delete(k);
+        }
+      }
       try {
         if (channelA && channelA.manageable) {
           const overwritesA = [
@@ -6847,8 +6912,27 @@ class DiscordBotManager {
   async cmdServer(interaction) {
     const input = interaction.options.getString('ip_porta');
     if (input) {
-      this.config.serverConnect = input.trim();
-      this.saveConfig({ serverConnect: input.trim() });
+      const mix = this.activeMixes.get(interaction.channelId);
+      if (!this.isGuildModerator(interaction.member, interaction.guild, mix, interaction.user?.id)) {
+        return interaction.reply({
+          content: '🚫 Apenas administradores do servidor ou o criador do mix podem alterar o IP do servidor.',
+          ephemeral: true,
+        });
+      }
+      const clean = input.replace(/^connect\s+/i, '').trim();
+      if (!isValidServerAddress(clean)) {
+        return interaction.reply({
+          content: '⚠️ Endereço de servidor inválido. Use o formato `ip:porta` (ex: `189.1.168.20:27015`).',
+          ephemeral: true,
+        });
+      }
+      this.config.serverConnect = clean;
+      this.saveConfig({ serverConnect: clean });
+      if (mix) {
+        mix.serverIp = clean;
+        this.syncToWebRoom(mix);
+        this.updateLobbyInChannels(mix);
+      }
       return interaction.reply({
         content: `✅ Servidor CS2 configurado com sucesso para os mixes: \`${this.config.serverConnect}\``,
       });
@@ -6864,13 +6948,10 @@ class DiscordBotManager {
 
   async cmdRanking(interaction) {
     try {
-      const filePath = path.join(__dirname, 'data', 'leaderboard.json');
-      let data = [];
-      if (fs.existsSync(filePath)) {
-        data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-      }
+      const lb = getLeaderboard();
+      const data = Array.isArray(lb?.players) ? lb.players : (Array.isArray(lb) ? lb : []);
 
-      if (!Array.isArray(data) || data.length === 0) {
+      if (data.length === 0) {
         return interaction.reply({
           content: '🏆 **Hall da Fama:** Ainda não há partidas registradas. Jogue o primeiro mix para pontuar!',
         });
@@ -7053,76 +7134,84 @@ class DiscordBotManager {
   }
 
   async dispatchAutomaticDealsDrop(categoryType = 'all') {
+    if (this._isDispatchingDeals) return;
     if (!this.client || !this.client.isReady()) return;
 
-    let deals = [];
-    let title = '🔥 RADAR AUTOMÁTICO • SUPER OFERTAS GAMER';
-    let desc = '⚡ **PROMOÇÕES RELÂMPAGO DO DIA!** Oportunidades verificadas em **KaBuM!**, **Pichau** e **TerabyteShop**:';
+    this._isDispatchingDeals = true;
+    try {
+      let deals = [];
+      let title = '🔥 RADAR AUTOMÁTICO • SUPER OFERTAS GAMER';
+      let desc = '⚡ **PROMOÇÕES RELÂMPAGO DO DIA!** Oportunidades verificadas em **KaBuM!**, **Pichau** e **TerabyteShop**:';
 
-    if (categoryType === 'cadeira_mesa') {
-      const cadeiras = await hardwareDealsManager.getDeals({ category: 'cadeira', limit: 2 });
-      const mesas = await hardwareDealsManager.getDeals({ category: 'mesa', limit: 2 });
-      deals = [...cadeiras, ...mesas];
-      title = '💺🪵 ALERTA DE OFERTAS • CADEIRAS & MESAS GAMER';
-      desc = '🛋️ **CONFORTO & ERGONOMIA GAMER!** Cadeiras reclináveis e mesas reforçadas com desconto:';
-    } else if (categoryType === 'gpu_cpu') {
-      const gpus = await hardwareDealsManager.getDeals({ category: 'gpu', limit: 2 });
-      const cpus = await hardwareDealsManager.getDeals({ category: 'cpu', limit: 2 });
-      deals = [...gpus, ...cpus];
-      title = '🎮⚡ ALERTA DE OFERTAS • PLACAS DE VÍDEO & PROCESSADORES';
-      desc = '🚀 **MÁXIMO FPS NO CS2!** As melhores GPUs e processadores Ryzen/Intel com preço reduzido:';
-    } else if (categoryType === 'mouse_teclado') {
-      const mouses = await hardwareDealsManager.getDeals({ query: 'mouse gamer', limit: 2 });
-      const teclados = await hardwareDealsManager.getDeals({ query: 'teclado mecanico', limit: 2 });
-      deals = [...mouses, ...teclados];
-      title = '🖱️⌨️ ALERTA DE OFERTAS • MOUSES & TECLADOS MECÂNICOS';
-      desc = '🎯 **PRECISÃO COMPETITIVA!** Mouses ultraleves e teclados mecânicos em promoção:';
-    } else if (categoryType === 'monitor_audio') {
-      const monitores = await hardwareDealsManager.getDeals({ category: 'monitor', limit: 2 });
-      const audio = await hardwareDealsManager.getDeals({ category: 'audio', limit: 2 });
-      deals = [...monitores, ...audio];
-      title = '🖥️🎧 ALERTA DE OFERTAS • MONITORES 144Hz-240Hz & HEADSETS';
-      desc = '👀 **FLUIDEZ & ÁUDIO ESPACIAL!** Veja inimigos primeiro e escute passos com precisão:';
-    } else if (categoryType === 'ram_ssd') {
-      deals = await hardwareDealsManager.getDeals({ category: 'ram_ssd', limit: 4 });
-      title = '🚀🛡️ ALERTA DE OFERTAS • MEMÓRIAS RAM & SSDs NVMe';
-      desc = '⚡ **VELOCIDADE TOTAL!** Carregamento instantâneo de mapas e zero stuttering:';
-    } else {
-      deals = await hardwareDealsManager.getDeals({ limit: 4 });
-      title = '🔥 RADAR AUTOMÁTICO • SUPER OFERTAS PC GAMER';
-      desc = '⚡ **PROMOÇÕES RELÂMPAGO DO DIA!** Peças selecionadas com maiores descontos nas lojas confiáveis:';
-    }
-
-    if (!deals || deals.length === 0) return;
-
-    const embed = hardwareDealsManager.buildDealsEmbed(deals, { title, description: desc });
-    const selectMenu = hardwareDealsManager.buildCategorySelectMenu();
-    const actionButtons = hardwareDealsManager.buildActionButtons(deals);
-
-    for (const [guildId, guild] of this.client.guilds.cache) {
-      try {
-        const channel = await this.getOrCreateDealsChannel(guild);
-        if (!channel) continue;
-        await channel.send({ embeds: [embed], components: [selectMenu, ...actionButtons] }).catch(() => {});
-        console.log(`[DISCORD BOT] 🏷️ Ofertas automáticas (${categoryType}) postadas no canal #${channel.name} (${guild.name})!`);
-      } catch (err) {
-        console.warn(`[DISCORD BOT] Erro ao postar ofertas na guild "${guild.name}":`, err.message);
+      if (categoryType === 'cadeira_mesa') {
+        const cadeiras = await hardwareDealsManager.getDeals({ category: 'cadeira', limit: 2 });
+        const mesas = await hardwareDealsManager.getDeals({ category: 'mesa', limit: 2 });
+        deals = [...cadeiras, ...mesas];
+        title = '💺🪵 ALERTA DE OFERTAS • CADEIRAS & MESAS GAMER';
+        desc = '🛋️ **CONFORTO & ERGONOMIA GAMER!** Cadeiras reclináveis e mesas reforçadas com desconto:';
+      } else if (categoryType === 'gpu_cpu') {
+        const gpus = await hardwareDealsManager.getDeals({ category: 'gpu', limit: 2 });
+        const cpus = await hardwareDealsManager.getDeals({ category: 'cpu', limit: 2 });
+        deals = [...gpus, ...cpus];
+        title = '🎮⚡ ALERTA DE OFERTAS • PLACAS DE VÍDEO & PROCESSADORES';
+        desc = '🚀 **MÁXIMO FPS NO CS2!** As melhores GPUs e processadores Ryzen/Intel com preço reduzido:';
+      } else if (categoryType === 'mouse_teclado') {
+        const mouses = await hardwareDealsManager.getDeals({ query: 'mouse gamer', limit: 2 });
+        const teclados = await hardwareDealsManager.getDeals({ query: 'teclado mecanico', limit: 2 });
+        deals = [...mouses, ...teclados];
+        title = '🖱️⌨️ ALERTA DE OFERTAS • MOUSES & TECLADOS MECÂNICOS';
+        desc = '🎯 **PRECISÃO COMPETITIVA!** Mouses ultraleves e teclados mecânicos em promoção:';
+      } else if (categoryType === 'monitor_audio') {
+        const monitores = await hardwareDealsManager.getDeals({ category: 'monitor', limit: 2 });
+        const audio = await hardwareDealsManager.getDeals({ category: 'audio', limit: 2 });
+        deals = [...monitores, ...audio];
+        title = '🖥️🎧 ALERTA DE OFERTAS • MONITORES 144Hz-240Hz & HEADSETS';
+        desc = '👀 **FLUIDEZ & ÁUDIO ESPACIAL!** Veja inimigos primeiro e escute passos com precisão:';
+      } else if (categoryType === 'ram_ssd') {
+        deals = await hardwareDealsManager.getDeals({ category: 'ram_ssd', limit: 4 });
+        title = '🚀🛡️ ALERTA DE OFERTAS • MEMÓRIAS RAM & SSDs NVMe';
+        desc = '⚡ **VELOCIDADE TOTAL!** Carregamento instantâneo de mapas e zero stuttering:';
+      } else {
+        deals = await hardwareDealsManager.getDeals({ limit: 4 });
+        title = '🔥 RADAR AUTOMÁTICO • SUPER OFERTAS PC GAMER';
+        desc = '⚡ **PROMOÇÕES RELÂMPAGO DO DIA!** Peças selecionadas com maiores descontos nas lojas confiáveis:';
       }
+
+      if (!deals || deals.length === 0) return;
+
+      const embed = hardwareDealsManager.buildDealsEmbed(deals, { title, description: desc });
+      const selectMenu = hardwareDealsManager.buildCategorySelectMenu();
+      const actionButtons = hardwareDealsManager.buildActionButtons(deals);
+
+      for (const [, guild] of this.client.guilds.cache) {
+        try {
+          const channel = await this.getOrCreateDealsChannel(guild);
+          if (!channel) continue;
+          await channel.send({ embeds: [embed], components: [selectMenu, ...actionButtons] }).catch(() => {});
+          console.log(`[DISCORD BOT] 🏷️ Ofertas automáticas (${categoryType}) postadas no canal #${channel.name} (${guild.name})!`);
+        } catch (err) {
+          console.warn(`[DISCORD BOT] Erro ao postar ofertas na guild "${guild.name}":`, err.message);
+        }
+      }
+      this.saveConfig({ lastDealsDropAt: Date.now() });
+    } finally {
+      this._isDispatchingDeals = false;
     }
-    this.saveConfig({ lastDealsDropAt: Date.now() });
   }
 
   startScheduledDealsMonitor() {
     if (this.dealsMonitorInterval) clearInterval(this.dealsMonitorInterval);
+    if (this._initialDealsTimeout) clearTimeout(this._initialDealsTimeout);
 
     // Initial drop only if more than 45 minutes have passed since last drop (prevents duplicate spam on restarts)
     const elapsedSinceLastDrop = Date.now() - (Number(this.config.lastDealsDropAt) || 0);
     if (elapsedSinceLastDrop > 45 * 60 * 1000) {
-      setTimeout(() => {
+      this._initialDealsTimeout = setTimeout(() => {
         this.dispatchAutomaticDealsDrop('all').catch((err) => {
           console.warn('[DISCORD BOT] Aviso no drop inicial de ofertas:', err.message);
         });
       }, 8000);
+      this._initialDealsTimeout.unref?.();
     }
 
     // Rotating categories across cycles
@@ -7145,6 +7234,7 @@ class DiscordBotManager {
         console.warn('[DISCORD BOT] Erro ao disparar alertas de ofertas:', err.message);
       }
     }, intervalMs);
+    this.dealsMonitorInterval.unref?.();
   }
 
   async prefixDeals(message, args = []) {
@@ -7152,8 +7242,14 @@ class DiscordBotManager {
 
     // 1. Configure deals channel: !ofertas canal #promocoes
     if (sub === 'canal' || sub === 'channel') {
+      if (!this.isGuildModerator(message.member, message.guild, null, message.author?.id)) {
+        return message.reply('🚫 Apenas administradores do servidor podem configurar o canal de promoções.');
+      }
       const mentionedChannel = message.mentions.channels.first();
       const channelId = mentionedChannel ? mentionedChannel.id : (args[1] || message.channelId);
+      if (!isSnowflake(channelId)) {
+        return message.reply('⚠️ Canal inválido. Mencione um canal válido como `#promocoes`.');
+      }
       this.config.dealsChannels = this.config.dealsChannels || {};
       if (message.guild?.id) {
         this.config.dealsChannels[message.guild.id] = channelId;
@@ -7166,6 +7262,9 @@ class DiscordBotManager {
 
     // 2. Force post deals to channel: !ofertas postar
     if (sub === 'postar' || sub === 'alerta') {
+      if (!this.isGuildModerator(message.member, message.guild, null, message.author?.id)) {
+        return message.reply('🚫 Apenas administradores do servidor podem forçar o disparo de promoções.');
+      }
       await this.dispatchAutomaticDealsDrop('all');
       return message.reply(`🚀 Alerta de ofertas postado automaticamente em todos os canais configurados!`);
     }
@@ -7212,6 +7311,9 @@ class DiscordBotManager {
   }
 
   async cmdHardwareAlerts(interaction) {
+    if (!this.isGuildModerator(interaction.member, interaction.guild, null, interaction.user?.id)) {
+      return interaction.reply({ content: '🚫 Apenas administradores do servidor podem configurar alertas.', ephemeral: true });
+    }
     const channel = interaction.options?.getChannel('canal');
     const activate = interaction.options?.getBoolean('ativar') ?? true;
 
@@ -7306,6 +7408,8 @@ class DiscordBotManager {
   }
 
   async checkAndDispatchCs2Updates(forcePost = false) {
+    if (this._isCheckingCs2Updates) return false;
+    this._isCheckingCs2Updates = true;
     try {
       if (!this.client || !this.client.isReady()) return false;
       const patch = await cs2NewsRadar.fetchLatestPatch();
@@ -7337,20 +7441,25 @@ class DiscordBotManager {
     } catch (err) {
       console.warn('[CS2 NEWS MONITOR] Aviso:', err.message);
       return false;
+    } finally {
+      this._isCheckingCs2Updates = false;
     }
   }
 
   startCs2UpdateRadarMonitor() {
     if (this.cs2UpdateRadarInterval) clearInterval(this.cs2UpdateRadarInterval);
+    if (this._initialUpdatesTimeout) clearTimeout(this._initialUpdatesTimeout);
 
-    setTimeout(() => {
+    this._initialUpdatesTimeout = setTimeout(() => {
       this.checkAndDispatchCs2Updates(false).catch(() => {});
     }, 12000);
+    this._initialUpdatesTimeout.unref?.();
 
     // Verifica na API Oficial da Valve a cada 10 minutos
     this.cs2UpdateRadarInterval = setInterval(() => {
       this.checkAndDispatchCs2Updates(false).catch(() => {});
     }, 10 * 60 * 1000);
+    this.cs2UpdateRadarInterval.unref?.();
   }
 
   async prefixPatchNotes(message) {
@@ -7360,6 +7469,9 @@ class DiscordBotManager {
       const sub = (parts[1] || '').toLowerCase();
 
       if (sub === 'canal' || sub === 'channel') {
+        if (!this.isGuildModerator(message.member, message.guild, null, message.author?.id)) {
+          return message.reply('🚫 Apenas administradores do servidor podem configurar o canal de atualizações.');
+        }
         const mentioned = message.mentions.channels.first();
         const targetCh = mentioned || message.channel;
         this.config.patchNotesChannels = this.config.patchNotesChannels || {};
@@ -7373,6 +7485,9 @@ class DiscordBotManager {
       }
 
       if (sub === 'postar' || sub === 'geral' || sub === 'testar') {
+        if (!this.isGuildModerator(message.member, message.guild, null, message.author?.id)) {
+          return message.reply('🚫 Apenas administradores do servidor podem forçar o envio de atualizações.');
+        }
         await this.checkAndDispatchCs2Updates(true);
         const ch = await this.resolveGeneralChatChannel(message.guild);
         return message.reply(

@@ -122,6 +122,12 @@ export default function Lobby({
                 </span>
               )}
 
+              {hasPassword && (
+                <span className="text-[10px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full flex items-center gap-1 font-mono">
+                  <KeyRound size={10} /> Com Senha
+                </span>
+              )}
+
               {isAdmin && (
                 <span className="text-[10px] font-bold text-amber-300 bg-amber-500/20 border border-amber-500/40 px-2 py-0.5 rounded-full flex items-center gap-1 font-mono">
                   <Crown size={10} className="text-amber-400" /> Admin
@@ -130,7 +136,9 @@ export default function Lobby({
             </div>
             <p className="text-[11px] text-slate-400">
               {isPrivate
-                ? 'Sala privada sem senha. Os jogadores entram exclusivamente abrindo o Link de Convite.'
+                ? 'Sala privada. Os jogadores entram exclusivamente abrindo o Link de Convite.'
+                : hasPassword
+                ? 'Mix protegido por senha. Jogadores precisarão informar a senha da sala para entrar.'
                 : 'Mix público aberto. Qualquer jogador da comunidade pode entrar pelo Hub ou pelo link.'}
             </p>
           </div>
@@ -225,12 +233,13 @@ export default function Lobby({
 
       {/* Quick Mode Shortcuts Bar */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        <div
+        <button
+          type="button"
           onClick={() => {
             if (soundEnabled) playClickSound();
             onOpenQuickVeto();
           }}
-          className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-sky-500/50 rounded-2xl p-3.5 flex items-center justify-between cursor-pointer transition-all shadow-sm group"
+          className="w-full text-left bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-sky-500/50 rounded-2xl p-3.5 flex items-center justify-between cursor-pointer transition-all shadow-sm group"
         >
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-sky-500/20 text-sky-400 border border-sky-500/30 flex items-center justify-center group-hover:scale-105 transition-transform">
@@ -244,14 +253,15 @@ export default function Lobby({
             </div>
           </div>
           <span className="text-xs font-bold text-sky-400 group-hover:translate-x-1 transition-transform">➔</span>
-        </div>
+        </button>
 
-        <div
+        <button
+          type="button"
           onClick={() => {
             if (soundEnabled) playClickSound();
             onOpenQuickMapRoll();
           }}
-          className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-amber-500/50 rounded-2xl p-3.5 flex items-center justify-between cursor-pointer transition-all shadow-sm group"
+          className="w-full text-left bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-amber-500/50 rounded-2xl p-3.5 flex items-center justify-between cursor-pointer transition-all shadow-sm group"
         >
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center group-hover:scale-105 transition-transform">
@@ -265,16 +275,17 @@ export default function Lobby({
             </div>
           </div>
           <span className="text-xs font-bold text-amber-400 group-hover:translate-x-1 transition-transform">➔</span>
-        </div>
+        </button>
 
         {/* Tactical Grenade Playbook */}
         {onOpenGrenades && (
-          <div
+          <button
+            type="button"
             onClick={() => {
               if (soundEnabled) playClickSound();
               onOpenGrenades();
             }}
-            className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-emerald-500/50 rounded-2xl p-3.5 flex items-center justify-between cursor-pointer transition-all shadow-sm group"
+            className="w-full text-left bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-emerald-500/50 rounded-2xl p-3.5 flex items-center justify-between cursor-pointer transition-all shadow-sm group"
           >
             <div className="flex items-center gap-2.5">
               <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center group-hover:scale-105 transition-transform">
@@ -288,17 +299,18 @@ export default function Lobby({
               </div>
             </div>
             <span className="text-xs font-bold text-emerald-400 group-hover:translate-x-1 transition-transform">➔</span>
-          </div>
+          </button>
         )}
 
         {/* Aim Warmup Mini-Game */}
         {onOpenAimReflex && (
-          <div
+          <button
+            type="button"
             onClick={() => {
               if (soundEnabled) playClickSound();
               onOpenAimReflex();
             }}
-            className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-orange-500/50 rounded-2xl p-3.5 flex items-center justify-between cursor-pointer transition-all shadow-sm group"
+            className="w-full text-left bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-orange-500/50 rounded-2xl p-3.5 flex items-center justify-between cursor-pointer transition-all shadow-sm group"
           >
             <div className="flex items-center gap-2.5">
               <div className="w-9 h-9 rounded-xl bg-orange-500/20 text-orange-400 border border-orange-500/30 flex items-center justify-center group-hover:scale-105 transition-transform">
@@ -312,17 +324,18 @@ export default function Lobby({
               </div>
             </div>
             <span className="text-xs font-bold text-orange-400 group-hover:translate-x-1 transition-transform">➔</span>
-          </div>
+          </button>
         )}
 
         {/* Tournament Bracket Mode */}
         {onOpenTournament && (
-          <div
+          <button
+            type="button"
             onClick={() => {
               if (soundEnabled) playClickSound();
               onOpenTournament();
             }}
-            className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-purple-500/50 rounded-2xl p-3.5 flex items-center justify-between cursor-pointer transition-all shadow-sm group"
+            className="w-full text-left bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-purple-500/50 rounded-2xl p-3.5 flex items-center justify-between cursor-pointer transition-all shadow-sm group"
           >
             <div className="flex items-center gap-2.5">
               <div className="w-9 h-9 rounded-xl bg-purple-500/20 text-purple-400 border border-purple-500/30 flex items-center justify-center group-hover:scale-105 transition-transform">
@@ -336,17 +349,18 @@ export default function Lobby({
               </div>
             </div>
             <span className="text-xs font-bold text-purple-400 group-hover:translate-x-1 transition-transform">➔</span>
-          </div>
+          </button>
         )}
 
         {/* Dedicated Servers Hub */}
         {onOpenServersPage && (
-          <div
+          <button
+            type="button"
             onClick={() => {
               if (soundEnabled) playClickSound();
               onOpenServersPage();
             }}
-            className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-emerald-500/50 rounded-2xl p-3.5 flex items-center justify-between cursor-pointer transition-all shadow-sm group"
+            className="w-full text-left bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-emerald-500/50 rounded-2xl p-3.5 flex items-center justify-between cursor-pointer transition-all shadow-sm group"
           >
             <div className="flex items-center gap-2.5">
               <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center group-hover:scale-105 transition-transform">
@@ -360,7 +374,7 @@ export default function Lobby({
               </div>
             </div>
             <span className="text-xs font-bold text-emerald-400 group-hover:translate-x-1 transition-transform">➔</span>
-          </div>
+          </button>
         )}
       </div>
 

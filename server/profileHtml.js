@@ -1,7 +1,12 @@
+import { escapeHtml, safeJsonForHtml } from './utils/security.js';
+
 export function renderProfileHtml({ query = {} } = {}) {
-  const initialPhone = (query.phone || '').replace(/\D/g, '');
-  const initialNick = (query.nick || '').trim();
-  const initialRoom = (query.room || '').trim();
+  const rawPhone = String(query.phone || '').replace(/\D/g, '').slice(0, 20);
+  const rawNick = String(query.nick || '').trim().slice(0, 40);
+  const rawRoom = String(query.room || '').trim().slice(0, 32);
+  const initialPhone = escapeHtml(rawPhone);
+  const initialNick = escapeHtml(rawNick);
+  const initialRoom = escapeHtml(rawRoom);
 
   return `<!DOCTYPE html>
 <html lang="pt-BR" class="dark">
@@ -194,8 +199,8 @@ export function renderProfileHtml({ query = {} } = {}) {
 
   <script>
     let selectedLevel = 16;
-    const initialPhone = "${initialPhone}";
-    const initialRoom = "${initialRoom}";
+    const initialPhone = ${safeJsonForHtml(rawPhone)};
+    const initialRoom = ${safeJsonForHtml(rawRoom)};
 
     const tiers = {
       bronze: { label: 'Bronze', color: 'border-slate-700 bg-slate-800 text-slate-300', iconBg: 'from-slate-600 to-slate-500' },

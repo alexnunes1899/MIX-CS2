@@ -20,6 +20,8 @@ export default function RoomsHubModal({
   const [newRoomName, setNewRoomName] = useState('');
   const [newRoomCode, setNewRoomCode] = useState('');
   const [newServerIp, setNewServerIp] = useState('');
+  const [newRoomPassword, setNewRoomPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
   const [isPrivate, setIsPrivate] = useState(false); // Default: false = Mix Público (like GC default)
   const [rankingSystem, setRankingSystem] = useState('gc'); // 'gc' | 'faceit'
   const [loading, setLoading] = useState(false);
@@ -32,8 +34,21 @@ export default function RoomsHubModal({
       const creds = generateRoomCredentials(myProfile?.nick);
       setNewRoomCode(creds.roomUser);
       setNewRoomName(creds.suggestedName);
+      setNewRoomPassword('');
     }
   }, [isOpen, myProfile?.nick]);
+
+  useEffect(() => {
+    if (!isOpen || roomToDelete) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        if (soundEnabled) playClickSound();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, roomToDelete, onClose, soundEnabled]);
 
   const handleGenerateUserOnly = () => {
     if (soundEnabled) playClickSound();
@@ -85,7 +100,7 @@ export default function RoomsHubModal({
       newRoomName.trim() || defaultName,
       rankingSystem,
       newServerIp.trim(),
-      '',
+      newRoomPassword.trim(),
       isPrivate
     );
     onClose();
@@ -102,13 +117,20 @@ export default function RoomsHubModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="rooms-hub-modal-title"
+    >
       <div className="relative w-full max-w-lg max-h-[92vh] overflow-y-auto bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl">
         {/* Glow */}
         <div className="absolute top-0 right-0 w-40 h-40 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
 
         {/* Close Button */}
         <button
+          type="button"
+          aria-label="Fechar hub de salas"
           onClick={onClose}
           className="absolute top-4 right-4 p-2 rounded-xl bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
         >
@@ -121,7 +143,7 @@ export default function RoomsHubModal({
             <Layers size={20} />
           </div>
           <div className="min-w-0">
-            <h2 className="text-base sm:text-lg font-bold font-heading text-white truncate">Hub de Salas de Mix (Estilo GC)</h2>
+            <h2 id="rooms-hub-modal-title" className="text-base sm:text-lg font-bold font-heading text-white truncate">Hub de Salas de Mix (Estilo GC)</h2>
             <p className="text-[11px] sm:text-xs text-slate-400">Crie mix público para a comunidade ou privado exclusivo via link</p>
           </div>
         </div>
@@ -269,7 +291,7 @@ export default function RoomsHubModal({
             </div>
           </div>
 
-          {/* Direct Link Only Notice for Private Rooms (No Password Needed) */}
+          {/* Direct Link Only Notice for Private Rooms */}
           {isPrivate && (
             <div className="bg-purple-950/30 border border-purple-500/30 rounded-xl p-3 flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-lg bg-purple-500/20 border border-purple-500/40 text-purple-300 flex items-center justify-center shrink-0">
@@ -277,14 +299,52 @@ export default function RoomsHubModal({
               </div>
               <div className="min-w-0">
                 <span className="text-[11px] font-bold text-purple-200 block">
-                  Entrada Somente pelo Link de Convite (Sem Senha)
+                  Entrada pelo Link de Convite (ou Senha Opcional)
                 </span>
                 <span className="text-[10px] text-slate-400 block leading-tight">
-                  Ao criar a sala, basta copiar o link e mandar para o pessoal. Só entra quem abrir pelo link.
+                  Ao criar a sala, copie o link direto para seus amigos ou defina uma senha abaixo.
                 </span>
               </div>
             </div>
           )}
+
+          {/* Optional Room Password */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[10px] text-slate-400 font-semibold block uppercase">
+                Senha da Sala (Opcional)
+              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  if (soundEnabled) playClickSound();
+                  setNewRoomPassword(generateRoomPassword());
+                }}
+                className="text-[10px] text-amber-400 hover:underline flex items-center gap-0.5 cursor-pointer"
+              >
+                <Dices size={10} /> Gerar senha
+              </button>
+            </div>
+            <div className="relative flex items-center">
+              <KeyRound size={13} className="absolute left-3 text-slate-500" />
+              <input
+                type={showNewPassword ? 'text' : 'password'}
+                placeholder="Deixe vazio para entrada livre"
+                value={newRoomPassword}
+                onChange={(e) => setNewRoomPassword(e.target.value)}
+                maxLength={32}
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-8 pr-9 py-2 text-xs font-mono text-white placeholder-slate-600 outline-none focus:border-amber-400"
+              />
+              <button
+                type="button"
+                aria-label={showNewPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                onClick={() => setShowNewPassword((s) => !s)}
+                className="absolute right-2.5 p-1 text-slate-400 hover:text-white cursor-pointer"
+              >
+                {showNewPassword ? <EyeOff size={13} /> : <Eye size={13} />}
+              </button>
+            </div>
+          </div>
 
           {/* Ranking System Selector: GC (Manual) vs FACEIT (Auto) */}
           <div>
@@ -411,6 +471,8 @@ export default function RoomsHubModal({
                 return (
                   <div
                     key={r.id}
+                    role={isCurrent ? undefined : 'button'}
+                    tabIndex={isCurrent ? undefined : 0}
                     className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
                       isCurrent
                         ? 'bg-amber-500/10 border-amber-500/50 text-white'
@@ -418,6 +480,14 @@ export default function RoomsHubModal({
                     }`}
                     onClick={() => {
                       if (!isCurrent) {
+                        if (soundEnabled) playClickSound();
+                        onSelectRoom(r.id, r.name, r.rankingSystem, r.serverIp, null, false);
+                        onClose();
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (!isCurrent && (e.key === 'Enter' || e.key === ' ')) {
+                        e.preventDefault();
                         if (soundEnabled) playClickSound();
                         onSelectRoom(r.id, r.name, r.rankingSystem, r.serverIp, null, false);
                         onClose();
@@ -433,6 +503,11 @@ export default function RoomsHubModal({
                         <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.2 rounded font-mono flex items-center gap-1">
                           <Globe size={9} /> Público
                         </span>
+                        {r.hasPassword && (
+                          <span className="text-[9px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.2 rounded font-mono flex items-center gap-1">
+                            <KeyRound size={9} /> Senha
+                          </span>
+                        )}
                         {isFaceit ? (
                           <span className="text-[9px] font-bold text-orange-400 bg-orange-500/15 border border-orange-500/30 px-1.5 py-0.2 rounded font-mono">
                             ⚡ FACEIT
@@ -462,6 +537,7 @@ export default function RoomsHubModal({
                       {/* Excluir Sala Button */}
                       <button
                         type="button"
+                        aria-label={`Excluir sala ${r.name || r.id}`}
                         onClick={(e) => {
                           e.stopPropagation();
                           if (soundEnabled) playClickSound();
@@ -478,9 +554,9 @@ export default function RoomsHubModal({
                           Sala Atual
                         </span>
                       ) : (
-                        <button className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:text-white">
+                        <span className="p-1.5 rounded-lg bg-slate-800 text-slate-300" aria-hidden="true">
                           <ArrowRight size={14} />
-                        </button>
+                        </span>
                       )}
                     </div>
                   </div>

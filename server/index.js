@@ -1,4 +1,4 @@
-﻿import { registerMatchAutomationRoutes } from './matchAutomation.js';
+import { registerMatchAutomationRoutes } from './matchAutomation.js';
 import express from 'express';
 import http from 'http';
 import fs from 'fs';
@@ -13,12 +13,29 @@ import {
   handleGsiPayload,
   getGsiState,
   setGsiState,
+  clearRoomGsiState,
   generateGsiConfig,
   generateGsiBatchInstaller,
   generateGsiPowerShellInstaller,
   installGsiLocally,
   checkGsiInstalled,
 } from './gsi.js';
+import {
+  escapeHtml,
+  safeJsonForHtml,
+  sanitizeInput,
+  isValidMapName,
+  sanitizeRconCommand,
+  normalizeRoomId,
+  resolveSafeBaseUrl,
+  isValidServerAddress,
+  isBlockedMetadataHost,
+} from './utils/security.js';
+import {
+  getPlayerWeight,
+  calculateMetricsForTeams,
+  calculateBalance,
+} from './services/teamBalancer.js';
 import { getSteamPlayerDetails } from './steamApi.js';
 import { fetchFaceitPlayer } from './faceit.js';
 import { sendDiscordWebhook, isValidDiscordWebhookUrl } from './discordWebhook.js';
@@ -97,14 +114,26 @@ app.get(['/health', '/api/health'], (req, res) => {
   });
 });
 
+const serverIntervals = [];
+function registerServerInterval(fn, ms) {
+  const handle = setInterval(fn, ms);
+  serverIntervals.push(handle);
+  return handle;
+}
+
 // In-Memory Anti-DDoS & Rate Limiting System
 const ipRateLimits = new Map();
 function createRateLimiter({ windowMs = 60000, max = 250, message = 'Muitas requisições. Tente novamente em breve.' }) {
   return (req, res, next) => {
-    const rawIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress || '127.0.0.1';
-    const ip = String(rawIp).split(',')[0].trim();
+    const ip = String(req.socket.remoteAddress || req.headers['x-forwarded-for'] || '127.0.0.1').split(',')[0].trim();
     const now = Date.now();
-    const key = `${ip}:${req.baseUrl || req.path}`;
+    const bucket = req.baseUrl || (req.route?.path ? `${req.route.path}` : req.path.split('/').slice(0, 4).join('/'));
+    const key = `${ip}:${bucket}`;
+    if (ipRateLimits.size > 10000) {
+      for (const [k, val] of ipRateLimits.entries()) {
+        if (now > val.resetAt) ipRateLimits.delete(k);
+      }
+    }
     let record = ipRateLimits.get(key);
     if (!record || now > record.resetAt) {
       record = { count: 1, resetAt: now + windowMs };
@@ -125,7 +154,7 @@ function createRateLimiter({ windowMs = 60000, max = 250, message = 'Muitas requ
 }
 
 // Periodic cleanup of expired rate limit entries (every 5 min)
-setInterval(() => {
+registerServerInterval(() => {
   const now = Date.now();
   for (const [key, val] of ipRateLimits.entries()) {
     if (now > val.resetAt) ipRateLimits.delete(key);
@@ -137,31 +166,6 @@ const generalApiLimiter = createRateLimiter({ windowMs: 60 * 1000, max: 300, mes
 const sensitiveLimiter = createRateLimiter({ windowMs: 60 * 1000, max: 20, message: 'Muitas tentativas em endpoint sensível. Aguarde 1 minuto.' });
 
 app.use('/api', generalApiLimiter);
-
-// Input Sanitization Utilities
-function sanitizeInput(str, maxLength = 100) {
-  if (typeof str !== 'string') return '';
-  return str
-    .replace(/<[^>]*>/g, '') // Strip HTML tags to eliminate XSS
-    .replace(/[\u0000-\u001F\u007F-\u009F]/g, '') // Strip unprintable ASCII/control chars
-    .trim()
-    .slice(0, maxLength);
-}
-
-function isValidMapName(map) {
-  if (typeof map !== 'string') return false;
-  return /^[a-zA-Z0-9_\-]{3,32}$/.test(map.trim());
-}
-
-function sanitizeRconCommand(cmd) {
-  if (typeof cmd !== 'string') return '';
-  // Strip command chain separators (; \r \n ` $) to prevent RCON command injection
-  return cmd
-    .replace(/[\r\n;`$]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 200);
-}
 
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -181,8 +185,8 @@ fetchLiveOfficialRotation()
   .catch((err) => console.warn('[SERVER] Erro na rotação oficial inicial:', err.message));
 
 // Periodic rotation re-check every 12 hours
-setInterval(() => {
-  fetchLiveOfficialRotation().catch(() => {});
+registerServerInterval(() => {
+  fetchLiveOfficialRotation().catch((err) => console.warn('[ROTATION SYNC WARN]:', err.message));
 }, 12 * 60 * 60 * 1000);
 
 // Live CS2 Grenade Playbook Sync (100% Brazilian Portuguese Curated Videos)
@@ -192,8 +196,8 @@ syncGrenadesPtBr()
   .catch((err) => console.warn('[SERVER] Erro na validação de vídeos PT-BR:', err.message));
 
 // Periodic background validation & refresh of PT-BR grenade videos every 6 hours
-setInterval(() => {
-  syncGrenadesPtBr().catch(() => {});
+registerServerInterval(() => {
+  syncGrenadesPtBr().catch((err) => console.warn('[GRENADES SYNC WARN]:', err.message));
 }, 6 * 60 * 60 * 1000);
 
 const MOCK_BOTS = [
@@ -249,6 +253,8 @@ function cleanupInactiveRooms() {
         message: `A sala ${room.name || id} foi encerrada automaticamente por inatividade.`,
       });
       rooms.delete(id);
+      if (typeof gsiDiscordTracker !== 'undefined') gsiDiscordTracker.delete(id);
+      clearRoomGsiState(id);
       changed = true;
     }
   });
@@ -259,10 +265,10 @@ function cleanupInactiveRooms() {
 }
 
 // Periodic cleanup every 60 seconds
-setInterval(cleanupInactiveRooms, 60 * 1000);
+registerServerInterval(cleanupInactiveRooms, 60 * 1000);
 
 function getOrCreateRoom(roomId, customName = '', rankingSystem = 'gc', serverIp = '', password = '', isPrivate = false, creatorId = null, creatorSteamId = null, inviteKey = null, creatorNick = '') {
-  const id = roomId.trim().toUpperCase() || 'MIX-1';
+  const id = normalizeRoomId(roomId, 'MIX-1');
   if (!rooms.has(id)) {
     const now = Date.now();
     const finalInviteKey = inviteKey || `gc_${Math.random().toString(36).substring(2, 9)}`;
@@ -309,7 +315,7 @@ function getOrCreateRoom(roomId, customName = '', rankingSystem = 'gc', serverIp
       startingSideTeamB: null,
       serverIp: serverIp ? serverIp.trim() : '',
       rconPassword: '',
-      password: '',
+      password: password ? sanitizeInput(String(password), 32) : '',
       isPrivate: Boolean(isPrivate),
       inviteKey: finalInviteKey,
       discordWebhook: '',
@@ -359,26 +365,6 @@ function isRoomAdmin(room, socket) {
   );
 }
 
-function calculateMetricsForTeams(teamA = [], teamB = [], rankingSystem = 'gc') {
-  const sumA = teamA.reduce((acc, p) => acc + getPlayerWeight(p, rankingSystem), 0);
-  const sumB = teamB.reduce((acc, p) => acc + getPlayerWeight(p, rankingSystem), 0);
-  const diff = Math.abs(sumA - sumB);
-  const avgA = teamA.length > 0 ? (sumA / teamA.length).toFixed(1) : '0';
-  const avgB = teamB.length > 0 ? (sumB / teamB.length).toFixed(1) : '0';
-  const maxPossible = Math.max(sumA, sumB) || 1;
-  const balancePercentage = Math.max(0, Math.min(100, Math.round(100 - (diff / maxPossible) * 100)));
-
-  return {
-    sumA,
-    sumB,
-    avgA,
-    avgB,
-    diff,
-    balancePercentage,
-    rankingSystem,
-  };
-}
-
 function getSafeRoomState(room) {
   if (!room) return null;
   const { password, rconPassword, ...safe } = room;
@@ -396,8 +382,9 @@ function getSafeRoomState(room) {
 
 function emitRoomState(targetRoomId, room) {
   if (!room) return;
+  const normalizedTarget = room.id || normalizeRoomId(targetRoomId, '');
   const safeRoom = getSafeRoomState(room);
-  io.to(targetRoomId).emit('room_state', safeRoom);
+  io.to(normalizedTarget).emit('room_state', safeRoom);
   scheduleSave();
 }
 
@@ -431,82 +418,6 @@ function broadcastRoomsList() {
     });
   });
   io.emit('rooms_list', list);
-}
-
-function getPlayerWeight(p, rankingSystem = 'gc') {
-  if (rankingSystem === 'faceit') {
-    if (p.faceitElo) return Number(p.faceitElo);
-    if (p.faceitLevel) return Number(p.faceitLevel) * 200;
-    return (Number(p.level) || 5) * 100;
-  }
-  return Number(p.level) || 12;
-}
-
-// Balance helper in node server
-function calculateBalance(players, rankingSystem = 'gc') {
-  if (players.length < 2) return { teamA: players, teamB: [], metrics: null };
-  const half = Math.floor(players.length / 2);
-
-  function getCombinations(arr, k) {
-    const results = [];
-    function backtrack(start, combo) {
-      if (combo.length === k) {
-        results.push([...combo]);
-        return;
-      }
-      for (let i = start; i < arr.length; i++) {
-        combo.push(arr[i]);
-        backtrack(i + 1, combo);
-        combo.pop();
-      }
-    }
-    backtrack(0, []);
-    return results;
-  }
-
-  const allCombinations = getCombinations(players, half);
-  let bestSplit = null;
-  let minDiff = Infinity;
-  let bestScore = -Infinity;
-
-  for (const comboA of allCombinations) {
-    const idsA = new Set(comboA.map((p) => p.id));
-    const comboB = players.filter((p) => !idsA.has(p.id));
-
-    const sumA = comboA.reduce((acc, p) => acc + getPlayerWeight(p, rankingSystem), 0);
-    const sumB = comboB.reduce((acc, p) => acc + getPlayerWeight(p, rankingSystem), 0);
-    const diff = Math.abs(sumA - sumB);
-
-    let sideScore = 0;
-    comboA.forEach((p) => { if (p.side === 'CT') sideScore += 1; });
-    comboB.forEach((p) => { if (p.side === 'TR') sideScore += 1; });
-
-    const score = -diff * 100 + sideScore;
-    if (diff < minDiff || (diff === minDiff && score > bestScore)) {
-      minDiff = diff;
-      bestScore = score;
-      bestSplit = { teamA: comboA, teamB: comboB, sumA, sumB, diff };
-    }
-  }
-
-  const avgA = (bestSplit.sumA / bestSplit.teamA.length).toFixed(1);
-  const avgB = (bestSplit.sumB / bestSplit.teamB.length).toFixed(1);
-  const maxPossible = Math.max(bestSplit.sumA, bestSplit.sumB) || 1;
-  const balancePercentage = Math.max(0, Math.min(100, Math.round(100 - (bestSplit.diff / maxPossible) * 100)));
-
-  return {
-    teamA: bestSplit.teamA,
-    teamB: bestSplit.teamB,
-    metrics: {
-      sumA: bestSplit.sumA,
-      sumB: bestSplit.sumB,
-      avgA,
-      avgB,
-      diff: bestSplit.diff,
-      balancePercentage,
-      rankingSystem,
-    },
-  };
 }
 
 function dispatchAutoDiscordVeto(room) {
@@ -580,7 +491,7 @@ io.on('connection', (socket) => {
 
   // Join Room
   socket.on('join_room', async ({ roomId, player, roomName, rankingSystem, serverIp, password, isPrivate, inviteKey, createIfMissing }) => {
-    const cleanRoomId = sanitizeInput(roomId || '', 20).toUpperCase();
+    const cleanRoomId = normalizeRoomId(roomId || '', '');
     if (!cleanRoomId) return;
     const cleanRoomName = sanitizeInput(roomName, 40);
     const cleanPassword = sanitizeInput(password || '', 32);
@@ -596,22 +507,33 @@ io.on('connection', (socket) => {
       return;
     }
     if (existingRoom) {
-      // Gamers Club style Private Room check: ONLY enters via direct invite link (key)
-      if (existingRoom.isPrivate) {
-        const matchesKey = cleanKey && existingRoom.inviteKey && cleanKey === existingRoom.inviteKey;
-        const isKnownPlayer = player?.id && existingRoom.players.some((p) => p.id === player.id);
-        const isCreator = (socket.playerId && existingRoom.creatorId === socket.playerId) ||
-                          (player?.steamId && existingRoom.creatorSteamId === player.steamId);
+      const matchesKey = cleanKey && existingRoom.inviteKey && cleanKey === existingRoom.inviteKey;
+      const isKnownPlayer = Boolean(player?.id && existingRoom.players.some((p) => p.id === player.id));
+      const isCreator = Boolean(
+        (socket.playerId && existingRoom.creatorId === socket.playerId) ||
+        (player?.steamId && existingRoom.creatorSteamId === player.steamId)
+      );
 
-        if (!matchesKey && !isKnownPlayer && !isCreator) {
-          socket.emit('room_auth_error', {
-            roomId: cleanRoomId,
-            roomName: existingRoom.name,
-            error: 'private_room',
-            message: 'Esta sala é privada. O acesso é permitido somente através do Link de Convite.',
-          });
-          return;
-        }
+      // Gamers Club style Private Room check: ONLY enters via direct invite link (key)
+      if (existingRoom.isPrivate && !matchesKey && !isKnownPlayer && !isCreator) {
+        socket.emit('room_auth_error', {
+          roomId: cleanRoomId,
+          roomName: existingRoom.name,
+          error: 'private_room',
+          message: 'Esta sala é privada. O acesso é permitido somente através do Link de Convite.',
+        });
+        return;
+      }
+
+      // Password-protected room check
+      if (existingRoom.password && !matchesKey && !isKnownPlayer && !isCreator && cleanPassword !== existingRoom.password) {
+        socket.emit('room_auth_error', {
+          roomId: cleanRoomId,
+          roomName: existingRoom.name,
+          error: 'wrong_password',
+          message: cleanPassword ? 'Senha incorreta para esta sala.' : 'Esta sala requer uma senha para entrar.',
+        });
+        return;
       }
     }
 
@@ -743,7 +665,7 @@ io.on('connection', (socket) => {
 
   // Verify room password directly
   socket.on('verify_room_password', ({ roomId, password }, callback) => {
-    const cleanRoomId = sanitizeInput(roomId || '', 20).toUpperCase();
+    const cleanRoomId = normalizeRoomId(roomId || '', '');
     const room = getRoomAndTouch(cleanRoomId);
     if (!room) return callback && callback({ valid: false, error: 'not_found' });
     if (!room.password) return callback && callback({ valid: true });
@@ -758,7 +680,7 @@ io.on('connection', (socket) => {
     const room = getRoomAndTouch(roomId);
     if (!room) return;
     room.rankingSystem = rankingSystem === 'faceit' ? 'faceit' : 'gc';
-    emitRoomState(roomId, room);
+    emitRoomState(room.id, room);
     broadcastRoomsList();
   });
 
@@ -769,7 +691,7 @@ io.on('connection', (socket) => {
     const player = room.players.find((p) => p.id === playerId);
     if (player) {
       player.ready = !player.ready;
-      emitRoomState(roomId, room);
+      emitRoomState(room.id, room);
     }
   });
 
@@ -811,7 +733,7 @@ io.on('connection', (socket) => {
     room.chat.push(chatMsg);
     if (room.chat.length > 50) room.chat.shift();
 
-    io.to(roomId).emit('chat_message', chatMsg);
+    io.to(room.id).emit('chat_message', chatMsg);
   });
 
   // Update Server IP
@@ -819,7 +741,7 @@ io.on('connection', (socket) => {
     const room = getRoomAndTouch(roomId);
     if (!room) return;
     room.serverIp = serverIp ? sanitizeInput(serverIp, 64) : '';
-    emitRoomState(roomId, room);
+    emitRoomState(room.id, room);
   });
 
   // Add / Update Player
@@ -834,16 +756,22 @@ io.on('connection', (socket) => {
       if (sanitizedPlayer.avatar) sanitizedPlayer.avatar = sanitizeInput(sanitizedPlayer.avatar, 120);
       if (sanitizedPlayer.side && !['CT', 'TR', 'ANY'].includes(sanitizedPlayer.side)) sanitizedPlayer.side = 'ANY';
       room.players[idx] = { ...room.players[idx], ...sanitizedPlayer };
-      emitRoomState(roomId, room);
+      emitRoomState(room.id, room);
     }
   });
 
-  // Remove Player
+  // Remove Player (allows self-leave, bot removal, or room admin)
   socket.on('remove_player', ({ roomId, playerId }) => {
     const room = getRoomAndTouch(roomId);
-    if (!room) return;
+    if (!room || !playerId) return;
+    const isSelf = socket.playerId && playerId === socket.playerId;
+    const isBot = String(playerId).startsWith('bot-');
+    if (!isSelf && !isBot && !isRoomAdmin(room, socket)) {
+      socket.emit('admin_error', { message: 'Apenas o administrador pode remover outros jogadores.' });
+      return;
+    }
     room.players = room.players.filter((p) => p.id !== playerId);
-    emitRoomState(roomId, room);
+    emitRoomState(room.id, room);
     broadcastRoomsList();
   });
 
@@ -1668,7 +1596,19 @@ io.on('connection', (socket) => {
       io.emit('match_history_updated', getMatchHistoryState());
     }
 
-    emitRoomState(roomId, room);
+    emitRoomState(room.id, room);
+  });
+
+  // Return to Lobby preserving players (used by Back to Lobby / Cancel Draft)
+  socket.on('return_to_lobby', ({ roomId }) => {
+    const room = getRoomAndTouch(roomId);
+    if (!room) return;
+    room.phase = 'lobby';
+    room.captainA = null;
+    room.captainB = null;
+    room.unassignedPlayers = [];
+    emitRoomState(room.id, room);
+    broadcastRoomsList();
   });
 
   // Swap Sides (CT <-> TR / Team A <-> Team B)
@@ -1685,7 +1625,7 @@ io.on('connection', (socket) => {
       room.metrics.avgA = avgB;
       room.metrics.avgB = avgA;
     }
-    emitRoomState(roomId, room);
+    emitRoomState(room.id, room);
   });
 
   // Restart Veto Only (keeps teams & format intact)
@@ -1697,7 +1637,7 @@ io.on('connection', (socket) => {
       firstTeam: room.vetoFirstTeam || 'teamA',
       bo1Order: room.bo1Order || 'ABABAB',
     });
-    emitRoomState(roomId, room);
+    emitRoomState(room.id, room);
   });
 
   // Reset to Lobby
@@ -1726,7 +1666,7 @@ io.on('connection', (socket) => {
     // unready players
     room.players.forEach((p) => { p.ready = false; });
 
-    emitRoomState(roomId, room);
+    emitRoomState(room.id, room);
     broadcastRoomsList();
   });
 
@@ -1735,7 +1675,9 @@ io.on('connection', (socket) => {
     const room = getRoomAndTouch(roomId);
     if (!room) return;
 
+    const rotationMaps = [...getCurrentRotationState().activeDutyMaps];
     room.phase = 'veto';
+    room.maps = rotationMaps;
     room.bannedMaps = [];
     room.pickedMaps = [];
     room.vetoLog = [];
@@ -1751,7 +1693,7 @@ io.on('connection', (socket) => {
     // Reset veto turns
     room.currentTurn = 'teamA';
     room.vetoState = {
-      remainingMaps: [...CS2_MAPS],
+      remainingMaps: rotationMaps,
       bannedMaps: [],
       currentTurn: 'teamA',
       mode: room.matchFormat || 'MD1',
@@ -1759,16 +1701,21 @@ io.on('connection', (socket) => {
       bo1Order: room.bo1Order || 'ABABAB',
     };
 
-    emitRoomState(roomId, room);
+    emitRoomState(room.id, room);
     broadcastRoomsList();
   });
 
   // Delete Room Manually
   socket.on('delete_room', ({ roomId }) => {
-    const cleanRoomId = (roomId || '').trim().toUpperCase();
-    if (!rooms.has(cleanRoomId)) return;
+    const cleanRoomId = normalizeRoomId(roomId || '', '');
+    if (!cleanRoomId || !rooms.has(cleanRoomId)) return;
 
     const room = rooms.get(cleanRoomId);
+    if (room.players && room.players.length > 0 && room.creatorId && !isRoomAdmin(room, socket)) {
+      socket.emit('admin_error', { message: 'Apenas o administrador da sala pode excluí-la.' });
+      return;
+    }
+
     const roomName = room.name || cleanRoomId;
 
     console.log(`[DELETE_ROOM] Sala ${cleanRoomId} excluída pelo usuário via socket.`);
@@ -1779,6 +1726,8 @@ io.on('connection', (socket) => {
     });
 
     rooms.delete(cleanRoomId);
+    if (typeof gsiDiscordTracker !== 'undefined') gsiDiscordTracker.delete(cleanRoomId);
+    clearRoomGsiState(cleanRoomId);
     broadcastRoomsList();
   });
 
@@ -1805,7 +1754,7 @@ io.on('connection', (socket) => {
     const room = getRoomAndTouch(roomId);
     if (!room) return;
     room.rconPassword = (rconPassword || '').trim();
-    emitRoomState(roomId, room);
+    emitRoomState(room.id, room);
   });
 
   // Execute RCON Command (Sanitized against injection)
@@ -1876,21 +1825,26 @@ io.on('connection', (socket) => {
   socket.on('set_discord_webhook', ({ roomId, webhookUrl, autoLobby = true, autoVeto = true, autoGsiRounds = true, autoGsiBomb = false, autoStats = true }) => {
     const room = getRoomAndTouch(roomId);
     if (!room) return;
-    room.discordWebhook = (webhookUrl || '').trim();
+    const cleanUrl = String(webhookUrl || '').trim();
+    if (cleanUrl && !isValidDiscordWebhookUrl(cleanUrl)) {
+      socket.emit('admin_error', { message: 'URL de Webhook do Discord inválida.' });
+      return;
+    }
+    room.discordWebhook = cleanUrl;
     room.discordAutoLobby = Boolean(autoLobby);
     room.discordAutoVeto = Boolean(autoVeto);
     room.discordGsiRounds = Boolean(autoGsiRounds);
     room.discordGsiBomb = Boolean(autoGsiBomb);
     room.discordAutoStats = Boolean(autoStats);
-    emitRoomState(roomId, room);
+    emitRoomState(room.id, room);
   });
 
   // Trigger Discord Notification
   socket.on('send_discord_webhook', async ({ roomId, eventType, data }, callback) => {
     const room = getRoomAndTouch(roomId);
     const targetUrl = (data?.webhookUrl || room?.discordWebhook || '').trim();
-    if (!targetUrl) {
-      if (typeof callback === 'function') callback({ error: 'Nenhum Webhook do Discord configurado.' });
+    if (!targetUrl || !isValidDiscordWebhookUrl(targetUrl)) {
+      if (typeof callback === 'function') callback({ error: 'Webhook do Discord ausente ou inválido.' });
       return;
     }
 
@@ -2034,15 +1988,21 @@ app.get(['/connect', '/join-cs2'], (req, res) => {
     }
   }
   cleanIp = cleanIp.replace(/[;'"]/g, '').trim();
+  if (!isValidServerAddress(cleanIp)) {
+    return res.status(400).send('Endereco de servidor CS2 invalido.');
+  }
 
-  const consoleCmd = password ? `connect ${cleanIp}; password ${password}` : `connect ${cleanIp}`;
+  const cleanPwd = sanitizeInput(password, 64).replace(/[;"'<>\r\n]/g, '');
+  const consoleCmd = cleanPwd ? `connect ${cleanIp}; password ${cleanPwd}` : `connect ${cleanIp}`;
+  const safeConsoleHtml = escapeHtml(consoleCmd);
+  const safeConsoleJs = safeJsonForHtml(consoleCmd);
 
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.send(`<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>CS2 Mix Hub - IP Copiado</title>
+  <title>CS2 Mix Hub - Conectar ao Servidor</title>
   <style>
     body { background: #0b0f17; color: #f8fafc; font-family: system-ui, -apple-system, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
     .card { background: #131b2e; border: 1px solid #1e293b; padding: 2.5rem; border-radius: 1rem; text-align: center; max-width: 480px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5); width: 90%; }
@@ -2056,25 +2016,33 @@ app.get(['/connect', '/join-cs2'], (req, res) => {
 </head>
 <body>
   <div class="card">
-    <div class="success-badge">[OK] IP COPIADO COM SUCESSO!</div>
+    <div class="success-badge" id="copyBadge">PRONTO PARA COPIAR</div>
     <h1>CONEXAO AO SERVIDOR</h1>
-    <p>O comando de console foi copiado para a sua area de transferencia. Basta colar (Ctrl+V) no console do seu CS2:</p>
-    <code id="ipCode">${consoleCmd}</code>
-    <button onclick="copyIp()" class="btn">Copiar Novamente</button>
+    <p>Copie o comando abaixo e cole (Ctrl+V) no console do seu CS2:</p>
+    <code id="ipCode">${safeConsoleHtml}</code>
+    <button onclick="copyIp()" class="btn">Copiar Comando de Conexao</button>
   </div>
   <script>
+    var cmdText = ${safeConsoleJs};
+    function setCopiedBadge(label) {
+      var badge = document.getElementById('copyBadge');
+      if (badge) badge.textContent = label;
+    }
     function copyIp() {
-      var text = ${JSON.stringify(consoleCmd)};
-      navigator.clipboard.writeText(text).then(function() {
-        var badge = document.querySelector('.success-badge');
-        badge.textContent = '[OK] COPIADO NOVAMENTE!';
-        setTimeout(function() { badge.textContent = '[OK] IP COPIADO COM SUCESSO!'; }, 2000);
+      if (!navigator.clipboard) return;
+      navigator.clipboard.writeText(cmdText).then(function() {
+        setCopiedBadge('[OK] COMANDO COPIADO!');
+        setTimeout(function() { setCopiedBadge('PRONTO PARA COPIAR'); }, 2500);
+      }).catch(function() {
+        setCopiedBadge('COPIE MANUALMENTE ACIMA');
       });
     }
     window.onload = function() {
-      try {
-        navigator.clipboard.writeText(${JSON.stringify(consoleCmd)});
-      } catch (e) {}
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(cmdText).then(function() {
+          setCopiedBadge('[OK] IP COPIADO AUTOMATICAMENTE!');
+        }).catch(function() {});
+      }
     };
   </script>
 </body>
@@ -2097,10 +2065,10 @@ app.get('/api/player/profile', (req, res) => {
   return res.json({ success: true, profile });
 });
 
-app.post('/api/player/profile', (req, res) => {
+app.post('/api/player/profile', sensitiveLimiter, (req, res) => {
   const { id, userId, name, username, level, steamId } = req.body || {};
-  const cleanId = id || userId;
-  const cleanName = String(name || username || 'Jogador').trim();
+  const cleanId = sanitizeInput(String(id || userId || ''), 64);
+  const cleanName = sanitizeInput(String(name || username || 'Jogador'), 32) || 'Jogador';
   const parsedLevel = parseInt(level, 10);
 
   if (isNaN(parsedLevel) || parsedLevel < 1 || parsedLevel > 21) {
@@ -2111,7 +2079,7 @@ app.post('/api/player/profile', (req, res) => {
     level: parsedLevel,
     username: cleanName,
     name: cleanName,
-    steamId: steamId ? String(steamId).trim() : '',
+    steamId: steamId ? sanitizeInput(String(steamId), 32) : '',
     source: 'web_form',
     updatedAt: Date.now(),
   };
@@ -2126,9 +2094,12 @@ app.post('/api/player/profile', (req, res) => {
 
 // WhatsApp bot foi removido permanentemente — rotas retornam 404 automaticamente
 
-app.post('/api/discord/announce-match', async (req, res) => {
+app.post('/api/discord/announce-match', sensitiveLimiter, async (req, res) => {
   try {
-    const mixId = req.body.mixId || 'MIX-U9AOI';
+    const mixId = normalizeRoomId(req.body?.mixId || '', '');
+    if (!mixId) {
+      return res.status(400).json({ success: false, error: 'mix_id_required' });
+    }
     let mix = null;
     if (discordBotManager?.activeMixes) {
       for (const m of discordBotManager.activeMixes.values()) {
@@ -2146,7 +2117,10 @@ app.post('/api/discord/announce-match', async (req, res) => {
       return res.status(404).json({ success: false, error: 'mix_not_found' });
     }
 
-    const channelId = req.body.channelId || mix.channelId || '933123227402797088';
+    const channelId = req.body?.channelId || mix.channelId || discordBotManager.config?.defaultChannelId;
+    if (!channelId) {
+      return res.status(400).json({ success: false, error: 'channel_id_required' });
+    }
     const channel = await discordBotManager.client?.channels?.fetch(channelId).catch(() => null);
     if (!channel || !channel.isTextBased()) {
       return res.status(400).json({ success: false, error: 'channel_not_found' });
@@ -2154,15 +2128,19 @@ app.post('/api/discord/announce-match', async (req, res) => {
 
     const embed = discordBotManager.buildMatchReadyEmbed(mix);
     const components = discordBotManager.buildMatchReadyButtons(mix);
+    const mapLabel = mix.finalMap?.name || mix.map?.name || 'A definir';
+    const mapFile = mix.finalMap?.file || mix.map?.file || '';
+    const capA = mix.teamA?.captain?.id ? `<@${mix.teamA.captain.id}>` : (mix.teamAName || 'Time A');
+    const capB = mix.teamB?.captain?.id ? `<@${mix.teamB.captain.id}>` : (mix.teamBName || 'Time B');
+    const serverCmd = mix.serverIp ? `connect ${String(mix.serverIp).replace(/^connect\s+/i, '')}` : '';
 
     const sent = await channel.send({
       content:
         `🚨 **ATENÇÃO TODOS OS JOGADORES — O MAPA DA PARTIDA FOI DEFINIDO!**\n\n` +
-        `🗺️ **MAPA OFICIAL:** ☢️ **NUKE (de_nuke)**\n` +
-        `🛡️ **Time A (CT):** Capitão <@${mix.teamA?.captain?.id || '372168272575201290'}>\n` +
-        `💣 **Time B (TR):** Capitão <@${mix.teamB?.captain?.id || '212353154531065857'}>\n\n` +
-        `💻 **Comando de Conexão no CS2:** \`connect ${(mix.serverIp || '103.14.27.41:25054').replace(/^connect\s+/i, '')}\`\n` +
-        `🚀 **Steam 1-Clique:** Clique no botão verde abaixo para entrar no servidor automaticamente!`,
+        `🗺️ **MAPA OFICIAL:** **${mapLabel}${mapFile ? ` (${mapFile})` : ''}**\n` +
+        `🛡️ **Time A (CT):** Capitão ${capA}\n` +
+        `💣 **Time B (TR):** Capitão ${capB}\n` +
+        (serverCmd ? `\n💻 **Comando de Conexão no CS2:** \`${serverCmd}\`` : ''),
       embeds: [embed],
       components,
     });
@@ -2198,9 +2176,9 @@ app.get('/api/rooms', (req, res) => {
 });
 
 // Delete Room via REST API
-app.delete('/api/rooms/:roomId', (req, res) => {
-  const cleanRoomId = (req.params.roomId || '').trim().toUpperCase();
-  if (!rooms.has(cleanRoomId)) {
+app.delete('/api/rooms/:roomId', sensitiveLimiter, (req, res) => {
+  const cleanRoomId = normalizeRoomId(req.params.roomId || '', '');
+  if (!cleanRoomId || !rooms.has(cleanRoomId)) {
     return res.status(404).json({ error: 'Sala não encontrada' });
   }
 
@@ -2215,6 +2193,8 @@ app.delete('/api/rooms/:roomId', (req, res) => {
   });
 
   rooms.delete(cleanRoomId);
+  if (typeof gsiDiscordTracker !== 'undefined') gsiDiscordTracker.delete(cleanRoomId);
+  clearRoomGsiState(cleanRoomId);
   broadcastRoomsList();
 
   res.json({ success: true, message: `Sala ${cleanRoomId} excluída com sucesso.` });
@@ -2365,6 +2345,8 @@ function processGsiDiscordNotifications(room, liveState, req) {
   if (!room || !room.discordWebhook || !isValidDiscordWebhookUrl(room.discordWebhook)) return;
 
   const roomId = room.id;
+  const teamAName = room.teamAName || room.nameA || 'Time A';
+  const teamBName = room.teamBName || room.nameB || 'Time B';
   let tracker = gsiDiscordTracker.get(roomId);
   if (!tracker) {
     tracker = { lastRound: -1, lastBombState: 'none', gameOverSent: false };
@@ -2379,9 +2361,8 @@ function processGsiDiscordNotifications(room, liveState, req) {
     return;
   }
 
-  const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-  const host = req.get('host');
-  const roomUrl = `${protocol}://${host}/?room=${encodeURIComponent(roomId)}`;
+  const baseUrl = resolveSafeBaseUrl(req);
+  const roomUrl = `${baseUrl}/?room=${encodeURIComponent(roomId)}`;
 
   // 1. Notificação de Fim de Round (Monitoramento de Placar e Vencedor)
   if (
@@ -2445,7 +2426,7 @@ function processGsiDiscordNotifications(room, liveState, req) {
       { teamA: room.teamA, teamB: room.teamB, ...room },
       liveState
     );
-    const winner = winnerRes.winnerLetter === 'A' ? (room.nameA || 'Time A') : (room.nameB || 'Time B');
+    const winner = winnerRes.winnerLetter === 'A' ? teamAName : teamBName;
     sendDiscordWebhook({
       webhookUrl: room.discordWebhook,
       eventType: 'gsi_gameover',
@@ -2455,8 +2436,8 @@ function processGsiDiscordNotifications(room, liveState, req) {
         winner,
         scoreCT: liveState.scoreCT,
         scoreTR: liveState.scoreTR,
-        nameA: room.nameA || 'Time A',
-        nameB: room.nameB || 'Time B',
+        nameA: teamAName,
+        nameB: teamBName,
         allPlayersStats: liveState.allPlayersStats || [],
         topFragger: liveState.topFragger || null,
         matchMvp: liveState.matchMvp || null,
@@ -2467,11 +2448,9 @@ function processGsiDiscordNotifications(room, liveState, req) {
 }
 
 // Direct 1-Click local PC installation without downloading files
-app.post('/api/gsi/install-local', (req, res) => {
-  const roomId = (req.body?.roomId || 'MIX-PRO').trim().toUpperCase();
-  const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-  const host = req.get('host');
-  const serverBaseUrl = `${protocol}://${host}`;
+app.post('/api/gsi/install-local', sensitiveLimiter, (req, res) => {
+  const roomId = normalizeRoomId(req.body?.roomId, 'MIX-PRO');
+  const serverBaseUrl = resolveSafeBaseUrl(req);
 
   const result = installGsiLocally(serverBaseUrl, roomId);
   res.json(result);
@@ -2511,7 +2490,8 @@ async function checkCloudServerHealth() {
 function forwardGsiToCloudIfLocal(roomId, rawPayload, req) {
   if (!IS_LOCAL_PC || !rawPayload) return;
   if (req?.headers?.['x-gsi-relayed']) return;
-  fetch(`${CLOUD_BASE_URL}/api/gsi/${encodeURIComponent(roomId || 'MIX-PRO')}`, {
+  const safeRoomId = normalizeRoomId(roomId, 'MIX-PRO');
+  fetch(`${CLOUD_BASE_URL}/api/gsi/${encodeURIComponent(safeRoomId)}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -2522,8 +2502,64 @@ function forwardGsiToCloudIfLocal(roomId, rawPayload, req) {
   }).catch(() => {});
 }
 
+function applyGsiUpdateToRoom(room, liveState, req) {
+  if (!room || !liveState) return;
+  const roomId = room.id;
+  room.liveMatch = liveState;
+  io.to(roomId).emit('gsi_update', liveState);
+  processGsiDiscordNotifications(room, liveState, req);
+
+  if (liveState.isGameOver && (liveState.phase === 'gameover' || (liveState.scoreCT || 0) >= 13 || (liveState.scoreTR || 0) >= 13)) {
+    const winnerRes = determineMatchWinner(
+      { teamA: room.teamA, teamB: room.teamB, ...room },
+      liveState
+    );
+    const isWinnerA = winnerRes.winnerLetter === 'A';
+    const teamAName = room.teamAName || room.nameA || 'Time A';
+    const teamBName = room.teamBName || room.nameB || 'Time B';
+    const winnerName = isWinnerA ? teamAName : teamBName;
+    const loserName = isWinnerA ? teamBName : teamAName;
+    const winners = isWinnerA ? (room.teamA || []) : (room.teamB || []);
+    const losers = isWinnerA ? (room.teamB || []) : (room.teamA || []);
+    const scoreWinner = Math.max(liveState.scoreCT || 0, liveState.scoreTR || 0);
+    const scoreLoser = Math.min(liveState.scoreCT || 0, liveState.scoreTR || 0);
+    const matchKey = `${liveState.mapName}-${scoreWinner}-${scoreLoser}`;
+    const lastMatch = room.history?.[0];
+    if (!lastMatch || lastMatch.key !== matchKey) {
+      if (!Array.isArray(room.history)) room.history = [];
+      room.history.unshift({
+        id: `match-gsi-${Date.now()}`,
+        key: matchKey,
+        date: new Date().toLocaleDateString('pt-BR'),
+        time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+        map: liveState.mapName,
+        scoreA: isWinnerA ? scoreWinner : scoreLoser,
+        scoreB: isWinnerA ? scoreLoser : scoreWinner,
+        winner: winnerName,
+        loser: loserName,
+        source: 'Valve CS2 GSI',
+      });
+      if (room.history.length > 20) room.history.pop();
+      if (winners.length > 0 || losers.length > 0) {
+        try {
+          recordMatch({
+            winners,
+            losers,
+            map: liveState.mapName,
+            scoreWinners: scoreWinner,
+            scoreLosers: scoreLoser,
+          });
+        } catch (err) {
+          console.warn('[LEADERBOARD GSI RECORD ERROR]:', err.message);
+        }
+      }
+      emitRoomState(roomId, room);
+    }
+  }
+}
+
 app.post('/api/gsi/:roomId', (req, res) => {
-  const roomId = (req.params.roomId || req.body?.auth?.token || 'MIX-PRO').trim().toUpperCase();
+  const roomId = normalizeRoomId(req.params.roomId || req.body?.auth?.token, 'MIX-PRO');
   const room = getRoomAndTouch(roomId);
 
   forwardGsiToCloudIfLocal(roomId, req.body, req);
@@ -2531,57 +2567,10 @@ app.post('/api/gsi/:roomId', (req, res) => {
   const liveState = handleGsiPayload(roomId, req.body);
   if (liveState) {
     discordBotManager.handleGsiEvent(roomId, liveState);
-    io.emit('gsi_update', liveState);
-
     if (room) {
-      room.liveMatch = liveState;
+      applyGsiUpdateToRoom(room, liveState, req);
+    } else {
       io.to(roomId).emit('gsi_update', liveState);
-      processGsiDiscordNotifications(room, liveState, req);
-
-      if (liveState.isGameOver && (liveState.phase === 'gameover' || (liveState.scoreCT || 0) >= 13 || (liveState.scoreTR || 0) >= 13)) {
-        const winnerRes = determineMatchWinner(
-          { teamA: room.teamA, teamB: room.teamB, ...room },
-          liveState
-        );
-        const isWinnerA = winnerRes.winnerLetter === 'A';
-        const winnerName = isWinnerA ? (room.nameA || 'Time A') : (room.nameB || 'Time B');
-        const loserName = isWinnerA ? (room.nameB || 'Time B') : (room.nameA || 'Time A');
-        const winners = isWinnerA ? (room.teamA || []) : (room.teamB || []);
-        const losers = isWinnerA ? (room.teamB || []) : (room.teamA || []);
-        const scoreWinner = Math.max(liveState.scoreCT || 0, liveState.scoreTR || 0);
-        const scoreLoser = Math.min(liveState.scoreCT || 0, liveState.scoreTR || 0);
-        const matchKey = `${liveState.mapName}-${scoreWinner}-${scoreLoser}`;
-        const lastMatch = room.history[0];
-        if (!lastMatch || lastMatch.key !== matchKey) {
-          room.history.unshift({
-            id: `match-gsi-${Date.now()}`,
-            key: matchKey,
-            date: new Date().toLocaleDateString('pt-BR'),
-            time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-            map: liveState.mapName,
-            scoreA: isWinnerA ? scoreWinner : scoreLoser,
-            scoreB: isWinnerA ? scoreLoser : scoreWinner,
-            winner: winnerName,
-            loser: loserName,
-            source: 'Valve CS2 GSI',
-          });
-          if (room.history.length > 20) room.history.pop();
-          if (winners.length > 0 || losers.length > 0) {
-            try {
-              recordMatch({
-                winners,
-                losers,
-                map: liveState.mapName,
-                scoreWinners: scoreWinner,
-                scoreLosers: scoreLoser,
-              });
-            } catch (err) {
-              console.warn('[LEADERBOARD GSI RECORD ERROR]:', err.message);
-            }
-          }
-          emitRoomState(roomId, room);
-        }
-      }
     }
   }
 
@@ -2589,28 +2578,31 @@ app.post('/api/gsi/:roomId', (req, res) => {
 });
 
 app.post('/api/gsi', (req, res) => {
-  const token = (req.body?.auth?.token || 'MIX-PRO').trim().toUpperCase();
+  const token = normalizeRoomId(req.body?.auth?.token, 'MIX-PRO');
   forwardGsiToCloudIfLocal(token, req.body, req);
 
   const liveState = handleGsiPayload(token, req.body);
   if (liveState) {
     discordBotManager.handleGsiEvent(token, liveState);
-    io.emit('gsi_update', liveState);
-    rooms.forEach((room) => {
-      room.liveMatch = liveState;
-      io.to(room.id).emit('gsi_update', liveState);
-      processGsiDiscordNotifications(room, liveState, req);
-    });
+    const targetRoom = getRoomAndTouch(token) || (rooms.size === 1 ? rooms.values().next().value : null);
+    if (targetRoom) {
+      applyGsiUpdateToRoom(targetRoom, liveState, req);
+    } else {
+      io.emit('gsi_update', liveState);
+    }
   }
   res.json({ success: true });
 });
 
 let lastCloudGsiSync = 0;
+let isSyncingCloudGsi = false;
 
 async function syncCloudGsiBridge() {
+  if (isSyncingCloudGsi) return;
   if (discordBotManager.lastGsiState && Date.now() - (discordBotManager.lastGsiState.receivedAt || 0) < 15000) {
     return;
   }
+  isSyncingCloudGsi = true;
   try {
     const res = await fetch(CLOUD_GSI_URL, { signal: AbortSignal.timeout(2000) });
     if (res.ok) {
@@ -2627,16 +2619,18 @@ async function syncCloudGsiBridge() {
         io.emit('gsi_update', liveState);
       }
     }
-  } catch (err) {}
+  } catch (err) {
+    // Cloud GSI bridge is best-effort
+  } finally {
+    isSyncingCloudGsi = false;
+  }
 }
 
-setInterval(syncCloudGsiBridge, 1500);
+registerServerInterval(syncCloudGsiBridge, 1500);
 // Download ready-to-use CS2 .cfg for FireGames or local client
 app.get('/api/gsi/cfg/:roomId', (req, res) => {
-  const roomId = req.params.roomId || 'MIX-PRO';
-  const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-  const host = req.get('host');
-  const serverBaseUrl = `${protocol}://${host}`;
+  const roomId = normalizeRoomId(req.params.roomId, 'MIX-PRO');
+  const serverBaseUrl = resolveSafeBaseUrl(req);
 
   const cfgContent = generateGsiConfig(serverBaseUrl, roomId);
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
@@ -2646,10 +2640,8 @@ app.get('/api/gsi/cfg/:roomId', (req, res) => {
 
 // Download Automated 1-Click Windows Installer (.bat)
 app.get('/api/gsi/installer/:roomId', (req, res) => {
-  const roomId = req.params.roomId || 'MIX-PRO';
-  const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-  const host = req.get('host');
-  const serverBaseUrl = `${protocol}://${host}`;
+  const roomId = normalizeRoomId(req.params.roomId, 'MIX-PRO');
+  const serverBaseUrl = resolveSafeBaseUrl(req);
 
   const batContent = generateGsiBatchInstaller(serverBaseUrl, roomId);
   res.setHeader('Content-Type', 'application/x-bat; charset=utf-8');
@@ -2659,10 +2651,8 @@ app.get('/api/gsi/installer/:roomId', (req, res) => {
 
 // Raw PowerShell 1-Click Script endpoint (for irm ... | iex)
 app.get('/api/gsi/installer/ps1/:roomId', (req, res) => {
-  const roomId = req.params.roomId || 'MIX-PRO';
-  const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-  const host = req.get('host');
-  const serverBaseUrl = `${protocol}://${host}`;
+  const roomId = normalizeRoomId(req.params.roomId, 'MIX-PRO');
+  const serverBaseUrl = resolveSafeBaseUrl(req);
 
   const ps1Content = generateGsiPowerShellInstaller(serverBaseUrl, roomId);
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
@@ -2684,8 +2674,15 @@ app.get('/api/gsi/status/:roomId', (req, res) => {
 
 // MatchZy / PugSharp Tournament Config Provider (1-Click CS2 Dedicated Server Integration)
 app.get('/api/matchzy/config/:roomId', (req, res) => {
-  const roomId = req.params.roomId;
-  const room = rooms.get(roomId?.toUpperCase()) || getOrCreateRoom(roomId);
+  const roomId = normalizeRoomId(req.params.roomId, 'MIX-PRO');
+  const room = getRoomAndTouch(roomId) || {
+    id: roomId,
+    matchFormat: 'MD1',
+    drawnSeries: [],
+    finalMap: { file: 'de_mirage' },
+    teamA: [],
+    teamB: [],
+  };
 
   const matchFormat = room.matchFormat || 'MD1';
   const numMaps = matchFormat === 'MD5' ? 5 : matchFormat === 'MD3' ? 3 : 1;
@@ -2712,8 +2709,8 @@ app.get('/api/matchzy/config/:roomId', (req, res) => {
     return map;
   };
 
-  const nameA = room.teamAName || room.teamA?.[0]?.nick ? `Time ${room.teamA[0].nick}` : 'Time A';
-  const nameB = room.teamBName || room.teamB?.[0]?.nick ? `Time ${room.teamB[0].nick}` : 'Time B';
+  const nameA = room.teamAName || room.nameA || (room.teamA?.[0]?.nick ? `Time ${room.teamA[0].nick}` : 'Time A');
+  const nameB = room.teamBName || room.nameB || (room.teamB?.[0]?.nick ? `Time ${room.teamB[0].nick}` : 'Time B');
 
   const config = {
     matchid: room.id,
@@ -2781,8 +2778,15 @@ app.get('/api/lan-ip', async (req, res) => {
 // 2. Valve Source RCON Remote Management (FireGames / Dedicated Server) - Protected by rate limit & sanitization
 app.post('/api/rcon/test', sensitiveLimiter, async (req, res) => {
   const { host, port, password } = req.body;
+  if (isBlockedMetadataHost(host)) {
+    return res.status(400).json({ error: 'Host inválido ou bloqueado por segurança.' });
+  }
+  const cleanPort = Number(port) || 27015;
+  if (cleanPort < 1 || cleanPort > 65535) {
+    return res.status(400).json({ error: 'Porta inválida.' });
+  }
   try {
-    const result = await executeRconCommand({ host, port, password, command: 'test' });
+    const result = await executeRconCommand({ host, port: cleanPort, password, command: 'test' });
     res.json({ success: true, ...result });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -2791,12 +2795,19 @@ app.post('/api/rcon/test', sensitiveLimiter, async (req, res) => {
 
 app.post('/api/rcon/exec', sensitiveLimiter, async (req, res) => {
   const { host, port, password, command } = req.body;
+  if (isBlockedMetadataHost(host)) {
+    return res.status(400).json({ error: 'Host inválido ou bloqueado por segurança.' });
+  }
+  const cleanPort = Number(port) || 27015;
+  if (cleanPort < 1 || cleanPort > 65535) {
+    return res.status(400).json({ error: 'Porta inválida.' });
+  }
   const cleanCmd = sanitizeRconCommand(command);
   if (!cleanCmd) {
     return res.status(400).json({ error: 'Comando RCON inválido ou vazio.' });
   }
   try {
-    const result = await executeRconCommand({ host, port, password, command: cleanCmd });
+    const result = await executeRconCommand({ host, port: cleanPort, password, command: cleanCmd });
     res.json({ success: true, ...result });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -2806,8 +2817,15 @@ app.post('/api/rcon/exec', sensitiveLimiter, async (req, res) => {
 // 2b. Valve CS2 Server Ping & Connectivity Status Tester
 app.post('/api/server/ping', sensitiveLimiter, async (req, res) => {
   const { host, port } = req.body;
+  if (isBlockedMetadataHost(host)) {
+    return res.status(400).json({ online: false, error: 'Host inválido ou bloqueado por segurança.' });
+  }
+  const cleanPort = Number(port) || 27015;
+  if (cleanPort < 1 || cleanPort > 65535) {
+    return res.status(400).json({ online: false, error: 'Porta inválida.' });
+  }
   try {
-    const result = await pingCs2Server(host, port || 27015);
+    const result = await pingCs2Server(host, cleanPort);
     res.json(result);
   } catch (err) {
     res.status(500).json({ online: false, error: err.message });
@@ -2821,7 +2839,10 @@ app.get('/api/server/check-port', sensitiveLimiter, async (req, res) => {
   if (ip.startsWith('::ffff:')) {
     ip = ip.replace('::ffff:', '');
   }
-  const port = parseInt(req.query.port, 10) || 27015;
+  const port = Math.min(65535, Math.max(1, parseInt(req.query.port, 10) || 27015));
+  if (isBlockedMetadataHost(ip)) {
+    return res.status(400).json({ clientIp: ip, port, reachable: false, error: 'Host inválido.' });
+  }
   try {
     const result = await pingCs2Server(ip, port, 2000);
     res.json({ clientIp: ip, port, reachable: result.online, pingMs: result.pingMs, error: result.error });
@@ -2848,7 +2869,8 @@ app.post('/api/leaderboard/record', sensitiveLimiter, (req, res) => {
 // 3.1 Unified Match History API (Discord Bot + Web Platform)
 app.get('/api/matches', (req, res) => {
   const { source, map, search, limit } = req.query;
-  const state = getMatchHistoryState({ source, map, search, limit: parseInt(limit, 10) || 100 });
+  const safeLimit = Math.min(500, Math.max(1, parseInt(limit, 10) || 100));
+  const state = getMatchHistoryState({ source, map, search, limit: safeLimit });
   res.json(state);
 });
 
@@ -2998,10 +3020,9 @@ app.get('/api/steam/player-stats/:steamId', async (req, res) => {
 
 // Steam OpenID Authentication Routes
 app.get('/api/auth/steam', (req, res) => {
-  const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-  const host = req.get('host');
-  const returnTo = `${protocol}://${host}/api/auth/steam/return`;
-  const realm = `${protocol}://${host}/`;
+  const baseUrl = resolveSafeBaseUrl(req);
+  const returnTo = `${baseUrl}/api/auth/steam/return`;
+  const realm = `${baseUrl}/`;
 
   const params = new URLSearchParams({
     'openid.ns': 'http://specs.openid.net/auth/2.0',
@@ -3151,52 +3172,65 @@ server.listen(PORT, '0.0.0.0', () => {
     io.emit('match_history_updated', getMatchHistoryState());
   });
 
+  let isCheckingBotOnline = false;
   const ensureBotOnline = async () => {
+    if (isCheckingBotOnline) return;
     const hasLocalToken = Boolean(discordBotManager.config.token || process.env.DISCORD_BOT_TOKEN);
     if (!hasLocalToken) return;
 
-    // Se estiver rodando no PC Local, verifica se o Servidor Online (Render/Railway) esta no ar!
-    // O PC Local fica em Standby e SO assume se o Servidor Online cair!
-    if (IS_LOCAL_PC) {
-      const onlineUp = await checkCloudServerHealth();
-      if (onlineUp) {
-        if (discordBotManager.getStatus().running) {
-          console.log('\u2601\ufe0f [FAILOVER] Servidor Online Principal detectado no ar! Colocando Bot Local em Standby para evitar duplicidade...');
-          await discordBotManager.stop().catch(() => {});
+    isCheckingBotOnline = true;
+    try {
+      // Se estiver rodando no PC Local, verifica se o Servidor Online (Render/Railway) esta no ar!
+      // O PC Local fica em Standby e SO assume se o Servidor Online cair!
+      if (IS_LOCAL_PC) {
+        const onlineUp = await checkCloudServerHealth();
+        if (onlineUp) {
+          if (discordBotManager.getStatus().running) {
+            console.log('\u2601\ufe0f [FAILOVER] Servidor Online Principal detectado no ar! Colocando Bot Local em Standby para evitar duplicidade...');
+            await discordBotManager.stop().catch(() => {});
+          }
+          return;
+        }
+        if (!discordBotManager.getStatus().running) {
+          console.warn('\ud83d\udea8 [FAILOVER] Servidor Online fora do ar! Servidor Local assumindo o Bot do Discord automaticamente...');
+          await discordBotManager.start().catch((err) => {
+            console.warn('[DISCORD BOT] Aviso ao inicializar bot local em modo failover:', err.message);
+          });
         }
         return;
       }
+
+      // No Servidor Online (Render/Railway), ele e o Principal e fica sempre ligado
       if (!discordBotManager.getStatus().running) {
-        console.warn('\ud83d\udea8 [FAILOVER] Servidor Online fora do ar! Servidor Local assumindo o Bot do Discord automaticamente...');
         await discordBotManager.start().catch((err) => {
-          console.warn('[DISCORD BOT] Aviso ao inicializar bot local em modo failover:', err.message);
+          console.warn('[DISCORD BOT] Aviso ao inicializar bot principal:', err.message);
         });
       }
-      return;
-    }
-
-    // No Servidor Online (Render/Railway), ele e o Principal e fica sempre ligado
-    if (!discordBotManager.getStatus().running) {
-      await discordBotManager.start().catch((err) => {
-        console.warn('[DISCORD BOT] Aviso ao inicializar bot principal:', err.message);
-      });
+    } finally {
+      isCheckingBotOnline = false;
     }
   };
 
   ensureBotOnline();
-  setInterval(ensureBotOnline, 20000);
+  registerServerInterval(ensureBotOnline, 20000);
 });
 // Graceful shutdown for Railway & container orchestrators
 const shutdown = (signal) => {
   console.log(`🛑 [CS2 MIX HUB] Recebido ${signal}, salvando mixes e encerrando servidor graciosamente...`);
+  while (serverIntervals.length > 0) {
+    clearInterval(serverIntervals.pop());
+  }
   try {
     saveActiveMixStateNow();
+  } catch (_) {}
+  try {
+    discordBotManager.stop().catch(() => {});
   } catch (_) {}
   server.close(() => {
     console.log('✓ Servidor encerrado com sucesso.');
     process.exit(0);
   });
-  setTimeout(() => process.exit(0), 4000);
+  setTimeout(() => process.exit(0), 4000).unref?.();
 };
 
 process.on('SIGTERM', () => shutdown('SIGTERM'));

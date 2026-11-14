@@ -21,10 +21,26 @@ if (!fs.existsSync(LOGS_DIR)) {
   fs.mkdirSync(LOGS_DIR, { recursive: true });
 }
 
+const MAX_LOG_BYTES = 5 * 1024 * 1024;
+
+function rotateLogIfNeeded() {
+  try {
+    if (fs.existsSync(LOG_FILE)) {
+      const stats = fs.statSync(LOG_FILE);
+      if (stats.size > MAX_LOG_BYTES) {
+        const rotated = `${LOG_FILE}.old`;
+        if (fs.existsSync(rotated)) fs.unlinkSync(rotated);
+        fs.renameSync(LOG_FILE, rotated);
+      }
+    }
+  } catch (_) {}
+}
+
 function writeLog(line) {
   const timestamp = new Date().toISOString();
   const entry = `[${timestamp}] ${line}\n`;
   try {
+    rotateLogIfNeeded();
     process.stdout.write(entry);
     fs.appendFileSync(LOG_FILE, entry);
   } catch (_) {}
@@ -33,6 +49,8 @@ function writeLog(line) {
 let child = null;
 let isStopping = false;
 let restartCount = 0;
+let consecutiveFastCrashes = 0;
+let lastStartAt = 0;
 
 // Save Watchdog PID
 try {
@@ -43,6 +61,7 @@ function startServer() {
   if (isStopping) return;
 
   restartCount++;
+  lastStartAt = Date.now();
   writeLog(`🚀 [WATCHDOG] Iniciando Servidor CS2 Mix Hub (execução #${restartCount})...`);
 
   child = spawn(process.execPath, [SERVER_SCRIPT], {
@@ -53,6 +72,7 @@ function startServer() {
 
   child.stdout.on('data', (data) => {
     try {
+      rotateLogIfNeeded();
       process.stdout.write(data);
       fs.appendFileSync(LOG_FILE, data);
     } catch (_) {}
@@ -60,6 +80,7 @@ function startServer() {
 
   child.stderr.on('data', (data) => {
     try {
+      rotateLogIfNeeded();
       process.stderr.write(data);
       fs.appendFileSync(LOG_FILE, data);
     } catch (_) {}
@@ -77,8 +98,15 @@ function startServer() {
       } catch (_) {}
       process.exit(0);
     }
-    writeLog(`⚠️ [WATCHDOG] Servidor encerrou com código ${code} / sinal ${signal}. Reiniciando automaticamente em 1 segundo...`);
-    setTimeout(startServer, 1000);
+    const uptimeMs = Date.now() - lastStartAt;
+    if (uptimeMs < 5000) {
+      consecutiveFastCrashes += 1;
+    } else {
+      consecutiveFastCrashes = 0;
+    }
+    const backoffMs = Math.min(30000, 1000 * Math.pow(2, Math.min(consecutiveFastCrashes, 5)));
+    writeLog(`⚠️ [WATCHDOG] Servidor encerrou com código ${code} / sinal ${signal} após ${Math.round(uptimeMs / 1000)}s. Reiniciando em ${Math.round(backoffMs / 1000)}s...`);
+    setTimeout(startServer, backoffMs);
   });
 }
 

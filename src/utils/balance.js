@@ -1,3 +1,5 @@
+import { cryptoShuffle } from './random.js';
+
 /**
  * Helper to compute player weight based on selected ranking system
  */
@@ -13,122 +15,120 @@ export function getPlayerScore(p, rankingSystem = 'gc') {
 
 /**
  * Balances players into two teams of equal size based on Gamers Club (1-21) or FACEIT (1-10/ELO).
- * Evaluates all combinations of size N/2 and picks the one with the smallest difference.
+ * Evaluates all combinations of size N/2 for N <= 14 using index-based matching,
+ * and falls back to greedy balanced snake-draft for larger lobbies.
  */
 export function balanceTeams(players, rankingSystem = 'gc') {
-  if (!players || players.length < 2) {
-    return { teamA: [], teamB: [], metrics: null };
+  if (!Array.isArray(players) || players.length < 2) {
+    return { teamA: players ? [...players] : [], teamB: [], metrics: null };
   }
 
   const n = players.length;
   const half = Math.floor(n / 2);
 
-  // Helper to get all combinations of size k
-  function getCombinations(arr, k) {
-    const results = [];
-    function backtrack(start, combo) {
-      if (combo.length === k) {
-        results.push([...combo]);
-        return;
-      }
-      for (let i = start; i < arr.length; i++) {
-        combo.push(arr[i]);
-        backtrack(i + 1, combo);
-        combo.pop();
+  if (n > 14) {
+    const sorted = [...players].sort(
+      (a, b) => getPlayerScore(b, rankingSystem) - getPlayerScore(a, rankingSystem)
+    );
+    const teamA = [];
+    const teamB = [];
+    let sumA = 0;
+    let sumB = 0;
+
+    for (const p of sorted) {
+      const score = getPlayerScore(p, rankingSystem);
+      if (teamA.length < half && (sumA <= sumB || teamB.length >= n - half)) {
+        teamA.push(p);
+        sumA += score;
+      } else {
+        teamB.push(p);
+        sumB += score;
       }
     }
-    backtrack(0, []);
-    return results;
+
+    return {
+      teamA,
+      teamB,
+      metrics: calculateMetricsForTeams(teamA, teamB, rankingSystem),
+    };
   }
 
-  const allCombinations = getCombinations(players, half);
+  const allIndexCombinations = [];
+  function backtrack(start, combo) {
+    if (combo.length === half) {
+      allIndexCombinations.push([...combo]);
+      return;
+    }
+    for (let i = start; i < n; i++) {
+      combo.push(i);
+      backtrack(i + 1, combo);
+      combo.pop();
+    }
+  }
+  backtrack(0, []);
 
-  let bestSplit = null;
+  let bestIndicesA = null;
   let minDiff = Infinity;
   let bestScore = -Infinity;
 
-  for (const comboA of allCombinations) {
-    const idsA = new Set(comboA.map((p) => p.id));
-    const comboB = players.filter((p) => !idsA.has(p.id));
-
-    const sumA = comboA.reduce((acc, p) => acc + getPlayerScore(p, rankingSystem), 0);
-    const sumB = comboB.reduce((acc, p) => acc + getPlayerScore(p, rankingSystem), 0);
-    const diff = Math.abs(sumA - sumB);
-
-    // Side preference score: Team A gets +1 if CT preference, Team B gets +1 if TR preference
+  for (const idxA of allIndexCombinations) {
+    const setA = new Set(idxA);
+    let sumA = 0;
+    let sumB = 0;
     let sidePrefScore = 0;
-    comboA.forEach((p) => {
-      if (p.side === 'CT') sidePrefScore += 1;
-    });
-    comboB.forEach((p) => {
-      if (p.side === 'TR') sidePrefScore += 1;
-    });
 
-    // Score favors minimum diff first, then side preference
+    for (let i = 0; i < n; i++) {
+      const p = players[i];
+      const weight = getPlayerScore(p, rankingSystem);
+      if (setA.has(i)) {
+        sumA += weight;
+        if (p?.side === 'CT') sidePrefScore += 1;
+      } else {
+        sumB += weight;
+        if (p?.side === 'TR') sidePrefScore += 1;
+      }
+    }
+
+    const diff = Math.abs(sumA - sumB);
     const score = -diff * 100 + sidePrefScore;
 
     if (diff < minDiff || (diff === minDiff && score > bestScore)) {
       minDiff = diff;
       bestScore = score;
-      bestSplit = {
-        teamA: comboA,
-        teamB: comboB,
-        sumA,
-        sumB,
-        diff,
-      };
+      bestIndicesA = setA;
     }
   }
 
-  const avgA = (bestSplit.sumA / bestSplit.teamA.length).toFixed(1);
-  const avgB = (bestSplit.sumB / bestSplit.teamB.length).toFixed(1);
-  const maxPossible = Math.max(bestSplit.sumA, bestSplit.sumB) || 1;
-  const balancePercentage = Math.max(0, Math.min(100, Math.round(100 - (bestSplit.diff / maxPossible) * 100)));
-
-  return {
-    teamA: bestSplit.teamA,
-    teamB: bestSplit.teamB,
-    metrics: {
-      sumA: bestSplit.sumA,
-      sumB: bestSplit.sumB,
-      avgA,
-      avgB,
-      diff: bestSplit.diff,
-      balancePercentage,
-      rankingSystem,
-    },
-  };
-}
-
-/**
- * Pure random shuffle
- */
-export function shuffleTeams(players, rankingSystem = 'gc') {
-  const shuffled = [...players].sort(() => Math.random() - 0.5);
-  const half = Math.floor(shuffled.length / 2);
-  const teamA = shuffled.slice(0, half);
-  const teamB = shuffled.slice(half);
-
-  const sumA = teamA.reduce((acc, p) => acc + getPlayerScore(p, rankingSystem), 0);
-  const sumB = teamB.reduce((acc, p) => acc + getPlayerScore(p, rankingSystem), 0);
-  const diff = Math.abs(sumA - sumB);
-  const avgA = (sumA / teamA.length).toFixed(1);
-  const avgB = (sumB / teamB.length).toFixed(1);
-  const maxPossible = Math.max(sumA, sumB) || 1;
-  const balancePercentage = Math.max(0, Math.min(100, Math.round(100 - (diff / maxPossible) * 100)));
+  const teamA = [];
+  const teamB = [];
+  for (let i = 0; i < n; i++) {
+    if (bestIndicesA?.has(i)) teamA.push(players[i]);
+    else teamB.push(players[i]);
+  }
 
   return {
     teamA,
     teamB,
-    metrics: {
-      sumA,
-      sumB,
-      avgA,
-      avgB,
-      diff,
-      balancePercentage,
-      rankingSystem,
-    },
+    metrics: calculateMetricsForTeams(teamA, teamB, rankingSystem),
+  };
+}
+
+/**
+ * Pure random shuffle using unbiased Fisher-Yates
+ */
+export function shuffleTeams(players, rankingSystem = 'gc') {
+  if (!Array.isArray(players) || players.length < 2) {
+    return { teamA: players ? [...players] : [], teamB: [], metrics: null };
+  }
+  const shuffled = cryptoShuffle(players);
+  const half = Math.floor(shuffled.length / 2);
+  const teamA = shuffled.slice(0, half);
+  const teamB = shuffled.slice(half);
+
+  return {
+    teamA,
+    teamB,
+    metrics: calculateMetricsForTeams(teamA, teamB, rankingSystem),
   };
 }
 

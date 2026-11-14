@@ -1,4 +1,5 @@
 import net from 'net';
+import { isBlockedMetadataHost } from './utils/security.js';
 
 /**
  * Valve Source RCON Protocol Client
@@ -17,25 +18,51 @@ export function executeRconCommand({ host, port = 27015, password, command, time
       return reject(new Error('Host e senha RCON são obrigatórios.'));
     }
 
-    const cleanHost = host.trim();
+    const cleanHost = String(host).trim();
+    if (isBlockedMetadataHost(cleanHost)) {
+      return reject(new Error('Host RCON inválido ou bloqueado por política de segurança.'));
+    }
+
     const cleanPort = Number(port) || 27015;
+    if (!Number.isInteger(cleanPort) || cleanPort < 1 || cleanPort > 65535) {
+      return reject(new Error('Porta RCON inválida.'));
+    }
+
     const socket = new net.Socket();
 
     let authenticated = false;
+    let settled = false;
     let authReqId = Math.floor(Math.random() * 10000) + 1;
     let cmdReqId = authReqId + 1;
     let responseBuffer = '';
     let timeoutTimer = null;
+    let responseTimer = null;
 
     const cleanup = () => {
       if (timeoutTimer) clearTimeout(timeoutTimer);
+      if (responseTimer) clearTimeout(responseTimer);
+      timeoutTimer = null;
+      responseTimer = null;
       socket.removeAllListeners();
       socket.destroy();
     };
 
-    timeoutTimer = setTimeout(() => {
+    const resolveOnce = (val) => {
+      if (settled) return;
+      settled = true;
       cleanup();
-      reject(new Error(`Timeout de RCON (${timeoutMs}ms) ao conectar em ${cleanHost}:${cleanPort}`));
+      resolve(val);
+    };
+
+    const rejectOnce = (err) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(err);
+    };
+
+    timeoutTimer = setTimeout(() => {
+      rejectOnce(new Error(`Timeout de RCON (${timeoutMs}ms) ao conectar em ${cleanHost}:${cleanPort}`));
     }, timeoutMs);
 
     function createPacket(id, type, body) {
@@ -63,35 +90,39 @@ export function executeRconCommand({ host, port = 27015, password, command, time
 
     socket.on('data', (chunk) => {
       incomingData = Buffer.concat([incomingData, chunk]);
+      if (incomingData.length > 1024 * 1024) {
+        return rejectOnce(new Error('Resposta RCON excedeu o limite máximo permitido.'));
+      }
 
       while (incomingData.length >= 12) {
         const size = incomingData.readInt32LE(0);
+        if (size < 10 || size > 65536) {
+          return rejectOnce(new Error(`Pacote RCON malformado (tamanho ${size}).`));
+        }
         const totalSize = size + 4;
 
         if (incomingData.length < totalSize) {
           break; // wait for more bytes
         }
 
-        const packetBuf = incomingData.slice(0, totalSize);
-        incomingData = incomingData.slice(totalSize);
+        const packetBuf = incomingData.subarray(0, totalSize);
+        incomingData = incomingData.subarray(totalSize);
 
         const id = packetBuf.readInt32LE(4);
         const type = packetBuf.readInt32LE(8);
-        const body = packetBuf.slice(12, totalSize - 2).toString('utf8');
+        const body = packetBuf.subarray(12, totalSize - 2).toString('utf8');
 
         // Authentication response
         if (!authenticated) {
           if (type === SERVERDATA_AUTH_RESPONSE) {
             if (id === -1) {
-              cleanup();
-              return reject(new Error('Senha RCON incorreta.'));
+              return rejectOnce(new Error('Senha RCON incorreta.'));
             }
             authenticated = true;
 
             // If just testing connection
             if (!command || command.trim() === 'test') {
-              cleanup();
-              return resolve({ success: true, message: 'Autenticado com sucesso via RCON!' });
+              return resolveOnce({ success: true, message: 'Autenticado com sucesso via RCON!' });
             }
 
             // 2. Send command packet
@@ -103,10 +134,10 @@ export function executeRconCommand({ host, port = 27015, password, command, time
           if (id === cmdReqId || type === SERVERDATA_RESPONSE_VALUE) {
             responseBuffer += body;
 
-            // Most commands return immediate response
-            setTimeout(() => {
-              cleanup();
-              resolve({
+            // Reset debounce timer so multi-packet responses accumulate cleanly
+            if (responseTimer) clearTimeout(responseTimer);
+            responseTimer = setTimeout(() => {
+              resolveOnce({
                 success: true,
                 command,
                 response: responseBuffer.trim() || 'Comando executado com sucesso no servidor.',
@@ -118,20 +149,18 @@ export function executeRconCommand({ host, port = 27015, password, command, time
     });
 
     socket.on('error', (err) => {
-      cleanup();
-      reject(new Error(`Falha de conexão RCON com ${cleanHost}:${cleanPort}: ${err.message}`));
+      rejectOnce(new Error(`Falha de conexão RCON com ${cleanHost}:${cleanPort}: ${err.message}`));
     });
 
     socket.on('end', () => {
-      cleanup();
       if (authenticated) {
-        resolve({
+        resolveOnce({
           success: true,
           command,
           response: responseBuffer.trim() || 'Comando enviado.',
         });
       } else {
-        reject(new Error('Conexão encerrada pelo servidor sem resposta de autenticação.'));
+        rejectOnce(new Error('Conexão encerrada pelo servidor sem resposta de autenticação.'));
       }
     });
   });

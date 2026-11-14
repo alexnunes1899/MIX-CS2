@@ -12,6 +12,7 @@ export default function ChatDrawer({
   myProfile,
   rankingSystem = 'gc',
   soundEnabled,
+  roomId = '',
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [inputText, setInputText] = useState('');
@@ -20,9 +21,15 @@ export default function ChatDrawer({
   const prevChatLen = useRef(chat.length);
 
   useEffect(() => {
+    prevChatLen.current = chat.length;
+    setUnreadCount(0);
+  }, [roomId]);
+
+  useEffect(() => {
     if (chat.length > prevChatLen.current) {
+      const delta = chat.length - prevChatLen.current;
       if (!isOpen) {
-        setUnreadCount((c) => c + 1);
+        setUnreadCount((c) => c + delta);
       }
       if (soundEnabled) playChatPop();
       chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -87,7 +94,11 @@ export default function ChatDrawer({
 
       {/* Chat Window */}
       {isOpen && (
-        <div className="fixed bottom-5 right-5 z-50 w-[calc(100vw-2.5rem)] max-w-sm sm:max-w-md bg-slate-900 border-2 border-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col h-[480px] animate-slideUp backdrop-blur">
+        <div
+          role="dialog"
+          aria-label="Chat do Mix ao Vivo"
+          className="fixed bottom-5 right-5 z-50 w-[calc(100vw-2.5rem)] max-w-sm sm:max-w-md bg-slate-900 border-2 border-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col h-[min(480px,80vh)] animate-slideUp backdrop-blur"
+        >
           {/* Header */}
           <div className="bg-slate-950 px-4 py-3 border-b border-slate-800 flex items-center justify-between">
             <div className="flex items-center gap-2">

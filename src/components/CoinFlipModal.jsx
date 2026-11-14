@@ -31,7 +31,12 @@ export default function CoinFlipModal({
   const winnerName = winner === 'teamA' ? upperA : upperB;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="coin-flip-modal-title"
+    >
       <div className="relative w-full max-w-md bg-slate-900 border-2 border-amber-500/60 rounded-3xl p-6 text-center shadow-2xl overflow-hidden">
         
         {/* Glow */}
@@ -42,7 +47,7 @@ export default function CoinFlipModal({
             <Sparkles size={14} /> Cara ou Coroa Oficial
           </div>
 
-          <h2 className="text-xl font-extrabold font-heading text-white">
+          <h2 id="coin-flip-modal-title" className="text-xl font-extrabold font-heading text-white">
             Quem Começa o Pick & Ban?
           </h2>
 

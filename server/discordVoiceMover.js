@@ -4,13 +4,18 @@
  * Moves players between Lobby voice channel, Team A voice channel, and Team B voice channel.
  */
 
+import { isSnowflake } from './utils/security.js';
+
 export async function moveGuildMember({ botToken, guildId, userId, targetChannelId }) {
   if (!botToken || !guildId || !userId || !targetChannelId) {
     throw new Error('Parâmetros incompletos para mover membro no Discord.');
   }
+  if (!isSnowflake(String(guildId)) || !isSnowflake(String(userId)) || !isSnowflake(String(targetChannelId))) {
+    throw new Error('IDs do Discord inválidos (esperado formato Snowflake numérico).');
+  }
 
-  const cleanToken = botToken.trim().replace(/^Bot\s+/i, '');
-  const url = `https://discord.com/api/v10/guilds/${guildId}/members/${userId}`;
+  const cleanToken = String(botToken).trim().replace(/^Bot\s+/i, '');
+  const url = `https://discord.com/api/v10/guilds/${String(guildId).trim()}/members/${String(userId).trim()}`;
 
   const response = await fetch(url, {
     method: 'PATCH',
@@ -19,7 +24,7 @@ export async function moveGuildMember({ botToken, guildId, userId, targetChannel
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      channel_id: targetChannelId,
+      channel_id: String(targetChannelId).trim(),
     }),
   });
 
@@ -32,8 +37,14 @@ export async function moveGuildMember({ botToken, guildId, userId, targetChannel
 }
 
 export async function testDiscordBotVoiceChannels({ botToken, guildId, channelId }) {
-  const cleanToken = botToken.trim().replace(/^Bot\s+/i, '');
-  const url = `https://discord.com/api/v10/channels/${channelId}`;
+  if (!botToken || !channelId) {
+    throw new Error('Token e ID do canal são obrigatórios.');
+  }
+  if (!isSnowflake(String(channelId)) || (guildId && !isSnowflake(String(guildId)))) {
+    throw new Error('IDs do Discord inválidos.');
+  }
+  const cleanToken = String(botToken).trim().replace(/^Bot\s+/i, '');
+  const url = `https://discord.com/api/v10/channels/${String(channelId).trim()}`;
 
   const response = await fetch(url, {
     method: 'GET',

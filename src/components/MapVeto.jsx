@@ -37,10 +37,15 @@ export default function MapVeto({
   const completedActionsCount = bannedMaps.length + pickedMaps.length;
   const currentStepObj = schedule[Math.min(completedActionsCount, schedule.length - 1)] || schedule[0];
 
+  const soundEnabledRef = React.useRef(soundEnabled);
+  useEffect(() => {
+    soundEnabledRef.current = soundEnabled;
+  }, [soundEnabled]);
+
   // Trigger celebration when decider map is crowned or series is ready
   useEffect(() => {
     if (phase === 'side_pick' || phase === 'finished') {
-      if (soundEnabled) playFanfare();
+      if (soundEnabledRef.current) playFanfare();
       confetti({
         particleCount: 80,
         spread: 70,
@@ -48,7 +53,7 @@ export default function MapVeto({
         colors: ['#f59e0b', '#38bdf8', '#ef4444', '#10b981'],
       });
     }
-  }, [phase, soundEnabled]);
+  }, [phase]);
 
   const isBanned = (mapId) => bannedMaps.some((b) => b.mapId === mapId);
   const getBanInfo = (mapId) => bannedMaps.find((b) => b.mapId === mapId);

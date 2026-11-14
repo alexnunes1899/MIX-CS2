@@ -4,10 +4,10 @@ export default function UpdateNotificationBanner({ isAvailable, onUpdate }) {
   if (!isAvailable) return null;
 
   return (
-    <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[9999] max-w-lg w-[92%] px-2 animate-bounce">
+    <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[9999] max-w-lg w-[92%] px-2 animate-slideUp">
       <div className="p-3 sm:p-4 rounded-2xl bg-gradient-to-r from-amber-600 via-orange-600 to-amber-500 text-white shadow-[0_10px_35px_rgba(249,115,22,0.4)] border border-amber-300/40 flex items-center justify-between gap-3 backdrop-blur-xl">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center text-lg shadow-inner">
+          <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center text-lg shadow-inner animate-pulse">
             🚀
           </div>
           <div>

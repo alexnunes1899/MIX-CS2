@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AlertTriangle, HardDrive, Wifi, WifiOff, X, ArrowRight, CheckCircle2, RefreshCw } from 'lucide-react';
 
 export default function FailoverBanner({ roomId = 'MIX-PRO', roomPassword = '', socketConnected = true }) {
@@ -72,6 +72,10 @@ export default function FailoverBanner({ roomId = 'MIX-PRO', roomPassword = '', 
     const url = new URL('http://localhost:3000');
     url.searchParams.set('room', roomId);
     if (roomPassword) url.searchParams.set('pwd', roomPassword);
+    try {
+      const keyParam = new URLSearchParams(window.location.search).get('key');
+      if (keyParam) url.searchParams.set('key', keyParam);
+    } catch (_) {}
     window.location.href = url.toString();
   };
 
@@ -89,21 +93,25 @@ export default function FailoverBanner({ roomId = 'MIX-PRO', roomPassword = '', 
     }
   };
 
-  if (dismissed) return null;
-
   useEffect(() => {
-    if (!isLocalHost) return;
+    if (!isLocalHost || dismissed) return;
     checkOnlineProduction();
     const timer = setInterval(checkOnlineProduction, 15000);
     return () => clearInterval(timer);
-  }, [isLocalHost]);
+  }, [isLocalHost, dismissed]);
 
   const handleReturnToCloud = () => {
     const url = new URL('https://mix-cs2.onrender.com');
     url.searchParams.set('room', roomId);
     if (roomPassword) url.searchParams.set('pwd', roomPassword);
+    try {
+      const keyParam = new URLSearchParams(window.location.search).get('key');
+      if (keyParam) url.searchParams.set('key', keyParam);
+    } catch (_) {}
     window.location.href = url.toString();
   };
+
+  if (dismissed) return null;
 
   if (isLocalHost) {
     if (onlineAvailable !== true) return null;

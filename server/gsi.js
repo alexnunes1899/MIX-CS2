@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Valve CS2 Game State Integration (GSI) Handler
  * Receives JSON HTTP POST updates directly from Counter-Strike 2
  * Updates room live score and match status in real time.
@@ -7,12 +7,43 @@
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
+import { normalizeRoomId } from './utils/security.js';
 
 const roomGsiStates = new Map();
-const playerHistoricalStats = new Map();
-const matchRosterCache = new Map();
-let currentMatchMeta = { mapName: '', maxRound: 0 };
-let lastValidMatchSnapshot = null;
+const roomContexts = new Map();
+const GSI_CONTEXT_TTL_MS = 6 * 60 * 60 * 1000;
+
+function getRoomGsiContext(cleanRoomId) {
+  const now = Date.now();
+  if (roomContexts.size > 100) {
+    for (const [k, ctx] of roomContexts.entries()) {
+      if (now - (ctx.updatedAt || 0) > GSI_CONTEXT_TTL_MS) {
+        roomContexts.delete(k);
+        roomGsiStates.delete(k);
+      }
+    }
+  }
+  let ctx = roomContexts.get(cleanRoomId);
+  if (!ctx) {
+    ctx = {
+      playerHistoricalStats: new Map(),
+      matchRosterCache: new Map(),
+      currentMatchMeta: { mapName: '', maxRound: 0 },
+      lastValidMatchSnapshot: null,
+      updatedAt: now,
+    };
+    roomContexts.set(cleanRoomId, ctx);
+  }
+  ctx.updatedAt = now;
+  return ctx;
+}
+
+export function clearRoomGsiState(roomId) {
+  const clean = normalizeRoomId(roomId, '');
+  if (!clean) return;
+  roomContexts.delete(clean);
+  roomGsiStates.delete(clean);
+}
 
 function isCs2MatchFinishedScore(phase, roundPhase, scoreCT, scoreTR) {
   if (phase === 'gameover') return true;
@@ -34,7 +65,9 @@ function isCs2MatchFinishedScore(phase, roundPhase, scoreCT, scoreTR) {
 export function handleGsiPayload(roomId, payload) {
   if (!roomId || !payload) return null;
 
-  const cleanRoomId = roomId.trim().toUpperCase();
+  const cleanRoomId = normalizeRoomId(roomId);
+  const ctx = getRoomGsiContext(cleanRoomId);
+  const { playerHistoricalStats, matchRosterCache } = ctx;
   const mapData = payload.map || {};
   const roundData = payload.round || {};
   const player = payload.player || {};
@@ -49,16 +82,16 @@ export function handleGsiPayload(roomId, payload) {
   const winTeam = roundData.win_team || null;
 
   const isNewMatchStart =
-    (mapName !== 'Indefinido' && currentMatchMeta.mapName && currentMatchMeta.mapName !== mapName && phase === 'live') ||
-    (phase === 'live' && roundNumber <= 1 && scoreCT + scoreTR <= 1 && currentMatchMeta.maxRound >= 3);
+    (mapName !== 'Indefinido' && ctx.currentMatchMeta.mapName && ctx.currentMatchMeta.mapName !== mapName && phase === 'live') ||
+    (phase === 'live' && roundNumber <= 1 && scoreCT + scoreTR <= 1 && ctx.currentMatchMeta.maxRound >= 3);
 
   if (isNewMatchStart) {
     playerHistoricalStats.clear();
     matchRosterCache.clear();
-    currentMatchMeta = { mapName: mapName !== 'Indefinido' ? mapName : '', maxRound: roundNumber };
+    ctx.currentMatchMeta = { mapName: mapName !== 'Indefinido' ? mapName : '', maxRound: roundNumber };
   } else {
-    if (mapName !== 'Indefinido') currentMatchMeta.mapName = mapName;
-    if (roundNumber > currentMatchMeta.maxRound) currentMatchMeta.maxRound = roundNumber;
+    if (mapName !== 'Indefinido') ctx.currentMatchMeta.mapName = mapName;
+    if (roundNumber > ctx.currentMatchMeta.maxRound) ctx.currentMatchMeta.maxRound = roundNumber;
   }
 
   let rawStats = player.match_stats || {};
@@ -217,8 +250,8 @@ export function handleGsiPayload(roomId, payload) {
   }
 
   let allPlayersStats = Array.from(matchRosterCache.values());
-  if (allPlayersStats.length === 0 && lastValidMatchSnapshot?.allPlayersStats?.length > 0 && phase !== 'live') {
-    allPlayersStats = lastValidMatchSnapshot.allPlayersStats;
+  if (allPlayersStats.length === 0 && ctx.lastValidMatchSnapshot?.allPlayersStats?.length > 0 && phase !== 'live') {
+    allPlayersStats = ctx.lastValidMatchSnapshot.allPlayersStats;
   }
 
   const teamCT = allPlayersStats.filter((p) => p.team === 'CT');
@@ -312,11 +345,11 @@ export function handleGsiPayload(roomId, payload) {
   const liveState = {
     connected: true,
     lastUpdate: now,
-    mapName: mapName !== 'Indefinido' ? mapName : (lastValidMatchSnapshot?.mapName || 'Indefinido'),
+    mapName: mapName !== 'Indefinido' ? mapName : (ctx.lastValidMatchSnapshot?.mapName || 'Indefinido'),
     phase,
     roundNumber,
-    scoreCT: scoreCT || (isGameOver && lastValidMatchSnapshot ? lastValidMatchSnapshot.scoreCT : 0),
-    scoreTR: scoreTR || (isGameOver && lastValidMatchSnapshot ? lastValidMatchSnapshot.scoreTR : 0),
+    scoreCT: scoreCT || (isGameOver && ctx.lastValidMatchSnapshot ? ctx.lastValidMatchSnapshot.scoreCT : 0),
+    scoreTR: scoreTR || (isGameOver && ctx.lastValidMatchSnapshot ? ctx.lastValidMatchSnapshot.scoreTR : 0),
     bomb,
     roundPhase,
     winTeam,
@@ -335,7 +368,7 @@ export function handleGsiPayload(roomId, payload) {
   };
 
   if (phase !== 'warmup' && allPlayersStats.length > 0 && (scoreCT + scoreTR >= 1 || roundNumber >= 1)) {
-    lastValidMatchSnapshot = {
+    ctx.lastValidMatchSnapshot = {
       ...liveState,
       allPlayersStats: [...allPlayersStats],
       savedAt: now,
@@ -347,7 +380,7 @@ export function handleGsiPayload(roomId, payload) {
 }
 export function setGsiState(roomId, liveState) {
   if (!roomId || !liveState) return;
-  const clean = roomId.trim().toUpperCase();
+  const clean = normalizeRoomId(roomId);
   roomGsiStates.set(clean, {
     ...liveState,
     lastUpdate: liveState.lastUpdate || Date.now(),
@@ -356,7 +389,7 @@ export function setGsiState(roomId, liveState) {
 
 export function getGsiState(roomId) {
   if (!roomId) return { connected: false };
-  const clean = roomId.trim().toUpperCase();
+  const clean = normalizeRoomId(roomId);
   const state = roomGsiStates.get(clean);
 
   if (!state) {
@@ -376,8 +409,8 @@ export function getGsiState(roomId) {
  * Generates official Valve CS2 Game State Integration .cfg configuration
  */
 export function generateGsiConfig(serverBaseUrl, roomId) {
-  const cleanRoomId = (roomId || 'MIX-PRO').trim().toUpperCase();
-  const cleanUrl = (serverBaseUrl || 'http://localhost:3000').replace(/\/+$/, '');
+  const cleanRoomId = normalizeRoomId(roomId, 'MIX-PRO');
+  const cleanUrl = String(serverBaseUrl || 'http://localhost:3000').replace(/["\r\n]/g, '').replace(/\/+$/, '');
   const targetUri = `${cleanUrl}/api/gsi/${cleanRoomId}`;
 
   return `"CS2MixHub Integration"

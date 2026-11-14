@@ -60,10 +60,11 @@ export default function CaptainsDraftView({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {unassignedPlayers.map((p) => (
-            <div
+            <button
               key={p.id}
+              type="button"
               onClick={() => handlePick(p.id)}
-              className="bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-amber-400/80 rounded-xl p-3 flex items-center justify-between gap-2 cursor-pointer transition-all shadow-md group overflow-hidden"
+              className="w-full text-left bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-amber-400/80 rounded-xl p-3 flex items-center justify-between gap-2 cursor-pointer transition-all shadow-md group overflow-hidden"
             >
               <div className="flex items-center gap-2.5 min-w-0 flex-1">
                 <PlayerAvatar avatar={p.avatar} nick={p.nick} size="md" />
@@ -83,11 +84,11 @@ export default function CaptainsDraftView({
                 ) : (
                   <GCBadge level={p.level} size="sm" />
                 )}
-                <button className="text-xs font-bold text-amber-400 bg-amber-500/10 px-2 py-1 rounded group-hover:bg-amber-500 group-hover:text-slate-950 transition-colors shrink-0">
+                <span className="text-xs font-bold text-amber-400 bg-amber-500/10 px-2 py-1 rounded group-hover:bg-amber-500 group-hover:text-slate-950 transition-colors shrink-0">
                   Escolher
-                </button>
+                </span>
               </div>
-            </div>
+            </button>
           ))}
         </div>
       </div>

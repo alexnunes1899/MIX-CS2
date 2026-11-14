@@ -22,6 +22,12 @@ export class BagreVoteService {
 
   startOrGetVote(mix) {
     if (!mix) return null;
+    const now = Date.now();
+    for (const [key, sess] of this.activeVotes.entries()) {
+      if (!sess.active || now - (sess.createdAt || 0) > 6 * 60 * 60 * 1000) {
+        this.activeVotes.delete(key);
+      }
+    }
     if (!this.activeVotes.has(mix.id)) {
       const candidates = (mix.players || []).map((p) => ({
         id: p.id,
@@ -32,6 +38,7 @@ export class BagreVoteService {
         mixId: mix.id,
         mixName: mix.name || 'Mix CS2',
         active: true,
+        createdAt: now,
         votes: new Map(),
         candidates,
       });
@@ -90,6 +97,7 @@ export class BagreVoteService {
     const session = this.activeVotes.get(mix.id);
     if (!session) return null;
     session.active = false;
+    this.activeVotes.delete(mix.id);
 
     const counts = new Map();
     session.votes.forEach((candidateId) => {

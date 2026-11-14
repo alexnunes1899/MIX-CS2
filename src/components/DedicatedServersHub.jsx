@@ -109,47 +109,77 @@ export default function DedicatedServersHub({
   const [copiedHostCmd, setCopiedHostCmd] = useState(false);
   const [appliedToast, setAppliedToast] = useState(false);
 
-  // Auto-detect IPs on mount
+  // Sync incoming room server/RCON props without hijacking the active tab
   useEffect(() => {
     if (currentServerIp) {
       setOnlineIpInput(currentServerIp);
-      const parts = currentServerIp.split(':');
-      if (parts[0].startsWith('26.')) {
-        setRadminIp(parts[0]);
-        setActiveTab('radmin');
-      } else if (parts[0].startsWith('192.168.') || parts[0].startsWith('10.') || parts[0].startsWith('172.')) {
-        setLanIp(parts[0]);
-        setActiveTab('lan');
+      const parsedIncoming = parseServerDetails(currentServerIp);
+      if (parsedIncoming.host) {
+        if (parsedIncoming.host.startsWith('26.')) {
+          setRadminIp(parsedIncoming.host);
+        } else if (
+          parsedIncoming.host.startsWith('192.168.') ||
+          parsedIncoming.host.startsWith('10.') ||
+          parsedIncoming.host.startsWith('172.')
+        ) {
+          setLanIp(parsedIncoming.host);
+        }
       }
-      if (parts[1]) setPort(parts[1]);
+      if (parsedIncoming.port) setPort(String(parsedIncoming.port));
     }
 
     if (rconPassword) {
       setRconPassInput(rconPassword);
     }
-
-    setDetectingIp(true);
-    fetch('/api/my-ip')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data?.ip) setPublicIp(data.ip);
-      })
-      .catch(() => {});
-
-    fetch('/api/lan-ip')
-      .then((res) => res.json())
-      .then((data) => {
-        if (Array.isArray(data?.ips) && data.ips.length > 0) {
-          setDetectedLanIps(data.ips);
-          const radminNet = data.ips.find((it) => it.address.startsWith('26.'));
-          if (radminNet) setRadminIp(radminNet.address);
-          const localNet = data.ips.find((it) => !it.address.startsWith('26.'));
-          if (localNet) setLanIp(localNet.address);
-        }
-      })
-      .catch(() => {})
-      .finally(() => setDetectingIp(false));
   }, [currentServerIp, rconPassword]);
+
+  // Auto-detect IPs and set default tab on initial mount only (when ?tab= is not explicitly set)
+  useEffect(() => {
+    let hasTabParam = false;
+    try {
+      const p = new URLSearchParams(window.location.search);
+      const t = p.get('tab');
+      hasTabParam = ['online', 'lan', 'radmin', 'public', 'cfg'].includes(t);
+    } catch (e) {}
+
+    if (!hasTabParam && currentServerIp) {
+      const host = parseServerDetails(currentServerIp).host || '';
+      if (host.startsWith('26.')) {
+        setActiveTab('radmin');
+      } else if (host.startsWith('192.168.') || host.startsWith('10.') || host.startsWith('172.')) {
+        setActiveTab('lan');
+      }
+    }
+
+    let cancelled = false;
+    setDetectingIp(true);
+    Promise.all([
+      fetch('/api/my-ip')
+        .then((res) => res.json())
+        .then((data) => {
+          if (!cancelled && data?.ip) setPublicIp(data.ip);
+        })
+        .catch(() => {}),
+      fetch('/api/lan-ip')
+        .then((res) => res.json())
+        .then((data) => {
+          if (!cancelled && Array.isArray(data?.ips) && data.ips.length > 0) {
+            setDetectedLanIps(data.ips);
+            const radminNet = data.ips.find((it) => it.address.startsWith('26.'));
+            if (radminNet) setRadminIp(radminNet.address);
+            const localNet = data.ips.find((it) => !it.address.startsWith('26.'));
+            if (localNet) setLanIp(localNet.address);
+          }
+        })
+        .catch(() => {}),
+    ]).finally(() => {
+      if (!cancelled) setDetectingIp(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Clean map code
   const cleanMap = (selectedMap || 'de_mirage').toLowerCase().replace(/[^a-z0-9_]/g, '');
@@ -227,23 +257,27 @@ pause
     if (soundEnabled) playClickSound();
     const content = generateBatScript(mode);
     const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const blobUrl = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
+    link.href = blobUrl;
     link.download = `INICIAR-CS2-${mode.toUpperCase()}.bat`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
   };
 
   const handleDownloadCfg = () => {
     if (soundEnabled) playClickSound();
     const blob = new Blob([mixCfgContent], { type: 'text/plain;charset=utf-8' });
+    const blobUrl = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
+    link.href = blobUrl;
     link.download = 'gamemode_competitive_mix.cfg';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
   };
 
   // Test Server Ping (UDP A2S_INFO & TCP)
@@ -259,11 +293,13 @@ pause
     if (soundEnabled) playClickSound();
 
     try {
-      const parts = parsed.ip.split(':');
       const res = await fetch('/api/server/ping', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ host: parts[0], port: parts[1] || 27015 }),
+        body: JSON.stringify({
+          host: parsed.host || parsed.ip.split(':')[0],
+          port: parsed.port || 27015,
+        }),
       });
       const data = await res.json();
       setPingResult(data);
@@ -302,13 +338,12 @@ pause
     if (soundEnabled) playClickSound();
 
     try {
-      const parts = parsedActive.ip.split(':');
       const res = await fetch('/api/rcon/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          host: parts[0],
-          port: parts[1] || 27015,
+          host: parsedActive.host || parsedActive.ip.split(':')[0],
+          port: parsedActive.port || 27015,
           password: rconPassInput.trim(),
         }),
       });
@@ -335,13 +370,12 @@ pause
     if (soundEnabled) playClickSound();
 
     try {
-      const parts = parsedActive.ip.split(':');
       const res = await fetch('/api/rcon/exec', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          host: parts[0],
-          port: parts[1] || 27015,
+          host: parsedActive.host || parsedActive.ip.split(':')[0],
+          port: parsedActive.port || 27015,
           password: rconPassInput.trim(),
           command: cmd,
         }),

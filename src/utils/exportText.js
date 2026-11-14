@@ -7,16 +7,19 @@ export function formatDiscordSummary({ roomName, teamA, teamB, metrics, finalMap
   if (isSeries) {
     mapsSection = `🏆 **Formato da Partida:** ${matchFormat}\n` +
       drawnSeries.map((item, idx) => {
-        const sideA = item.sideTimeA || 'CT';
-        const sideB = sideA === 'CT' ? 'TR' : 'CT';
         const mapName = item.map?.name || item.map || 'Mapa';
         const role = item.role || `Mapa #${idx + 1}`;
+        const sideA = item.sideTeamA || item.sideTimeA || 'CT';
+        if (item.knifeRound || sideA === 'KNIFE') {
+          return `• **#${idx + 1} ${mapName}:** ${role} (🔪 **Round Faca**)`;
+        }
+        const sideB = sideA === 'CT' ? 'TR' : 'CT';
         return `• **#${idx + 1} ${mapName}:** ${role} (${labelA}: **${sideA}** | ${labelB}: **${sideB}**)`;
       }).join('\n');
   } else {
     const mapStr = finalMap ? `🗺️ **Mapa Decisivo:** ${finalMap.name} (${finalMap.file})` : '🗺️ Mapa: A definir';
-    const sideStr = startingSideTeamB 
-      ? `🎯 **Lados:** ${labelA} começa de **${startingSideTeamB === 'CT' ? 'TR' : 'CT'}** | ${labelB} começa de **${startingSideTeamB}**` 
+    const sideStr = startingSideTeamB
+      ? `🎯 **Lados:** ${labelA} começa de **${startingSideTeamB === 'CT' ? 'TR' : 'CT'}** | ${labelB} começa de **${startingSideTeamB}**`
       : '';
     mapsSection = `${mapStr}\n${sideStr}`.trim();
   }

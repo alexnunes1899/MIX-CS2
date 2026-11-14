@@ -142,7 +142,12 @@ export default function AimReflexModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/80 backdrop-blur-md animate-fadeIn">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Aquecimento de Mira e Reflexo"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/80 backdrop-blur-md animate-fadeIn"
+    >
       <div className="bg-slate-900 border border-amber-500/30 rounded-3xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
         
         {/* Header */}
@@ -164,6 +169,8 @@ export default function AimReflexModal({
             </div>
           </div>
           <button
+            type="button"
+            aria-label="Fechar janela"
             onClick={() => {
               if (soundEnabled) playClickSound();
               onClose();
@@ -177,6 +184,7 @@ export default function AimReflexModal({
         {/* Tab Selector */}
         <div className="px-6 pt-4 border-b border-slate-800 bg-slate-950/30 flex items-center gap-2">
           <button
+            type="button"
             onClick={() => {
               if (soundEnabled) playClickSound();
               setActiveTab('reaction');
@@ -190,6 +198,7 @@ export default function AimReflexModal({
             ⚡ Teste de Reflexo (ms)
           </button>
           <button
+            type="button"
             onClick={() => {
               if (soundEnabled) playClickSound();
               setActiveTab('grid');
@@ -209,11 +218,10 @@ export default function AimReflexModal({
           {activeTab === 'reaction' ? (
             <div className="space-y-4">
               {/* Interactive Reaction Box */}
-              <div
+              <button
+                type="button"
                 onClick={
-                  reactionState === 'idle'
-                    ? startReactionTest
-                    : reactionState === 'clicked' || reactionState === 'early'
+                  reactionState === 'idle' || reactionState === 'clicked' || reactionState === 'early'
                     ? startReactionTest
                     : handleReactionClick
                 }
@@ -274,7 +282,7 @@ export default function AimReflexModal({
                     <p className="text-[11px] text-slate-400 pt-1">Clique para tentar um novo recorde</p>
                   </div>
                 )}
-              </div>
+              </button>
 
               {/* Benchmarks & History Bar */}
               {scoresList.length > 0 && (

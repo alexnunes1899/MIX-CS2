@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Parses raw server input from users into clean IP, Port, Password, Console Command, and Steam URI.
  * Handles inputs like:
  * - "189.1.168.10:27015"
@@ -49,7 +49,18 @@ export function parseServerDetails(rawInput) {
   // Remove any lingering quotes, semicolons or spaces
   ip = ip.replace(/[;'"]/g, '').trim();
 
-  const isValid = ip.length > 0;
+  let host = ip;
+  let port = 27015;
+  const colonIdx = ip.lastIndexOf(':');
+  if (colonIdx !== -1) {
+    host = ip.substring(0, colonIdx).trim();
+    const parsedPort = parseInt(ip.substring(colonIdx + 1).trim(), 10);
+    if (parsedPort >= 1 && parsedPort <= 65535) {
+      port = parsedPort;
+    }
+  }
+
+  const isValid = host.length > 0;
   const connectCommand = isValid
     ? (password ? `connect ${ip}; password ${password}` : `connect ${ip}`)
     : '';
@@ -62,6 +73,8 @@ export function parseServerDetails(rawInput) {
   return {
     raw: rawInput,
     ip,
+    host,
+    port,
     password,
     connectCommand,
     steamUrl,

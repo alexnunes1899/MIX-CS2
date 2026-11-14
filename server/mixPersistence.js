@@ -141,10 +141,18 @@ export function loadActiveMixState() {
  */
 export function clearMixPersistence(mixId) {
   try {
+    if (saveTimeout) {
+      clearTimeout(saveTimeout);
+      saveTimeout = null;
+    }
     const state = loadActiveMixState();
     state.rooms = (state.rooms || []).filter((r) => r.id !== mixId);
     state.discordMixes = (state.discordMixes || []).filter((item) => item.mix?.id !== mixId);
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-    fs.writeFileSync(STORE_PATH, JSON.stringify(state, null, 2), 'utf8');
-  } catch (_) {}
+    const tmpPath = `${STORE_PATH}.${process.pid}.tmp`;
+    fs.writeFileSync(tmpPath, JSON.stringify(state, null, 2), 'utf8');
+    fs.renameSync(tmpPath, STORE_PATH);
+  } catch (err) {
+    console.warn('[PERSISTÊNCIA] Falha ao limpar persistência do mix:', err.message);
+  }
 }
