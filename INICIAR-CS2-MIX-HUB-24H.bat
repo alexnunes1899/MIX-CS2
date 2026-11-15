@@ -1,4 +1,4 @@
 @echo off
-set PATH=%PATH%;C:\Program Files\nodejs;C:\Users\alexn\AppData\Local\MinGit\cmd
-cd /d "C:\Users\alexn\.gemini\antigravity\scratch\cs2-mix-hub"
+set PATH=%PATH%;C:\Program Files\nodejs;C:\Program Files\Git\cmd;C:\Users\alexn\AppData\Local\Programs\Git\cmd
+cd /d "%~dp0"
 node server/runner.js

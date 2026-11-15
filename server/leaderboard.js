@@ -3,14 +3,11 @@
  * Persists player match statistics, winrates, streaks and rankings in server/data/leaderboard.json.
  */
 
-import path from 'path';
-import { fileURLToPath } from 'url';
 import { readJsonSafe, writeJsonAtomic } from './utils/atomicJson.js';
+import { getDataDir, getDataFilePath } from './dataDir.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
-const LEADERBOARD_FILE = path.join(DATA_DIR, 'leaderboard.json');
+const DATA_DIR = getDataDir();
+const LEADERBOARD_FILE = getDataFilePath('leaderboard.json');
 
 // Starts empty until real matches are computed in the hub
 let memoryLeaderboard = [];

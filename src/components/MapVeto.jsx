@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import confetti from 'canvas-confetti';
 import { CS2_MAPS } from '../data/maps';
-import { Shield, Flame, Ban, Check, Sparkles, History, RotateCcw, Trophy, Swords, Copy } from 'lucide-react';
+import { Shield, Flame, Ban, Check, Sparkles, History, RotateCcw, Trophy, Swords, Copy, Clock } from 'lucide-react';
 import { playBanSound, playFanfare, playPickSound, playClickSound } from '../utils/audio';
 import { getTeamNames } from '../utils/teamNames';
 import { getVetoSchedule, getOppositeTeam } from '../utils/proVeto';
@@ -13,9 +13,12 @@ export default function MapVeto({
   onSelectSide,
   onChangeVetoFormat,
   onResetMix,
+  onSetTurnTimer,
+  isAdmin = false,
   soundEnabled,
 }) {
   const [copiedLog, setCopiedLog] = useState(false);
+  const [turnSecondsLeft, setTurnSecondsLeft] = useState(null);
 
   const {
     maps = [],
@@ -29,7 +32,22 @@ export default function MapVeto({
     vetoFirstTeam = 'teamA',
     bo1Order = 'ABABAB',
     pendingSidePick = null,
+    turnDeadline = null,
+    turnTimerSeconds = 0,
   } = room;
+
+  useEffect(() => {
+    if (!turnDeadline || (phase !== 'veto' && phase !== 'side_pick')) {
+      setTurnSecondsLeft(null);
+      return;
+    }
+    const update = () => {
+      setTurnSecondsLeft(Math.max(0, Math.ceil((turnDeadline - Date.now()) / 1000)));
+    };
+    update();
+    const timer = setInterval(update, 500);
+    return () => clearInterval(timer);
+  }, [turnDeadline, phase]);
 
   const { labelA, labelB, upperA, upperB } = getTeamNames(room);
 
@@ -37,15 +55,10 @@ export default function MapVeto({
   const completedActionsCount = bannedMaps.length + pickedMaps.length;
   const currentStepObj = schedule[Math.min(completedActionsCount, schedule.length - 1)] || schedule[0];
 
-  const soundEnabledRef = React.useRef(soundEnabled);
-  useEffect(() => {
-    soundEnabledRef.current = soundEnabled;
-  }, [soundEnabled]);
-
   // Trigger celebration when decider map is crowned or series is ready
   useEffect(() => {
     if (phase === 'side_pick' || phase === 'finished') {
-      if (soundEnabledRef.current) playFanfare();
+      if (soundEnabled) playFanfare();
       confetti({
         particleCount: 80,
         spread: 70,
@@ -53,7 +66,7 @@ export default function MapVeto({
         colors: ['#f59e0b', '#38bdf8', '#ef4444', '#10b981'],
       });
     }
-  }, [phase]);
+  }, [phase, soundEnabled]);
 
   const isBanned = (mapId) => bannedMaps.some((b) => b.mapId === mapId);
   const getBanInfo = (mapId) => bannedMaps.find((b) => b.mapId === mapId);
@@ -155,29 +168,69 @@ export default function MapVeto({
           </div>
         </div>
 
-        {/* Format Switcher Pill */}
-        {onChangeVetoFormat && (
-          <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800">
-            {['MD1', 'MD3', 'MD5'].map((fmt) => (
-              <button
-                key={fmt}
-                type="button"
-                onClick={() => {
-                  if (soundEnabled) playClickSound();
-                  onChangeVetoFormat(fmt);
-                }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-heading font-black transition-all cursor-pointer ${
-                  matchFormat === fmt
-                    ? 'bg-amber-500 text-slate-950 shadow-md'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-900'
-                }`}
-                title={`Alternar formato do Veto para ${fmt}`}
-              >
-                {fmt}
-              </button>
-            ))}
-          </div>
-        )}
+        {/* Format Switcher & Turn Timer Bar */}
+        <div className="flex flex-wrap items-center gap-2">
+          {turnSecondsLeft !== null && (
+            <span
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-mono text-xs font-black border ${
+                turnSecondsLeft <= 5
+                  ? 'bg-rose-500/20 text-rose-300 border-rose-500/50 animate-pulse'
+                  : 'bg-slate-950 text-amber-300 border-amber-500/40'
+              }`}
+              title="Tempo restante do turno atual"
+            >
+              <Clock size={13} />
+              <span>{turnSecondsLeft}s</span>
+            </span>
+          )}
+
+          {isAdmin && onSetTurnTimer && (
+            <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-[10px]">
+              <Clock size={11} className="text-slate-400 ml-1" />
+              {[0, 20, 30, 45].map((sec) => (
+                <button
+                  key={sec}
+                  type="button"
+                  onClick={() => {
+                    if (soundEnabled) playClickSound();
+                    onSetTurnTimer(sec);
+                  }}
+                  className={`px-2 py-1 rounded-lg font-mono font-bold transition-colors cursor-pointer ${
+                    Number(turnTimerSeconds) === sec
+                      ? 'bg-emerald-500 text-slate-950'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                  }`}
+                  title={sec === 0 ? 'Desativar timer automático' : `Auto-pick/ban após ${sec}s`}
+                >
+                  {sec === 0 ? 'Off' : `${sec}s`}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {onChangeVetoFormat && (
+            <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800">
+              {['MD1', 'MD3', 'MD5'].map((fmt) => (
+                <button
+                  key={fmt}
+                  type="button"
+                  onClick={() => {
+                    if (soundEnabled) playClickSound();
+                    onChangeVetoFormat(fmt);
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-heading font-black transition-all cursor-pointer ${
+                    matchFormat === fmt
+                      ? 'bg-amber-500 text-slate-950 shadow-md'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                  }`}
+                  title={`Alternar formato do Veto para ${fmt}`}
+                >
+                  {fmt}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* 7-STEP OFFICIAL BROADCAST VETO TIMELINE */}

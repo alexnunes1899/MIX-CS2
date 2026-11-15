@@ -3,10 +3,17 @@
  * Sends rich embeds for lobby updates, 10/10 full lobby alerts, and match decider summaries.
  */
 
-import { isValidDiscordWebhookUrl as validateWebhookUrl } from './utils/security.js';
+const VALID_WEBHOOK_PREFIXES = [
+  'https://discord.com/api/webhooks/',
+  'https://discordapp.com/api/webhooks/',
+  'https://canary.discord.com/api/webhooks/',
+  'https://ptb.discord.com/api/webhooks/',
+];
 
 export function isValidDiscordWebhookUrl(url) {
-  return validateWebhookUrl(url);
+  if (!url || typeof url !== 'string') return false;
+  const trimmed = url.trim();
+  return VALID_WEBHOOK_PREFIXES.some(prefix => trimmed.startsWith(prefix));
 }
 
 export async function sendDiscordWebhook({ webhookUrl, eventType, data = {} }) {

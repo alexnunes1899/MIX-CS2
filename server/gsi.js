@@ -45,6 +45,8 @@ export function clearRoomGsiState(roomId) {
   roomGsiStates.delete(clean);
 }
 
+export const clearGsiRoomState = clearRoomGsiState;
+
 function isCs2MatchFinishedScore(phase, roundPhase, scoreCT, scoreTR) {
   if (phase === 'gameover') return true;
   if (roundPhase !== 'over' && phase !== 'intermission') return false;

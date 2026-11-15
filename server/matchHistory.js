@@ -5,14 +5,11 @@
  */
 
 import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { getBundledDataFilePath, getDataDir, getDataFilePath } from './dataDir.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
-const MATCH_HISTORY_FILE = path.join(DATA_DIR, 'matchHistory.json');
-const DEFAULT_MATCH_HISTORY_FILE = path.join(__dirname, 'data', 'matchHistory.default.json');
+const DATA_DIR = getDataDir();
+const MATCH_HISTORY_FILE = getDataFilePath('matchHistory.json');
+const DEFAULT_MATCH_HISTORY_FILE = getBundledDataFilePath('matchHistory.default.json');
 
 const MAP_IMAGES = {
   de_mirage: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_mirage_1_png.png',

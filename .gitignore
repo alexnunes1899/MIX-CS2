@@ -40,5 +40,11 @@ server/data/*.db
 server/data/*.db-shm
 server/data/*.db-wal
 server/data/economyStore.json
+server/data/commendationsStore.json
 server/data/linkedClipsStore.json
 server/data/bagreVotesStore.json
+server/data/.session-secret
+server/data/mapRouletteState.json
+server/data/cs2NewsState.json
+desktop.ini
+

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Lock, Eye, EyeOff, ShieldCheck, X, AlertCircle, Hash, Sparkles, Globe } from 'lucide-react';
+import { Lock, Eye, EyeOff, ShieldCheck, X, AlertCircle, Hash, Sparkles, Globe, KeyRound } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
 
 export default function RoomPasswordModal({
@@ -8,33 +8,24 @@ export default function RoomPasswordModal({
   roomId,
   roomName,
   onSubmitPassword,
-  errorMessage = '',
-  errorType = 'private_room',
+  errorMessage,
+  errorType,
   onOpenRoomsHub,
   soundEnabled,
 }) {
-  const [password, setPassword] = useState('');
+  const [passwordInput, setPasswordInput] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
-    if (!isOpen) {
-      setPassword('');
+    if (isOpen) {
+      setPasswordInput('');
       setShowPassword(false);
-      return;
     }
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape') {
-        if (soundEnabled) playClickSound();
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose, soundEnabled]);
+  }, [isOpen, roomId]);
 
   if (!isOpen) return null;
 
-  const isPasswordRequired = errorType === 'wrong_password' && typeof onSubmitPassword === 'function';
+  const isPasswordMode = errorType === 'password_required' || errorType === 'wrong_password';
 
   const handleClose = () => {
     if (soundEnabled) playClickSound();
@@ -43,27 +34,18 @@ export default function RoomPasswordModal({
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!password.trim() || !onSubmitPassword) return;
+    if (!passwordInput.trim() || !onSubmitPassword) return;
     if (soundEnabled) playClickSound();
-    onSubmitPassword(password.trim());
+    onSubmitPassword(passwordInput.trim());
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={isPasswordRequired ? 'Senha da Sala' : 'Sala Privada'}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn"
-    >
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
       <div className="relative w-full max-w-md bg-slate-900 border border-purple-500/30 rounded-3xl p-6 shadow-2xl">
-        {/* Glow */}
         <div className="absolute top-0 right-0 w-36 h-36 bg-purple-500/15 rounded-full blur-3xl pointer-events-none" />
 
-        {/* Close Button */}
         <button
-          type="button"
           onClick={handleClose}
-          aria-label="Fechar janela"
           className="absolute top-4 right-4 p-2 rounded-xl bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
         >
           <X size={18} />
@@ -72,24 +54,24 @@ export default function RoomPasswordModal({
         {/* Header */}
         <div className="flex items-center gap-3 mb-4">
           <div className="w-12 h-12 rounded-2xl flex items-center justify-center border shadow-inner bg-purple-500/20 text-purple-300 border-purple-500/30 shrink-0">
-            <Lock size={24} />
+            {isPasswordMode ? <KeyRound size={24} /> : <Lock size={24} />}
           </div>
           <div>
             <span className="text-[10px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border text-purple-300 bg-purple-500/10 border-purple-500/20">
-              {isPasswordRequired ? 'Protegida por Senha' : 'Mix Privado (Apenas Link)'}
+              {isPasswordMode ? 'Sala Protegida por Senha' : 'Mix Privado (Apenas Link)'}
             </span>
             <h2 className="text-lg font-bold font-heading text-white mt-1">
               {roomName || `Mix ${roomId}`}
             </h2>
             <p className="text-xs text-slate-400">
-              {isPasswordRequired
-                ? 'Digite a senha definida pelo criador da sala para entrar'
+              {isPasswordMode
+                ? 'Digite a senha configurada pelo criador da sala'
                 : 'Entrada permitida somente através do Link de Convite'}
             </p>
           </div>
         </div>
 
-        {/* Room User Card */}
+        {/* Room ID Card */}
         <div className="mb-4 p-3 rounded-2xl bg-slate-950/80 border border-slate-800 flex items-center justify-between">
           <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider">
             Identificador do Mix:
@@ -99,48 +81,49 @@ export default function RoomPasswordModal({
           </span>
         </div>
 
-        {errorMessage && (
-          <div className="mb-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
-            <AlertCircle size={15} className="shrink-0" />
-            <span>{errorMessage}</span>
-          </div>
-        )}
-
-        {isPasswordRequired ? (
+        {isPasswordMode ? (
           <form onSubmit={handleSubmit} className="space-y-4">
+            {errorMessage && (
+              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+                <AlertCircle size={15} className="shrink-0" />
+                <span>{errorMessage}</span>
+              </div>
+            )}
+
             <div className="relative">
               <input
                 type={showPassword ? 'text' : 'password'}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                value={passwordInput}
+                onChange={(e) => setPasswordInput(e.target.value)}
                 placeholder="Digite a senha da sala..."
                 autoFocus
-                className="w-full px-4 py-3 pr-11 rounded-xl bg-slate-950 border border-slate-700 focus:border-purple-500 outline-none text-sm text-white placeholder-slate-500"
+                className="w-full bg-slate-950 border border-slate-700 focus:border-purple-500 rounded-xl pl-4 pr-11 py-3 text-sm text-white placeholder-slate-500 outline-none transition-colors"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword((prev) => !prev)}
-                aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white cursor-pointer"
+                tabIndex={-1}
               >
                 {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
-            <div className="flex items-center gap-2">
+
+            <div className="flex items-center gap-2 pt-1">
               <button
                 type="button"
                 onClick={handleClose}
                 className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs uppercase tracking-wider transition-all cursor-pointer"
               >
-                Cancelar
+                Voltar
               </button>
               <button
                 type="submit"
-                disabled={!password.trim()}
-                className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-400 text-white font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 shadow-md cursor-pointer disabled:opacity-50"
+                disabled={!passwordInput.trim()}
+                className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-400 disabled:opacity-50 text-white font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 shadow-md cursor-pointer"
               >
-                <ShieldCheck size={14} />
-                <span>Desbloquear</span>
+                <ShieldCheck size={15} />
+                <span>Entrar na Sala</span>
               </button>
             </div>
           </form>

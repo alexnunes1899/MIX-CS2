@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import GCBadge from './GCBadge';
 import FaceitBadge from './FaceitBadge';
-import { MessageSquare, Send, X, Smile, Sparkles, User } from 'lucide-react';
+import PlayerAvatar from './PlayerAvatar';
+import { MessageSquare, Send, X, Smile } from 'lucide-react';
 import { playChatPop, playClickSound } from '../utils/audio';
 
 const QUICK_CALLOUTS = ['Bora Mirage!', 'Rush B não para!', 'NT!', 'GG WP!', 'Pede pause', 'EZ d+'];
@@ -12,7 +13,6 @@ export default function ChatDrawer({
   myProfile,
   rankingSystem = 'gc',
   soundEnabled,
-  roomId = '',
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [inputText, setInputText] = useState('');
@@ -21,15 +21,15 @@ export default function ChatDrawer({
   const prevChatLen = useRef(chat.length);
 
   useEffect(() => {
-    prevChatLen.current = chat.length;
-    setUnreadCount(0);
-  }, [roomId]);
+    if (isOpen) {
+      chatEndRef.current?.scrollIntoView({ behavior: 'auto' });
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     if (chat.length > prevChatLen.current) {
-      const delta = chat.length - prevChatLen.current;
       if (!isOpen) {
-        setUnreadCount((c) => c + delta);
+        setUnreadCount((c) => c + 1);
       }
       if (soundEnabled) playChatPop();
       chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -94,11 +94,7 @@ export default function ChatDrawer({
 
       {/* Chat Window */}
       {isOpen && (
-        <div
-          role="dialog"
-          aria-label="Chat do Mix ao Vivo"
-          className="fixed bottom-5 right-5 z-50 w-[calc(100vw-2.5rem)] max-w-sm sm:max-w-md bg-slate-900 border-2 border-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col h-[min(480px,80vh)] animate-slideUp backdrop-blur"
-        >
+        <div className="fixed bottom-5 right-5 z-50 w-[calc(100vw-2.5rem)] max-w-sm sm:max-w-md bg-slate-900 border-2 border-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col h-[480px] animate-slideUp backdrop-blur">
           {/* Header */}
           <div className="bg-slate-950 px-4 py-3 border-b border-slate-800 flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -128,7 +124,7 @@ export default function ChatDrawer({
           </div>
 
           {/* Messages list with Refined Speech Balloons */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3.5">
+          <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-3.5">
             {chat.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-center text-slate-500 text-xs py-8">
                 <Smile size={28} className="mb-2 text-slate-600 animate-bounce" />
@@ -152,17 +148,15 @@ export default function ChatDrawer({
                 return (
                   <div
                     key={m.id}
-                    className={`flex items-end gap-2 text-xs ${isMe ? 'justify-end' : 'justify-start'}`}
+                    className={`flex items-end gap-2 text-xs min-w-0 ${isMe ? 'justify-end' : 'justify-start'}`}
                   >
                     {!isMe && (
-                      <span className="text-sm select-none shrink-0 mb-1" title={senderNick}>
-                        {senderAvatar}
-                      </span>
+                      <PlayerAvatar avatar={senderAvatar} nick={senderNick} size="sm" className="mb-1 rounded-full" />
                     )}
 
                     {/* Speech Balloon */}
                     <div
-                      className={`max-w-[85%] p-3 shadow-md transition-all ${
+                      className={`max-w-[85%] min-w-0 overflow-hidden p-3 shadow-md transition-all ${
                         isMe
                           ? 'bg-gradient-to-br from-amber-500/20 via-amber-600/15 to-amber-500/10 border border-amber-500/40 text-amber-50 rounded-2xl rounded-tr-xs'
                           : 'bg-slate-950/85 border border-slate-800 text-slate-200 rounded-2xl rounded-tl-xs'
@@ -192,13 +186,11 @@ export default function ChatDrawer({
                           {m.timestamp ? new Date(m.timestamp).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : ''}
                         </span>
                       </div>
-                      <p className="text-xs break-words leading-relaxed font-normal">{m.text}</p>
+                      <p className="text-xs break-words [overflow-wrap:anywhere] leading-relaxed font-normal">{m.text}</p>
                     </div>
 
                     {isMe && (
-                      <span className="text-sm select-none shrink-0 mb-1" title={senderNick}>
-                        {senderAvatar}
-                      </span>
+                      <PlayerAvatar avatar={senderAvatar} nick={senderNick} size="sm" className="mb-1 rounded-full" />
                     )}
                   </div>
                 );

@@ -1,11 +1,9 @@
 ﻿import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { resolveSeededDataFile } from './dataDir.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const STATE_FILE = path.join(__dirname, 'data', 'cs2NewsState.json');
+const STATE_FILE = resolveSeededDataFile('cs2NewsState.json');
 
 const CS2_PROTECTED_TERMS = [
   'Dust II',

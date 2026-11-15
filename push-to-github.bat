@@ -3,7 +3,7 @@ chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
 
-set "PATH=%PATH%;%LOCALAPPDATA%\Programs\Git\cmd;%LOCALAPPDATA%\MinGit\cmd;C:\Program Files\Git\cmd;C:\Program Files\nodejs;%APPDATA%\npm"
+set "PATH=%PATH%;%LOCALAPPDATA%\Microsoft\WinGet\Links;%LOCALAPPDATA%\Programs\Git\cmd;%LOCALAPPDATA%\MinGit\cmd;C:\Program Files\Git\cmd;C:\Program Files\nodejs;%APPDATA%\npm"
 
 where node >nul 2>nul
 if errorlevel 1 (

@@ -1,11 +1,9 @@
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { resolveSeededDataFile } from './dataDir.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const CLIPS_FILE = path.join(__dirname, 'data', 'communityClips.json');
+const CLIPS_FILE = resolveSeededDataFile('communityClips.json');
 
 export class CommunityClipsService {
   constructor() {

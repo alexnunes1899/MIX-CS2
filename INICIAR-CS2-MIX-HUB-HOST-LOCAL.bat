@@ -11,8 +11,8 @@ echo   [+] 100%% Gratuito, sem pagar mensalidades de nuvem
 echo   [+] 0ms de latencia para o host e conexao ultra-rapida
 echo.
 
-set PATH=%PATH%;C:\Program Files\nodejs;C:\Users\alexn\AppData\Local\MinGit\cmd
-cd /d "C:\Users\alexn\.gemini\antigravity\scratch\cs2-mix-hub"
+set PATH=%PATH%;C:\Program Files\nodejs;C:\Program Files\Git\cmd;C:\Users\alexn\AppData\Local\Programs\Git\cmd
+cd /d "%~dp0"
 
 echo ------------------------------------------------------------------------------
 echo   ENDERECOS PARA ACESSO:

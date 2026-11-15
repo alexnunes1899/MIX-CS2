@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import GCBadge from './GCBadge';
 import FaceitBadge from './FaceitBadge';
 import PlayerAvatar from './PlayerAvatar';
-import { Crown, Shield, Flame, UserCheck, ChevronLeft } from 'lucide-react';
+import { Crown, Shield, Flame, Clock, ChevronLeft } from 'lucide-react';
 import { playClickSound, playPickSound } from '../utils/audio';
 import { getTeamNames } from '../utils/teamNames';
 
@@ -10,13 +10,40 @@ export default function CaptainsDraftView({
   room,
   onPickPlayer,
   onCancel,
+  onSetTurnTimer,
+  myProfile = null,
+  isAdmin = false,
   soundEnabled,
 }) {
-  const { captainA, captainB, captainTurn = 'captainA', teamA = [], teamB = [], unassignedPlayers = [], rankingSystem = 'gc' } = room;
+  const {
+    captainA,
+    captainB,
+    captainTurn = 'captainA',
+    teamA = [],
+    teamB = [],
+    unassignedPlayers = [],
+    rankingSystem = 'gc',
+    turnDeadline = null,
+    turnTimerSeconds = 0,
+  } = room;
   const { labelA, labelB, upperA, upperB } = getTeamNames(room);
   const isTurnA = captainTurn === 'captainA';
   const currentCaptain = isTurnA ? captainA : captainB;
   const isFaceit = rankingSystem === 'faceit';
+  const [secondsLeft, setSecondsLeft] = useState(null);
+
+  useEffect(() => {
+    if (!turnDeadline) {
+      setSecondsLeft(null);
+      return;
+    }
+    const update = () => {
+      setSecondsLeft(Math.max(0, Math.ceil((turnDeadline - Date.now()) / 1000)));
+    };
+    update();
+    const timer = setInterval(update, 500);
+    return () => clearInterval(timer);
+  }, [turnDeadline]);
 
   const handlePick = (playerId) => {
     if (soundEnabled) playPickSound();
@@ -33,6 +60,36 @@ export default function CaptainsDraftView({
             : 'bg-amber-950/40 border-amber-500/60 shadow-amber-500/10'
         }`}
       >
+        <div className="flex items-center justify-center gap-2 flex-wrap mb-1.5">
+          {secondsLeft !== null && (
+            <span
+              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-mono font-bold border ${
+                secondsLeft <= 5
+                  ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 animate-pulse'
+                  : 'bg-slate-950/80 text-amber-300 border-amber-500/30'
+              }`}
+            >
+              <Clock size={12} />
+              <span>{secondsLeft}s</span>
+            </span>
+          )}
+          {myProfile?.id && currentCaptain?.id && (
+            <span
+              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                currentCaptain.id === myProfile.id || isAdmin
+                  ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                  : 'bg-slate-950/80 text-slate-400 border-slate-700'
+              }`}
+            >
+              {currentCaptain.id === myProfile.id
+                ? 'Sua vez de escolher!'
+                : isAdmin
+                ? 'Admin pode intervir'
+                : `Aguarde ${currentCaptain.nick}`}
+            </span>
+          )}
+        </div>
+
         <div className="flex items-center justify-center gap-2 mb-1">
           <Crown size={22} className={isTurnA ? 'text-sky-400 animate-bounce' : 'text-amber-400 animate-bounce'} />
           <h2
@@ -47,6 +104,30 @@ export default function CaptainsDraftView({
           Clique no jogador que você deseja recrutar para o seu time. Restam{' '}
           <strong className="text-white font-mono">{unassignedPlayers.length} jogadores</strong> disponíveis.
         </p>
+
+        {isAdmin && onSetTurnTimer && (
+          <div className="mt-3 inline-flex items-center gap-1.5 bg-slate-950/80 px-2.5 py-1 rounded-xl border border-slate-800 text-[11px]">
+            <Clock size={12} className="text-slate-400" />
+            <span className="text-slate-400 font-semibold">Auto-Pick Timer:</span>
+            {[0, 20, 30, 45].map((sec) => (
+              <button
+                key={sec}
+                type="button"
+                onClick={() => {
+                  if (soundEnabled) playClickSound();
+                  onSetTurnTimer(sec);
+                }}
+                className={`px-2 py-0.5 rounded font-mono font-bold transition-colors cursor-pointer ${
+                  Number(turnTimerSeconds) === sec
+                    ? 'bg-amber-500 text-slate-950'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                }`}
+              >
+                {sec === 0 ? 'Off' : `${sec}s`}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Available Players Pool */}
@@ -60,11 +141,10 @@ export default function CaptainsDraftView({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {unassignedPlayers.map((p) => (
-            <button
+            <div
               key={p.id}
-              type="button"
               onClick={() => handlePick(p.id)}
-              className="w-full text-left bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-amber-400/80 rounded-xl p-3 flex items-center justify-between gap-2 cursor-pointer transition-all shadow-md group overflow-hidden"
+              className="bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-amber-400/80 rounded-xl p-3 flex items-center justify-between gap-2 cursor-pointer transition-all shadow-md group overflow-hidden"
             >
               <div className="flex items-center gap-2.5 min-w-0 flex-1">
                 <PlayerAvatar avatar={p.avatar} nick={p.nick} size="md" />
@@ -84,11 +164,11 @@ export default function CaptainsDraftView({
                 ) : (
                   <GCBadge level={p.level} size="sm" />
                 )}
-                <span className="text-xs font-bold text-amber-400 bg-amber-500/10 px-2 py-1 rounded group-hover:bg-amber-500 group-hover:text-slate-950 transition-colors shrink-0">
+                <button className="text-xs font-bold text-amber-400 bg-amber-500/10 px-2 py-1 rounded group-hover:bg-amber-500 group-hover:text-slate-950 transition-colors shrink-0">
                   Escolher
-                </span>
+                </button>
               </div>
-            </button>
+            </div>
           ))}
         </div>
       </div>

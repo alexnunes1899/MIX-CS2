@@ -7,7 +7,8 @@ echo           CS2 MIX HUB - CRIANDO COPIA DE BACKUP NO COMPUTADOR
 echo ======================================================================
 echo.
 
-set ORIGEM=C:\Users\alexn\.gemini\antigravity\scratch\cs2-mix-hub
+cd /d "%~dp0"
+set ORIGEM=%CD%
 set DESTINO=C:\Users\alexn\Desktop\CS2-MIX-HUB-BACKUP
 
 echo   Origem:  %ORIGEM%

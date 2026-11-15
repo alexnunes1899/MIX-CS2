@@ -17,7 +17,7 @@ export default class ErrorBoundary extends React.Component {
 
   handleReload = () => {
     // Clear any broken parameters and reload clean
-    window.location.reload(true);
+    window.location.reload();
   };
 
   handleGoHome = () => {

@@ -3,7 +3,7 @@ import GCBadge from './GCBadge';
 import FaceitBadge from './FaceitBadge';
 import PlayerAvatar from './PlayerAvatar';
 import ServerConnectBar from './ServerConnectBar';
-import { Users, Trash2, Bot, Scale, Shuffle, Shield, Flame, CheckCircle2, Crown, Check, AlertCircle, Zap, Dices, ArrowLeftRight, Lock, Globe, Share2, Layers, Copy, KeyRound, Hash, Eye, EyeOff, Sparkles, Bell, BookOpen, Target, Trophy, Server } from 'lucide-react';
+import { Users, Trash2, Bot, Scale, Shuffle, Shield, Flame, CheckCircle2, Crown, Check, AlertCircle, Zap, Dices, ArrowLeftRight, Lock, Globe, Share2, Layers, Copy, KeyRound, Hash, Eye, EyeOff, Sparkles, Bell, BookOpen, Target, Trophy, Server, Clock, UserX } from 'lucide-react';
 import { playClickSound, playReadySound } from '../utils/audio';
 import { copyText, buildRoomInviteData } from '../utils/clipboard';
 
@@ -42,11 +42,30 @@ export default function Lobby({
   isPrivate = false,
   hasPassword = false,
   inviteKey = '',
+  readyCheck = null,
+  onStartReadyCheck,
+  onAcceptReadyCheck,
+  onCancelReadyCheck,
+  onKickAfkReadyCheck,
 }) {
   const [copiedInvite, setCopiedInvite] = useState(false);
   const [copiedUser, setCopiedUser] = useState(false);
   const [copiedPwd, setCopiedPwd] = useState(false);
   const [showLobbyPassword, setShowLobbyPassword] = useState(false);
+  const [readySecondsLeft, setReadySecondsLeft] = useState(null);
+
+  React.useEffect(() => {
+    if (!readyCheck?.active || !readyCheck?.expiresAt) {
+      setReadySecondsLeft(null);
+      return;
+    }
+    const update = () => {
+      setReadySecondsLeft(Math.max(0, Math.ceil((readyCheck.expiresAt - Date.now()) / 1000)));
+    };
+    update();
+    const timer = setInterval(update, 500);
+    return () => clearInterval(timer);
+  }, [readyCheck?.active, readyCheck?.expiresAt]);
 
   const maxSlots = 10;
   const emptySlots = Math.max(0, maxSlots - players.length);
@@ -122,12 +141,6 @@ export default function Lobby({
                 </span>
               )}
 
-              {hasPassword && (
-                <span className="text-[10px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full flex items-center gap-1 font-mono">
-                  <KeyRound size={10} /> Com Senha
-                </span>
-              )}
-
               {isAdmin && (
                 <span className="text-[10px] font-bold text-amber-300 bg-amber-500/20 border border-amber-500/40 px-2 py-0.5 rounded-full flex items-center gap-1 font-mono">
                   <Crown size={10} className="text-amber-400" /> Admin
@@ -136,9 +149,7 @@ export default function Lobby({
             </div>
             <p className="text-[11px] text-slate-400">
               {isPrivate
-                ? 'Sala privada. Os jogadores entram exclusivamente abrindo o Link de Convite.'
-                : hasPassword
-                ? 'Mix protegido por senha. Jogadores precisarão informar a senha da sala para entrar.'
+                ? 'Sala privada sem senha. Os jogadores entram exclusivamente abrindo o Link de Convite.'
                 : 'Mix público aberto. Qualquer jogador da comunidade pode entrar pelo Hub ou pelo link.'}
             </p>
           </div>
@@ -233,13 +244,12 @@ export default function Lobby({
 
       {/* Quick Mode Shortcuts Bar */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        <button
-          type="button"
+        <div
           onClick={() => {
             if (soundEnabled) playClickSound();
             onOpenQuickVeto();
           }}
-          className="w-full text-left bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-sky-500/50 rounded-2xl p-3.5 flex items-center justify-between cursor-pointer transition-all shadow-sm group"
+          className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-sky-500/50 rounded-2xl p-3.5 flex items-center justify-between cursor-pointer transition-all shadow-sm group"
         >
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-sky-500/20 text-sky-400 border border-sky-500/30 flex items-center justify-center group-hover:scale-105 transition-transform">
@@ -253,15 +263,14 @@ export default function Lobby({
             </div>
           </div>
           <span className="text-xs font-bold text-sky-400 group-hover:translate-x-1 transition-transform">➔</span>
-        </button>
+        </div>
 
-        <button
-          type="button"
+        <div
           onClick={() => {
             if (soundEnabled) playClickSound();
             onOpenQuickMapRoll();
           }}
-          className="w-full text-left bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-amber-500/50 rounded-2xl p-3.5 flex items-center justify-between cursor-pointer transition-all shadow-sm group"
+          className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-amber-500/50 rounded-2xl p-3.5 flex items-center justify-between cursor-pointer transition-all shadow-sm group"
         >
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center group-hover:scale-105 transition-transform">
@@ -275,17 +284,16 @@ export default function Lobby({
             </div>
           </div>
           <span className="text-xs font-bold text-amber-400 group-hover:translate-x-1 transition-transform">➔</span>
-        </button>
+        </div>
 
         {/* Tactical Grenade Playbook */}
         {onOpenGrenades && (
-          <button
-            type="button"
+          <div
             onClick={() => {
               if (soundEnabled) playClickSound();
               onOpenGrenades();
             }}
-            className="w-full text-left bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-emerald-500/50 rounded-2xl p-3.5 flex items-center justify-between cursor-pointer transition-all shadow-sm group"
+            className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-emerald-500/50 rounded-2xl p-3.5 flex items-center justify-between cursor-pointer transition-all shadow-sm group"
           >
             <div className="flex items-center gap-2.5">
               <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center group-hover:scale-105 transition-transform">
@@ -299,18 +307,17 @@ export default function Lobby({
               </div>
             </div>
             <span className="text-xs font-bold text-emerald-400 group-hover:translate-x-1 transition-transform">➔</span>
-          </button>
+          </div>
         )}
 
         {/* Aim Warmup Mini-Game */}
         {onOpenAimReflex && (
-          <button
-            type="button"
+          <div
             onClick={() => {
               if (soundEnabled) playClickSound();
               onOpenAimReflex();
             }}
-            className="w-full text-left bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-orange-500/50 rounded-2xl p-3.5 flex items-center justify-between cursor-pointer transition-all shadow-sm group"
+            className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-orange-500/50 rounded-2xl p-3.5 flex items-center justify-between cursor-pointer transition-all shadow-sm group"
           >
             <div className="flex items-center gap-2.5">
               <div className="w-9 h-9 rounded-xl bg-orange-500/20 text-orange-400 border border-orange-500/30 flex items-center justify-center group-hover:scale-105 transition-transform">
@@ -324,18 +331,17 @@ export default function Lobby({
               </div>
             </div>
             <span className="text-xs font-bold text-orange-400 group-hover:translate-x-1 transition-transform">➔</span>
-          </button>
+          </div>
         )}
 
         {/* Tournament Bracket Mode */}
         {onOpenTournament && (
-          <button
-            type="button"
+          <div
             onClick={() => {
               if (soundEnabled) playClickSound();
               onOpenTournament();
             }}
-            className="w-full text-left bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-purple-500/50 rounded-2xl p-3.5 flex items-center justify-between cursor-pointer transition-all shadow-sm group"
+            className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-purple-500/50 rounded-2xl p-3.5 flex items-center justify-between cursor-pointer transition-all shadow-sm group"
           >
             <div className="flex items-center gap-2.5">
               <div className="w-9 h-9 rounded-xl bg-purple-500/20 text-purple-400 border border-purple-500/30 flex items-center justify-center group-hover:scale-105 transition-transform">
@@ -349,18 +355,17 @@ export default function Lobby({
               </div>
             </div>
             <span className="text-xs font-bold text-purple-400 group-hover:translate-x-1 transition-transform">➔</span>
-          </button>
+          </div>
         )}
 
         {/* Dedicated Servers Hub */}
         {onOpenServersPage && (
-          <button
-            type="button"
+          <div
             onClick={() => {
               if (soundEnabled) playClickSound();
               onOpenServersPage();
             }}
-            className="w-full text-left bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-emerald-500/50 rounded-2xl p-3.5 flex items-center justify-between cursor-pointer transition-all shadow-sm group"
+            className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-emerald-500/50 rounded-2xl p-3.5 flex items-center justify-between cursor-pointer transition-all shadow-sm group"
           >
             <div className="flex items-center gap-2.5">
               <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center group-hover:scale-105 transition-transform">
@@ -374,7 +379,7 @@ export default function Lobby({
               </div>
             </div>
             <span className="text-xs font-bold text-emerald-400 group-hover:translate-x-1 transition-transform">➔</span>
-          </button>
+          </div>
         )}
       </div>
 
@@ -461,6 +466,21 @@ export default function Lobby({
 
           {isAdmin && (
             <>
+              {onStartReadyCheck && (
+                <button
+                  onClick={() => {
+                    if (soundEnabled) playClickSound();
+                    onStartReadyCheck(30);
+                  }}
+                  disabled={players.length < 2 || Boolean(readyCheck?.active)}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/35 text-xs font-bold transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  title="Enviar confirmação cronometrada (30s) para todos os jogadores do lobby"
+                >
+                  <Clock size={14} className="text-emerald-400" />
+                  <span className="hidden sm:inline">Ready Check (30s)</span>
+                </button>
+              )}
+
               <button
                 onClick={() => {
                   if (soundEnabled) playClickSound();
@@ -502,6 +522,99 @@ export default function Lobby({
         soundEnabled={soundEnabled}
         isAdmin={isAdmin}
       />
+
+      {/* Timed Ready Check Banner */}
+      {readyCheck && (readyCheck.active || readyCheck.status === 'expired') && (() => {
+        const confirmedSet = new Set(readyCheck.confirmedIds || []);
+        const isConfirmed = myPlayer && (myPlayer.ready || confirmedSet.has(myPlayer.id));
+        const missingPlayers = players.filter((p) => !p.ready && !confirmedSet.has(p.id) && !String(p.id).startsWith('bot-'));
+        const confirmedCount = players.filter((p) => p.ready || confirmedSet.has(p.id)).length;
+
+        return (
+          <div
+            className={`rounded-2xl p-4 border-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xl ${
+              readyCheck.active
+                ? 'bg-emerald-950/40 border-emerald-500/60 shadow-emerald-500/10'
+                : 'bg-rose-950/40 border-rose-500/60 shadow-rose-500/10'
+            }`}
+          >
+            <div className="space-y-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Bell size={16} className={readyCheck.active ? 'text-emerald-400 animate-bounce' : 'text-rose-400'} />
+                <span className="font-heading font-black text-sm uppercase tracking-wider text-white">
+                  {readyCheck.active ? 'Ready Check em Andamento!' : 'Ready Check Expirado'}
+                </span>
+                {readyCheck.active && readySecondsLeft !== null && (
+                  <span
+                    className={`px-2 py-0.5 rounded-full text-xs font-mono font-bold border ${
+                      readySecondsLeft <= 5
+                        ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 animate-pulse'
+                        : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                    }`}
+                  >
+                    ⏱️ {readySecondsLeft}s
+                  </span>
+                )}
+                <span className="text-xs font-mono text-slate-300">
+                  {confirmedCount}/{players.length} confirmados
+                </span>
+              </div>
+              <p className="text-xs text-slate-300">
+                {readyCheck.active
+                  ? missingPlayers.length > 0
+                    ? `Aguardando: ${missingPlayers.map((p) => p.nick).join(', ')}`
+                    : 'Todos os jogadores confirmaram presença!'
+                  : missingPlayers.length > 0
+                  ? `Jogadores ausentes (AFK): ${missingPlayers.map((p) => p.nick).join(', ')}`
+                  : 'Ready Check encerrado.'}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
+              {readyCheck.active && myPlayer && !isConfirmed && onAcceptReadyCheck && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (soundEnabled) playReadySound();
+                    onAcceptReadyCheck();
+                  }}
+                  className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-lg shadow-emerald-500/25 cursor-pointer animate-pulse"
+                >
+                  <CheckCircle2 size={15} />
+                  <span>Confirmar Agora!</span>
+                </button>
+              )}
+
+              {readyCheck.status === 'expired' && isAdmin && missingPlayers.length > 0 && onKickAfkReadyCheck && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (soundEnabled) playClickSound();
+                    onKickAfkReadyCheck();
+                  }}
+                  className="px-3.5 py-2 rounded-xl bg-rose-500 hover:bg-rose-400 text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer"
+                >
+                  <UserX size={14} />
+                  <span>Expulsar Ausentes ({missingPlayers.length})</span>
+                </button>
+              )}
+
+              {isAdmin && onCancelReadyCheck && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (soundEnabled) playClickSound();
+                    onCancelReadyCheck();
+                  }}
+                  className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-semibold cursor-pointer"
+                >
+                  {readyCheck.active ? 'Cancelar' : 'Fechar'}
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Players Grid (10 Slots) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
@@ -642,19 +755,32 @@ export default function Lobby({
 
               {/* Bottom: Action buttons */}
               <div className="flex items-center justify-between pt-2 border-t border-slate-800/80 mt-1">
-                <button
-                  onClick={() => {
-                    if (soundEnabled) playReadySound();
-                    onToggleReady(p.id);
-                  }}
-                  className={`text-[10px] font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer ${
-                    p.ready
-                      ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
-                      : 'bg-slate-800 text-slate-400 hover:text-white'
-                  }`}
-                >
-                  {p.ready ? 'Pronto ✓' : 'Aguardando'}
-                </button>
+                {(isMe || isAdmin) ? (
+                  <button
+                    onClick={() => {
+                      if (soundEnabled) playReadySound();
+                      onToggleReady(p.id);
+                    }}
+                    className={`text-[10px] font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer ${
+                      p.ready
+                        ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
+                        : 'bg-slate-800 text-slate-400 hover:text-white'
+                    }`}
+                    title={isMe ? 'Alternar meu status de pronto' : 'Alternar status (Admin)'}
+                  >
+                    {p.ready ? 'Pronto ✓' : 'Aguardando'}
+                  </button>
+                ) : (
+                  <span
+                    className={`text-[10px] font-bold px-2 py-1 rounded-lg select-none ${
+                      p.ready
+                        ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'
+                        : 'bg-slate-900 text-slate-500 border border-slate-800'
+                    }`}
+                  >
+                    {p.ready ? 'Pronto ✓' : 'Aguardando'}
+                  </span>
+                )}
 
                 {(isAdmin || isMe) && (
                   <button

@@ -6,6 +6,7 @@ import SteamIcon from './SteamIcon';
 import MainNavigationMenu from './MainNavigationMenu';
 import MixHubLogo from './MixHubLogo';
 import { playClickSound } from '../utils/audio';
+import { savePendingInvite } from '../hooks/useSteamSession';
 
 export default function LandingPage({
   onGoHome,
@@ -28,6 +29,7 @@ export default function LandingPage({
   officialRotation,
   syncingRotation,
   onSyncOfficialRotation,
+  publicRooms = null,
 }) {
   const [roomCodeInput, setRoomCodeInput] = useState('');
   const [activeRooms, setActiveRooms] = useState([]);
@@ -42,15 +44,28 @@ export default function LandingPage({
     : EXTRA_CS2_MAPS;
 
   const currentDisplayMaps = mapTab === 'active' ? activeDutyMaps : extraMaps;
+  const displayedRooms = Array.isArray(publicRooms) ? publicRooms : activeRooms;
 
   useEffect(() => {
+    if (Array.isArray(publicRooms)) return;
     fetch('/api/rooms')
       .then((res) => res.json())
-      .then((data) => setActiveRooms(data))
+      .then((data) => setActiveRooms(Array.isArray(data) ? data : []))
       .catch(() => {});
-  }, []);
+  }, [publicRooms]);
 
   const isSteamLogged = Boolean(myProfile?.steamId);
+
+  const persistPendingRoomRedirect = (code) => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const urlRoom = params.get('room');
+      const targetRoom = urlRoom || code;
+      if (targetRoom) {
+        savePendingInvite(targetRoom, params.get('key') || '');
+      }
+    } catch {}
+  };
 
   const handleJoinByCode = (e) => {
     e.preventDefault();
@@ -59,6 +74,7 @@ export default function LandingPage({
       : 'MIX-PRO';
     const code = roomCodeInput.trim().toUpperCase() || defaultCode;
     if (!isSteamLogged) {
+      persistPendingRoomRedirect(code);
       if (onRequireSteamLogin) {
         onRequireSteamLogin('criar ou entrar em uma sala de mix');
       } else {
@@ -72,6 +88,7 @@ export default function LandingPage({
 
   const handleCreateMix = (code = 'MIX-PRO') => {
     if (!isSteamLogged) {
+      persistPendingRoomRedirect(code);
       if (onRequireSteamLogin) {
         onRequireSteamLogin('criar ou entrar em um mix');
       } else {
@@ -366,6 +383,121 @@ export default function LandingPage({
           </div>
         </div>
       </div>
+
+      {/* Live Public Rooms Showcase */}
+      <section className="max-w-7xl mx-auto px-4 pt-12 w-full">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
+          <div>
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold uppercase tracking-wider mb-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              Em Tempo Real ({displayedRooms.length} {displayedRooms.length === 1 ? 'sala aberta' : 'salas abertas'})
+            </div>
+            <h2 className="text-xl sm:text-2xl font-black font-heading text-white uppercase tracking-wide">
+              Salas Públicas Abertas Agora
+            </h2>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (soundEnabled) playClickSound();
+              onOpenRoomsHub();
+            }}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 text-xs font-bold transition-all cursor-pointer self-start sm:self-auto"
+          >
+            <Layers size={14} />
+            <span>Abrir Hub / Criar Sala</span>
+          </button>
+        </div>
+
+        {displayedRooms.length === 0 ? (
+          <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
+            <div className="space-y-1">
+              <div className="text-sm font-bold text-white">Nenhuma sala pública ativa neste instante</div>
+              <p className="text-xs text-slate-400">Crie uma sala em segundos com link de convite, senha opcional e servidor integrado.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleCreateMix('MIX-PRO')}
+              className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider cursor-pointer shrink-0"
+            >
+              Criar Primeiro Mix Agora
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {displayedRooms.slice(0, 6).map((r) => {
+              const isFaceitRoom = r.rankingSystem === 'faceit';
+              const phaseLabel =
+                r.phase === 'teams'
+                  ? 'Times Formados'
+                  : r.phase === 'captains_draft'
+                  ? 'Draft de Capitães'
+                  : r.phase === 'veto' || r.phase === 'side_pick'
+                  ? 'Veto de Mapas'
+                  : r.phase === 'finished'
+                  ? 'Em Partida'
+                  : 'No Lobby';
+              return (
+                <div
+                  key={r.id}
+                  className="bg-slate-900/85 hover:bg-slate-900 border border-slate-800 hover:border-amber-500/40 rounded-2xl p-4 flex flex-col justify-between gap-3 transition-all shadow-lg"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="font-bold text-sm text-white truncate">{r.name || r.id}</span>
+                        <span
+                          className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${
+                            isFaceitRoom
+                              ? 'bg-orange-500/15 text-orange-300 border-orange-500/30'
+                              : 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                          }`}
+                        >
+                          {isFaceitRoom ? 'FACEIT' : 'GC'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 mt-1 text-[11px] font-mono text-slate-400">
+                        <span>#{r.id}</span>
+                        <span>•</span>
+                        <span>{phaseLabel}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      {r.hasPassword && (
+                        <span className="px-1.5 py-0.5 rounded bg-slate-800 text-amber-300 text-[10px]" title="Sala protegida com senha">
+                          🔒
+                        </span>
+                      )}
+                      {r.hasServer && (
+                        <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold">
+                          CS2
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
+                    <div className="flex items-center gap-1.5 text-xs font-mono text-slate-300">
+                      <Users size={13} className="text-sky-400" />
+                      <strong>{r.playerCount || 0}</strong>/10 jogadores
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleCreateMix(r.id)}
+                      className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[11px] uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-colors"
+                    >
+                      <span>Entrar</span>
+                      <ArrowRight size={12} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
 
       {/* Official & Extra Map Pool Section */}
       <section id="mapas" className="max-w-7xl mx-auto px-4 py-20 w-full">

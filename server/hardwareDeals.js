@@ -1,11 +1,9 @@
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } from 'discord.js';
+import { resolveSeededDataFile } from './dataDir.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const DEALS_FILE = path.join(__dirname, 'data', 'hardwareDeals.json');
+const DEALS_FILE = resolveSeededDataFile('hardwareDeals.json');
 
 export const CATEGORY_LABELS = {
   gpu: 'Placa de Vídeo (GPU)',

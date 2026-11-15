@@ -1,13 +1,25 @@
 services:
   - type: web
-    name: cs2-mix-hub
+    name: mix-cs2-hub
     runtime: node
     plan: free
     buildCommand: npm install && npm run build
-    startCommand: node server/index.js
-    healthCheckPath: /health
+    startCommand: npm start
+    healthCheckPath: /api/health
     envVars:
-      - key: NODE_VERSION
-        value: 20
       - key: NODE_ENV
         value: production
+      - key: PORT
+        value: 3000
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: ADMIN_API_KEY
+        generateValue: true
+      - key: ADMIN_STEAM_IDS
+        sync: false
+      - key: MATCHZY_WEBHOOK_SECRET
+        generateValue: true
+      - key: DATA_DIR
+        value: ./server/data
+      - key: ALLOWED_ORIGINS
+        value: https://mix-cs2.onrender.com

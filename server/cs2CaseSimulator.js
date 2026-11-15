@@ -1,11 +1,9 @@
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } from 'discord.js';
+import { resolveSeededDataFile } from './dataDir.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const INVENTORY_FILE = path.join(__dirname, 'data', 'caseInventory.json');
+const INVENTORY_FILE = resolveSeededDataFile('caseInventory.json');
 
 export const CASE_DEFINITIONS = {
   kilowatt: {

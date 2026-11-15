@@ -1,27 +1,24 @@
-import { executeRconCommand } from './rcon.js';
+﻿import { executeRconCommand } from './rcon.js';
 import { recordMatchHistoryEntry, computeMatchPerformers } from './matchHistory.js';
 import { recordMatch, getLeaderboard } from './leaderboard.js';
-import { isValidMapName, isValidServerAddress } from './utils/security.js';
+import { isAdminRequest, verifyWebhookSecret } from './authSession.js';
 
 export function registerMatchAutomationRoutes(app, { io }) {
   app.post('/api/automation/veto-complete', async (req, res) => {
+    const webhookCheck = verifyWebhookSecret(req, 'MATCHZY_WEBHOOK_SECRET');
+    if (!isAdminRequest(req) && !webhookCheck.ok) {
+      return res.status(webhookCheck.status || 401).json({ error: webhookCheck.error || 'Não autorizado.' });
+    }
     try {
       const { mapName, serverIp, rconPassword } = req.body || {};
-      const rawMap = String(mapName || 'mirage').trim().toLowerCase().replace(/^de_/, '');
-      const cleanMap = `de_${rawMap}`;
-      if (!isValidMapName(cleanMap)) {
-        return res.status(400).json({ error: 'Nome de mapa inválido.' });
-      }
-      const cleanIp = serverIp ? String(serverIp).trim() : '';
-      if (cleanIp && !isValidServerAddress(cleanIp)) {
-        return res.status(400).json({ error: 'Endereço de servidor inválido.' });
-      }
-      if (cleanIp && rconPassword) {
-        const [host, portStr] = cleanIp.split(':');
+      const rawMap = String(mapName || 'mirage').toLowerCase().replace(/^de_/, '').replace(/[^a-z0-9_]/g, '');
+      const cleanMap = `de_${rawMap || 'mirage'}`;
+      if (serverIp && rconPassword) {
+        const [host, portStr] = String(serverIp).split(':');
         const port = Number(portStr) || 27015;
-        await executeRconCommand({ host, port, password: String(rconPassword), command: `changelevel ${cleanMap}` });
+        await executeRconCommand({ host, port, password: rconPassword, command: `changelevel ${cleanMap}` });
       }
-      if (io) io.emit('mix:server_ready', { map: cleanMap, connectString: cleanIp ? `connect ${cleanIp}` : '' });
+      if (io) io.emit('mix:server_ready', { map: cleanMap, connectString: serverIp ? `connect ${serverIp}` : '' });
       return res.json({ success: true, map: cleanMap });
     } catch (err) {
       return res.status(500).json({ error: err.message });
@@ -29,6 +26,10 @@ export function registerMatchAutomationRoutes(app, { io }) {
   });
 
   app.post('/api/webhooks/matchzy', async (req, res) => {
+    const authCheck = verifyWebhookSecret(req, 'MATCHZY_WEBHOOK_SECRET');
+    if (!authCheck.ok && !isAdminRequest(req)) {
+      return res.status(authCheck.status || 403).json({ error: authCheck.error || 'Webhook MatchZy não autorizado.' });
+    }
     try {
       const payload = req.body || {};
       if (payload.event && payload.event !== 'map_result' && payload.event !== 'series_end') {

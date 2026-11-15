@@ -4,12 +4,9 @@
  */
 
 import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { resolveSeededDataFile } from './dataDir.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const GRENADES_DATA_FILE = path.join(__dirname, 'data', 'grenadesPtBr.json');
+const GRENADES_DATA_FILE = resolveSeededDataFile('grenadesPtBr.json');
 
 // Catálogo base de lineups em 100% Português do Brasil com criadores verificados
 export const INITIAL_PTBR_LINEUPS = [

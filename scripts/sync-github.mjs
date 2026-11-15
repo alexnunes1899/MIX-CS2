@@ -12,6 +12,7 @@ function ensureWindowsToolPaths() {
   const localAppData = process.env.LOCALAPPDATA || '';
   const appData = process.env.APPDATA || '';
   const extraDirs = [
+    path.join(localAppData, 'Microsoft', 'WinGet', 'Links'),
     path.join(localAppData, 'Programs', 'Git', 'cmd'),
     path.join(localAppData, 'MinGit', 'cmd'),
     'C:\\Program Files\\Git\\cmd',

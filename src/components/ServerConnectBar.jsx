@@ -1,10 +1,9 @@
-import React, { useState, useEffect, Suspense, lazy } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Server, Copy, Check, Edit2, Play, Trash2, Key, Radio, Terminal, RefreshCw, Zap, ShieldCheck, Laptop, CheckCircle2 } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
 import { parseServerDetails } from '../utils/serverParser';
+import LocalHostModal from './LocalHostModal';
 import { copyText } from '../utils/clipboard';
-
-const LocalHostModal = lazy(() => import('./LocalHostModal'));
 
 export default function ServerConnectBar({
   serverIp,
@@ -91,7 +90,7 @@ export default function ServerConnectBar({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          host: parsed.host || parsed.ip.split(':')[0],
+          host: parsed.ip.split(':')[0],
           port: parsed.port || 27015,
           password: rconPassInput.trim(),
         }),
@@ -121,7 +120,7 @@ export default function ServerConnectBar({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          host: parsed.host || parsed.ip.split(':')[0],
+          host: parsed.ip.split(':')[0],
           port: parsed.port || 27015,
           password: rconPassInput.trim(),
           command: cmd,
@@ -470,19 +469,15 @@ export default function ServerConnectBar({
       )}
 
       {/* Local Host Guide & Setup Modal */}
-      {localHostOpen && (
-        <Suspense fallback={null}>
-          <LocalHostModal
-            isOpen={localHostOpen}
-            onClose={() => setLocalHostOpen(false)}
-            roomId={roomId}
-            currentServerIp={serverIp}
-            finalMap={finalMap}
-            onUpdateServerIp={onUpdateServerIp}
-            soundEnabled={soundEnabled}
-          />
-        </Suspense>
-      )}
+      <LocalHostModal
+        isOpen={localHostOpen}
+        onClose={() => setLocalHostOpen(false)}
+        roomId={roomId}
+        currentServerIp={serverIp}
+        finalMap={finalMap}
+        onUpdateServerIp={onUpdateServerIp}
+        soundEnabled={soundEnabled}
+      />
     </div>
   );
 }

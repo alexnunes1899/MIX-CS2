@@ -53,14 +53,14 @@ import { executeRconCommand } from './rcon.js';
 import { getLeaderboard, syncDiscordProfilesToLeaderboard } from './leaderboard.js';
 import { generateGsiConfig, installGsiLocally } from './gsi.js';
 import { sanitizeRconTextArg, isValidServerAddress, normalizeRoomId, parseServerConnect } from './utils/security.js';
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
-const CONFIG_FILE = path.join(DATA_DIR, 'discordBotConfig.json');
-const PROFILES_FILE = path.join(DATA_DIR, 'playerProfiles.json');
-const MATCH_HISTORY_FILE = path.join(DATA_DIR, 'matchHistory.json');
-const LEADERBOARD_FILE = path.join(DATA_DIR, 'leaderboard.json');
-const ROULETTE_STATE_FILE = path.join(DATA_DIR, 'mapRouletteState.json');
+import { getBundledDataFilePath, getDataDir, getDataFilePath, resolveSeededDataFile } from './dataDir.js';
+
+const DATA_DIR = getDataDir();
+const CONFIG_FILE = getDataFilePath('discordBotConfig.json');
+const PROFILES_FILE = getDataFilePath('playerProfiles.json');
+const MATCH_HISTORY_FILE = getDataFilePath('matchHistory.json');
+const LEADERBOARD_FILE = getDataFilePath('leaderboard.json');
+const ROULETTE_STATE_FILE = resolveSeededDataFile('mapRouletteState.json');
 
 // Validates numeric Discord Snowflake ID (17 to 20 digits)
 export const isSnowflake = (id) => typeof id === 'string' && /^\d{17,20}$/.test(id);
@@ -1691,11 +1691,11 @@ export class DiscordBotManager {
       guildId: process.env.DISCORD_GUILD_ID || '',
       defaultChannelId: process.env.DISCORD_CHANNEL_ID || '',
       lobbyVoiceId: process.env.DISCORD_LOBBY_VOICE || '',
-      teamAVoiceId: process.env.DISCORD_TEAMA_VOICE || '1569515077269459129',
-      teamBVoiceId: process.env.DISCORD_TEAMB_VOICE || '1569515079248908358',
+      teamAVoiceId: process.env.DISCORD_TEAMA_VOICE || '',
+      teamBVoiceId: process.env.DISCORD_TEAMB_VOICE || '',
       autoMoveVoice: true,
       autoStartVetoOnFull: false,
-      serverConnect: 'connect 103.14.27.41:25054',
+      serverConnect: process.env.DEFAULT_SERVER_CONNECT || '',
       dealsChannelId: process.env.DISCORD_DEALS_CHANNEL || '',
       dealsChannels: {},
       autoPostDeals: true,
@@ -1706,9 +1706,11 @@ export class DiscordBotManager {
         const raw = fs.readFileSync(CONFIG_FILE, 'utf8');
         base = { ...base, ...JSON.parse(raw) };
       } else {
-        const DEFAULT_CONFIG_FILE = path.join(DATA_DIR, 'discordBotConfig.default.json');
-        if (fs.existsSync(DEFAULT_CONFIG_FILE)) {
-          const raw = fs.readFileSync(DEFAULT_CONFIG_FILE, 'utf8');
+        const defaultFromData = getDataFilePath('discordBotConfig.default.json');
+        const bundledDefault = getBundledDataFilePath('discordBotConfig.default.json');
+        const defaultFile = fs.existsSync(defaultFromData) ? defaultFromData : bundledDefault;
+        if (fs.existsSync(defaultFile)) {
+          const raw = fs.readFileSync(defaultFile, 'utf8');
           base = { ...base, ...JSON.parse(raw) };
         }
       }

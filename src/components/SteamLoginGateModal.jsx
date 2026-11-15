@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { X, ShieldAlert, CheckCircle2, Lock, Sparkles, ArrowLeft } from 'lucide-react';
 import SteamIcon from './SteamIcon';
 import { playClickSound } from '../utils/audio';
+import { savePendingInvite } from '../hooks/useSteamSession';
 
 export default function SteamLoginGateModal({
   isOpen,
@@ -26,6 +27,12 @@ export default function SteamLoginGateModal({
 
   const handleLogin = () => {
     if (soundEnabled) playClickSound();
+    const params = new URLSearchParams(window.location.search);
+    const pendingRoom = params.get('room') || roomId;
+    const pendingKey = params.get('key') || params.get('token') || '';
+    if (pendingRoom) {
+      savePendingInvite(pendingRoom, pendingKey);
+    }
     window.location.href = '/api/auth/steam';
   };
 

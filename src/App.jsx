@@ -1,32 +1,60 @@
-import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { io } from 'socket.io-client';
 import Header from './components/Header';
 import PlayerForm from './components/PlayerForm';
-import Lobby from './components/Lobby';
-import ChatDrawer from './components/ChatDrawer';
 import FailoverBanner from './components/FailoverBanner';
 import UpdateNotificationBanner from './components/UpdateNotificationBanner';
-import GlobalModals from './components/GlobalModals';
 import { playClickSound, setSoundEnabledGlobal, isSoundEnabled } from './utils/audio';
 import { recordMatchResult } from './utils/playerStats';
 import { ACTIVE_DUTY_MAPS, OFFICIAL_ACTIVE_DUTY, EXTRA_CS2_MAPS } from './data/maps';
 import { balanceTeams, shuffleTeams, calculateMetricsForTeams } from './utils/balance';
 import { getVetoSchedule } from './utils/proVeto';
 import { MOCK_PLAYERS } from './data/mockPlayers';
+import { useAppVersion } from './hooks/useAppVersion';
+import { useSteamSession, savePendingInvite } from './hooks/useSteamSession';
 
-const LandingPage = lazy(() => import('./components/LandingPage'));
-const DedicatedServersHub = lazy(() => import('./components/DedicatedServersHub'));
+const Lobby = lazy(() => import('./components/Lobby'));
 const TeamsView = lazy(() => import('./components/TeamsView'));
 const MapVeto = lazy(() => import('./components/MapVeto'));
 const FinalSummary = lazy(() => import('./components/FinalSummary'));
+const CaptainsDraftView = lazy(() => import('./components/CaptainsDraftView'));
+const LandingPage = lazy(() => import('./components/LandingPage'));
+const DedicatedServersHub = lazy(() => import('./components/DedicatedServersHub'));
+
+const RoomsHubModal = lazy(() => import('./components/RoomsHubModal'));
+const MatchHistoryModal = lazy(() => import('./components/MatchHistoryModal'));
+const QuickVetoModal = lazy(() => import('./components/QuickVetoModal'));
+const QuickMapRollModal = lazy(() => import('./components/QuickMapRollModal'));
+const ChatDrawer = lazy(() => import('./components/ChatDrawer'));
 const CoinFlipModal = lazy(() => import('./components/CoinFlipModal'));
 const DraftRoulette = lazy(() => import('./components/DraftRoulette'));
-const CaptainsDraftView = lazy(() => import('./components/CaptainsDraftView'));
+const SteamLoginGateModal = lazy(() => import('./components/SteamLoginGateModal'));
+const PlayerProfileModal = lazy(() => import('./components/PlayerProfileModal'));
+const GsiSetupModal = lazy(() => import('./components/GsiSetupModal'));
+const RoomPasswordModal = lazy(() => import('./components/RoomPasswordModal'));
+const LeaderboardModal = lazy(() => import('./components/LeaderboardModal'));
+const DiscordWebhookModal = lazy(() => import('./components/DiscordWebhookModal'));
+const MatchCardModal = lazy(() => import('./components/MatchCardModal'));
+const PlayerStoryCardModal = lazy(() => import('./components/PlayerStoryCardModal'));
+const GrenadePlaybookModal = lazy(() => import('./components/GrenadePlaybookModal'));
+const AimReflexModal = lazy(() => import('./components/AimReflexModal'));
+const TournamentBracketModal = lazy(() => import('./components/TournamentBracketModal'));
+const LocalHostModal = lazy(() => import('./components/LocalHostModal'));
+
+function PageFallback() {
+  return (
+    <div className="min-h-[40vh] flex flex-col items-center justify-center gap-3 text-slate-400">
+      <div className="w-8 h-8 rounded-full border-2 border-amber-500/30 border-t-amber-400 animate-spin" />
+      <span className="text-xs font-mono uppercase tracking-wider">Carregando módulo...</span>
+    </div>
+  );
+}
 
 const socket = io('/', {
   autoConnect: true,
-  reconnectionAttempts: 5,
+  reconnectionAttempts: Infinity,
   reconnectionDelay: 1000,
+  reconnectionDelayMax: 5000,
 });
 
 export default function App() {
@@ -74,6 +102,19 @@ export default function App() {
 
   const [socketConnected, setSocketConnected] = useState(socket.connected);
 
+  useEffect(() => {
+    const handleConnect = () => setSocketConnected(true);
+    const handleDisconnect = () => setSocketConnected(false);
+    socket.on('connect', handleConnect);
+    socket.on('disconnect', handleDisconnect);
+    socket.on('connect_error', handleDisconnect);
+    return () => {
+      socket.off('connect', handleConnect);
+      socket.off('disconnect', handleDisconnect);
+      socket.off('connect_error', handleDisconnect);
+    };
+  }, []);
+
   // Sync browser navigation (Back / Forward buttons)
   useEffect(() => {
     const handlePopState = () => {
@@ -91,13 +132,25 @@ export default function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
   const [roomsHubOpen, setRoomsHubOpen] = useState(false);
+  const [publicRooms, setPublicRooms] = useState([]);
   const [activeRoomsCount, setActiveRoomsCount] = useState(0);
+  const [commendations, setCommendations] = useState({});
 
   useEffect(() => {
     fetch('/api/rooms')
       .then((res) => (res.ok ? res.json() : []))
       .then((data) => {
-        if (Array.isArray(data)) setActiveRoomsCount(data.length);
+        if (Array.isArray(data)) {
+          setPublicRooms(data);
+          setActiveRoomsCount(data.length);
+        }
+      })
+      .catch(() => {});
+
+    fetch('/api/commendations')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.commendations) setCommendations(data.commendations);
       })
       .catch(() => {});
   }, []);
@@ -131,73 +184,7 @@ export default function App() {
   const [tournamentModalOpen, setTournamentModalOpen] = useState(false);
   const [localHostModalOpen, setLocalHostModalOpen] = useState(false);
   const [roomNotice, setRoomNotice] = useState(null);
-  const [serverVersion, setServerVersion] = useState(null);
-  const [updateAvailable, setUpdateAvailable] = useState(false);
-
-  const handleApplyUpdate = () => {
-    try {
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then((registrations) => {
-          for (const reg of registrations) reg.unregister();
-        });
-      }
-    } catch (e) {}
-    window.location.reload();
-  };
-
-  // Real-time Version & Update Detector (fixes caching delays permanently)
-  useEffect(() => {
-    let isMounted = true;
-    const checkVersion = async () => {
-      try {
-        const res = await fetch(`/api/version?_t=${Date.now()}`, { cache: 'no-store' });
-        if (!res.ok) return;
-        const data = await res.json();
-        if (data?.version && isMounted) {
-          setServerVersion((prev) => {
-            if (prev && prev !== data.version) {
-              setUpdateAvailable(true);
-            }
-            return data.version;
-          });
-        }
-      } catch (e) {}
-    };
-
-    checkVersion();
-    const handleFocus = () => checkVersion();
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') checkVersion();
-    };
-
-    window.addEventListener('focus', handleFocus);
-    document.addEventListener('visibilitychange', handleVisibility);
-    const interval = setInterval(checkVersion, 10000); // Checa a cada 10 segundos
-
-    return () => {
-      isMounted = false;
-      window.removeEventListener('focus', handleFocus);
-      document.removeEventListener('visibilitychange', handleVisibility);
-      clearInterval(interval);
-    };
-  }, []);
-
-  // Garante que o F5 sempre faça um recarregamento 100% limpo sem cache residual
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'F5') {
-        try {
-          if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.getRegistrations().then((regs) => {
-              for (const r of regs) r.unregister();
-            });
-          }
-        } catch (err) {}
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  const { updateAvailable, handleApplyUpdate } = useAppVersion(socket);
 
   // Official Active Duty Live Rotation State (sourced from Wikipedia / Valve records)
   const [officialRotation, setOfficialRotation] = useState(() => ({
@@ -208,68 +195,24 @@ export default function App() {
   }));
   const [syncingRotation, setSyncingRotation] = useState(false);
 
-  // User's own saved profile (stored in localStorage or immediate Steam redirect params)
-  const [myProfile, setMyProfile] = useState(() => {
-    let base = {
-      id: `player-${Math.random().toString(36).substring(2, 9)}`,
-      nick: '',
-      level: 14,
-      faceitLevel: 5,
-      faceitElo: 1200,
-      side: 'ANY',
-      avatar: '🎯',
-      cs2Hours: null,
-    };
-    try {
-      const saved = localStorage.getItem('cs2_mix_profile');
-      if (saved) base = { ...base, ...JSON.parse(saved) };
-    } catch (e) {}
-
-    // Check if returning from Steam Auth redirect immediately on first render
-    if (typeof window !== 'undefined') {
-      try {
-        const params = new URLSearchParams(window.location.search);
-        if (params.get('steam_auth') === '1' && params.get('nick')) {
-          const steamId = params.get('steamId');
-          const steamNick = params.get('nick');
-          const steamAvatar = params.get('avatar');
-          const faceitLevel = params.get('faceitLevel');
-          const faceitElo = params.get('faceitElo');
-          const faceitFound = params.get('faceitFound') === '1';
-          const steamCs2Hours = params.get('cs2Hours');
-
-          base = {
-            ...base,
-            nick: steamNick,
-            avatar: steamAvatar || base.avatar,
-            steamId: steamId || null,
-            cs2Hours: steamCs2Hours && !isNaN(Number(steamCs2Hours)) ? Number(steamCs2Hours) : (base.cs2Hours || null),
-            faceitLevel: faceitFound && faceitLevel ? Number(faceitLevel) : (base.faceitLevel || 5),
-            faceitElo: faceitFound && faceitElo && faceitElo !== 'null' ? Number(faceitElo) : (base.faceitElo || 1200),
-          };
-          try {
-            localStorage.setItem('cs2_mix_profile', JSON.stringify(base));
-          } catch (e) {}
-        }
-        if (params.get('mock_user') === '1') {
-          base = {
-            ...base,
-            nick: 'Capitao',
-            steamId: '76561198000000001',
-            level: 18,
-            faceitLevel: 9,
-            cs2Hours: 1850,
-          };
-          try {
-            localStorage.setItem('cs2_mix_profile', JSON.stringify(base));
-          } catch (e) {}
-        }
-      } catch (e) {}
-    }
-    return base;
+  // User's Steam OpenID session + profile + invite recovery after login
+  const {
+    myProfile,
+    setMyProfile,
+    isSteamLogged,
+    isSiteAdmin,
+    clearSessionProfile,
+  } = useSteamSession({
+    onRestorePendingInvite: (pending, cleanUrl) => {
+      if (!pending?.room) return;
+      setRoomId(pending.room);
+      if (pending.key) setInviteKey(pending.key);
+      setView('mix');
+      cleanUrl.searchParams.set('room', pending.room);
+      if (pending.key) cleanUrl.searchParams.set('key', pending.key);
+      window.history.replaceState({}, '', cleanUrl.toString());
+    },
   });
-
-  const isSteamLogged = Boolean(myProfile?.steamId);
 
   const handleRequireSteamLogin = (actionText = 'acessar as salas de mix') => {
     setSteamGateActionText(actionText);
@@ -332,94 +275,14 @@ export default function App() {
   }, [view, roomId, room?.name, room?.players?.length]);
 
   const isAdmin = Boolean(
-    myProfile && (
+    isSiteAdmin ||
+    (myProfile && (
       (room.adminId && room.adminId === myProfile.id) ||
       (room.creatorSteamId && myProfile.steamId && room.creatorSteamId === myProfile.steamId) ||
       (room.creatorId && room.creatorId === myProfile.id) ||
       (room.players.length > 0 && room.players[0].id === myProfile.id)
-    )
+    ))
   );
-
-  // Check for Steam Auth return on load
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const steamAuth = params.get('steam_auth');
-    if (steamAuth === '1') {
-      setView('landing'); // Garante que a tela inicial continue ativa ao logar
-      const steamId = params.get('steamId');
-      const steamNick = params.get('nick');
-      const steamAvatar = params.get('avatar');
-      const faceitLevel = params.get('faceitLevel');
-      const faceitElo = params.get('faceitElo');
-      const faceitFound = params.get('faceitFound');
-      const steamCs2Hours = params.get('cs2Hours');
-
-      if (steamNick) {
-        setMyProfile((prev) => {
-          const hasFoundFaceit = faceitFound === '1' && faceitLevel;
-          const updated = {
-            ...prev,
-            nick: steamNick,
-            avatar: steamAvatar || prev.avatar,
-            steamId: steamId || null,
-            cs2Hours: steamCs2Hours && !isNaN(Number(steamCs2Hours)) ? Number(steamCs2Hours) : (prev.cs2Hours || null),
-            faceitLevel: hasFoundFaceit ? Number(faceitLevel) : (prev.faceitLevel || 5),
-            faceitElo: hasFoundFaceit && faceitElo && faceitElo !== 'null' ? Number(faceitElo) : (prev.faceitElo || 1200),
-          };
-          try {
-            localStorage.setItem('cs2_mix_profile', JSON.stringify(updated));
-          } catch (e) {}
-          return updated;
-        });
-      }
-
-      const cleanUrl = new URL(window.location);
-      cleanUrl.searchParams.delete('steam_auth');
-      cleanUrl.searchParams.delete('room');
-      cleanUrl.searchParams.delete('steamId');
-      cleanUrl.searchParams.delete('nick');
-      cleanUrl.searchParams.delete('avatar');
-      cleanUrl.searchParams.delete('faceitLevel');
-      cleanUrl.searchParams.delete('faceitElo');
-      cleanUrl.searchParams.delete('faceitFound');
-      cleanUrl.searchParams.delete('cs2Hours');
-
-      // Se o jogador clicou em um link de convite de uma sala antes de logar na Steam, restaura a sala e o token do link
-      try {
-        const pendingRaw = sessionStorage.getItem('cs2_pending_invite');
-        if (pendingRaw) {
-          sessionStorage.removeItem('cs2_pending_invite');
-          const pending = JSON.parse(pendingRaw);
-          if (pending?.room) {
-            setRoomId(pending.room);
-            if (pending.key) setInviteKey(pending.key);
-            setView('mix');
-            cleanUrl.searchParams.set('room', pending.room);
-            if (pending.key) cleanUrl.searchParams.set('key', pending.key);
-            window.history.replaceState({}, '', cleanUrl.toString());
-            return;
-          }
-        }
-      } catch (e) {}
-
-      window.history.replaceState({}, '', cleanUrl.pathname || '/');
-    }
-  }, []);
-
-  // Mutable refs so Socket.IO listeners never tear down or read stale closures
-  const roomIdRef = useRef(roomId);
-  const myProfileRef = useRef(myProfile);
-  const roomPasswordRef = useRef(roomPassword);
-  const inviteKeyRef = useRef(inviteKey);
-  const viewRef = useRef(view);
-  const roomRef = useRef(room);
-
-  useEffect(() => { roomIdRef.current = roomId; }, [roomId]);
-  useEffect(() => { myProfileRef.current = myProfile; }, [myProfile]);
-  useEffect(() => { roomPasswordRef.current = roomPassword; }, [roomPassword]);
-  useEffect(() => { inviteKeyRef.current = inviteKey; }, [inviteKey]);
-  useEffect(() => { viewRef.current = view; }, [view]);
-  useEffect(() => { roomRef.current = room; }, [room]);
 
   // Automatic background FACEIT stats sync on mount
   useEffect(() => {
@@ -443,9 +306,9 @@ export default function App() {
             } catch (e) {}
 
             // Immediately emit to room so lobby & teams update (apenas se estiver ativamente dentro de uma sala de mix)
-            if (socket.connected && prev.nick && viewRef.current === 'mix' && roomIdRef.current) {
+            if (socket.connected && prev.nick && view === 'mix' && roomId) {
               socket.emit('update_player', {
-                roomId: roomIdRef.current,
+                roomId,
                 player: updated,
               });
             }
@@ -469,35 +332,48 @@ export default function App() {
       .catch(() => {});
   }, []);
 
-  // Single mount-only Socket.IO listener lifecycle with named cleanup handlers
+  // Check initial URL room on mount if socket is already connected
   useEffect(() => {
-    const emitInitialRoomJoin = () => {
+    const params = new URLSearchParams(window.location.search);
+    const urlRoom = params.get('room');
+    const urlKey = params.get('key') || params.get('token') || inviteKey || '';
+    const urlName = params.get('name') || '';
+    const isLanding = params.get('steam_auth') === '1' || !urlRoom || view !== 'mix';
+    if (!isLanding && urlRoom && socket.connected) {
+      socket.emit('join_room', {
+        roomId: urlRoom,
+        roomName: urlName || undefined,
+        player: myProfile.nick ? myProfile : null,
+        password: roomPassword || undefined,
+        inviteKey: urlKey || undefined,
+        isPrivate: Boolean(urlKey),
+        createIfMissing: true,
+      });
+    }
+  }, []);
+
+  // Setup Socket listener
+  useEffect(() => {
+    socket.on('connect', () => {
+      // Ingressa na sala via socket apenas se o usuário estiver ativamente na visão de mix e a sala já existir no servidor
       const params = new URLSearchParams(window.location.search);
-      const urlRoom = params.get('room') || roomIdRef.current;
-      const urlKey = params.get('key') || params.get('token') || inviteKeyRef.current || '';
+      const urlKey = params.get('key') || params.get('token') || inviteKey || '';
       const urlName = params.get('name') || '';
-      const isLanding = params.get('steam_auth') === '1' || !urlRoom || viewRef.current !== 'mix';
-      if (!isLanding && urlRoom) {
+      const isLanding = params.get('steam_auth') === '1' || !params.get('room') || view !== 'mix';
+      if (!isLanding && roomId) {
         socket.emit('join_room', {
-          roomId: urlRoom,
+          roomId,
           roomName: urlName || undefined,
-          player: myProfileRef.current?.nick ? myProfileRef.current : null,
-          password: roomPasswordRef.current || undefined,
+          player: myProfile.nick ? myProfile : null,
+          password: roomPassword || undefined,
           inviteKey: urlKey || undefined,
           isPrivate: Boolean(urlKey),
           createIfMissing: true,
         });
       }
-    };
+    });
 
-    const handleConnect = () => {
-      setSocketConnected(true);
-      emitInitialRoomJoin();
-    };
-    const handleDisconnect = () => {
-      setSocketConnected(false);
-    };
-    const handleRoomNotFound = ({ roomId: missingId, message }) => {
+    socket.on('room_not_found', ({ roomId: missingId, message }) => {
       setRoomNotice({
         title: 'Sala Encerrada ou Inexistente',
         message: message || `A sala ${missingId || ''} não está mais ativa. Crie uma nova sala ou escolha uma sala aberta.`,
@@ -510,42 +386,49 @@ export default function App() {
       u.searchParams.delete('pwd');
       u.searchParams.delete('key');
       window.history.replaceState({}, '', u.pathname || '/');
-    };
-    const handleRoomState = (updatedRoom) => {
-      if (updatedRoom && String(updatedRoom.id).toUpperCase() === String(roomIdRef.current).toUpperCase()) {
+    });
+
+    socket.on('room_state', (updatedRoom) => {
+      if (updatedRoom && String(updatedRoom.id).toUpperCase() === String(roomId).toUpperCase()) {
         setRoom(updatedRoom);
       }
-    };
-    const handleActiveRotationUpdated = (updatedRotation) => {
+    });
+
+    socket.on('active_rotation_updated', (updatedRotation) => {
       if (updatedRotation && Array.isArray(updatedRotation.activeDutyMaps)) {
         setOfficialRotation(updatedRotation);
       }
-    };
-    const handleGsiUpdate = (liveMatch) => {
+    });
+
+    socket.on('gsi_update', (liveMatch) => {
       setRoom((prev) => ({ ...prev, liveMatch }));
-    };
-    const handleChatMessage = (msg) => {
+    });
+
+    socket.on('chat_message', (msg) => {
       setRoom((prev) => {
         if (prev.chat.some((m) => m.id === msg.id)) return prev;
         return { ...prev, chat: [...prev.chat, msg] };
       });
-    };
-    const handleServerAppVersion = ({ version }) => {
-      if (!version) return;
-      setServerVersion((prev) => {
-        if (prev && prev !== version) {
-          setUpdateAvailable(true);
-        }
-        return version;
-      });
-    };
-    const handleRoomAuthenticated = ({ roomId: authRoomId, password: authPassword, inviteKey: authKey, isPrivate: authIsPrivate }) => {
-      if (String(authRoomId).toUpperCase() === String(roomIdRef.current).toUpperCase()) {
-        setPendingRoomAuth(null);
-        setPasswordError(null);
-        setPasswordModalOpen(false);
+    });
+
+    socket.on('rooms_list', (list) => {
+      if (Array.isArray(list)) {
+        setPublicRooms(list);
+        setActiveRoomsCount(list.length);
+      }
+    });
+
+    socket.on('commendations_updated', (updated) => {
+      if (updated && typeof updated === 'object') {
+        setCommendations(updated);
+      }
+    });
+
+    socket.on('room_authenticated', ({ roomId: authRoomId, password: authPassword, inviteKey: authKey, isPrivate: authIsPrivate }) => {
+      if (authRoomId === roomId) {
         if (authPassword) setRoomPassword(authPassword);
         if (authKey) setInviteKey(authKey);
+        // Ensure browser address bar has &key for private rooms so if user copies URL, friends enter directly
         const u = new URL(window.location);
         u.searchParams.set('room', authRoomId);
         if (authIsPrivate && authKey) {
@@ -560,20 +443,17 @@ export default function App() {
         }
         window.history.replaceState({}, '', u);
       }
-    };
-    const handleRoomAuthError = ({ roomId: authRoomId, roomName: authRoomName, error, message }) => {
+    });
+
+    socket.on('room_auth_error', ({ roomId: authRoomId, roomName: authRoomName, error, message }) => {
       setPendingRoomAuth({ roomId: authRoomId, roomName: authRoomName });
       setAuthErrorType(error || 'wrong_password');
-      setPasswordError(
-        message ||
-          (error === 'private_room'
-            ? 'Esta sala é privada. O acesso é exclusivo via link direto de convite.'
-            : 'Esta sala requer uma senha para entrar.')
-      );
+      setPasswordError(message || (error === 'private_room' ? 'Esta sala é privada. O acesso é exclusivo via link direto de convite.' : 'Esta sala requer uma senha para entrar.'));
       setPasswordModalOpen(true);
-    };
-    const handleRoomDeleted = ({ roomId: deletedId, message, reason }) => {
-      if (String(deletedId).toUpperCase() === String(roomIdRef.current).toUpperCase()) {
+    });
+
+    socket.on('room_deleted', ({ roomId: deletedId, message, reason }) => {
+      if (deletedId === roomId) {
         setRoomNotice({
           title: reason === 'inactivity' ? 'Sala Encerrada por Inatividade' : 'Sala Excluída',
           message: message || 'Esta sala de mix foi excluída.',
@@ -583,13 +463,13 @@ export default function App() {
         const u = new URL(window.location);
         u.searchParams.delete('room');
         u.searchParams.delete('pwd');
-        u.searchParams.delete('key');
         window.history.pushState({}, '', u);
       }
-    };
-    const handleKickedFromRoom = ({ targetPlayerId, reason }) => {
-      const currentProfileId = myProfileRef.current?.id;
-      if (targetPlayerId && currentProfileId && currentProfileId !== targetPlayerId) {
+    });
+
+    socket.on('kicked_from_room', ({ roomId: kickedRoomId, targetPlayerId, reason }) => {
+      // If a specific targetPlayerId was kicked, only act if it matches myProfile.id
+      if (targetPlayerId && myProfile?.id && myProfile.id !== targetPlayerId) {
         return;
       }
       setRoomNotice({
@@ -601,54 +481,33 @@ export default function App() {
       const u = new URL(window.location);
       u.searchParams.delete('room');
       u.searchParams.delete('pwd');
-      u.searchParams.delete('key');
       window.history.pushState({}, '', u);
-    };
-    const handleAdminError = ({ message }) => {
+    });
+
+    socket.on('admin_error', ({ message }) => {
       setRoomNotice({
         title: 'Aviso de Administrador',
         message: message || 'Ação restrita ao administrador da sala.',
         type: 'warning',
       });
-    };
-
-    socket.on('connect', handleConnect);
-    socket.on('disconnect', handleDisconnect);
-    socket.on('connect_error', handleDisconnect);
-    socket.on('room_not_found', handleRoomNotFound);
-    socket.on('room_state', handleRoomState);
-    socket.on('active_rotation_updated', handleActiveRotationUpdated);
-    socket.on('gsi_update', handleGsiUpdate);
-    socket.on('chat_message', handleChatMessage);
-    socket.on('server_app_version', handleServerAppVersion);
-    socket.on('room_authenticated', handleRoomAuthenticated);
-    socket.on('room_auth_error', handleRoomAuthError);
-    socket.on('room_deleted', handleRoomDeleted);
-    socket.on('kicked_from_room', handleKickedFromRoom);
-    socket.on('admin_error', handleAdminError);
-
-    if (socket.connected) {
-      setSocketConnected(true);
-      emitInitialRoomJoin();
-    }
+    });
 
     return () => {
-      socket.off('connect', handleConnect);
-      socket.off('disconnect', handleDisconnect);
-      socket.off('connect_error', handleDisconnect);
-      socket.off('room_not_found', handleRoomNotFound);
-      socket.off('room_state', handleRoomState);
-      socket.off('active_rotation_updated', handleActiveRotationUpdated);
-      socket.off('gsi_update', handleGsiUpdate);
-      socket.off('chat_message', handleChatMessage);
-      socket.off('server_app_version', handleServerAppVersion);
-      socket.off('room_authenticated', handleRoomAuthenticated);
-      socket.off('room_auth_error', handleRoomAuthError);
-      socket.off('room_deleted', handleRoomDeleted);
-      socket.off('kicked_from_room', handleKickedFromRoom);
-      socket.off('admin_error', handleAdminError);
+      socket.off('connect');
+      socket.off('room_not_found');
+      socket.off('room_state');
+      socket.off('active_rotation_updated');
+      socket.off('gsi_update');
+      socket.off('chat_message');
+      socket.off('rooms_list');
+      socket.off('commendations_updated');
+      socket.off('room_authenticated');
+      socket.off('room_auth_error');
+      socket.off('kicked_from_room');
+      socket.off('admin_error');
+      socket.off('room_deleted');
     };
-  }, []);
+  }, [roomId, myProfile, roomPassword, inviteKey, view]);
 
   // Switch Room (Multi-room hub support with password, GC privacy & direct link)
   const handleSelectRoom = (newRoomCode, customName, rankingSystem = 'gc', serverIp = '', password = undefined, isPrivate = false, key = undefined) => {
@@ -660,14 +519,14 @@ export default function App() {
     const defaultName = myProfile?.nick ? `Time ${myProfile.nick.trim()}` : `Mix ${clean}`;
     const effectiveName = customName || defaultName;
 
-    const targetPassword = password === null ? '' : (password !== undefined ? password : roomPassword);
+    const targetPassword = password !== undefined ? password : roomPassword;
     if (password !== undefined) {
-      setRoomPassword(targetPassword || '');
+      setRoomPassword(password || '');
     }
 
-    const targetKey = key === null ? '' : (key !== undefined ? key : inviteKey);
+    const targetKey = key !== undefined ? key : inviteKey;
     if (key !== undefined) {
-      setInviteKey(targetKey || '');
+      setInviteKey(key || '');
     }
 
     const url = new URL(window.location);
@@ -772,11 +631,12 @@ export default function App() {
   };
 
   const handleEnterRoom = (code = 'MIX-PRO') => {
+    const safeCode = typeof code === 'string' && code.trim() ? code : (roomId || 'MIX-PRO');
     if (!isSteamLogged) {
+      savePendingInvite(safeCode, inviteKey);
       handleRequireSteamLogin('entrar no mix');
       return;
     }
-    const safeCode = typeof code === 'string' && code.trim() ? code : (roomId || 'MIX-PRO');
     handleSelectRoom(safeCode);
   };
 
@@ -796,7 +656,10 @@ export default function App() {
     if (socket.connected) {
       socket.emit('delete_room', { roomId: cleanId });
     } else {
-      fetch(`/api/rooms/${encodeURIComponent(cleanId)}`, { method: 'DELETE' }).catch(() => {});
+      fetch(`/api/rooms/${encodeURIComponent(cleanId)}`, {
+        method: 'DELETE',
+        headers: myProfile?.id ? { 'x-creator-id': myProfile.id } : {},
+      }).catch(() => {});
     }
 
     if (cleanId === roomId) {
@@ -809,6 +672,61 @@ export default function App() {
       const u = new URL(window.location);
       u.searchParams.delete('room');
       window.history.pushState({}, '', u);
+    }
+  };
+
+  const handleStartReadyCheck = (durationSeconds = 30) => {
+    if (socket.connected) {
+      socket.emit('start_ready_check', { roomId, durationSeconds });
+    }
+  };
+
+  const handleAcceptReadyCheck = () => {
+    if (socket.connected) {
+      socket.emit('accept_ready_check', { roomId });
+    }
+  };
+
+  const handleCancelReadyCheck = () => {
+    if (socket.connected) {
+      socket.emit('cancel_ready_check', { roomId });
+    }
+  };
+
+  const handleKickAfkReadyCheck = () => {
+    if (socket.connected) {
+      socket.emit('kick_afk_ready_check', { roomId });
+    }
+  };
+
+  const handleSetTurnTimer = (seconds = 0) => {
+    if (socket.connected) {
+      socket.emit('set_turn_timer', { roomId, seconds });
+    }
+  };
+
+  const handleCommendPlayer = (targetPlayerId, type = 'friendly', targetNick = '') => {
+    if (!targetPlayerId) return;
+    if (socket.connected) {
+      socket.emit('commend_player', { roomId, targetPlayerId, targetNick, type });
+    } else {
+      fetch('/api/commendations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          targetId: targetPlayerId,
+          type,
+          voterId: myProfile?.id || 'local',
+          matchId: roomId || 'local',
+        }),
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.counts) {
+            setCommendations((prev) => ({ ...prev, [targetPlayerId]: data.counts }));
+          }
+        })
+        .catch(() => {});
     }
   };
 
@@ -847,14 +765,9 @@ export default function App() {
     }
 
     // Only synchronize with a mix room if the user is actively inside a mix room
-    if (viewRef.current !== 'mix' || !roomIdRef.current) {
+    if (view !== 'mix' || !roomId) {
       return;
     }
-
-    const activeRoomId = roomIdRef.current;
-    const isAlreadyInRoom = Boolean(
-      roomRef.current?.players?.some((p) => p.id === newProfile.id || (p.nick && p.nick === newProfile.nick))
-    );
 
     // Immediate optimistic local update for instant UI response
     setRoom((prev) => {
@@ -872,21 +785,11 @@ export default function App() {
     });
 
     if (socket.connected) {
-      if (isAlreadyInRoom) {
-        socket.emit('update_player', {
-          roomId: activeRoomId,
-          player: newProfile,
-        });
-      } else {
-        socket.emit('join_room', {
-          roomId: activeRoomId,
-          player: newProfile,
-          password: roomPasswordRef.current || undefined,
-          inviteKey: inviteKeyRef.current || undefined,
-          isPrivate: Boolean(inviteKeyRef.current || roomRef.current?.isPrivate),
-          createIfMissing: true,
-        });
-      }
+      socket.emit('join_room', {
+        roomId,
+        player: newProfile,
+        createIfMissing: true,
+      });
     } else {
       setRoom((prev) => {
         const existingIdx = prev.players.findIndex((p) => p.id === newProfile.id || p.nick === newProfile.nick);
@@ -913,61 +816,18 @@ export default function App() {
     }
   };
 
-  // Return to lobby preserving players (canceling draft or team preview)
-  const handleReturnToLobby = () => {
-    if (socket.connected && roomIdRef.current) {
-      socket.emit('return_to_lobby', { roomId: roomIdRef.current });
-    }
-    setRoom((prev) => ({
-      ...prev,
-      phase: 'lobby',
-      captainA: null,
-      captainB: null,
-      unassignedPlayers: [],
-    }));
-  };
-
-  // Send chat message (accepts either { sender, text } or plain string text)
+  // Send chat message
   const handleSendMessage = (message) => {
-    const normalized =
-      typeof message === 'string'
-        ? {
-            sender: myProfileRef.current?.nick
-              ? myProfileRef.current
-              : { nick: 'Jogador', level: 10, faceitLevel: 5, avatar: '🎯' },
-            text: message,
-          }
-        : message;
-
-    if (!normalized || !normalized.text || !String(normalized.text).trim()) return;
-
-    if (socket.connected && roomIdRef.current) {
-      socket.emit('send_chat', { roomId: roomIdRef.current, message: normalized });
+    if (socket.connected) {
+      socket.emit('send_chat', { roomId, message });
     } else {
       const chatMsg = {
         id: `msg-${Date.now()}`,
-        sender: normalized.sender || myProfileRef.current || { nick: 'Jogador', level: 10, avatar: '🎯' },
-        text: String(normalized.text),
+        sender: message.sender,
+        text: message.text,
         timestamp: Date.now(),
       };
       setRoom((prev) => ({ ...prev, chat: [...prev.chat, chatMsg] }));
-    }
-  };
-
-  // Commend player post-match (broadcasts commendation in room chat)
-  const handleCommendPlayer = (playerId, type) => {
-    const target = [...(roomRef.current?.teamA || []), ...(roomRef.current?.teamB || []), ...(roomRef.current?.players || [])].find(
-      (p) => p.id === playerId
-    );
-    const labelMap = {
-      leader: 'Liderança / IGL',
-      aim: 'MiraInsana',
-      friendly: 'Bom Companheiro',
-      clutch: 'Mestre do Clutch',
-    };
-    const commendLabel = labelMap[type] || type;
-    if (target?.nick && viewRef.current === 'mix' && roomIdRef.current) {
-      handleSendMessage(`⭐ Elogio enviado para ${target.nick}: ${commendLabel}!`);
     }
   };
 
@@ -1284,21 +1144,7 @@ export default function App() {
     if (myProfile?.id) {
       handleRemovePlayer(myProfile.id);
     }
-    try {
-      localStorage.removeItem('cs2_mix_profile');
-    } catch (e) {}
-
-    const freshProfile = {
-      id: `player-${Math.random().toString(36).substring(2, 9)}`,
-      nick: '',
-      level: 14,
-      faceitLevel: 5,
-      faceitElo: 1200,
-      side: 'ANY',
-      avatar: '🎯',
-      steamId: null,
-    };
-    setMyProfile(freshProfile);
+    clearSessionProfile();
     setProfileModalOpen(false);
 
     // Return to landing view
@@ -1306,6 +1152,8 @@ export default function App() {
     const u = new URL(window.location);
     u.searchParams.delete('room');
     u.searchParams.delete('view');
+    u.searchParams.delete('pwd');
+    u.searchParams.delete('key');
     window.history.pushState({}, '', u);
   };
 
@@ -1348,10 +1196,7 @@ export default function App() {
     if (myProfile?.id) {
       handleRemovePlayer(myProfile.id);
     }
-    try {
-      localStorage.removeItem('cs2_mix_profile');
-    } catch (e) {}
-
+    clearSessionProfile();
     window.location.href = '/api/auth/steam';
   };
 
@@ -1878,65 +1723,13 @@ export default function App() {
     }
   };
 
-  const handleExitMixLobbyToLanding = () => {
-    setView('landing');
-    const u = new URL(window.location);
-    u.searchParams.delete('room');
-    u.searchParams.delete('pwd');
-    u.searchParams.delete('key');
-    window.history.pushState({}, '', u);
-  };
-
-  const pageLoadingFallback = (
-    <div className="min-h-screen flex items-center justify-center bg-[#070a12] text-slate-300 font-mono text-xs">
-      Carregando interface...
-    </div>
-  );
-
-  const phaseLoadingFallback = (
-    <div className="py-16 text-center text-xs font-mono text-amber-300 animate-pulse">
-      Carregando fase do mix...
-    </div>
-  );
-
   return (
-    <>
+    <div className="min-h-screen flex flex-col bg-[#090d16] text-slate-100 font-sans">
       <UpdateNotificationBanner isAvailable={updateAvailable} onUpdate={handleApplyUpdate} />
       <FailoverBanner roomId={roomId} roomPassword={roomPassword} socketConnected={socketConnected} />
 
-      {/* Room Notification Toast Banner */}
-      {roomNotice && (
-        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 max-w-md w-full px-4 animate-fadeIn">
-          <div
-            className={`p-4 rounded-2xl border shadow-2xl flex items-start justify-between gap-3 backdrop-blur-xl ${
-              roomNotice.type === 'warning'
-                ? 'bg-amber-950/95 border-amber-500/50 text-amber-200'
-                : 'bg-slate-900/95 border-emerald-500/50 text-slate-100'
-            }`}
-          >
-            <div>
-              <h4 className="font-bold text-xs uppercase tracking-wider font-heading flex items-center gap-1.5">
-                <span className={`w-2 h-2 rounded-full ${roomNotice.type === 'warning' ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'}`} />
-                {roomNotice.title}
-              </h4>
-              <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-                {roomNotice.message}
-              </p>
-            </div>
-            <button
-              type="button"
-              aria-label="Fechar aviso"
-              onClick={() => setRoomNotice(null)}
-              className="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
-            >
-              ✕
-            </button>
-          </div>
-        </div>
-      )}
-
       {view === 'servers' ? (
-        <Suspense fallback={pageLoadingFallback}>
+        <Suspense fallback={<PageFallback />}>
           <DedicatedServersHub
             roomId={roomId}
             currentServerIp={room.serverIp || ''}
@@ -1962,7 +1755,7 @@ export default function App() {
           />
         </Suspense>
       ) : view === 'landing' ? (
-        <Suspense fallback={pageLoadingFallback}>
+        <Suspense fallback={<PageFallback />}>
           <LandingPage
             onGoHome={handleGoHome}
             onEnterRoom={handleEnterRoom}
@@ -1984,10 +1777,11 @@ export default function App() {
             officialRotation={officialRotation}
             syncingRotation={syncingRotation}
             onSyncOfficialRotation={handleSyncOfficialRotation}
+            publicRooms={publicRooms}
           />
         </Suspense>
       ) : (
-        <div className="min-h-screen flex flex-col bg-[#090d16] text-slate-100 font-sans">
+        <>
           <Header
             roomId={roomId}
             roomName={room.name}
@@ -2021,79 +1815,85 @@ export default function App() {
           />
 
           <main className="flex-1 max-w-7xl w-full mx-auto px-4 py-6">
-            {/* LOBBY PHASE */}
-            {room.phase === 'lobby' && (
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                <div className="lg:col-span-4 lg:sticky lg:top-24">
-                  <PlayerForm
-                    currentProfile={myProfile}
-                    onSave={handleSaveProfile}
-                    roomId={roomId}
-                    rankingSystem={room.rankingSystem || 'gc'}
-                    onLogout={handleLogoutSteam}
-                    onSwitchAccount={handleSwitchSteamAccount}
-                    onOpenProfileModal={() => setProfileModalOpen(true)}
-                    soundEnabled={soundEnabled}
-                    disabled={room.players.length >= 10 && !room.players.some((p) => p.id === myProfile.id)}
-                  />
-                </div>
+            <Suspense fallback={<PageFallback />}>
+              {/* LOBBY PHASE */}
+              {room.phase === 'lobby' && (
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                  <div className="lg:col-span-4 lg:sticky lg:top-24">
+                    <PlayerForm
+                      currentProfile={myProfile}
+                      onSave={handleSaveProfile}
+                      roomId={roomId}
+                      rankingSystem={room.rankingSystem || 'gc'}
+                      onLogout={handleLogoutSteam}
+                      onSwitchAccount={handleSwitchSteamAccount}
+                      onOpenProfileModal={() => setProfileModalOpen(true)}
+                      soundEnabled={soundEnabled}
+                      disabled={room.players.length >= 10 && !room.players.some((p) => p.id === myProfile.id)}
+                    />
+                  </div>
 
-                <div className="lg:col-span-8">
-                  <Lobby
-                    players={room.players}
-                    myProfile={myProfile}
-                    rankingSystem={room.rankingSystem || 'gc'}
-                    onChangeRankingSystem={handleChangeRankingSystem}
-                    onToggleReady={handleToggleReady}
-                    onRemovePlayer={handleRemovePlayer}
-                    onFillMockBots={handleFillMockBots}
-                    onClearPlayers={handleClearPlayers}
-                    onDrawTeams={handleTriggerDraw}
-                    onStartCaptainDraft={handleStartCaptainDraft}
-                    onOpenQuickVeto={() => setQuickVetoOpen(true)}
-                    onOpenQuickMapRoll={() => setQuickMapRollOpen(true)}
-                    onOpenDiscordModal={() => setDiscordModalOpen(true)}
-                    onOpenGrenades={() => setGrenadeModalOpen(true)}
-                    onOpenAimReflex={() => setAimReflexModalOpen(true)}
-                    onOpenTournament={() => setTournamentModalOpen(true)}
-                    serverIp={room.serverIp || ''}
-                    onUpdateServerIp={handleUpdateServerIp}
-                    rconPassword={room.rconPassword || ''}
-                    onUpdateRconPassword={handleUpdateRconPassword}
-                    roomId={roomId}
-                    roomName={room.name}
-                    liveMatch={room.liveMatch}
-                    onOpenGsiSetup={() => setGsiModalOpen(true)}
-                    onOpenServersPage={handleOpenServersPage}
-                    soundEnabled={soundEnabled}
-                    isAdmin={isAdmin}
-                    adminId={room.adminId}
-                    onKickPlayer={handleKickPlayer}
-                    onAdminChangeSide={handleAdminChangePlayerSide}
-                    roomPassword={roomPassword}
-                    isPrivate={Boolean(room.isPrivate)}
-                    hasPassword={Boolean(room.hasPassword || roomPassword)}
-                    inviteKey={inviteKey || room.inviteKey}
-                  />
+                  <div className="lg:col-span-8">
+                    <Lobby
+                      players={room.players}
+                      myProfile={myProfile}
+                      rankingSystem={room.rankingSystem || 'gc'}
+                      onChangeRankingSystem={handleChangeRankingSystem}
+                      onToggleReady={handleToggleReady}
+                      onRemovePlayer={handleRemovePlayer}
+                      onFillMockBots={handleFillMockBots}
+                      onClearPlayers={handleClearPlayers}
+                      onDrawTeams={handleTriggerDraw}
+                      onStartCaptainDraft={handleStartCaptainDraft}
+                      onOpenQuickVeto={() => setQuickVetoOpen(true)}
+                      onOpenQuickMapRoll={() => setQuickMapRollOpen(true)}
+                      onOpenDiscordModal={() => setDiscordModalOpen(true)}
+                      onOpenGrenades={() => setGrenadeModalOpen(true)}
+                      onOpenAimReflex={() => setAimReflexModalOpen(true)}
+                      onOpenTournament={() => setTournamentModalOpen(true)}
+                      serverIp={room.serverIp || ''}
+                      onUpdateServerIp={handleUpdateServerIp}
+                      rconPassword={room.rconPassword || ''}
+                      onUpdateRconPassword={handleUpdateRconPassword}
+                      roomId={roomId}
+                      roomName={room.name}
+                      liveMatch={room.liveMatch}
+                      onOpenGsiSetup={() => setGsiModalOpen(true)}
+                      onOpenServersPage={handleOpenServersPage}
+                      soundEnabled={soundEnabled}
+                      isAdmin={isAdmin}
+                      adminId={room.adminId}
+                      onKickPlayer={handleKickPlayer}
+                      onAdminChangeSide={handleAdminChangePlayerSide}
+                      roomPassword={roomPassword}
+                      isPrivate={Boolean(room.isPrivate)}
+                      hasPassword={Boolean(room.hasPassword || roomPassword)}
+                      inviteKey={inviteKey || room.inviteKey}
+                      readyCheck={room.readyCheck}
+                      onStartReadyCheck={handleStartReadyCheck}
+                      onAcceptReadyCheck={handleAcceptReadyCheck}
+                      onCancelReadyCheck={handleCancelReadyCheck}
+                      onKickAfkReadyCheck={handleKickAfkReadyCheck}
+                    />
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* CAPTAINS DRAFT PHASE */}
-            {room.phase === 'captains_draft' && (
-              <Suspense fallback={phaseLoadingFallback}>
+              {/* CAPTAINS DRAFT PHASE */}
+              {room.phase === 'captains_draft' && (
                 <CaptainsDraftView
                   room={room}
                   onPickPlayer={handleCaptainPick}
-                  onCancel={handleReturnToLobby}
+                  onCancel={() => setRoom((prev) => ({ ...prev, phase: 'lobby' }))}
+                  onSetTurnTimer={handleSetTurnTimer}
+                  myProfile={myProfile}
+                  isAdmin={isAdmin}
                   soundEnabled={soundEnabled}
                 />
-              </Suspense>
-            )}
+              )}
 
-            {/* TEAMS PHASE */}
-            {room.phase === 'teams' && (
-              <Suspense fallback={phaseLoadingFallback}>
+              {/* TEAMS PHASE */}
+              {room.phase === 'teams' && (
                 <TeamsView
                   room={room}
                   teamA={room.teamA}
@@ -2104,7 +1904,7 @@ export default function App() {
                   onReDraw={() => handleTriggerDraw('balanced')}
                   onStartCoinFlip={handleStartCoinFlip}
                   onStartVeto={handleStartVeto}
-                  onBackToLobby={handleReturnToLobby}
+                  onBackToLobby={() => setRoom((prev) => ({ ...prev, phase: 'lobby' }))}
                   serverIp={room.serverIp || ''}
                   onUpdateServerIp={handleUpdateServerIp}
                   rconPassword={room.rconPassword || ''}
@@ -2120,26 +1920,24 @@ export default function App() {
                   onMovePlayerTeam={handleMovePlayerTeam}
                   onKickPlayer={handleKickPlayer}
                 />
-              </Suspense>
-            )}
+              )}
 
-            {/* VETO & SIDE PICK PHASE */}
-            {(room.phase === 'veto' || room.phase === 'side_pick') && (
-              <Suspense fallback={phaseLoadingFallback}>
+              {/* VETO & SIDE PICK PHASE */}
+              {(room.phase === 'veto' || room.phase === 'side_pick') && (
                 <MapVeto
                   room={room}
                   onBanMap={handleBanMap}
                   onSelectSide={handleSelectSide}
                   onChangeVetoFormat={handleChangeVetoFormat}
                   onResetMix={handleRestartVeto}
+                  onSetTurnTimer={handleSetTurnTimer}
+                  isAdmin={isAdmin}
                   soundEnabled={soundEnabled}
                 />
-              </Suspense>
-            )}
+              )}
 
-            {/* FINISHED / SUMMARY PHASE */}
-            {room.phase === 'finished' && (
-              <Suspense fallback={phaseLoadingFallback}>
+              {/* FINISHED / SUMMARY PHASE */}
+              {room.phase === 'finished' && (
                 <FinalSummary
                   room={room}
                   onResetMix={handleResetMix}
@@ -2154,124 +1952,278 @@ export default function App() {
                   onOpenGsiSetup={() => setGsiModalOpen(true)}
                   onOpenHistory={() => setHistoryOpen(true)}
                   onOpenServersPage={handleOpenServersPage}
-                  soundEnabled={soundEnabled}
                   onCommendPlayer={handleCommendPlayer}
+                  commendations={commendations}
+                  myProfile={myProfile}
+                  soundEnabled={soundEnabled}
                 />
-              </Suspense>
-            )}
+              )}
+            </Suspense>
           </main>
 
-          {room.phase === 'coin_flip' && (
-            <Suspense fallback={null}>
-              <CoinFlipModal
-                isOpen={true}
-                room={room}
-                coin={room.coin}
-                onChooseAction={handleCoinChoice}
-                soundEnabled={soundEnabled}
-              />
-            </Suspense>
-          )}
+          <footer className="border-t border-slate-900 bg-slate-950/80 py-4 text-center text-xs text-slate-500">
+            <p>
+              CS2 Mix Hub • Rotação Oficial Valve (Active Duty) • Sorteador Gamers Club & Pick/Ban em Tempo Real
+            </p>
+          </footer>
+        </>
+      )}
 
-          {rouletteActive && (
-            <Suspense fallback={null}>
-              <DraftRoulette
-                players={room.players}
-                rankingSystem={room.rankingSystem || 'gc'}
-                onComplete={handleRouletteComplete}
-                soundEnabled={soundEnabled}
-              />
-            </Suspense>
-          )}
+      {/* Room Notification Toast Banner */}
+      {roomNotice && (
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-50 max-w-md w-full px-4 animate-fadeIn">
+          <div
+            className={`p-4 rounded-2xl border shadow-2xl flex items-start justify-between gap-3 backdrop-blur-xl ${
+              roomNotice.type === 'warning'
+                ? 'bg-amber-950/95 border-amber-500/50 text-amber-200'
+                : 'bg-slate-900/95 border-emerald-500/50 text-slate-100'
+            }`}
+          >
+            <div>
+              <h4 className="font-bold text-xs uppercase tracking-wider font-heading flex items-center gap-1.5">
+                <span className={`w-2 h-2 rounded-full ${roomNotice.type === 'warning' ? 'bg-amber-400 animate-pulse' : 'bg-emerald-400'}`} />
+                {roomNotice.title}
+              </h4>
+              <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                {roomNotice.message}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setRoomNotice(null)}
+              className="p-1 rounded-lg hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
 
-          <ChatDrawer
+      {/* Single Shared Lazy-Loaded Modal & Drawer Tree */}
+      <Suspense fallback={null}>
+        {roomsHubOpen && (
+          <RoomsHubModal
+            isOpen={roomsHubOpen}
+            onClose={() => setRoomsHubOpen(false)}
+            currentRoomId={roomId}
+            onSelectRoom={handleSelectRoom}
+            onDeleteRoom={handleDeleteRoom}
+            soundEnabled={soundEnabled}
+            isSteamLogged={isSteamLogged}
+            onRequireSteamLogin={handleRequireSteamLogin}
+            myProfile={myProfile}
+          />
+        )}
+
+        {(steamGateModalOpen || (view === 'mix' && room.phase === 'lobby' && !isSteamLogged)) && (
+          <SteamLoginGateModal
+            isOpen={steamGateModalOpen || (view === 'mix' && room.phase === 'lobby' && !isSteamLogged)}
             roomId={roomId}
+            actionText={steamGateActionText}
+            soundEnabled={soundEnabled}
+            onClose={
+              view === 'mix' && !isSteamLogged
+                ? () => {
+                    setView('landing');
+                    const u = new URL(window.location);
+                    u.searchParams.delete('room');
+                    window.history.pushState({}, '', u);
+                  }
+                : () => setSteamGateModalOpen(false)
+            }
+          />
+        )}
+
+        {historyOpen && (
+          <MatchHistoryModal
+            isOpen={historyOpen}
+            onClose={() => setHistoryOpen(false)}
+            history={room.history}
+            currentMap={room.finalMap?.name || room.finalMap || 'Mirage'}
+            onSaveScore={handleSaveScore}
+            onOpenGlobalHistory={() => {
+              setHistoryOpen(false);
+              setLeaderboardOpen(true);
+            }}
+            soundEnabled={soundEnabled}
+          />
+        )}
+
+        {quickVetoOpen && (
+          <QuickVetoModal
+            isOpen={quickVetoOpen}
+            onClose={() => setQuickVetoOpen(false)}
+            onStartQuickVeto={handleStartQuickVeto}
+            soundEnabled={soundEnabled}
+          />
+        )}
+
+        {quickMapRollOpen && (
+          <QuickMapRollModal
+            isOpen={quickMapRollOpen}
+            onClose={() => setQuickMapRollOpen(false)}
+            onApplyMap={handleApplyQuickMap}
+            soundEnabled={soundEnabled}
+            officialRotation={officialRotation}
+            syncingRotation={syncingRotation}
+            onSyncOfficialRotation={handleSyncOfficialRotation}
+          />
+        )}
+
+        {room.phase === 'coin_flip' && (
+          <CoinFlipModal
+            isOpen={room.phase === 'coin_flip'}
+            room={room}
+            coin={room.coin}
+            onChooseAction={handleCoinChoice}
+            soundEnabled={soundEnabled}
+          />
+        )}
+
+        {rouletteActive && (
+          <DraftRoulette
+            players={room.players}
+            rankingSystem={room.rankingSystem || 'gc'}
+            onComplete={handleRouletteComplete}
+            soundEnabled={soundEnabled}
+          />
+        )}
+
+        {view === 'mix' && (
+          <ChatDrawer
             chat={room.chat}
             onSendMessage={handleSendMessage}
             myProfile={myProfile}
             rankingSystem={room.rankingSystem || 'gc'}
             soundEnabled={soundEnabled}
           />
+        )}
 
-          {/* Footer */}
-          <footer className="border-t border-slate-900 bg-slate-950/80 py-4 text-center text-xs text-slate-500">
-            <p>
-              CS2 Mix Hub • Rotação Oficial Valve (Active Duty) • Sorteador Gamers Club & Pick/Ban em Tempo Real
-            </p>
-          </footer>
-        </div>
-      )}
+        {profileModalOpen && (
+          <PlayerProfileModal
+            isOpen={profileModalOpen}
+            onClose={() => setProfileModalOpen(false)}
+            profile={myProfile}
+            rankingSystem={room.rankingSystem || 'gc'}
+            onLogout={handleLogoutSteam}
+            onSwitchAccount={handleSwitchSteamAccount}
+            soundEnabled={soundEnabled}
+            onSaveProfile={handleSaveProfile}
+            onOpenStoryCard={() => setStoryCardOpen(true)}
+          />
+        )}
 
-      <GlobalModals
-        view={view}
-        roomId={roomId}
-        room={room}
-        myProfile={myProfile}
-        socket={socket}
-        soundEnabled={soundEnabled}
-        isSteamLogged={isSteamLogged}
-        officialRotation={officialRotation}
-        syncingRotation={syncingRotation}
-        roomsHubOpen={roomsHubOpen}
-        onCloseRoomsHub={() => setRoomsHubOpen(false)}
-        onOpenRoomsHub={() => setRoomsHubOpen(true)}
-        historyOpen={historyOpen}
-        onCloseHistory={() => setHistoryOpen(false)}
-        quickVetoOpen={quickVetoOpen}
-        onCloseQuickVeto={() => setQuickVetoOpen(false)}
-        quickMapRollOpen={quickMapRollOpen}
-        onCloseQuickMapRoll={() => setQuickMapRollOpen(false)}
-        steamGateModalOpen={steamGateModalOpen}
-        steamGateActionText={steamGateActionText}
-        onCloseSteamGate={() => setSteamGateModalOpen(false)}
-        onExitMixLobbyToLanding={handleExitMixLobbyToLanding}
-        profileModalOpen={profileModalOpen}
-        onCloseProfile={() => setProfileModalOpen(false)}
-        gsiModalOpen={gsiModalOpen}
-        onCloseGsi={() => setGsiModalOpen(false)}
-        passwordModalOpen={passwordModalOpen}
-        pendingRoomAuth={pendingRoomAuth}
-        passwordError={passwordError}
-        authErrorType={authErrorType}
-        onClosePasswordModal={() => {
-          setPasswordModalOpen(false);
-          setPasswordError(null);
-          setPendingRoomAuth(null);
-        }}
-        onSubmitRoomPassword={handleSubmitRoomPassword}
-        leaderboardOpen={leaderboardOpen}
-        onCloseLeaderboard={() => setLeaderboardOpen(false)}
-        onOpenLeaderboard={() => setLeaderboardOpen(true)}
-        discordModalOpen={discordModalOpen}
-        onCloseDiscordModal={() => setDiscordModalOpen(false)}
-        matchCardOpen={matchCardOpen}
-        onCloseMatchCard={() => setMatchCardOpen(false)}
-        storyCardOpen={storyCardOpen}
-        onCloseStoryCard={() => setStoryCardOpen(false)}
-        onOpenStoryCard={() => setStoryCardOpen(true)}
-        grenadeModalOpen={grenadeModalOpen}
-        onCloseGrenadeModal={() => setGrenadeModalOpen(false)}
-        aimReflexModalOpen={aimReflexModalOpen}
-        onCloseAimReflexModal={() => setAimReflexModalOpen(false)}
-        tournamentModalOpen={tournamentModalOpen}
-        onCloseTournamentModal={() => setTournamentModalOpen(false)}
-        localHostModalOpen={localHostModalOpen}
-        onCloseLocalHostModal={() => setLocalHostModalOpen(false)}
-        onSelectRoom={handleSelectRoom}
-        onDeleteRoom={handleDeleteRoom}
-        onRequireSteamLogin={handleRequireSteamLogin}
-        onSaveScore={handleSaveScore}
-        onStartQuickVeto={handleStartQuickVeto}
-        onApplyQuickMap={handleApplyQuickMap}
-        onSyncOfficialRotation={handleSyncOfficialRotation}
-        onLogoutSteam={handleLogoutSteam}
-        onSwitchSteamAccount={handleSwitchSteamAccount}
-        onSaveProfile={handleSaveProfile}
-        onSaveDiscordWebhook={handleSaveDiscordWebhook}
-        onShareToChat={handleSendMessage}
-        onLoadTournamentTeams={handleLoadTournamentTeams}
-        onUpdateServerIp={handleUpdateServerIp}
-      />
-    </>
+        {gsiModalOpen && (
+          <GsiSetupModal
+            isOpen={gsiModalOpen}
+            onClose={() => setGsiModalOpen(false)}
+            roomId={roomId}
+            liveMatch={room.liveMatch}
+            soundEnabled={soundEnabled}
+          />
+        )}
+
+        {passwordModalOpen && (
+          <RoomPasswordModal
+            isOpen={passwordModalOpen}
+            onClose={() => {
+              setPasswordModalOpen(false);
+              setPasswordError(null);
+              setPendingRoomAuth(null);
+            }}
+            roomId={pendingRoomAuth?.roomId || roomId}
+            roomName={pendingRoomAuth?.roomName || room.name}
+            onSubmitPassword={handleSubmitRoomPassword}
+            errorMessage={passwordError}
+            errorType={authErrorType}
+            onOpenRoomsHub={() => setRoomsHubOpen(true)}
+            soundEnabled={soundEnabled}
+          />
+        )}
+
+        {leaderboardOpen && (
+          <LeaderboardModal
+            isOpen={leaderboardOpen}
+            onClose={() => setLeaderboardOpen(false)}
+            socket={socket}
+            soundEnabled={soundEnabled}
+          />
+        )}
+
+        {discordModalOpen && (
+          <DiscordWebhookModal
+            isOpen={discordModalOpen}
+            onClose={() => setDiscordModalOpen(false)}
+            roomId={roomId}
+            currentWebhook={room.discordWebhook || ''}
+            autoLobby={room.discordAutoLobby !== false}
+            autoVeto={room.discordAutoVeto !== false}
+            autoGsiRounds={room.discordGsiRounds !== false}
+            autoGsiBomb={Boolean(room.discordGsiBomb)}
+            autoStats={room.discordAutoStats !== false}
+            onSaveWebhook={handleSaveDiscordWebhook}
+            soundEnabled={soundEnabled}
+          />
+        )}
+
+        {matchCardOpen && (
+          <MatchCardModal
+            isOpen={matchCardOpen}
+            onClose={() => setMatchCardOpen(false)}
+            room={room}
+            soundEnabled={soundEnabled}
+          />
+        )}
+
+        {storyCardOpen && (
+          <PlayerStoryCardModal
+            isOpen={storyCardOpen}
+            onClose={() => setStoryCardOpen(false)}
+            room={room}
+            soundEnabled={soundEnabled}
+            initialPlayer={myProfile}
+          />
+        )}
+
+        {grenadeModalOpen && (
+          <GrenadePlaybookModal
+            isOpen={grenadeModalOpen}
+            onClose={() => setGrenadeModalOpen(false)}
+            initialMap={room.finalMap?.id}
+            soundEnabled={soundEnabled}
+          />
+        )}
+
+        {aimReflexModalOpen && (
+          <AimReflexModal
+            isOpen={aimReflexModalOpen}
+            onClose={() => setAimReflexModalOpen(false)}
+            soundEnabled={soundEnabled}
+            onShareToChat={(text) => handleSendMessage(text)}
+          />
+        )}
+
+        {tournamentModalOpen && (
+          <TournamentBracketModal
+            isOpen={tournamentModalOpen}
+            onClose={() => setTournamentModalOpen(false)}
+            onLoadTeamsToMix={handleLoadTournamentTeams}
+            soundEnabled={soundEnabled}
+          />
+        )}
+
+        {localHostModalOpen && (
+          <LocalHostModal
+            isOpen={localHostModalOpen}
+            onClose={() => setLocalHostModalOpen(false)}
+            roomId={roomId}
+            currentServerIp={room.serverIp || ''}
+            finalMap={room.finalMap?.name || 'de_mirage'}
+            onUpdateServerIp={handleUpdateServerIp}
+            soundEnabled={soundEnabled}
+          />
+        )}
+      </Suspense>
+    </div>
   );
 }

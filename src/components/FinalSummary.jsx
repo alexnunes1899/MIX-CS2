@@ -26,6 +26,8 @@ export default function FinalSummary({
   onOpenServersPage,
   soundEnabled,
   onCommendPlayer,
+  commendations = {},
+  myProfile = null,
 }) {
   const [copiedDiscord, setCopiedDiscord] = useState(false);
   const [copiedRcon, setCopiedRcon] = useState(false);
@@ -230,15 +232,85 @@ export default function FinalSummary({
     window.open(`/api/matchzy/config/${room.id || 'MIX'}`, '_blank');
   };
 
-  const handleCommend = (playerId, type) => {
+  const [votedLocal, setVotedLocal] = useState({});
+
+  const handleCommend = (playerId, type, targetNick) => {
+    const key = `${playerId}:${type}`;
+    if (votedLocal[key]) return;
     if (soundEnabled) playReadySound();
+    setVotedLocal((prev) => ({ ...prev, [key]: true }));
     setCommendedPlayers((prev) => {
       const p = prev[playerId] || {};
       return { ...prev, [playerId]: { ...p, [type]: (p[type] || 0) + 1 } };
     });
     if (onCommendPlayer) {
-      onCommendPlayer(playerId, type);
+      onCommendPlayer(playerId, type, targetNick);
     }
+  };
+
+  const COMMEND_OPTIONS = [
+    { type: 'friendly', emoji: '👍', title: 'Bom Parceiro' },
+    { type: 'leader', emoji: '👑', title: 'Bom IGL / Call' },
+    { type: 'aim', emoji: '🎯', title: 'Mira Pesada' },
+    { type: 'comms', emoji: '🎙️', title: 'Boa Comunicação' },
+  ];
+
+  const renderRosterPlayerRow = (p) => {
+    const pFaceitLevel = p.faceitLevel || (p.level <= 10 ? p.level : Math.round(p.level / 2.1)) || 5;
+    const isSelf = myProfile?.id && p.id === myProfile.id;
+    const persisted = commendations?.[p.id] || {};
+    const localAdded = commendedPlayers?.[p.id] || {};
+
+    return (
+      <div key={p.id} className="py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <PlayerAvatar avatar={p.avatar} nick={p.nick} size="sm" />
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="font-bold text-sm text-white truncate">{p.nick}</span>
+              {(p.source === 'whatsapp' || String(p.id).startsWith('wa_') || Boolean(p.phone)) && (
+                <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded border border-emerald-500/20 shrink-0" title="Conectado pelo WhatsApp">
+                  WhatsApp
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-1 mt-1 flex-wrap">
+              {COMMEND_OPTIONS.map((opt) => {
+                const count = (persisted[opt.type] || 0) + (localAdded[opt.type] || 0);
+                const voted = Boolean(votedLocal[`${p.id}:${opt.type}`]);
+                return (
+                  <button
+                    key={opt.type}
+                    type="button"
+                    disabled={isSelf || voted}
+                    onClick={() => handleCommend(p.id, opt.type, p.nick)}
+                    title={isSelf ? `${opt.title}: ${count}` : `Elogiar ${p.nick} (${opt.title})`}
+                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-mono border transition-colors ${
+                      voted
+                        ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
+                        : isSelf
+                        ? 'bg-slate-950/60 border-slate-800/80 text-slate-400 opacity-75 cursor-default'
+                        : 'bg-slate-950/80 hover:bg-amber-500/15 border-slate-800 hover:border-amber-500/40 text-slate-300 hover:text-amber-300 cursor-pointer'
+                    }`}
+                  >
+                    <span>{opt.emoji}</span>
+                    {count > 0 && <span className="font-bold">{count}</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        <div className="shrink-0 self-end sm:self-center">
+          {isFaceit ? (
+            <FaceitBadge level={pFaceitLevel} elo={p.faceitElo} size="sm" />
+          ) : (
+            <GCBadge level={p.level} size="sm" showTier />
+          )}
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -959,27 +1031,7 @@ export default function FinalSummary({
           </div>
 
           <div className="divide-y divide-slate-800/60 mt-3">
-            {teamA.map((p) => {
-              const pFaceitLevel = p.faceitLevel || (p.level <= 10 ? p.level : Math.round(p.level / 2.1)) || 5;
-              return (
-                <div key={p.id} className="py-2.5 flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <PlayerAvatar avatar={p.avatar} nick={p.nick} size="sm" />
-                    <span className="font-bold text-sm text-white">{p.nick}</span>
-                    {(p.source === 'whatsapp' || String(p.id).startsWith('wa_') || Boolean(p.phone)) && (
-                      <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded border border-emerald-500/20 shrink-0" title="Conectado pelo WhatsApp">
-                        WhatsApp
-                      </span>
-                    )}
-                  </div>
-                  {isFaceit ? (
-                    <FaceitBadge level={pFaceitLevel} elo={p.faceitElo} size="sm" />
-                  ) : (
-                    <GCBadge level={p.level} size="sm" showTier />
-                  )}
-                </div>
-              );
-            })}
+            {teamA.map(renderRosterPlayerRow)}
           </div>
         </div>
 
@@ -1021,27 +1073,7 @@ export default function FinalSummary({
           </div>
 
           <div className="divide-y divide-slate-800/60 mt-3">
-            {teamB.map((p) => {
-              const pFaceitLevel = p.faceitLevel || (p.level <= 10 ? p.level : Math.round(p.level / 2.1)) || 5;
-              return (
-                <div key={p.id} className="py-2.5 flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <PlayerAvatar avatar={p.avatar} nick={p.nick} size="sm" />
-                    <span className="font-bold text-sm text-white">{p.nick}</span>
-                    {(p.source === 'whatsapp' || String(p.id).startsWith('wa_') || Boolean(p.phone)) && (
-                      <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded border border-emerald-500/20 shrink-0" title="Conectado pelo WhatsApp">
-                        WhatsApp
-                      </span>
-                    )}
-                  </div>
-                  {isFaceit ? (
-                    <FaceitBadge level={pFaceitLevel} elo={p.faceitElo} size="sm" />
-                  ) : (
-                    <GCBadge level={p.level} size="sm" showTier />
-                  )}
-                </div>
-              );
-            })}
+            {teamB.map(renderRosterPlayerRow)}
           </div>
         </div>
 

@@ -24,6 +24,7 @@ import {
   Volume2,
   Cpu,
   Copy,
+  KeyRound,
 } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
 
@@ -54,6 +55,7 @@ export default function DiscordWebhookModal({
     ping: null,
     lastError: null,
     activeMixesCount: 0,
+    canManageBot: true,
   });
   const [loadingStatus, setLoadingStatus] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
@@ -81,14 +83,28 @@ export default function DiscordWebhookModal({
   const [optStats, setOptStats] = useState(autoStats);
   const [testingWebhook, setTestingWebhook] = useState(false);
 
+  // Admin API Key (for protected Discord bot controls when ADMIN_API_KEY / ADMIN_STEAM_IDS is set)
+  const [adminKey, setAdminKey] = useState(() => localStorage.getItem('cs2_admin_api_key') || '');
+
   // Status / Feedback alerts
   const [statusMsg, setStatusMsg] = useState(null);
 
+  const getAdminHeaders = (extra = {}) => {
+    const trimmed = adminKey.trim();
+    return {
+      ...extra,
+      ...(trimmed ? { 'x-admin-key': trimmed } : {}),
+    };
+  };
+
   // Fetch bot status and initial configuration from server
-  const fetchBotStatus = async () => {
+  const fetchBotStatus = async (overrideKey) => {
     try {
       setLoadingStatus(true);
-      const res = await fetch('/api/discord/bot/status');
+      const effectiveKey = typeof overrideKey === 'string' ? overrideKey.trim() : adminKey.trim();
+      const res = await fetch('/api/discord/bot/status', {
+        headers: effectiveKey ? { 'x-admin-key': effectiveKey } : {},
+      });
       if (res.ok) {
         const data = await res.json();
         setBotStatus(data);
@@ -156,9 +172,9 @@ export default function DiscordWebhookModal({
     setStatusMsg(null);
     try {
       // Save configuration first if fields were filled
-      await fetch('/api/discord/bot/config', {
+      const cfgRes = await fetch('/api/discord/bot/config', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAdminHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           ...(token.trim() ? { token: token.trim() } : {}),
           clientId: clientId.trim(),
@@ -171,10 +187,21 @@ export default function DiscordWebhookModal({
           serverConnect: serverConnect.trim(),
         }),
       });
+      if (!cfgRes.ok) {
+        const cfgErr = await cfgRes.json().catch(() => ({}));
+        setStatusMsg({
+          type: 'error',
+          text: `❌ Sem permissão ou falha ao salvar config (${cfgRes.status}): ${cfgErr.error || 'Informe a Chave Admin ou entre com Steam Admin.'}`,
+        });
+        return;
+      }
 
-      const res = await fetch('/api/discord/bot/start', { method: 'POST' });
-      const data = await res.json();
-      if (data.success) {
+      const res = await fetch('/api/discord/bot/start', {
+        method: 'POST',
+        headers: getAdminHeaders(),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
         setStatusMsg({
           type: 'success',
           text: `🚀 Bot conectado com sucesso como @${data.tag}! Slash Commands registrados.`,
@@ -183,7 +210,7 @@ export default function DiscordWebhookModal({
       } else {
         setStatusMsg({
           type: 'error',
-          text: `❌ Falha ao iniciar bot: ${data.error || 'Verifique o Token no Discord Portal'}`,
+          text: `❌ Falha ao iniciar bot: ${data.error || 'Verifique o Token no Discord Portal ou a permissão Admin.'}`,
         });
       }
     } catch (e) {
@@ -198,11 +225,16 @@ export default function DiscordWebhookModal({
     setActionLoading(true);
     setStatusMsg(null);
     try {
-      const res = await fetch('/api/discord/bot/stop', { method: 'POST' });
-      const data = await res.json();
-      if (data.success) {
+      const res = await fetch('/api/discord/bot/stop', {
+        method: 'POST',
+        headers: getAdminHeaders(),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
         setStatusMsg({ type: 'success', text: '⏹️ Bot do Discord desconectado.' });
         await fetchBotStatus();
+      } else {
+        setStatusMsg({ type: 'error', text: `❌ Erro ao parar bot (${res.status}): ${data.error || 'Acesso negado.'}` });
       }
     } catch (e) {
       setStatusMsg({ type: 'error', text: `❌ Erro ao parar bot: ${e.message}` });
@@ -229,7 +261,7 @@ export default function DiscordWebhookModal({
     try {
       const res = await fetch('/api/discord/bot/config', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAdminHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           ...(token.trim() ? { token: token.trim() } : {}),
           clientId: clientId.trim(),
@@ -242,12 +274,12 @@ export default function DiscordWebhookModal({
           serverConnect: serverConnect.trim(),
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (res.ok && data.success) {
         setStatusMsg({ type: 'success', text: '✅ Configurações do Bot Discord salvas com sucesso!' });
         await fetchBotStatus();
       } else {
-        setStatusMsg({ type: 'error', text: `❌ Erro ao salvar: ${data.error || 'Falha desconhecida'}` });
+        setStatusMsg({ type: 'error', text: `❌ Erro ao salvar (${res.status}): ${data.error || 'Acesso negado / Chave Admin inválida'}` });
       }
     } catch (e) {
       setStatusMsg({ type: 'error', text: `❌ Erro ao salvar configurações: ${e.message}` });
@@ -268,17 +300,17 @@ export default function DiscordWebhookModal({
     try {
       const res = await fetch('/api/discord/bot/panel', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAdminHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ channelId: targetChannel }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (res.ok && data.success) {
         setStatusMsg({
           type: 'success',
           text: `📢 Painel oficial de Mix CS2 enviado com sucesso no canal #${data.channelName || targetChannel}!`,
         });
       } else {
-        setStatusMsg({ type: 'error', text: `❌ Erro ao enviar painel: ${data.error || 'Verifique permissões do bot'}` });
+        setStatusMsg({ type: 'error', text: `❌ Erro ao enviar painel (${res.status}): ${data.error || 'Verifique permissões do bot'}` });
       }
     } catch (e) {
       setStatusMsg({ type: 'error', text: `❌ Falha ao enviar painel: ${e.message}` });
@@ -299,14 +331,14 @@ export default function DiscordWebhookModal({
     try {
       const res = await fetch('/api/discord/test-voice-channel', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAdminHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           botToken: token.trim(),
           guildId: guildId.trim(),
           channelId: lobbyVoiceId.trim(),
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
         setStatusMsg({
           type: 'success',
@@ -555,6 +587,40 @@ export default function DiscordWebhookModal({
               <div className="pt-2 border-t border-slate-800/80 text-[11px] text-slate-400 leading-relaxed">
                 Organize partidas 5v5 diretamente no canal de texto do Discord com botões de entrada, sorteio equilibrado de capitães e times, e <strong>Pick & Ban de mapas oficial</strong> com turnos alternados!
               </div>
+
+              {/* Optional Admin Key Bar when server requires ADMIN_API_KEY / ADMIN_STEAM_IDS */}
+              {botStatus.canManageBot === false && (
+                <div className="p-3 rounded-xl bg-amber-950/30 border border-amber-500/30 space-y-2">
+                  <div className="flex items-center gap-2 text-xs font-bold text-amber-300">
+                    <KeyRound size={14} />
+                    <span>Autorização Admin necessária para alterar o Bot</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-snug">
+                    Entre com uma conta Steam cadastrada em <code className="text-amber-300">ADMIN_STEAM_IDS</code> ou informe a chave <code className="text-amber-300">ADMIN_API_KEY</code> do servidor:
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="password"
+                      value={adminKey}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setAdminKey(val);
+                        if (val.trim()) localStorage.setItem('cs2_admin_api_key', val.trim());
+                        else localStorage.removeItem('cs2_admin_api_key');
+                      }}
+                      placeholder="Cole a ADMIN_API_KEY..."
+                      className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-mono text-white outline-none focus:border-amber-400"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fetchBotStatus(adminKey)}
+                      className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold cursor-pointer"
+                    >
+                      Validar
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* 1-CLICK DISCORD BOT INVITE & CRITERIA SHOWCASE */}
