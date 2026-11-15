@@ -259,121 +259,218 @@ export default function LandingPage({
         </div>
       </header>
 
-      {/* Hero Section */}
-      <section className="relative overflow-hidden pt-10 sm:pt-14 pb-16 px-4 text-center">
+      {/* Hero Section — 2-Column Pro Esports Portal */}
+      <section className="relative overflow-hidden pt-8 sm:pt-12 pb-14 px-4">
         {/* Ambient Glows */}
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[350px] bg-amber-500/10 rounded-full blur-[140px] pointer-events-none" />
-        <div className="absolute top-1/3 left-1/4 w-[350px] h-[250px] bg-sky-500/10 rounded-full blur-[120px] pointer-events-none" />
+        <div className="absolute top-1/4 left-1/3 -translate-y-1/2 w-[680px] h-[340px] bg-amber-500/10 rounded-full blur-[140px] pointer-events-none" />
+        <div className="absolute top-1/3 right-1/4 w-[380px] h-[260px] bg-sky-500/10 rounded-full blur-[120px] pointer-events-none" />
 
-        <div className="relative z-10 max-w-4xl mx-auto space-y-6">
-          
-          {/* Tactical Pill */}
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full glass-panel border border-amber-500/40 text-amber-300 text-[10px] sm:text-xs font-bold uppercase tracking-wider shadow-xl max-w-full">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-            <span className="truncate">ROTAÇÃO OFICIAL VALVE 2026 • BALANCEADOR GAMERS CLUB</span>
-          </div>
-
-          {/* Main Title */}
-          <h1 className="text-4xl sm:text-6xl lg:text-7xl font-black font-heading text-white tracking-wider leading-[1.05] text-balance">
-            JOGUE MIX COM SEUS AMIGOS <br />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-orange-500 to-yellow-200 drop-shadow-sm">
-              COMO UM PROFISSIONAL
-            </span>
-          </h1>
-
-          <p className="text-sm sm:text-base text-slate-300 max-w-2xl mx-auto leading-relaxed font-normal text-balance">
-            Crie salas de mix com link direto, escolha entre o ranking manual da <strong>Gamers Club (1 a 21)</strong> ou automático da <strong>FACEIT (1 a 10 / ELO)</strong> via Steam, e dispute o <strong>Pick & Ban oficial</strong> de mapas da Valve.
-          </p>
-
-          {/* Quick Room Code Box (Tactical Glassmorphism) */}
-          <form onSubmit={handleJoinByCode} className="max-w-lg mx-auto space-y-2.5">
-            <div className="glass-panel border-2 border-white/[0.1] focus-within:border-amber-400 rounded-2xl p-2.5 shadow-2xl backdrop-blur-2xl flex flex-col sm:flex-row gap-2 transition-all">
-              <div className="flex-1 flex items-center pl-3">
-                <Hash size={18} className="text-amber-400 mr-2 shrink-0" />
-                <input
-                  type="text"
-                  placeholder={myProfile?.nick ? `Código da sala (ex: TIME-${myProfile.nick.toUpperCase()})...` : 'Código da sala (ex: TIME-ALEX)...'}
-                  value={roomCodeInput}
-                  onChange={(e) => setRoomCodeInput(e.target.value.toUpperCase())}
-                  className="w-full bg-transparent text-sm font-mono text-white placeholder-slate-500 outline-none font-semibold"
-                />
-              </div>
-              <button
-                type="submit"
-                className="py-3 px-6 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 font-bold text-xs uppercase tracking-wider transition-all shadow-md shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer active:scale-95"
-              >
-                <span>Entrar / Criar Sala</span>
-                <ArrowRight size={15} />
-              </button>
+        <div className="relative z-10 max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-center">
+          {/* Left Column: Core Pitch + Room Entry */}
+          <div className="lg:col-span-7 space-y-5 text-center lg:text-left">
+            {/* Tactical Pill */}
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full glass-panel border border-amber-500/35 text-amber-300 text-[10px] sm:text-xs font-bold uppercase tracking-wider shadow-xl max-w-full">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+              <span className="truncate">ROTAÇÃO OFICIAL VALVE • BALANCEADOR GC & FACEIT</span>
             </div>
 
-            <div className="flex items-center justify-center gap-1.5 flex-wrap text-[11px]">
-              <span className="text-slate-500 font-medium">Acesso rápido:</span>
-              {['MIX-PRO', 'LOBBY-5V5', 'MIX-AMIGOS'].map((preset) => (
+            {/* Main Title */}
+            <h1 className="text-4xl sm:text-5xl xl:text-6xl font-black font-heading text-white tracking-wider leading-[1.06] text-balance">
+              JOGUE MIX 5V5 <br className="hidden sm:block" />
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-orange-400 to-yellow-200 drop-shadow-sm">
+                COMO UM PROFISSIONAL
+              </span>
+            </h1>
+
+            <p className="text-sm sm:text-base text-slate-300 max-w-2xl mx-auto lg:mx-0 leading-relaxed font-normal text-balance">
+              Crie salas de mix com link direto, balanceie times pela <strong>Gamers Club (1–21)</strong> ou <strong>FACEIT ELO</strong> via Steam, e dispute o <strong>Pick & Ban oficial</strong> sincronizado com o Discord.
+            </p>
+
+            {/* Quick Room Code Box (Tactical Glassmorphism) */}
+            <form onSubmit={handleJoinByCode} className="max-w-xl mx-auto lg:mx-0 space-y-2.5">
+              <div className="glass-panel border border-white/[0.12] focus-within:border-amber-400 rounded-2xl p-2 shadow-2xl backdrop-blur-2xl flex flex-col sm:flex-row gap-2 transition-all">
+                <div className="flex-1 flex items-center pl-3">
+                  <Hash size={18} className="text-amber-400 mr-2 shrink-0" />
+                  <input
+                    type="text"
+                    placeholder={myProfile?.nick ? `Código da sala (ex: TIME-${myProfile.nick.toUpperCase()})...` : 'Código da sala (ex: TIME-ALEX)...'}
+                    value={roomCodeInput}
+                    onChange={(e) => setRoomCodeInput(e.target.value.toUpperCase())}
+                    className="w-full bg-transparent text-sm font-mono text-white placeholder-slate-500 outline-none font-semibold"
+                  />
+                </div>
                 <button
-                  key={preset}
-                  type="button"
-                  onClick={() => handleCreateMix(preset)}
-                  className="px-2.5 py-0.5 rounded-full bg-slate-900/90 hover:bg-amber-500/15 border border-slate-800 hover:border-amber-500/40 text-slate-300 hover:text-amber-300 font-mono font-bold transition-colors cursor-pointer"
+                  type="submit"
+                  className="py-3 px-6 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider transition-all shadow-md shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer active:scale-95 shrink-0"
                 >
-                  #{preset}
+                  <span>Entrar / Criar Sala</span>
+                  <ArrowRight size={15} />
                 </button>
-              ))}
-            </div>
-          </form>
-
-          {/* Fast Action Feature Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-3xl mx-auto pt-3 text-left">
-            <button
-              onClick={() => {
-                if (soundEnabled) playClickSound();
-                onOpenQuickVeto();
-              }}
-              className="p-3.5 rounded-2xl bg-slate-900/80 hover:bg-slate-800/90 border border-sky-500/30 hover:border-sky-400 transition-all shadow-lg group cursor-pointer hover:-translate-y-0.5 active:scale-95"
-            >
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-7 h-7 rounded-lg bg-sky-500/15 text-sky-400 flex items-center justify-center border border-sky-500/30 group-hover:scale-110 transition-transform">
-                  <Zap size={14} />
-                </div>
-                <span className="text-xs font-black uppercase text-white group-hover:text-sky-300 transition-colors">Veto Rápido</span>
               </div>
-              <p className="text-[11px] text-slate-400 leading-snug">Pick & Ban oficial MD1, MD3 ou MD5 com times formados</p>
-            </button>
 
-            <button
-              onClick={() => {
-                if (soundEnabled) playClickSound();
-                onOpenQuickMapRoll();
-              }}
-              className="p-3.5 rounded-2xl bg-slate-900/80 hover:bg-slate-800/90 border border-amber-500/30 hover:border-amber-400 transition-all shadow-lg group cursor-pointer hover:-translate-y-0.5 active:scale-95"
-            >
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-7 h-7 rounded-lg bg-amber-500/15 text-amber-400 flex items-center justify-center border border-amber-500/30 group-hover:scale-110 transition-transform">
-                  <Dices size={14} />
-                </div>
-                <span className="text-xs font-black uppercase text-white group-hover:text-amber-300 transition-colors">Roleta de Mapa</span>
+              <div className="flex items-center justify-center lg:justify-start gap-1.5 flex-wrap text-[11px]">
+                <span className="text-slate-500 font-medium">Acesso rápido:</span>
+                {['MIX-PRO', 'LOBBY-5V5', 'MIX-AMIGOS'].map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => handleCreateMix(preset)}
+                    className="px-2.5 py-0.5 rounded-full bg-slate-900/90 hover:bg-amber-500/15 border border-slate-800 hover:border-amber-500/40 text-slate-300 hover:text-amber-300 font-mono font-bold transition-colors cursor-pointer"
+                  >
+                    #{preset}
+                  </button>
+                ))}
               </div>
-              <p className="text-[11px] text-slate-400 leading-snug">Sorteio com animação 3D entre a rotação da Valve</p>
-            </button>
+            </form>
 
-            {(onOpenServersPage || onOpenLocalHost) && (
+            {/* Fast Action Utility Strip */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 max-w-2xl mx-auto lg:mx-0 pt-1 text-left">
               <button
                 onClick={() => {
                   if (soundEnabled) playClickSound();
-                  if (onOpenServersPage) onOpenServersPage();
-                  else if (onOpenLocalHost) onOpenLocalHost();
+                  onOpenQuickVeto();
                 }}
-                className="p-3.5 rounded-2xl bg-slate-900/80 hover:bg-slate-800/90 border border-emerald-500/30 hover:border-emerald-400 transition-all shadow-lg group cursor-pointer hover:-translate-y-0.5 active:scale-95"
+                className="p-3 rounded-2xl bg-slate-900/75 hover:bg-slate-800/90 border border-white/[0.08] hover:border-sky-400/60 transition-all shadow-lg group cursor-pointer active:scale-95"
               >
-                <div className="flex items-center gap-2 mb-1">
-                  <div className="w-7 h-7 rounded-lg bg-emerald-500/15 text-emerald-400 flex items-center justify-center border border-emerald-500/30 group-hover:scale-110 transition-transform">
-                    <Server size={14} />
+                <div className="flex items-center gap-2 mb-0.5">
+                  <div className="w-6 h-6 rounded-lg bg-sky-500/15 text-sky-400 flex items-center justify-center border border-sky-500/30">
+                    <Zap size={13} />
                   </div>
-                  <span className="text-xs font-black uppercase text-white group-hover:text-emerald-300 transition-colors">Servidores & LAN</span>
+                  <span className="text-xs font-black uppercase text-white group-hover:text-sky-300 transition-colors">Veto Rápido</span>
                 </div>
-                <p className="text-[11px] text-slate-400 leading-snug">Host 0ms no PC, LAN Party, Dedicado e Radmin VPN</p>
+                <p className="text-[11px] text-slate-400 leading-snug">Pick & Ban MD1, MD3 ou MD5</p>
               </button>
-            )}
+
+              <button
+                onClick={() => {
+                  if (soundEnabled) playClickSound();
+                  onOpenQuickMapRoll();
+                }}
+                className="p-3 rounded-2xl bg-slate-900/75 hover:bg-slate-800/90 border border-white/[0.08] hover:border-amber-400/60 transition-all shadow-lg group cursor-pointer active:scale-95"
+              >
+                <div className="flex items-center gap-2 mb-0.5">
+                  <div className="w-6 h-6 rounded-lg bg-amber-500/15 text-amber-400 flex items-center justify-center border border-amber-500/30">
+                    <Dices size={13} />
+                  </div>
+                  <span className="text-xs font-black uppercase text-white group-hover:text-amber-300 transition-colors">Roleta de Mapa</span>
+                </div>
+                <p className="text-[11px] text-slate-400 leading-snug">Sorteio 3D da rotação Valve</p>
+              </button>
+
+              {(onOpenServersPage || onOpenLocalHost) && (
+                <button
+                  onClick={() => {
+                    if (soundEnabled) playClickSound();
+                    if (onOpenServersPage) onOpenServersPage();
+                    else if (onOpenLocalHost) onOpenLocalHost();
+                  }}
+                  className="p-3 rounded-2xl bg-slate-900/75 hover:bg-slate-800/90 border border-white/[0.08] hover:border-emerald-400/60 transition-all shadow-lg group cursor-pointer active:scale-95"
+                >
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <div className="w-6 h-6 rounded-lg bg-emerald-500/15 text-emerald-400 flex items-center justify-center border border-emerald-500/30">
+                      <Server size={13} />
+                    </div>
+                    <span className="text-xs font-black uppercase text-white group-hover:text-emerald-300 transition-colors">Servidores & LAN</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-snug">Host 0ms, Radmin & Dedicado</p>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Right Column: Live Match Center Panel (Above the Fold) */}
+          <div className="lg:col-span-5">
+            <div className="glass-panel rounded-3xl border border-white/[0.1] p-5 shadow-2xl space-y-4">
+              <div className="flex items-center justify-between gap-2 pb-3 border-b border-white/[0.08]">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <h2 className="text-sm font-black font-heading uppercase tracking-wider text-white">
+                    Match Center • Ao Vivo
+                  </h2>
+                </div>
+                <span className="text-[11px] font-mono font-bold px-2.5 py-0.5 rounded-full bg-slate-950 border border-slate-800 text-amber-300">
+                  {displayedRooms.length} {displayedRooms.length === 1 ? 'sala' : 'salas'}
+                </span>
+              </div>
+
+              {displayedRooms.length > 0 ? (
+                <div className="space-y-2.5">
+                  {displayedRooms.slice(0, 3).map((r) => {
+                    const c = Math.min(10, Math.max(0, Number(r.playerCount) || 0));
+                    const pct = Math.round((c / 10) * 100);
+                    return (
+                      <div
+                        key={r.id}
+                        className="p-3 rounded-2xl bg-slate-950/75 border border-slate-800/90 hover:border-amber-500/40 transition-all flex items-center justify-between gap-3"
+                      >
+                        <div className="min-w-0 flex-1 space-y-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-bold text-white truncate">{r.name || r.id}</span>
+                            <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-slate-900 text-slate-400 border border-slate-800 shrink-0">
+                              #{r.id}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1 h-1.5 bg-slate-900 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full ${c >= 10 ? 'bg-emerald-400' : 'bg-amber-400'}`}
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                            <span className="text-[10px] font-mono font-bold text-slate-300 shrink-0">{c}/10</span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleCreateMix(r.id)}
+                          className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[11px] uppercase tracking-wider cursor-pointer shrink-0 transition-colors"
+                        >
+                          Entrar
+                        </button>
+                      </div>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (soundEnabled) playClickSound();
+                      onOpenRoomsHub();
+                    }}
+                    className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-bold text-slate-300 hover:text-white transition-colors cursor-pointer"
+                  >
+                    Ver Todas as Salas / Criar Nova ➔
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    {[
+                      { step: '01', title: 'Crie ou entre com 1 clique', desc: 'Sala privada com link ou pública na comunidade', color: 'text-amber-400 border-amber-500/30 bg-amber-500/10' },
+                      { step: '02', title: 'Times 100% Equilibrados', desc: 'Algoritmo GC (1–21), FACEIT ELO ou Draft de Capitães', color: 'text-sky-400 border-sky-500/30 bg-sky-500/10' },
+                      { step: '03', title: 'Veto Oficial & Connect Direto', desc: 'Pick & Ban estilo Major + Bot do Discord + Valve GSI', color: 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10' },
+                    ].map((item) => (
+                      <div key={item.step} className="p-2.5 rounded-2xl bg-slate-950/70 border border-slate-800/80 flex items-center gap-3">
+                        <span className={`w-8 h-8 rounded-xl border font-mono font-black text-xs flex items-center justify-center shrink-0 ${item.color}`}>
+                          {item.step}
+                        </span>
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold text-white">{item.title}</div>
+                          <div className="text-[11px] text-slate-400 truncate">{item.desc}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleCreateMix('MIX-PRO')}
+                    className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider shadow-lg shadow-amber-500/20 cursor-pointer flex items-center justify-center gap-2 active:scale-95 transition-all"
+                  >
+                    <Play size={14} fill="currentColor" />
+                    <span>Abrir Primeiro Lobby 5v5 Agora</span>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </section>
@@ -810,8 +907,38 @@ export default function LandingPage({
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-white/[0.08] bg-[#060911] py-8 text-center text-xs text-slate-500">
-        <p>CS2 Mix Hub • Rotação Oficial Valve (Active Duty) • Todos os direitos reservados aos criadores do Counter-Strike 2.</p>
+      <footer className="border-t border-white/[0.08] bg-[#060911] py-10 px-4 text-xs text-slate-400">
+        <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
+          <div className="flex items-center justify-center md:justify-start gap-2.5">
+            <MixHubLogo className="w-8 h-8 shrink-0" />
+            <div className="text-left">
+              <div className="font-heading font-black text-white tracking-wider text-sm">CS2 MIX HUB</div>
+              <div className="inline-flex items-center gap-1.5 text-[10px] font-mono text-emerald-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                <span>Plataforma Online • Bot Discord + Web Sync</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-center gap-4 flex-wrap text-[11px] font-semibold">
+            <button type="button" onClick={onOpenRoomsHub} className="hover:text-amber-400 transition-colors cursor-pointer">Salas Abertas</button>
+            <button type="button" onClick={onOpenLeaderboard} className="hover:text-amber-400 transition-colors cursor-pointer">Hall da Fama</button>
+            <button type="button" onClick={onOpenDiscordModal} className="hover:text-amber-400 transition-colors cursor-pointer">Bot Discord</button>
+            {(onOpenServersPage || onOpenLocalHost) && (
+              <button
+                type="button"
+                onClick={onOpenServersPage || onOpenLocalHost}
+                className="hover:text-amber-400 transition-colors cursor-pointer"
+              >
+                Servidores & LAN
+              </button>
+            )}
+          </div>
+
+          <div className="text-center md:text-right text-[11px] text-slate-500">
+            Rotação Oficial Valve Active Duty • Não afiliado à Valve Corporation.
+          </div>
+        </div>
       </footer>
     </div>
   );

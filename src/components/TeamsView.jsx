@@ -110,13 +110,34 @@ export default function TeamsView({
           </div>
         </div>
 
-        {/* Visual Team Balance Gauge */}
-        <div className="mt-4 pt-3 border-t border-slate-800/80 space-y-1.5">
-          <div className="flex items-center justify-between text-[11px] font-mono">
-            <span className="text-sky-400 font-bold">{upperA}: Lvl {metrics?.avgA ?? '-'}</span>
-            <span className="text-slate-400 font-semibold">Força Comparativa</span>
-            <span className="text-amber-400 font-bold">{upperB}: Lvl {metrics?.avgB ?? '-'}</span>
+        {/* Esports Matchup Scoreboard VS Header */}
+        <div className="mt-4 pt-3.5 border-t border-slate-800/80 space-y-2">
+          <div className="flex items-center justify-between gap-3 bg-slate-950/75 border border-slate-800/90 rounded-xl px-3.5 py-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-7 h-7 rounded-lg bg-sky-500/20 border border-sky-400/40 text-sky-400 flex items-center justify-center shrink-0">
+                <Shield size={14} />
+              </div>
+              <div className="min-w-0">
+                <div className="text-xs font-black font-heading text-sky-300 uppercase truncate">{upperA}</div>
+                <div className="text-[10px] font-mono text-slate-400">Média Lvl {metrics?.avgA ?? '-'}</div>
+              </div>
+            </div>
+
+            <div className="px-3 py-1 rounded-lg bg-slate-900 border border-slate-700/80 font-heading font-black text-xs text-amber-400 tracking-widest shrink-0">
+              VS
+            </div>
+
+            <div className="flex items-center gap-2 min-w-0 text-right">
+              <div className="min-w-0">
+                <div className="text-xs font-black font-heading text-amber-300 uppercase truncate">{upperB}</div>
+                <div className="text-[10px] font-mono text-slate-400">Média Lvl {metrics?.avgB ?? '-'}</div>
+              </div>
+              <div className="w-7 h-7 rounded-lg bg-amber-500/20 border border-amber-400/40 text-amber-400 flex items-center justify-center shrink-0">
+                <Flame size={14} />
+              </div>
+            </div>
           </div>
+
           <div className="h-2 w-full rounded-full bg-slate-950 border border-slate-800 overflow-hidden flex">
             {(() => {
               const sA = Number(metrics?.sumA) || 1;

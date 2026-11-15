@@ -465,16 +465,16 @@ export default function MapVeto({
           return (
             <div
               key={map.id}
-              className={`group relative overflow-hidden rounded-2xl border-2 transition-all flex flex-col justify-between min-h-[230px] ${
+              className={`group relative overflow-hidden rounded-2xl transition-all duration-300 flex flex-col justify-between min-h-[230px] ${
                 isDecider
-                  ? 'border-amber-400 ring-4 ring-amber-400/40 shadow-2xl scale-[1.02]'
+                  ? 'border-2 border-amber-400 ring-4 ring-amber-400/35 shadow-2xl scale-[1.02]'
                   : picked
-                  ? 'border-emerald-400 ring-2 ring-emerald-400/30 shadow-xl shadow-emerald-500/10'
+                  ? 'border-2 border-emerald-400 ring-2 ring-emerald-400/30 shadow-xl shadow-emerald-500/15'
                   : banned
-                  ? 'border-slate-800/80 bg-slate-950/80 opacity-60 grayscale'
+                  ? 'border border-slate-800/80 bg-slate-950/90 opacity-55 grayscale'
                   : isActionPick
-                  ? 'border-slate-700/80 hover:border-emerald-400 bg-slate-900 shadow-lg hover:shadow-emerald-500/15 cursor-pointer'
-                  : 'border-slate-700/80 hover:border-amber-400/80 bg-slate-900 shadow-lg hover:shadow-amber-500/10 cursor-pointer'
+                  ? 'border border-white/[0.1] hover:border-emerald-400 bg-slate-900 shadow-lg hover:shadow-emerald-500/20 hover:-translate-y-0.5 cursor-pointer'
+                  : 'border border-white/[0.1] hover:border-amber-400/80 bg-slate-900 shadow-lg hover:shadow-amber-500/15 hover:-translate-y-0.5 cursor-pointer'
               }`}
               onClick={() => !banned && !picked && phase === 'veto' && !isWaitingPickSide && handleMapAction(map.id)}
             >

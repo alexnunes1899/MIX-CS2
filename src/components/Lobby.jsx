@@ -242,144 +242,89 @@ export default function Lobby({
         </div>
       </div>
 
-      {/* Quick Mode Shortcuts Bar */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        <div
+      {/* Quick Mode Shortcuts Toolbar (Compact 1-Row Rail) */}
+      <div className="bg-slate-900/75 border border-slate-800/90 rounded-2xl p-2 flex items-center gap-1.5 flex-wrap shadow-sm">
+        <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500 font-bold px-2 hidden sm:inline">
+          Atalhos:
+        </span>
+        <button
+          type="button"
           onClick={() => {
             if (soundEnabled) playClickSound();
             onOpenQuickVeto();
           }}
-          className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-sky-500/50 rounded-2xl p-3.5 flex items-center justify-between cursor-pointer transition-all shadow-sm group"
+          className="px-3 py-1.5 rounded-xl bg-slate-950/70 hover:bg-sky-500/15 border border-slate-800 hover:border-sky-500/40 text-xs font-bold text-slate-200 hover:text-sky-300 flex items-center gap-1.5 transition-all cursor-pointer"
         >
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-sky-500/20 text-sky-400 border border-sky-500/30 flex items-center justify-center group-hover:scale-105 transition-transform">
-              <Zap size={18} />
-            </div>
-            <div>
-              <h4 className="font-bold text-xs uppercase tracking-wider text-white group-hover:text-sky-300 transition-colors">
-                Times Já Montados?
-              </h4>
-              <p className="text-[11px] text-slate-400">Ir direto para o Pick & Ban de Mapas</p>
-            </div>
-          </div>
-          <span className="text-xs font-bold text-sky-400 group-hover:translate-x-1 transition-transform">➔</span>
-        </div>
+          <Zap size={13} className="text-sky-400" />
+          <span>Veto Direto</span>
+        </button>
 
-        <div
+        <button
+          type="button"
           onClick={() => {
             if (soundEnabled) playClickSound();
             onOpenQuickMapRoll();
           }}
-          className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-amber-500/50 rounded-2xl p-3.5 flex items-center justify-between cursor-pointer transition-all shadow-sm group"
+          className="px-3 py-1.5 rounded-xl bg-slate-950/70 hover:bg-amber-500/15 border border-slate-800 hover:border-amber-500/40 text-xs font-bold text-slate-200 hover:text-amber-300 flex items-center gap-1.5 transition-all cursor-pointer"
         >
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center group-hover:scale-105 transition-transform">
-              <Dices size={18} />
-            </div>
-            <div>
-              <h4 className="font-bold text-xs uppercase tracking-wider text-white group-hover:text-amber-300 transition-colors">
-                Sorteio Rápido de Mapa
-              </h4>
-              <p className="text-[11px] text-slate-400">Roleta oficial ou com Train e extras</p>
-            </div>
-          </div>
-          <span className="text-xs font-bold text-amber-400 group-hover:translate-x-1 transition-transform">➔</span>
-        </div>
+          <Dices size={13} className="text-amber-400" />
+          <span>Roleta de Mapa</span>
+        </button>
 
-        {/* Tactical Grenade Playbook */}
         {onOpenGrenades && (
-          <div
+          <button
+            type="button"
             onClick={() => {
               if (soundEnabled) playClickSound();
               onOpenGrenades();
             }}
-            className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-emerald-500/50 rounded-2xl p-3.5 flex items-center justify-between cursor-pointer transition-all shadow-sm group"
+            className="px-3 py-1.5 rounded-xl bg-slate-950/70 hover:bg-emerald-500/15 border border-slate-800 hover:border-emerald-500/40 text-xs font-bold text-slate-200 hover:text-emerald-300 flex items-center gap-1.5 transition-all cursor-pointer"
           >
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center group-hover:scale-105 transition-transform">
-                <BookOpen size={18} />
-              </div>
-              <div>
-                <h4 className="font-bold text-xs uppercase tracking-wider text-white group-hover:text-emerald-300 transition-colors">
-                  Guia de Granadas
-                </h4>
-                <p className="text-[11px] text-slate-400">Smokes e táticas de cada mapa</p>
-              </div>
-            </div>
-            <span className="text-xs font-bold text-emerald-400 group-hover:translate-x-1 transition-transform">➔</span>
-          </div>
+            <BookOpen size={13} className="text-emerald-400" />
+            <span>Granadas</span>
+          </button>
         )}
 
-        {/* Aim Warmup Mini-Game */}
         {onOpenAimReflex && (
-          <div
+          <button
+            type="button"
             onClick={() => {
               if (soundEnabled) playClickSound();
               onOpenAimReflex();
             }}
-            className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-orange-500/50 rounded-2xl p-3.5 flex items-center justify-between cursor-pointer transition-all shadow-sm group"
+            className="px-3 py-1.5 rounded-xl bg-slate-950/70 hover:bg-orange-500/15 border border-slate-800 hover:border-orange-500/40 text-xs font-bold text-slate-200 hover:text-orange-300 flex items-center gap-1.5 transition-all cursor-pointer"
           >
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-orange-500/20 text-orange-400 border border-orange-500/30 flex items-center justify-center group-hover:scale-105 transition-transform">
-                <Target size={18} />
-              </div>
-              <div>
-                <h4 className="font-bold text-xs uppercase tracking-wider text-white group-hover:text-orange-300 transition-colors">
-                  Aquecer Mira & Reflexo
-                </h4>
-                <p className="text-[11px] text-slate-400">Teste em ms e treino de flick</p>
-              </div>
-            </div>
-            <span className="text-xs font-bold text-orange-400 group-hover:translate-x-1 transition-transform">➔</span>
-          </div>
+            <Target size={13} className="text-orange-400" />
+            <span>Aquecer Mira</span>
+          </button>
         )}
 
-        {/* Tournament Bracket Mode */}
         {onOpenTournament && (
-          <div
+          <button
+            type="button"
             onClick={() => {
               if (soundEnabled) playClickSound();
               onOpenTournament();
             }}
-            className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-purple-500/50 rounded-2xl p-3.5 flex items-center justify-between cursor-pointer transition-all shadow-sm group"
+            className="px-3 py-1.5 rounded-xl bg-slate-950/70 hover:bg-purple-500/15 border border-slate-800 hover:border-purple-500/40 text-xs font-bold text-slate-200 hover:text-purple-300 flex items-center gap-1.5 transition-all cursor-pointer"
           >
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-purple-500/20 text-purple-400 border border-purple-500/30 flex items-center justify-center group-hover:scale-105 transition-transform">
-                <Trophy size={18} />
-              </div>
-              <div>
-                <h4 className="font-bold text-xs uppercase tracking-wider text-white group-hover:text-purple-300 transition-colors">
-                  Modo Torneio
-                </h4>
-                <p className="text-[11px] text-slate-400">Chaveamento 4, 8 ou 16 equipes</p>
-              </div>
-            </div>
-            <span className="text-xs font-bold text-purple-400 group-hover:translate-x-1 transition-transform">➔</span>
-          </div>
+            <Trophy size={13} className="text-purple-400" />
+            <span>Torneio</span>
+          </button>
         )}
 
-        {/* Dedicated Servers Hub */}
         {onOpenServersPage && (
-          <div
+          <button
+            type="button"
             onClick={() => {
               if (soundEnabled) playClickSound();
               onOpenServersPage();
             }}
-            className="bg-slate-900/80 hover:bg-slate-800/80 border border-slate-800 hover:border-emerald-500/50 rounded-2xl p-3.5 flex items-center justify-between cursor-pointer transition-all shadow-sm group"
+            className="px-3 py-1.5 rounded-xl bg-slate-950/70 hover:bg-emerald-500/15 border border-slate-800 hover:border-emerald-500/40 text-xs font-bold text-slate-200 hover:text-emerald-300 flex items-center gap-1.5 transition-all cursor-pointer"
           >
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center group-hover:scale-105 transition-transform">
-                <Server size={18} />
-              </div>
-              <div>
-                <h4 className="font-bold text-xs uppercase tracking-wider text-white group-hover:text-emerald-300 transition-colors">
-                  Central de Servidores
-                </h4>
-                <p className="text-[11px] text-slate-400">Host 0ms, LAN e Dedicado Online</p>
-              </div>
-            </div>
-            <span className="text-xs font-bold text-emerald-400 group-hover:translate-x-1 transition-transform">➔</span>
-          </div>
+            <Server size={13} className="text-emerald-400" />
+            <span>Servidores</span>
+          </button>
         )}
       </div>
 

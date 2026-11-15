@@ -4,6 +4,7 @@ import Header from './components/Header';
 import PlayerForm from './components/PlayerForm';
 import FailoverBanner from './components/FailoverBanner';
 import UpdateNotificationBanner from './components/UpdateNotificationBanner';
+import ToastHost from './components/ToastHost';
 import { playClickSound, setSoundEnabledGlobal, isSoundEnabled } from './utils/audio';
 import { recordMatchResult } from './utils/playerStats';
 import { ACTIVE_DUTY_MAPS, OFFICIAL_ACTIVE_DUTY, EXTRA_CS2_MAPS } from './data/maps';
@@ -43,9 +44,17 @@ const LocalHostModal = lazy(() => import('./components/LocalHostModal'));
 
 function PageFallback() {
   return (
-    <div className="min-h-[40vh] flex flex-col items-center justify-center gap-3 text-slate-400">
-      <div className="w-8 h-8 rounded-full border-2 border-amber-500/30 border-t-amber-400 animate-spin" />
-      <span className="text-xs font-mono uppercase tracking-wider">Carregando módulo...</span>
+    <div className="max-w-7xl mx-auto w-full px-4 py-8 space-y-5 animate-pulse">
+      <div className="h-20 rounded-2xl bg-slate-900/80 border border-white/[0.06]" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="h-36 rounded-2xl bg-slate-900/70 border border-white/[0.06]" />
+        ))}
+      </div>
+      <div className="flex items-center justify-center gap-2 pt-2 text-slate-500">
+        <div className="w-4 h-4 rounded-full border-2 border-amber-500/30 border-t-amber-400 animate-spin" />
+        <span className="text-[11px] font-mono uppercase tracking-wider">Carregando módulo...</span>
+      </div>
     </div>
   );
 }
@@ -1725,6 +1734,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col bg-[#090d16] text-slate-100 font-sans">
+      <ToastHost />
       <UpdateNotificationBanner isAvailable={updateAvailable} onUpdate={handleApplyUpdate} />
       <FailoverBanner roomId={roomId} roomPassword={roomPassword} socketConnected={socketConnected} />
 
