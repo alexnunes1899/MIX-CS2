@@ -256,6 +256,7 @@ export function registerAdminAndSocialRoutes(app, { io, rooms, discordBotManager
       dealsChannels,
       autoPostDeals,
       lastDealsDropAt,
+      geminiApiKey,
     } = req.body || {};
 
     discordBotManager.saveConfig({
@@ -272,6 +273,7 @@ export function registerAdminAndSocialRoutes(app, { io, rooms, discordBotManager
       ...(dealsChannels !== undefined && typeof dealsChannels === 'object' ? { dealsChannels } : {}),
       ...(autoPostDeals !== undefined ? { autoPostDeals: Boolean(autoPostDeals) } : {}),
       ...(lastDealsDropAt !== undefined ? { lastDealsDropAt: Number(lastDealsDropAt) || Date.now() } : {}),
+      ...(geminiApiKey !== undefined && String(geminiApiKey).trim() ? { geminiApiKey: String(geminiApiKey).trim() } : {}),
     });
 
     res.json({ success: true, status: discordBotManager.getStatus() });

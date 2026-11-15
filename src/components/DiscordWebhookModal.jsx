@@ -25,6 +25,7 @@ import {
   Cpu,
   Copy,
   KeyRound,
+  Plug,
 } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
 
@@ -39,6 +40,7 @@ export default function DiscordWebhookModal({
   autoGsiBomb = false,
   autoStats = true,
   onSaveWebhook,
+  onOpenServersPage,
   soundEnabled,
 }) {
   const [activeTab, setActiveTab] = useState('bot'); // 'bot' | 'voicemover' | 'webhook'
@@ -66,6 +68,7 @@ export default function DiscordWebhookModal({
   const [guildId, setGuildId] = useState('');
   const [defaultChannelId, setDefaultChannelId] = useState('');
   const [serverConnect, setServerConnect] = useState('');
+  const [geminiApiKey, setGeminiApiKey] = useState('');
 
   // Voice Mover Configuration State
   const [lobbyVoiceId, setLobbyVoiceId] = useState('');
@@ -185,6 +188,7 @@ export default function DiscordWebhookModal({
           teamBVoiceId: teamBVoiceId.trim(),
           autoMoveVoice,
           serverConnect: serverConnect.trim(),
+          ...(geminiApiKey.trim() ? { geminiApiKey: geminiApiKey.trim() } : {}),
         }),
       });
       if (!cfgRes.ok) {
@@ -272,6 +276,7 @@ export default function DiscordWebhookModal({
           teamBVoiceId: teamBVoiceId.trim(),
           autoMoveVoice,
           serverConnect: serverConnect.trim(),
+          ...(geminiApiKey.trim() ? { geminiApiKey: geminiApiKey.trim() } : {}),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -837,6 +842,20 @@ export default function DiscordWebhookModal({
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-emerald-300 placeholder-slate-600 outline-none focus:border-emerald-500 font-mono"
                   />
                 </div>
+
+                {/* Optional Gemini API Key for AI Coach & Free-text Queries */}
+                <div className="sm:col-span-2">
+                  <label className="block text-[11px] font-bold text-purple-300 uppercase tracking-wider mb-1 font-heading">
+                    Chave Gemini IA (Opcional — Coach Tático & Perguntas Abertas)
+                  </label>
+                  <input
+                    type="password"
+                    value={geminiApiKey}
+                    onChange={(e) => setGeminiApiKey(e.target.value)}
+                    placeholder={botStatus.config?.hasGeminiKey ? '•••••••••••••••••••••••• (Chave Gemini já salva no servidor)' : 'Cole sua GEMINI_API_KEY aqui para liberar Coach IA generativo'}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-purple-200 placeholder-slate-600 outline-none focus:border-purple-500 font-mono"
+                  />
+                </div>
               </div>
 
               {/* Bot Actions */}
@@ -861,6 +880,21 @@ export default function DiscordWebhookModal({
                   <span>Publicar Painel no Canal</span>
                 </button>
               </div>
+
+              {onOpenServersPage && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (soundEnabled) playClickSound();
+                    onClose();
+                    onOpenServersPage('integracao');
+                  }}
+                  className="w-full py-2.5 px-4 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+                >
+                  <Plug size={14} className="text-emerald-400" />
+                  <span>Integração com Servidor Privado (Abrir Passo a Passo no Site)</span>
+                </button>
+              )}
             </form>
 
             {/* Slash Commands Cheatsheet */}
@@ -892,6 +926,14 @@ export default function DiscordWebhookModal({
                 <div className="bg-slate-900/80 p-2 rounded-xl border border-slate-800/80">
                   <span className="font-mono font-bold text-white block">/ranking</span>
                   <span className="text-slate-400 text-[10px]">Exibe o Hall da Fama e os melhores jogadores</span>
+                </div>
+                <div className="bg-slate-900/80 p-2 rounded-xl border border-purple-500/30">
+                  <span className="font-mono font-bold text-purple-300 block">@Bot &lt;linguagem natural&gt; ou /coach</span>
+                  <span className="text-slate-400 text-[10px]">Ex: &quot;bota meu level 18&quot;, &quot;qual smoke da Mirage?&quot;, &quot;analisa nosso histórico&quot;</span>
+                </div>
+                <div className="bg-slate-900/80 p-2 rounded-xl border border-emerald-500/30">
+                  <span className="font-mono font-bold text-emerald-300 block">/integracao ou !integracao</span>
+                  <span className="text-slate-400 text-[10px]">Envia o passo a passo completo para ligar servidor privado ao bot</span>
                 </div>
               </div>
             </div>

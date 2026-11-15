@@ -21,6 +21,13 @@ const {
 const { sanitizeRconCommand, isValidMapName } = await import('../server/roomHelpers.js');
 const { collectStoryPlayers, isImageUrl, buildAvatarProxyUrl } = await import('../src/utils/canvasHelpers.js');
 const { isAllowedAvatarProxyUrl } = await import('../server/routes/infraRoutes.js');
+const {
+  detectNaturalIntent,
+  extractMapQueryFromText,
+  buildCoachContext,
+  buildDeterministicCoachReply,
+  generateCoachResponse,
+} = await import('../server/discordAiRouter.js');
 
 test('shared/balance: GC e FACEIT respeitam preferências e dividem 10 jogadores equilibradamente', () => {
   const players = [
@@ -187,4 +194,89 @@ test('src/utils/canvasHelpers & infraRoutes: coleta jogadores para Story Card e 
   assert.equal(isAllowedAvatarProxyUrl('http://avatars.steamstatic.com/test.jpg'), false);
   assert.equal(isAllowedAvatarProxyUrl('https://169.254.169.254/latest/meta-data/'), false);
   assert.equal(isAllowedAvatarProxyUrl('https://user:pass@avatars.steamstatic.com/test.jpg'), false);
+});
+
+test('discordAiRouter: detecta intenções em linguagem natural ao mencionar @Bot', () => {
+  assert.deepEqual(
+    detectNaturalIntent('<@123456> bota meu level 18'),
+    { intent: 'set_level', level: '18', query: 'bota meu level 18' }
+  );
+
+  assert.deepEqual(
+    detectNaturalIntent('<@!123456> qual smoke do CT da Mirage?'),
+    { intent: 'grenade', mapQuery: 'mirage', query: 'qual smoke do CT da Mirage?' }
+  );
+
+  assert.equal(
+    detectNaturalIntent('<@123456> sorteia os times').intent,
+    'draw'
+  );
+
+  assert.equal(
+    detectNaturalIntent('<@123456> quem ganha mais entre mim e o <@999>?', { mentionsCount: 1 }).intent,
+    'head_to_head'
+  );
+
+  assert.equal(
+    detectNaturalIntent('<@123456> como integrar servidor privado?').intent,
+    'integration'
+  );
+
+  const coachAncient = detectNaturalIntent('<@123456> como segurar meio na Ancient de CT?');
+  assert.equal(coachAncient.intent, 'coach_ai');
+  assert.equal(coachAncient.mapQuery, 'ancient');
+
+  assert.equal(extractMapQueryFromText('smoke janelão da Mirage'), 'mirage');
+  assert.equal(extractMapQueryFromText('vamos de d2 hoje'), 'dust2');
+  assert.equal(detectNaturalIntent('<@123456> oi').intent, 'panel');
+});
+
+test('discordAiRouter: Coach usa contexto real sem inventar números e funciona offline sem GEMINI_API_KEY', async () => {
+  const emptyCtx = buildCoachContext({
+    query: 'analisa nosso histórico hoje',
+    leaderboard: [],
+    matchHistory: [],
+    grenades: [],
+  });
+  assert.equal(emptyCtx.totalMatchesRecorded, 0);
+
+  const emptyReply = await generateCoachResponse({
+    query: 'analisa nosso histórico hoje',
+    context: emptyCtx,
+    geminiApiKey: '',
+  });
+  assert.equal(emptyReply.source, 'local');
+  assert.ok(emptyReply.body.includes('Ainda não há partidas finalizadas'));
+
+  const populatedCtx = buildCoachContext({
+    query: 'como segurar meio na Ancient de CT?',
+    leaderboard: [
+      { id: 'u1', nick: 'Alex', level: 18, wins: 7, losses: 2, winRate: 78, mvps: 3, streak: 4 },
+    ],
+    matchHistory: [
+      { map: 'de_ancient', scoreA: 13, scoreB: 9, winner: 'Time A', mvp: { nick: 'Alex' } },
+    ],
+    grenades: [
+      {
+        map: 'de_ancient',
+        mapName: 'Ancient',
+        title: 'Smoke Red Room Meio CT',
+        side: 'CT',
+        type: 'Smoke',
+        location: 'Spawn CT',
+        throwType: 'Jumpthrow',
+        steps: ['Alinhe na pedra do CT e dê jumpthrow'],
+      },
+    ],
+    requesterId: 'u1',
+    requesterName: 'Alex',
+  });
+
+  assert.equal(populatedCtx.mapKey, 'ancient');
+  assert.equal(populatedCtx.relevantLineups.length, 1);
+
+  const tacticalReply = buildDeterministicCoachReply('como segurar meio na Ancient de CT?', populatedCtx);
+  assert.equal(tacticalReply.source, 'local');
+  assert.ok(tacticalReply.body.includes('Plano CT na ANCIENT'));
+  assert.ok(tacticalReply.body.includes('Smoke Red Room Meio CT'));
 });

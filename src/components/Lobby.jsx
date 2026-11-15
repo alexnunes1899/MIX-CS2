@@ -3,7 +3,7 @@ import GCBadge from './GCBadge';
 import FaceitBadge from './FaceitBadge';
 import PlayerAvatar from './PlayerAvatar';
 import ServerConnectBar from './ServerConnectBar';
-import { Users, Trash2, Bot, Scale, Shuffle, Shield, Flame, CheckCircle2, Crown, Check, AlertCircle, Zap, Dices, ArrowLeftRight, Lock, Globe, Share2, Layers, Copy, KeyRound, Hash, Eye, EyeOff, Sparkles, Bell, BookOpen, Target, Trophy, Server, Clock, UserX } from 'lucide-react';
+import { Users, Trash2, Bot, Scale, Shuffle, Shield, Flame, CheckCircle2, Crown, Check, AlertCircle, Zap, Dices, ArrowLeftRight, Lock, Globe, Share2, Layers, Copy, KeyRound, Hash, Eye, EyeOff, Sparkles, Bell, BookOpen, Target, Trophy, Server, Clock, UserX, Plug } from 'lucide-react';
 import { playClickSound, playReadySound } from '../utils/audio';
 import { copyText, buildRoomInviteData } from '../utils/clipboard';
 
@@ -324,6 +324,20 @@ export default function Lobby({
           >
             <Server size={13} className="text-emerald-400" />
             <span>Servidores</span>
+          </button>
+        )}
+        {onOpenServersPage && (
+          <button
+            type="button"
+            onClick={() => {
+              if (soundEnabled) playClickSound();
+              onOpenServersPage('integracao');
+            }}
+            className="px-3 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 hover:border-emerald-400/50 text-xs font-bold text-emerald-300 flex items-center gap-1.5 transition-all cursor-pointer"
+            title="Abrir passo a passo de integração do Servidor Privado + Bot Integrador"
+          >
+            <Plug size={13} className="text-emerald-400" />
+            <span>Integração Servidor Privado</span>
           </button>
         )}
       </div>

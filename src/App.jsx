@@ -1166,12 +1166,16 @@ export default function App() {
     window.history.pushState({}, '', u);
   };
 
-  const handleOpenServersPage = () => {
+  const handleOpenServersPage = (tab = null) => {
     if (soundEnabled) playClickSound();
     setView('servers');
     const u = new URL(window.location);
     u.searchParams.set('view', 'servers');
+    if (typeof tab === 'string' && tab) {
+      u.searchParams.set('tab', tab);
+    }
     window.history.pushState({}, '', u);
+    window.dispatchEvent(new PopStateEvent('popstate'));
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -1757,6 +1761,7 @@ export default function App() {
             onOpenTournament={() => setTournamentModalOpen(true)}
             onOpenGrenades={() => setGrenadeModalOpen(true)}
             onOpenAimReflex={() => setAimReflexModalOpen(true)}
+            onOpenGsiSetup={() => setGsiModalOpen(true)}
             onOpenProfile={() => setProfileModalOpen(true)}
             activeRoomsCount={activeRoomsCount}
             soundEnabled={soundEnabled}
@@ -2172,6 +2177,7 @@ export default function App() {
             autoGsiBomb={Boolean(room.discordGsiBomb)}
             autoStats={room.discordAutoStats !== false}
             onSaveWebhook={handleSaveDiscordWebhook}
+            onOpenServersPage={handleOpenServersPage}
             soundEnabled={soundEnabled}
           />
         )}

@@ -54,6 +54,8 @@ import { getLeaderboard, syncDiscordProfilesToLeaderboard } from './leaderboard.
 import { generateGsiConfig, installGsiLocally } from './gsi.js';
 import { sanitizeRconTextArg, isValidServerAddress, normalizeRoomId, parseServerConnect } from './utils/security.js';
 import { getBundledDataFilePath, getDataDir, getDataFilePath, resolveSeededDataFile } from './dataDir.js';
+import { getGrenadesState } from './grenadeSync.js';
+import { detectNaturalIntent, buildCoachContext, generateCoachResponse } from './discordAiRouter.js';
 
 const DATA_DIR = getDataDir();
 const CONFIG_FILE = getDataFilePath('discordBotConfig.json');
@@ -1700,6 +1702,7 @@ export class DiscordBotManager {
       dealsChannels: {},
       autoPostDeals: true,
       dealsIntervalMinutes: 60,
+      geminiApiKey: process.env.GEMINI_API_KEY || '',
     };
     try {
       if (fs.existsSync(CONFIG_FILE)) {
@@ -1719,6 +1722,7 @@ export class DiscordBotManager {
     }
     if (process.env.DISCORD_BOT_TOKEN) base.token = process.env.DISCORD_BOT_TOKEN;
     if (process.env.DISCORD_CLIENT_ID) base.clientId = process.env.DISCORD_CLIENT_ID;
+    if (process.env.GEMINI_API_KEY) base.geminiApiKey = process.env.GEMINI_API_KEY;
     return base;
   }
 
@@ -1747,6 +1751,7 @@ export class DiscordBotManager {
       autoMoveVoice: this.config.autoMoveVoice ?? true,
       autoStartVetoOnFull: this.config.autoStartVetoOnFull ?? false,
       serverConnect: this.config.serverConnect || '',
+      hasGeminiKey: Boolean(this.config.geminiApiKey || process.env.GEMINI_API_KEY),
     };
 
     if (isReady) {
@@ -2201,6 +2206,17 @@ export class DiscordBotManager {
             .setRequired(false)
         ),
 
+      new SlashCommandBuilder()
+        .setName('integracao')
+        .setDescription('Abre o passo a passo oficial para integrar seu servidor privado de CS2 ao Bot e ao Web Hub'),
+
+      new SlashCommandBuilder()
+        .setName('coach')
+        .setDescription('Pergunte ao Coach/Analista IA do Hub sobre táticas CS2, smokes ou análise do histórico')
+        .addStringOption((opt) =>
+          opt.setName('pergunta').setDescription('Ex: Como segurar meio na Ancient de CT? Ou analisa nosso histórico hoje').setRequired(true)
+        ),
+
       new SlashCommandBuilder().setName('ajuda').setDescription('Manual completo de comandos do Bot do Mix'),
     ];
 
@@ -2446,12 +2462,17 @@ export class DiscordBotManager {
     }
     if (command === 'cancelar') return this.prefixCancel(message);
     if (command === 'ip' || command === 'connect') return this.prefixIp(message);
-    if (command === 'comandos') return this.prefixHelp(message);
-    if (command === 'reset') return this.prefixCancel(message);
+    if (command === 'integracao' || command === 'integrar') return this.prefixServerIntegration(message);
+    if (command === 'coach' || command === 'ia' || command === 'ai') {
+      const q = args.slice(1).join(' ').trim();
+      return q ? this.prefixCoachAi(message, q) : this.prefixHelp(message);
+    }
+    if (commandName === 'comandos') return this.prefixHelp(message);
+    if (commandName === 'reset') return this.prefixCancel(message);
 
-    // If the user mentioned the bot directly (e.g. "@cs hub" or "@cs hub oi"), always respond with the interactive panel
+    // Roteamento inteligente em linguagem natural + Coach IA quando mencionam @Bot
     if (isMentioned) {
-      return this.prefixPainel(message);
+      return this.handleMentionNaturalLanguage(message, content);
     }
   }
 
@@ -2592,6 +2613,11 @@ export class DiscordBotManager {
         .setLabel('Hall da Fama')
         .setEmoji('🏆')
         .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setLabel('Integração Servidor Privado')
+        .setEmoji('🔌')
+        .setStyle(ButtonStyle.Link)
+        .setURL(this.getPublicWebUrl('/?view=servers&tab=integracao')),
       new ButtonBuilder()
         .setCustomId('panel_help')
         .setLabel('Como Funciona?')
@@ -3120,15 +3146,18 @@ export class DiscordBotManager {
   }
 
   async prefixHeadToHead(message, args) {
-    let target = message.mentions.users.first();
+    const botId = this.client?.user?.id;
+    let target = message.mentions.users.find((u) => u.id !== botId) || null;
     if (!target && args[0]) {
       const cleanId = args[0].replace(/[<@!>]/g, '').trim();
-      target = this.client?.users.cache.get(cleanId);
+      if (cleanId && cleanId !== botId) {
+        target = this.client?.users.cache.get(cleanId) || null;
+      }
     }
     if (!target) {
       return message.reply(
         '👉 Para comparar o confronto direto, mencione o jogador ou passe o ID:\n' +
-        'Exemplo: `!x1 @amigo` ou `!duelo @amigo`'
+        'Exemplo: `!x1 @amigo` ou `@Bot quem ganha mais entre mim e o @amigo?`'
       );
     }
     if (target.id === message.author.id) {
@@ -3147,7 +3176,16 @@ export class DiscordBotManager {
     const mix = this.resolveActiveMixForChannel(message.channelId);
     const conn = this.resolveMixDisplayConnect(mix);
     if (!conn) {
-      return message.reply('⚠️ Nenhum servidor CS2 configurado no momento. Use `!servidor <ip:porta>` para definir o IP!');
+      const setupRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setLabel('🔌 Integração Servidor Privado')
+          .setStyle(ButtonStyle.Link)
+          .setURL(this.getPublicWebUrl('/?view=servers&tab=integracao'))
+      );
+      return message.reply({
+        content: '⚠️ Nenhum servidor CS2 configurado no momento. Use `!servidor <ip:porta>` ou siga o passo a passo abaixo:',
+        components: [setupRow],
+      });
     }
     const connectUrl = this.getPublicWebUrl(`/connect?ip=${encodeURIComponent(conn.normalized)}`);
     const embed = new EmbedBuilder()
@@ -3419,7 +3457,14 @@ export class DiscordBotManager {
           `• \`!ofertas [busca]\` — Radar de promoções gamer (KaBuM!, Pichau, Terabyte: GPU, CPU, mesas, cadeiras)`
       )
       .setFooter({ text: 'CS2 Mix Hub • Powered by Discord.js' });
-    return message.reply({ embeds: [embed] });
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setLabel('Integração Servidor Privado')
+        .setEmoji('🔌')
+        .setStyle(ButtonStyle.Link)
+        .setURL(this.getPublicWebUrl('/?view=servers&tab=integracao'))
+    );
+    return message.reply({ embeds: [embed], components: [row] });
   }
 
   buildUserStatsEmbed(targetUser) {
@@ -5288,7 +5333,12 @@ export class DiscordBotManager {
             .setCustomId(`mix_set_ip:${mix.id}`)
             .setLabel('Definir IP do Servidor')
             .setStyle(ButtonStyle.Primary)
-            .setEmoji('\u2699\ufe0f')
+            .setEmoji('\u2699\ufe0f'),
+          new ButtonBuilder()
+            .setLabel('Integração Servidor Privado')
+            .setStyle(ButtonStyle.Link)
+            .setEmoji('🔌')
+            .setURL(this.getPublicWebUrl('/?view=servers&tab=integracao'))
         );
 
         await channel.send({ embeds: [ipEmbed], components: [ipRow] }).catch(() => {});
@@ -6132,8 +6182,16 @@ export class DiscordBotManager {
 
     // Permanent Panel Quick Guide Shortcut
     if (customId === 'panel_help') {
+      const helpRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setLabel('Integração Servidor Privado')
+          .setEmoji('🔌')
+          .setStyle(ButtonStyle.Link)
+          .setURL(this.getPublicWebUrl('/?view=servers&tab=integracao'))
+      );
       return interaction.reply({
         embeds: [this.buildMixTutorialEmbed()],
+        components: [helpRow],
         ephemeral: true,
       });
     }
@@ -7340,6 +7398,8 @@ export class DiscordBotManager {
     if (commandName === 'bagre') return this.cmdBagre(interaction);
     if (commandName === 'jogosgratis' || commandName === 'freegames') return this.cmdFreeGames(interaction);
     if (commandName === 'clip') return this.cmdClip(interaction);
+    if (commandName === 'integracao') return this.cmdServerIntegration(interaction);
+    if (commandName === 'coach') return this.cmdCoachAi(interaction);
     if (commandName === 'ajuda') return this.cmdHelp(interaction);
   }
 
@@ -8927,7 +8987,175 @@ export class DiscordBotManager {
     }
   }
 
+  // ==========================================
+  // SERVER INTEGRATION WALKTHROUGH & AI COACH
+  // ==========================================
+
+  buildServerIntegrationPayload() {
+    const webGuideUrl = this.getPublicWebUrl('/?view=servers&tab=integracao');
+    const embed = new EmbedBuilder()
+      .setTitle('🔌 INTEGRAÇÃO COM SERVIDOR PRIVADO CS2 • PASSO A PASSO')
+      .setColor(0x10b981)
+      .setDescription(
+        `Conecte seu **Servidor Dedicado CS2**, **VPS**, **Radmin VPN** ou **Host Local** ao **Bot Integrador** e ao **Painel Web** em poucos passos:\n\n` +
+          `**1️⃣ Escolha ou abra seu Servidor CS2:** Dathost, FireGames, VPS Linux/Windows ou Radmin VPN / LAN.\n` +
+          `**2️⃣ Vincule ao Bot & Sala:** Use \`!servidor <ip:porta [senha]>\` ou salve o RCON no Web Hub.\n` +
+          `**3️⃣ Ative MatchZy & Valve GSI:** Clique no botão abaixo para abrir o **Guia Interativo no Site** com comandos prontos para copiar, teste de Ping/RCON e instalador GSI de 1 clique!`
+      )
+      .setFooter({ text: 'CS2 Mix Hub • Integração Servidor Privado + Bot Integrador' });
+
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setLabel('Abrir Passo a Passo no Site')
+        .setEmoji('🔌')
+        .setStyle(ButtonStyle.Link)
+        .setURL(webGuideUrl),
+      new ButtonBuilder()
+        .setLabel('Painel Web GSI')
+        .setEmoji('📡')
+        .setStyle(ButtonStyle.Link)
+        .setURL(this.getPublicWebUrl('/?gsi=1'))
+    );
+
+    return { embeds: [embed], components: [row] };
   }
+
+  async prefixServerIntegration(message) {
+    return message.reply(this.buildServerIntegrationPayload());
+  }
+
+  async cmdServerIntegration(interaction) {
+    return interaction.reply({
+      ...this.buildServerIntegrationPayload(),
+      ephemeral: true,
+    });
+  }
+
+  async buildCoachReplyPayload(query, { authorId = null, authorName = 'Jogador', channelId = null } = {}) {
+    const activeMix = channelId ? this.resolveActiveMixForChannel(channelId) : null;
+    const leaderboard = typeof getLeaderboard === 'function' ? getLeaderboard() : [];
+    const matchHistory = typeof loadUnifiedMatchHistory === 'function' ? loadUnifiedMatchHistory() : [];
+    const grenadesState = typeof getGrenadesState === 'function' ? getGrenadesState() : { lineups: [] };
+
+    const context = buildCoachContext({
+      query,
+      activeMix,
+      liveMatch: this.lastGsiState,
+      leaderboard,
+      matchHistory,
+      grenades: grenadesState?.lineups || [],
+      serverConnect: activeMix?.serverIp || this.config.serverConnect || '',
+      requesterId: authorId,
+      requesterName: authorName,
+    });
+
+    const geminiKey = (this.config.geminiApiKey || process.env.GEMINI_API_KEY || '').trim();
+    const reply = await generateCoachResponse({
+      query,
+      context,
+      geminiApiKey: geminiKey,
+    });
+
+    const footerText =
+      reply.source === 'gemini'
+        ? '✨ Coach & Analista IA (Gemini) + Dados Reais do Hub'
+        : '🧠 Analista Local do Hub • Dica: fale naturalmente com @Bot (ex: "bota meu level 18")';
+
+    const embed = new EmbedBuilder()
+      .setTitle(reply.title || '🤖 Assistente CS2 Mix Hub')
+      .setDescription(reply.body || 'Como posso ajudar no mix de hoje?')
+      .setColor(reply.source === 'gemini' ? 0xa855f7 : 0x38bdf8)
+      .setFooter({ text: footerText })
+      .setTimestamp();
+
+    return { embeds: [embed] };
+  }
+
+  async prefixCoachAi(message, query) {
+    try {
+      await message.channel.sendTyping().catch(() => {});
+    } catch (_) {}
+    const payload = await this.buildCoachReplyPayload(query, {
+      authorId: message.author?.id,
+      authorName: message.member?.displayName || message.author?.username || 'Jogador',
+      channelId: message.channelId,
+    });
+    return message.reply(payload);
+  }
+
+  async cmdCoachAi(interaction) {
+    const query = interaction.options.getString('pergunta', true);
+    await interaction.deferReply();
+    try {
+      const payload = await this.buildCoachReplyPayload(query, {
+        authorId: interaction.user?.id,
+        authorName: interaction.member?.displayName || interaction.user?.username || 'Jogador',
+        channelId: interaction.channelId,
+      });
+      return interaction.editReply(payload);
+    } catch (err) {
+      return interaction.editReply({ content: `❌ Não foi possível consultar o Coach IA: ${err.message}` });
+    }
+  }
+
+  async handleMentionNaturalLanguage(message, rawContent) {
+    const botId = this.client?.user?.id;
+    const otherMentions = [...message.mentions.users.values()].filter((u) => u.id !== botId);
+    const detected = detectNaturalIntent(rawContent, { mentionsCount: otherMentions.length });
+
+    switch (detected.intent) {
+      case 'panel':
+        return this.prefixPainel(message);
+      case 'integration':
+        return this.prefixServerIntegration(message);
+      case 'set_level':
+        return this.prefixSetLevel(message, detected.level);
+      case 'grenade':
+        return this.prefixGrenade(message, detected.mapQuery);
+      case 'head_to_head':
+        return this.prefixHeadToHead(message, otherMentions[0] ? [otherMentions[0].id] : []);
+      case 'draw':
+        return this.prefixDraw(message);
+      case 'veto':
+        return this.prefixVeto(message);
+      case 'roulette':
+        return this.prefixRoulette(message);
+      case 'choose_map':
+        return this.prefixChooseMap(message, detected.mapQuery);
+      case 'create_mix':
+        return this.prefixCreateMix(message, '');
+      case 'join':
+        return this.prefixJoin(message);
+      case 'leave':
+        return this.prefixLeave(message);
+      case 'fila':
+        return this.prefixFila(message);
+      case 'rematch':
+        return this.prefixRematch(message);
+      case 'cancel':
+        return this.prefixCancel(message);
+      case 'ranking':
+        return this.prefixRanking(message);
+      case 'history':
+        return this.prefixHistory(message, []);
+      case 'live':
+        return this.prefixLive(message, []);
+      case 'server_status':
+        return this.prefixServerStatus(message, []);
+      case 'ip':
+        return this.prefixIp(message);
+      case 'treino':
+        return this.prefixTreino(message);
+      case 'bagre':
+        return this.prefixBagre(message);
+      case 'help':
+        return this.prefixHelp(message);
+      case 'coach_ai':
+      default:
+        return this.prefixCoachAi(message, detected.query || rawContent);
+    }
+  }
+}
 
 // Singleton Export
 export const discordBotManager = new DiscordBotManager();

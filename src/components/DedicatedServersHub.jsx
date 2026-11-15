@@ -35,6 +35,9 @@ import {
   Bell,
   Volume2,
   VolumeX,
+  Plug,
+  Bot,
+  ArrowRight,
 } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
 import { parseServerDetails } from '../utils/serverParser';
@@ -58,6 +61,7 @@ export default function DedicatedServersHub({
   onOpenTournament,
   onOpenGrenades,
   onOpenAimReflex,
+  onOpenGsiSetup,
   onOpenProfile,
   activeRoomsCount = 0,
   soundEnabled,
@@ -68,10 +72,24 @@ export default function DedicatedServersHub({
     try {
       const p = new URLSearchParams(window.location.search);
       const t = p.get('tab');
-      if (['online', 'lan', 'radmin', 'public', 'cfg'].includes(t)) return t;
+      if (['integracao', 'online', 'lan', 'radmin', 'public', 'cfg'].includes(t)) return t;
     } catch (e) {}
     return 'online';
   });
+
+  useEffect(() => {
+    const syncTabFromUrl = () => {
+      try {
+        const p = new URLSearchParams(window.location.search);
+        const t = p.get('tab');
+        if (['integracao', 'online', 'lan', 'radmin', 'public', 'cfg'].includes(t)) {
+          setActiveTab(t);
+        }
+      } catch (e) {}
+    };
+    window.addEventListener('popstate', syncTabFromUrl);
+    return () => window.removeEventListener('popstate', syncTabFromUrl);
+  }, []);
 
   const changeTab = (t) => {
     if (soundEnabled) playClickSound();
@@ -107,19 +125,35 @@ export default function DedicatedServersHub({
   // Copy feedback states
   const [copiedConnect, setCopiedConnect] = useState(false);
   const [copiedHostCmd, setCopiedHostCmd] = useState(false);
+  const [copiedKey, setCopiedKey] = useState(null);
   const [appliedToast, setAppliedToast] = useState(false);
+
+  const handleCopy = (text, key) => {
+    if (soundEnabled) playClickSound();
+    copyText(text);
+    setCopiedKey(key);
+    setTimeout(() => setCopiedKey((prev) => (prev === key ? null : prev)), 2000);
+  };
 
   // Auto-detect IPs on mount
   useEffect(() => {
+    let hasExplicitUrlTab = false;
+    try {
+      const t = new URLSearchParams(window.location.search).get('tab');
+      hasExplicitUrlTab = ['integracao', 'online', 'lan', 'radmin', 'public', 'cfg'].includes(t);
+    } catch (e) {}
+
     if (currentServerIp) {
       setOnlineIpInput(currentServerIp);
       const parts = currentServerIp.split(':');
-      if (parts[0].startsWith('26.')) {
-        setRadminIp(parts[0]);
-        setActiveTab('radmin');
-      } else if (parts[0].startsWith('192.168.') || parts[0].startsWith('10.') || parts[0].startsWith('172.')) {
-        setLanIp(parts[0]);
-        setActiveTab('lan');
+      if (!hasExplicitUrlTab) {
+        if (parts[0].startsWith('26.')) {
+          setRadminIp(parts[0]);
+          setActiveTab('radmin');
+        } else if (parts[0].startsWith('192.168.') || parts[0].startsWith('10.') || parts[0].startsWith('172.')) {
+          setLanIp(parts[0]);
+          setActiveTab('lan');
+        }
       }
       if (parts[1]) setPort(parts[1]);
     }
@@ -160,7 +194,7 @@ export default function DedicatedServersHub({
 
   // Active address computation
   let activeCalculatedIp = '';
-  if (activeTab === 'online') activeCalculatedIp = onlineIpInput.trim();
+  if (activeTab === 'online' || activeTab === 'integracao') activeCalculatedIp = onlineIpInput.trim();
   else if (activeTab === 'lan') activeCalculatedIp = `${lanIp.trim()}:${port.trim() || '27015'}`;
   else if (activeTab === 'radmin') activeCalculatedIp = `${radminIp.trim() || '26.x.x.x'}:${port.trim() || '27015'}`;
   else if (activeTab === 'public') activeCalculatedIp = `${publicIp.trim()}:${port.trim() || '27015'}`;
@@ -252,7 +286,7 @@ pause
 
   // Test Server Ping (UDP A2S_INFO & TCP)
   const handleTestPing = async () => {
-    const raw = activeTab === 'online' ? onlineIpInput : activeCalculatedIp;
+    const raw = (activeTab === 'online' || activeTab === 'integracao') ? onlineIpInput : activeCalculatedIp;
     const parsed = parseServerDetails(raw);
     if (!parsed.isValid) {
       setPingResult({ online: false, error: 'Digite um IP e porta válidos (ex: 189.1.168.10:27015)' });
@@ -527,7 +561,20 @@ pause
         )}
 
         {/* Server Type Tabs */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 bg-slate-950/90 p-2 rounded-2xl border border-slate-800 shadow-xl">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 bg-slate-950/90 p-2 rounded-2xl border border-slate-800 shadow-xl">
+          <button
+            type="button"
+            onClick={() => changeTab('integracao')}
+            className={`p-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+              activeTab === 'integracao'
+                ? 'bg-gradient-to-r from-indigo-500 via-emerald-500 to-teal-500 text-slate-950 font-black shadow-lg shadow-emerald-500/25 scale-[1.02]'
+                : 'text-emerald-300 bg-emerald-500/10 border border-emerald-500/30 hover:bg-emerald-500/20'
+            }`}
+          >
+            <Plug size={16} />
+            <span>Integração + Bot</span>
+          </button>
+
           <button
             type="button"
             onClick={() => changeTab('online')}
@@ -593,6 +640,284 @@ pause
             <span>5. CFG & Console CS2</span>
           </button>
         </div>
+
+        {/* TAB 0: PASSO A PASSO INTEGRACAO SERVIDOR PRIVADO + BOT */}
+        {activeTab === 'integracao' && (() => {
+          const originUrl = typeof window !== 'undefined' ? window.location.origin : 'https://mix-cs2.onrender.com';
+          const effectiveRoom = roomId || 'MIX-PRO';
+          const discordServerCmd = parsedActive.isValid ? `!servidor ${parsedActive.ip}` : '!servidor SEU_IP:27015; password mix';
+          const matchzyCmd = `matchzy_loadmatch_url "${originUrl}/api/matchzy/config/${effectiveRoom}"`;
+          const gsiDownloadUrl = `/api/gsi/cfg/${encodeURIComponent(effectiveRoom)}`;
+
+          return (
+            <div className="space-y-6 animate-fadeIn">
+              {/* Banner Intro */}
+              <div className="bg-gradient-to-r from-indigo-950/70 via-slate-900 to-emerald-950/60 border border-emerald-500/40 rounded-3xl p-6 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <div className="space-y-1.5 max-w-3xl">
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/35 text-emerald-300 text-[10px] font-mono font-bold uppercase">
+                    <Plug size={12} /> Passo a Passo Oficial • Servidor Privado + Bot Integrador
+                  </div>
+                  <h3 className="text-xl font-black font-heading text-white">
+                    Como integrar seu Servidor Privado de CS2 ao Bot e ao Mix Hub
+                  </h3>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Siga os 5 passos abaixo para conectar qualquer servidor privado (VPS, Dathost, FireGames, Radmin VPN ou PC local) ao <strong>Bot do Discord</strong>, liberar <strong>Connect 1-Clique</strong>, troca automática de mapa via <strong>RCON</strong> e placar ao vivo por <strong>Valve GSI</strong>.
+                  </p>
+                </div>
+                {onOpenDiscordModal && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (soundEnabled) playClickSound();
+                      onOpenDiscordModal();
+                    }}
+                    className="px-4 py-2.5 rounded-xl bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-400/40 text-indigo-200 font-bold text-xs flex items-center gap-2 transition-all cursor-pointer shrink-0"
+                  >
+                    <Bot size={15} />
+                    <span>Configurar Bot Discord</span>
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                {/* Left Column: Steps 1 to 3 */}
+                <div className="lg:col-span-7 space-y-5">
+                  {/* PASSO 1 */}
+                  <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-5 space-y-3 shadow-lg">
+                    <div className="flex items-center gap-2.5">
+                      <span className="w-7 h-7 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-400 font-mono font-black text-xs flex items-center justify-center">
+                        1
+                      </span>
+                      <h4 className="text-sm font-black font-heading text-white uppercase tracking-wide">
+                        Escolha como vai hospedar o Servidor Privado
+                      </h4>
+                    </div>
+                    <p className="text-xs text-slate-400 leading-relaxed">
+                      Você pode usar um servidor dedicado pago (FireGames, Dathost, VPS com CS2 Dedicated Server) ou abrir no próprio PC sem custo usando <strong>Radmin VPN</strong> (sem precisar abrir portas no roteador).
+                    </p>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {[
+                        { id: 'online', label: 'Dedicado / VPS', sub: 'IP:Porta + RCON' },
+                        { id: 'radmin', label: 'Radmin VPN', sub: 'IP 26.x.x.x grátis' },
+                        { id: 'lan', label: 'LAN Local', sub: 'Mesma rede (0ms)' },
+                        { id: 'public', label: 'IP Público', sub: 'Porta 27015 aberta' },
+                      ].map((opt) => (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() => changeTab(opt.id)}
+                          className="p-2.5 rounded-xl bg-slate-950/90 hover:bg-slate-800 border border-slate-800 hover:border-emerald-500/40 text-left transition-all cursor-pointer group"
+                        >
+                          <span className="text-xs font-bold text-white group-hover:text-emerald-300 flex items-center justify-between">
+                            {opt.label}
+                            <ArrowRight size={12} className="opacity-60 group-hover:translate-x-0.5 transition-transform" />
+                          </span>
+                          <span className="text-[10px] text-slate-500 block">{opt.sub}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* PASSO 2 */}
+                  <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-5 space-y-4 shadow-lg">
+                    <div className="flex items-center gap-2.5">
+                      <span className="w-7 h-7 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 font-mono font-black text-xs flex items-center justify-center">
+                        2
+                      </span>
+                      <h4 className="text-sm font-black font-heading text-white uppercase tracking-wide">
+                        Vincular IP, Porta e RCON ao Web Hub e ao Bot Integrador
+                      </h4>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1">
+                          IP:Porta (ou Connect + Senha)
+                        </label>
+                        <input
+                          type="text"
+                          value={onlineIpInput}
+                          onChange={(e) => setOnlineIpInput(e.target.value)}
+                          placeholder="Ex: 189.1.168.20:27015; password mix"
+                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 outline-none focus:border-emerald-500 font-mono"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-bold text-amber-300 uppercase tracking-wider mb-1">
+                          Senha RCON (Opcional)
+                        </label>
+                        <input
+                          type="password"
+                          value={rconPassInput}
+                          onChange={(e) => setRconPassInput(e.target.value)}
+                          placeholder="rcon_password do servidor"
+                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-600 outline-none focus:border-amber-500 font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={handleApplyToRoom}
+                        disabled={!parsedActive.isValid}
+                        className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer disabled:opacity-40"
+                      >
+                        <Check size={14} />
+                        <span>Salvar na Sala Web</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleTestPing}
+                        disabled={pingTesting || !parsedActive.isValid}
+                        className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-40"
+                      >
+                        {pingTesting ? <RefreshCw size={13} className="animate-spin" /> : <Wifi size={13} className="text-sky-400" />}
+                        <span>Testar Ping (A2S)</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleTestRcon}
+                        disabled={rconTesting || !parsedActive.isValid || !rconPassInput}
+                        className="px-3.5 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/40 font-bold text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-40"
+                      >
+                        {rconTesting ? <RefreshCw size={13} className="animate-spin" /> : <Key size={13} />}
+                        <span>Testar RCON</span>
+                      </button>
+                    </div>
+
+                    {pingResult && (
+                      <div className={`p-3 rounded-xl border text-xs font-mono ${pingResult.online ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' : 'bg-rose-500/10 border-rose-500/30 text-rose-300'}`}>
+                        {pingResult.online ? `✓ Servidor Online (${pingResult.pingMs}ms • Mapa: ${pingResult.map || 'CS2'})` : `✕ ${pingResult.error || 'Servidor não respondeu na porta UDP informada'}`}
+                      </div>
+                    )}
+
+                    {rconStatusMsg && (
+                      <div className={`p-3 rounded-xl border text-xs ${rconStatusMsg.type === 'success' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' : 'bg-rose-500/10 border-rose-500/30 text-rose-300'}`}>
+                        {rconStatusMsg.text}
+                      </div>
+                    )}
+
+                    <div className="bg-slate-950/90 border border-indigo-500/30 rounded-2xl p-3.5 space-y-2">
+                      <span className="text-[11px] font-bold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <Bot size={13} /> Vincular no Bot do Discord (cole no chat do Mix):
+                      </span>
+                      <div className="flex items-center justify-between gap-2 bg-slate-900 px-3 py-2 rounded-xl border border-slate-800">
+                        <code className="text-xs font-mono text-emerald-300 truncate">{discordServerCmd}</code>
+                        <button
+                          type="button"
+                          onClick={() => handleCopy(discordServerCmd, 'discordSrv')}
+                          className="px-2.5 py-1 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-200 border border-indigo-500/40 text-[11px] font-bold flex items-center gap-1 cursor-pointer shrink-0"
+                        >
+                          {copiedKey === 'discordSrv' ? <Check size={12} /> : <Copy size={12} />}
+                          <span>{copiedKey === 'discordSrv' ? 'Copiado' : 'Copiar'}</span>
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-slate-400">
+                        Você também pode colar o mesmo IP em <strong>Configurar Bot Discord → IP do Servidor CS2</strong> para ele ficar fixo em todas as partidas futuras.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right Column: Steps 3 to 5 */}
+                <div className="lg:col-span-5 space-y-5">
+                  {/* PASSO 3 */}
+                  <div className="bg-slate-900/90 border border-teal-500/35 rounded-3xl p-5 space-y-3 shadow-lg">
+                    <div className="flex items-center gap-2.5">
+                      <span className="w-7 h-7 rounded-xl bg-teal-500/20 border border-teal-500/40 text-teal-300 font-mono font-black text-xs flex items-center justify-center">
+                        3
+                      </span>
+                      <h4 className="text-sm font-black font-heading text-white uppercase tracking-wide">
+                        Carregar Times & Mapa (MatchZy / RCON)
+                      </h4>
+                    </div>
+                    <p className="text-xs text-slate-300 leading-relaxed">
+                      Se o seu servidor privado usa <strong>MatchZy</strong> ou <strong>PugSharp</strong>, execute no console do servidor após o veto (ou deixe o Bot usar RCON automático):
+                    </p>
+                    <div className="p-2.5 bg-slate-950 rounded-xl border border-slate-800 flex items-center justify-between gap-2">
+                      <code className="text-[11px] font-mono text-teal-300 truncate">{matchzyCmd}</code>
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(matchzyCmd, 'matchzyInt')}
+                        className="px-2.5 py-1 rounded-lg bg-teal-500/20 hover:bg-teal-500/30 text-teal-300 border border-teal-500/40 text-[11px] font-bold flex items-center gap-1 cursor-pointer shrink-0"
+                      >
+                        {copiedKey === 'matchzyInt' ? <Check size={12} /> : <Copy size={12} />}
+                        <span>{copiedKey === 'matchzyInt' ? 'Copiado' : 'Copiar'}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* PASSO 4 */}
+                  <div className="bg-slate-900/90 border border-amber-500/35 rounded-3xl p-5 space-y-3 shadow-lg">
+                    <div className="flex items-center gap-2.5">
+                      <span className="w-7 h-7 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 font-mono font-black text-xs flex items-center justify-center">
+                        4
+                      </span>
+                      <h4 className="text-sm font-black font-heading text-white uppercase tracking-wide">
+                        Ativar Valve GSI (Placar & K/D Ao Vivo no Bot)
+                      </h4>
+                    </div>
+                    <p className="text-xs text-slate-300 leading-relaxed">
+                      Para o Bot do Discord atualizar o placar round a round, plantar bomba, calcular MVP/Bagre e gravar no ranking sozinho, instale o arquivo <code className="text-amber-300 font-mono">.cfg</code> do Valve GSI na pasta <code className="text-slate-200 font-mono">game/csgo/cfg/</code> do CS2:
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {onOpenGsiSetup && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (soundEnabled) playClickSound();
+                            onOpenGsiSetup();
+                          }}
+                          className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shadow-md"
+                        >
+                          <Zap size={14} />
+                          <span>Instalador GSI (1 Clique)</span>
+                        </button>
+                      )}
+                      <a
+                        href={gsiDownloadUrl}
+                        download={`gamestate_integration_cs2mixhub_${effectiveRoom}.cfg`}
+                        className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs flex items-center gap-1.5"
+                      >
+                        <Download size={14} className="text-amber-400" />
+                        <span>Baixar .cfg GSI</span>
+                      </a>
+                    </div>
+                  </div>
+
+                  {/* PASSO 5 */}
+                  <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-5 space-y-2.5 shadow-lg">
+                    <div className="flex items-center gap-2.5">
+                      <span className="w-7 h-7 rounded-xl bg-sky-500/20 border border-sky-500/40 text-sky-300 font-mono font-black text-xs flex items-center justify-center">
+                        5
+                      </span>
+                      <h4 className="text-sm font-black font-heading text-white uppercase tracking-wide">
+                        Validar Integração no Discord
+                      </h4>
+                    </div>
+                    <ul className="space-y-1.5 text-xs text-slate-300">
+                      <li className="flex items-start gap-2">
+                        <CheckCircle2 size={14} className="text-emerald-400 mt-0.5 shrink-0" />
+                        <span>Envie <code className="font-mono text-emerald-300">!status-server</code> no Discord para confirmar que o servidor está online.</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <CheckCircle2 size={14} className="text-emerald-400 mt-0.5 shrink-0" />
+                        <span>Digite <code className="font-mono text-amber-300">!aovivo</code> ou clique em <strong>Monitorar Partida</strong> para ver o placar round a round.</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <CheckCircle2 size={14} className="text-emerald-400 mt-0.5 shrink-0" />
+                        <span>Fale direto com o bot mencionando ele (ex.: <code className="font-mono text-indigo-300">@Bot analisa nosso histórico</code>).</span>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* TAB 1: ONLINE DEDICADO */}
         {activeTab === 'online' && (
