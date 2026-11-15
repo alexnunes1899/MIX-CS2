@@ -94,6 +94,49 @@ function hasWord(norm, words) {
   });
 }
 
+const COACH_MEMORY_TTL_MS = 20 * 60 * 1000;
+const COACH_MEMORY_MAX_TURNS = 6;
+const coachConversationMemory = new Map();
+
+function buildMemoryKey(channelId, authorId) {
+  return `${String(channelId || 'global')}:${String(authorId || 'anon')}`;
+}
+
+export function getCoachConversationHistory({ channelId, authorId } = {}) {
+  if (!authorId && !channelId) return [];
+  const key = buildMemoryKey(channelId, authorId);
+  const turns = coachConversationMemory.get(key) || [];
+  const now = Date.now();
+  const fresh = turns.filter((t) => now - t.at <= COACH_MEMORY_TTL_MS);
+  if (fresh.length !== turns.length) {
+    if (fresh.length === 0) coachConversationMemory.delete(key);
+    else coachConversationMemory.set(key, fresh);
+  }
+  return fresh;
+}
+
+export function recordCoachTurn({ channelId, authorId, query, replyBody, mapKey = null } = {}) {
+  if (!query) return [];
+  const key = buildMemoryKey(channelId, authorId);
+  const existing = getCoachConversationHistory({ channelId, authorId });
+  const next = [
+    ...existing,
+    {
+      query: String(query).slice(0, 300),
+      replyBody: String(replyBody || '').slice(0, 500),
+      mapKey: mapKey || extractMapQueryFromText(query) || existing[existing.length - 1]?.mapKey || null,
+      at: Date.now(),
+    },
+  ].slice(-COACH_MEMORY_MAX_TURNS);
+  coachConversationMemory.set(key, next);
+  return next;
+}
+
+export function clearCoachConversationHistory({ channelId, authorId } = {}) {
+  const key = buildMemoryKey(channelId, authorId);
+  coachConversationMemory.delete(key);
+}
+
 /**
  * Classifica uma menção ao bot em português natural em uma ação direta ou em pergunta para o Coach IA.
  */
@@ -128,6 +171,65 @@ export function detectNaturalIntent(rawContent, { mentionsCount = 0 } = {}) {
     hasAny(norm, ['x1', 'duelo', 'ganha mais', 'vence mais', 'confronto', 'head to head', 'sinergia', 'duo', 'entre mim e', 'entre eu e', 'contra o', 'contra a', 'juntos'])
   ) {
     return { intent: 'head_to_head', query: cleanText };
+  }
+
+  // 3b. Substituição de jogador ("substitui o @A pelo @B", "bota @B no lugar do @A")
+  if (
+    hasAny(norm, ['substitui', 'substituir', 'no lugar', 'tira o', 'troca o']) &&
+    (mentionsCount >= 1 || hasAny(norm, ['reserva', 'sub', 'suplente', 'pelo', 'por']))
+  ) {
+    return { intent: 'sub', query: cleanText };
+  }
+
+  // 3c. Perfil / Stats individuais ("meu perfil", "stats do @fulano", "como tao as stats")
+  if (hasAny(norm, ['meu perfil', 'meus stats', 'minhas stats', 'minhas estatisticas', 'perfil do', 'stats do', 'stats da', 'como ta o perfil', 'como tao os stats'])) {
+    return { intent: 'stats', query: cleanText };
+  }
+
+  // 3d. Scanner Steam / Anti-Smurf
+  const steamUrlMatch = cleanText.match(/https?:\/\/steamcommunity\.com\/(?:profiles|id)\/[A-Za-z0-9_.-]+/i);
+  const steamIdMatch = cleanText.match(/\b(7656119\d{10})\b/);
+  if (steamUrlMatch || steamIdMatch || hasAny(norm, ['checa a steam', 'checar steam', 'verifica smurf', 'verificar smurf', 'anti smurf', 'antismurf', 'horas de cs'])) {
+    const tokenMatch = cleanText.match(/(?:steam|smurf|perfil)\s+(?:do|da|de)?\s*([A-Za-z0-9_.-]{3,})/i);
+    return {
+      intent: 'steam',
+      steamTarget: steamUrlMatch?.[0] || steamIdMatch?.[1] || tokenMatch?.[1] || '',
+      query: cleanText,
+    };
+  }
+
+  // 3e. Calls de voz (checar faltantes / voltar lobby / puxar times)
+  if (hasAny(norm, ['quem falta na call', 'quem nao ta na call', 'quem nao esta na call', 'faltando na call', 'chama pra call', 'chamada da call'])) {
+    return { intent: 'calls_check', query: cleanText };
+  }
+  if (
+    hasAny(norm, ['volta pro geral', 'voltar pro geral', 'volta pro lobby', 'voltar pro lobby', 'devolve pro geral', 'devolver pro lobby']) ||
+    /\b(?:volta|voltar|devolve|devolver|retorna|retornar)\b.*\b(?:geral|lobby)\b/.test(norm)
+  ) {
+    return { intent: 'calls_return', query: cleanText };
+  }
+  if (
+    hasAny(norm, ['move pra call', 'mover pra call', 'puxa pra call', 'puxar pra call', 'manda pras calls', 'move os times', 'separa as calls']) ||
+    /\b(?:move|mover|puxa|puxar|manda|mandar)\b.*\bcalls?\b/.test(norm)
+  ) {
+    return { intent: 'calls_move', query: cleanText };
+  }
+
+  // 3f. Registrar vitória ("deu time A 13x9", "time B ganhou 13-10")
+  const scoreMatch = cleanText.match(/\b(\d{1,2})\s*[-xX:]\s*(\d{1,2})\b/) ||
+    cleanText.match(/\b(\d{1,2})\s+a\s+(\d{1,2})\b/i);
+  const winnerTeamMatch = norm.match(/\btime\s*([ab])\b/i);
+  if (
+    winnerTeamMatch &&
+    hasAny(norm, ['vitoria', 'ganhou', 'venceu', 'deu time', 'registra o placar', 'registrar placar', 'placar foi'])
+  ) {
+    return {
+      intent: 'match_result',
+      winner: winnerTeamMatch[1].toUpperCase(),
+      score: scoreMatch ? `${scoreMatch[1]}-${scoreMatch[2]}` : '',
+      mapQuery: extractMapQueryFromText(norm),
+      query: cleanText,
+    };
   }
 
   // 4. Granadas / Smokes / Lineups (ex: "qual smoke do ct da mirage?", "granada da ancient")
@@ -192,8 +294,16 @@ export function detectNaturalIntent(rawContent, { mentionsCount = 0 } = {}) {
     return { intent: 'ranking', query: cleanText };
   }
 
+  if (hasAny(norm, ['quais mapas', 'mapas mais jogados', 'estatisticas dos mapas', 'stats dos mapas'])) {
+    return { intent: 'map_stats', query: cleanText };
+  }
+
   if (hasAny(norm, ['ultimos jogos', 'historico', 'partidas recentes', 'quem ganhou o ultimo'])) {
     return { intent: 'history', query: cleanText };
+  }
+
+  if (hasAny(norm, ['patch notes', 'patchnotes', 'atualizacao do cs', 'teve atualizacao', 'notas da valve'])) {
+    return { intent: 'patch_notes', query: cleanText };
   }
 
   if (hasAny(norm, ['ao vivo', 'placar ao vivo', 'monitorar partida', 'radar da partida'])) {
@@ -237,8 +347,11 @@ export function buildCoachContext({
   serverConnect = '',
   requesterId = null,
   requesterName = 'Jogador',
+  conversationHistory = [],
 } = {}) {
-  const mapKey = extractMapQueryFromText(query);
+  const recentHistory = Array.isArray(conversationHistory) ? conversationHistory : [];
+  const lastMemoryMap = [...recentHistory].reverse().find((t) => t?.mapKey)?.mapKey || null;
+  const mapKey = extractMapQueryFromText(query) || lastMemoryMap;
   const topPlayers = (Array.isArray(leaderboard) ? leaderboard : []).slice(0, 10).map((p, idx) => ({
     rank: idx + 1,
     nick: p.nick || p.username || 'Jogador',
@@ -410,6 +523,7 @@ export async function generateCoachResponse({
   context,
   geminiApiKey = '',
   model = 'gemini-2.5-flash',
+  conversationHistory = [],
 } = {}) {
   const cleanKey = String(geminiApiKey || '').trim();
   if (!cleanKey) {
@@ -420,9 +534,13 @@ export async function generateCoachResponse({
     'Você é o Coach Tático e Analista Oficial do CS2 Mix Hub no Discord. ' +
     'Responda sempre em Português do Brasil (PT-BR), direto ao ponto, em no máximo 1400 caracteres e formatado para Discord Markdown. ' +
     'Use EXCLUSIVAMENTE os dados reais fornecidos no CONTEXTO DO HUB ao citar partidas, placares, winrate, MVPs ou lineups; se não houver partidas registradas, diga claramente que ainda não há registros sem inventar estatísticas. ' +
-    'Para perguntas táticas de CS2 (posicionamento, economia, smokes, splits), dê dicas objetivas e práticas de nível competitivo.';
+    'Para perguntas táticas de CS2 (posicionamento, economia, smokes, splits), dê dicas objetivas e práticas de nível competitivo, considerando também o histórico recente da conversa.';
 
   const userPayload = `PERGUNTA DO JOGADOR (${context?.requesterName || 'Jogador'}): "${query}"\n\nCONTEXTO REAL DO HUB:\n${JSON.stringify(context)}`;
+  const historyTurns = (Array.isArray(conversationHistory) ? conversationHistory : []).slice(-4).flatMap((turn) => [
+    { role: 'user', parts: [{ text: turn.query }] },
+    ...(turn.replyBody ? [{ role: 'model', parts: [{ text: turn.replyBody }] }] : []),
+  ]);
 
   try {
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
@@ -434,7 +552,10 @@ export async function generateCoachResponse({
       },
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: systemPrompt }] },
-        contents: [{ role: 'user', parts: [{ text: userPayload }] }],
+        contents: [
+          ...historyTurns,
+          { role: 'user', parts: [{ text: userPayload }] },
+        ],
         generationConfig: {
           temperature: 0.45,
           maxOutputTokens: 650,
@@ -462,4 +583,48 @@ export async function generateCoachResponse({
     console.warn('[DISCORD AI COACH FALLBACK]:', err.message);
     return buildDeterministicCoachReply(query, context);
   }
+}
+
+/**
+ * Gera uma leitura objetiva pós-jogo fundamentada apenas nos números reais registrados da partida e histórico.
+ */
+export function buildPostMatchCoachInsight({ matchRecord, profiles = {}, matchHistory = [] } = {}) {
+  if (!matchRecord) return null;
+  const mapName = String(matchRecord.map || 'CS2').replace(/^de_/i, '');
+  const normTarget = mapName.toLowerCase();
+  const sameMapMatches = (Array.isArray(matchHistory) ? matchHistory : []).filter(
+    (m) => String(m?.map || '').toLowerCase().replace(/^de_/i, '') === normTarget
+  );
+  const wScore = Number(matchRecord.scoreWinner ?? 13);
+  const lScore = Number(matchRecord.scoreLoser ?? 0);
+  const margin = Math.abs(wScore - lScore);
+
+  const lines = [];
+  if (wScore >= 13 && lScore >= 11) {
+    lines.push(`🔥 Confronto equilibrado até os últimos rounds (**${matchRecord.score || `${wScore}-${lScore}`}** em **${mapName}**).`);
+  } else if (margin >= 7) {
+    lines.push(`⚡ Domínio claro do **${matchRecord.winner || 'Time Vencedor'}** por **${matchRecord.score || `${wScore}-${lScore}`}** em **${mapName}**.`);
+  } else {
+    lines.push(`📊 Vitória sólida do **${matchRecord.winner || 'Time Vencedor'}** em **${mapName}** (**${matchRecord.score || `${wScore}-${lScore}`}**).`);
+  }
+
+  lines.push(`🗺️ Este foi o **${Math.max(1, sameMapMatches.length)}º jogo** registrado no mapa **${mapName}** no histórico do servidor.`);
+
+  const hotStreaks = (matchRecord.winnerPlayers || [])
+    .map((p) => ({
+      nick: p.nick || 'Jogador',
+      streak: Number(profiles?.[p.id]?.streak || 0),
+    }))
+    .filter((p) => p.streak >= 2)
+    .sort((a, b) => b.streak - a.streak);
+
+  if (hotStreaks.length > 0) {
+    lines.push(`🚀 Em sequência: ${hotStreaks.slice(0, 3).map((s) => `**${s.nick}** (${s.streak}x 🔥)`).join(' • ')}`);
+  }
+
+  if (matchRecord.hasRealGsiStats && matchRecord.mvp?.nick) {
+    lines.push(`👑 Destaque real GSI: **${matchRecord.mvp.nick}** com **${matchRecord.mvp.kills}/${matchRecord.mvp.deaths}** (${matchRecord.mvp.kd} K/D).`);
+  }
+
+  return lines.join('\n');
 }

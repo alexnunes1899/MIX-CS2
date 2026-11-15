@@ -55,7 +55,15 @@ import { generateGsiConfig, installGsiLocally } from './gsi.js';
 import { sanitizeRconTextArg, isValidServerAddress, normalizeRoomId, parseServerConnect } from './utils/security.js';
 import { getBundledDataFilePath, getDataDir, getDataFilePath, resolveSeededDataFile } from './dataDir.js';
 import { getGrenadesState } from './grenadeSync.js';
-import { detectNaturalIntent, buildCoachContext, generateCoachResponse } from './discordAiRouter.js';
+import { isValidMapName } from './roomHelpers.js';
+import {
+  detectNaturalIntent,
+  buildCoachContext,
+  generateCoachResponse,
+  getCoachConversationHistory,
+  recordCoachTurn,
+  buildPostMatchCoachInsight,
+} from './discordAiRouter.js';
 
 const DATA_DIR = getDataDir();
 const CONFIG_FILE = getDataFilePath('discordBotConfig.json');
@@ -66,6 +74,68 @@ const ROULETTE_STATE_FILE = resolveSeededDataFile('mapRouletteState.json');
 
 // Validates numeric Discord Snowflake ID (17 to 20 digits)
 export const isSnowflake = (id) => typeof id === 'string' && /^\d{17,20}$/.test(id);
+
+/**
+ * Evita comandos `/` duplicados no menu do Discord: quando há servidores conectados,
+ * registra os Slash Commands apenas por guild e limpa os globais antigos.
+ */
+export function resolveSlashRegistrationTargets(guildIds = []) {
+  const uniqueGuilds = [...new Set([...guildIds].filter(Boolean))];
+  if (uniqueGuilds.length > 0) {
+    return {
+      registerGlobal: false,
+      clearGlobal: true,
+      guildIds: uniqueGuilds,
+    };
+  }
+  return {
+    registerGlobal: true,
+    clearGlobal: false,
+    guildIds: [],
+  };
+}
+
+/**
+ * Calcula medalhas e conquistas reais do jogador com base exclusivamente no perfil e histórico salvo.
+ */
+export function computePlayerAchievements(prof = {}, matchHistory = [], targetUserId = '') {
+  const wins = Number(prof?.wins || 0);
+  const losses = Number(prof?.losses || 0);
+  const total = wins + losses;
+  const mvps = Number(prof?.mvps || 0);
+  const streak = Number(prof?.streak || 0);
+  const winRate = total > 0 ? Math.round((wins / total) * 100) : 0;
+
+  const badges = [];
+  if (streak >= 5) badges.push(`⚡ Imparável (${streak}x streak)`);
+  else if (streak >= 3) badges.push(`🔥 Em Chamas (${streak}x streak)`);
+
+  if (wins >= 25) badges.push(`👑 Lenda do Hub (${wins}V)`);
+  else if (wins >= 10) badges.push(`🏆 Veterano (${wins}V)`);
+  else if (wins >= 3) badges.push(`🥉 Competidor (${wins}V)`);
+
+  if (mvps >= 5) badges.push(`⭐ Colecionador de MVPs (${mvps})`);
+  else if (mvps >= 1) badges.push(`🌟 Destaque MVP (${mvps}x)`);
+
+  if (total >= 5 && winRate >= 60) badges.push(`📈 Consistência ${winRate}%`);
+
+  if (targetUserId && Array.isArray(matchHistory) && matchHistory.length > 0) {
+    const mapWins = {};
+    for (const m of matchHistory) {
+      const wonInMatch = Array.isArray(m?.winnerPlayers) && m.winnerPlayers.some((wp) => wp?.id === targetUserId);
+      if (wonInMatch && m?.map) {
+        const cleanMap = String(m.map).replace(/^de_/i, '').trim();
+        if (cleanMap) mapWins[cleanMap] = (mapWins[cleanMap] || 0) + 1;
+      }
+    }
+    const topMap = Object.entries(mapWins).sort((a, b) => b[1] - a[1])[0];
+    if (topMap && topMap[1] >= 3) {
+      badges.push(`🎯 Especialista ${topMap[0]} (${topMap[1]}V)`);
+    }
+  }
+
+  return badges;
+}
 
 // Default Active Duty Maps for Pick & Ban with official CDN images
 const OFFICIAL_MAPS = [
@@ -2223,14 +2293,7 @@ export class DiscordBotManager {
     try {
       const rest = new REST({ version: '10' }).setToken(token);
       const bodyPayload = commands.map((c) => c.toJSON());
-      console.log(`[DISCORD BOT] Registrando ${commands.length} Slash Commands...`);
 
-      // Register globally
-      await rest.put(Routes.applicationCommands(clientId), {
-        body: bodyPayload,
-      }).catch((e) => console.warn('[DISCORD BOT] Aviso registro global:', e.message));
-
-      // Also register on every connected guild for instant 0-second propagation
       const guildIds = new Set();
       if (this.config.guildId && this.config.guildId.trim()) {
         guildIds.add(this.config.guildId.trim());
@@ -2240,12 +2303,29 @@ export class DiscordBotManager {
           guildIds.add(gId);
         }
       }
-      for (const gId of guildIds) {
+
+      const plan = resolveSlashRegistrationTargets([...guildIds]);
+      console.log(`[DISCORD BOT] Registrando ${commands.length} Slash Commands (guilds=${plan.guildIds.length}, global=${plan.registerGlobal})...`);
+
+      if (plan.clearGlobal) {
+        // Remove comandos globais para evitar duplicatas visuais no menu "/" dos servidores
+        await rest.put(Routes.applicationCommands(clientId), {
+          body: [],
+        }).catch((e) => console.warn('[DISCORD BOT] Aviso limpeza global:', e.message));
+      }
+
+      if (plan.registerGlobal) {
+        await rest.put(Routes.applicationCommands(clientId), {
+          body: bodyPayload,
+        }).catch((e) => console.warn('[DISCORD BOT] Aviso registro global:', e.message));
+      }
+
+      for (const gId of plan.guildIds) {
         await rest.put(Routes.applicationGuildCommands(clientId, gId), {
           body: bodyPayload,
         }).catch(() => {});
       }
-      console.log(`✅ [DISCORD BOT] ${commands.length} Slash commands registrados com sucesso (${guildIds.size} servidor(es) ativo(s))!`);
+      console.log(`✅ [DISCORD BOT] ${commands.length} Slash commands registrados sem duplicatas (${plan.guildIds.length} servidor(es) ativo(s))!`);
     } catch (err) {
       console.warn('[DISCORD BOT] Aviso ao registrar comandos slash:', err.message);
     }
@@ -2269,6 +2349,11 @@ export class DiscordBotManager {
         console.error('[DISCORD BOT] Erro ao processar mensagem prefixo !:', err);
         message.reply(`❌ Ocorreu um erro ao processar o comando: ${err.message}`).catch(() => {});
       }
+    });
+
+    // Monitor voice channel joins to notify when all mix players are in call
+    this.client.on('voiceStateUpdate', (oldState, newState) => {
+      this.handleVoiceStateUpdate(oldState, newState).catch(() => {});
     });
 
     // Handle Slash Commands, Buttons, and Modals
@@ -2472,6 +2557,24 @@ export class DiscordBotManager {
     }
     if (command === 'cancelar') return this.prefixCancel(message);
     if (command === 'ip' || command === 'connect') return this.prefixIp(message);
+    if (command === 'chamada' || command === 'callcheck') return this.prefixVoiceCheck(message);
+    if (command === 'calls') {
+      if (subArg === 'faltando' || subArg === 'check' || subArg === 'chamada') {
+        return this.prefixVoiceCheck(message);
+      }
+      if (subArg === 'geral' || subArg === 'lobby' || subArg === 'voltar') {
+        const mix = this.resolveActiveMixForChannel(message.channelId, { includeFinished: true });
+        if (!mix || !message.guild) return message.reply('⚠️ Nenhum mix encontrado neste canal para devolver ao Lobby.');
+        const res = await this.executeVoiceReturnToLobby(message.guild, mix);
+        return message.reply(res.message);
+      }
+      const mix = this.resolveActiveMixForChannel(message.channelId);
+      if (mix && message.guild && (mix.teamA?.players?.length > 0 || mix.teamB?.players?.length > 0)) {
+        const res = await this.executeVoiceMover(message.guild, mix, message.channel);
+        return message.reply(res.message);
+      }
+      return this.prefixVoiceCheck(message);
+    }
     if (command === 'integracao' || command === 'integrar') return this.prefixServerIntegration(message);
     if (command === 'coach' || command === 'ia' || command === 'ai') {
       const q = args.slice(1).join(' ').trim();
@@ -3344,10 +3447,15 @@ export class DiscordBotManager {
   }
 
   async prefixStats(message, userArg) {
-    let target = message.author;
-    if (message.mentions.users.first()) {
-      target = message.mentions.users.first();
+    const botId = this.client?.user?.id;
+    let target = message.mentions?.users?.find((u) => u.id !== botId) || null;
+    if (!target && userArg) {
+      const cleanId = String(userArg).replace(/[<@!>]/g, '').trim();
+      if (cleanId && cleanId !== botId) {
+        target = this.client?.users?.cache?.get(cleanId) || null;
+      }
     }
+    if (!target) target = message.author;
     const embed = this.buildUserStatsEmbed(target);
     return message.reply({ embeds: [embed] });
   }
@@ -3452,7 +3560,10 @@ export class DiscordBotManager {
           `• \`!ranking\` / \`!top\` — Hall da Fama e Top 10 de vitórias e MVPs\n` +
           `• \`!sub [@antigo] @novo\` — Substitui um jogador (ou use o botão 🔄 Substituir no lobby)\n` +
           `• \`!cargo\` — Ativa/desativa notificações do cargo @Mix CS2 quando faltarem vagas\n` +
-          `• \`!stats [@jogador]\` — Perfil competitivo, vitórias reais e medalhas de MVP\n` +
+          `• \`!stats [@jogador]\` — Perfil competitivo, vitórias reais, conquistas e medalhas de MVP\n` +
+          `• \`!chamada\` / \`!calls [faltando|geral]\` — Verifica quem falta na call ou move/retorna times\n` +
+          `• \`!coach [pergunta]\` / \`/coach\` — Coach & Analista IA com memória da conversa\n` +
+          `• \`!integracao\` — Abre o passo a passo de integração com servidor privado CS2\n` +
           `• \`!lvl <1-21>\` — Configura seu nível da Gamers Club (GC)\n` +
           `• \`!smoke [mapa]\` — Lineups de granadas em 10 mapas (Mirage, Inferno, Nuke, D2, Ancient, Anubis, Overpass, Train, Cache, Vertigo)\n` +
           `• \`!treino\` — CFG completa de treino para console do CS2\n` +
@@ -3491,15 +3602,25 @@ export class DiscordBotManager {
     const tierColor = level >= 20 ? 0xf59e0b : level >= 18 ? 0x10b981 : 0x38bdf8;
     const winBar = this.buildVisualBar(winRate, 100, { length: 10, filledChar: '🟩', emptyChar: '🟥' });
     const faceitApprox = Math.min(10, Math.max(1, Math.round(level / 2.1)));
+    const matchHistory = typeof loadUnifiedMatchHistory === 'function' ? loadUnifiedMatchHistory() : [];
+    const achievements = computePlayerAchievements(prof, matchHistory, targetUser.id);
+    const achievementsText = achievements.length > 0
+      ? achievements.join(' • ')
+      : '*Jogue partidas oficiais no hub para desbloquear suas primeiras medalhas!*';
+
+    const avatarUrl =
+      typeof targetUser?.displayAvatarURL === 'function'
+        ? targetUser.displayAvatarURL({ dynamic: true, size: 256 }) || undefined
+        : undefined;
 
     const embed = new EmbedBuilder()
       .setAuthor({
         name: 'CS2 MIX HUB • PERFIL COMPETITIVO',
-        iconURL: targetUser.displayAvatarURL({ dynamic: true, size: 128 }),
+        ...(avatarUrl ? { iconURL: avatarUrl } : {}),
       })
       .setTitle(`📊 ${(targetUser.displayName || targetUser.username).toUpperCase()}`)
-      .setThumbnail(targetUser.displayAvatarURL({ dynamic: true, size: 256 }))
       .setColor(tierColor)
+      .setThumbnail(avatarUrl || null)
       .setDescription(
         `🛡️ **Gamers Club:** **Lvl ${level}** (\`${gcBadge}\`)\n` +
         `⚡ **FACEIT Est.:** **Lvl ${faceitApprox}/10**\n\n` +
@@ -3508,7 +3629,8 @@ export class DiscordBotManager {
       .addFields(
         { name: '🎮 Partidas Oficiais', value: `**${total}** jogos`, inline: true },
         { name: '🏆 Vitórias / Derrotas', value: `**${wins}V** • **${losses}D**`, inline: true },
-        { name: '⭐ MVPs / 🔥 Streak', value: `**${mvps}** MVPs • **${streak}** seguidas`, inline: true }
+        { name: '⭐ MVPs / 🔥 Streak', value: `**${mvps}** MVPs • **${streak}** seguidas`, inline: true },
+        { name: '🎖️ Conquistas Desbloqueadas', value: achievementsText, inline: false }
       )
       .setFooter({ text: 'CS2 Mix Hub • Estatísticas sincronizadas Discord + Web' })
       .setTimestamp();
@@ -4304,7 +4426,12 @@ export class DiscordBotManager {
           name: `\ud83e\udd48 Vice-Campe\u00f5es \u2022 ${loserTeam.name}`,
           value: loserTeam.players.map((p) => `\ud83d\udc80 ${isSnowflake(p.id) ? `<@${p.id}>` : `**${p.username || 'Jogador'}**`} \`[Lvl ${p.level || 16}]\``).join('\n') || '*Sem jogadores*',
           inline: false,
-        }
+        },
+        ...(() => {
+          const hist = typeof loadUnifiedMatchHistory === 'function' ? loadUnifiedMatchHistory() : [];
+          const insight = buildPostMatchCoachInsight({ matchRecord, profiles, matchHistory: hist });
+          return insight ? [{ name: '🧠 Leitura Pós-Jogo (Coach)', value: insight, inline: false }] : [];
+        })()
       )
       .setFooter({
         text: hasRealGsiStats
@@ -4731,7 +4858,8 @@ export class DiscordBotManager {
       if (entry && entry.matchesPlayed >= 3) {
         const confidence = Math.min(1, entry.matchesPlayed / 8);
         const winRateDelta = ((Number(entry.winRate ?? 50) - 50) / 50) * 1.8;
-        return Math.max(1, Number((baseLvl + winRateDelta * confidence).toFixed(2)));
+        const streakBonus = Math.max(-0.4, Math.min(0.4, Number(entry.streak || 0) * 0.1));
+        return Math.max(1, Number((baseLvl + winRateDelta * confidence + streakBonus).toFixed(2)));
       }
     } catch (_) {}
     return baseLvl;
@@ -4824,8 +4952,8 @@ export class DiscordBotManager {
       }
     }
 
-    bestA.sort((a, b) => (b.level || 16) - (a.level || 16));
-    bestB.sort((a, b) => (b.level || 16) - (a.level || 16));
+    bestA.sort((a, b) => (b.effectiveScore || b.level || 16) - (a.effectiveScore || a.level || 16));
+    bestB.sort((a, b) => (b.effectiveScore || b.level || 16) - (a.effectiveScore || a.level || 16));
 
     const sumA = bestA.reduce((acc, p) => acc + (p.level || 16), 0);
     const sumB = bestB.reduce((acc, p) => acc + (p.level || 16), 0);
@@ -5921,6 +6049,11 @@ export class DiscordBotManager {
         .setEmoji('🔥')
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
+        .setCustomId(`rcon_changemap:${mix.id}`)
+        .setLabel('Mudar Mapa')
+        .setEmoji('🗺️')
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
         .setCustomId(`rcon_say_modal:${mix.id}`)
         .setLabel('Aviso no CS2')
         .setEmoji('📢')
@@ -5969,11 +6102,12 @@ export class DiscordBotManager {
       }).catch(() => {});
     }
 
-    // RCON In-Game Controls (Pause, Unpause, Restart/Live, Chat Broadcast)
+    // RCON In-Game Controls (Pause, Unpause, Restart/Live, Change Map, Chat Broadcast)
     if (
       customId.startsWith('rcon_pause:') ||
       customId.startsWith('rcon_unpause:') ||
       customId.startsWith('rcon_live:') ||
+      customId.startsWith('rcon_changemap:') ||
       customId.startsWith('rcon_say_modal:')
     ) {
       const [rconAct, rMixId] = customId.split(':');
@@ -6049,6 +6183,17 @@ export class DiscordBotManager {
             command: `mp_warmup_end; mp_restartgame 1; say ">>> [DISCORD MIX HUB] LIVE! Partida iniciada/reiniciada por ${safeActor}!"`,
           });
           return interaction.reply({ content: `🔥 <@${user.id}> encerrou o aquecimento e puxou **LIVE (\`mp_restartgame 1\`)** no CS2!` });
+        }
+        if (rconAct === 'rcon_changemap') {
+          const rawMapId = mix?.veto?.deciderMap?.id || mix?.finalMap?.id || OFFICIAL_MAPS[0].id;
+          const targetMap = isValidMapName(rawMapId) ? rawMapId : 'de_mirage';
+          await executeRconCommand({
+            host,
+            port,
+            password: rconPwd,
+            command: `say ">>> [DISCORD MIX HUB] Mudando mapa para ${targetMap} por ${safeActor}..."; changelevel ${targetMap}`,
+          });
+          return interaction.reply({ content: `🗺️ <@${user.id}> enviou **\`changelevel ${targetMap}\`** para o servidor CS2 via RCON!` });
         }
       } catch (err) {
         return interaction.reply({ content: `❌ Falha RCON: ${err.message}`, ephemeral: true });
@@ -9041,11 +9186,97 @@ export class DiscordBotManager {
     });
   }
 
+  async computeMissingVoicePlayers(guild, mix) {
+    if (!guild || !mix) return { missing: [], connected: [], totalDiscord: 0 };
+    const allPlayers = [...(mix.players || [])];
+    const seen = new Set();
+    const discordPlayers = [];
+    for (const p of allPlayers) {
+      if (p?.id && isSnowflake(p.id) && !seen.has(p.id)) {
+        seen.add(p.id);
+        discordPlayers.push(p);
+      }
+    }
+
+    const missing = [];
+    const connected = [];
+    for (const p of discordPlayers) {
+      const cached = guild.members?.cache?.get?.(p.id) || null;
+      const member = cached || (await guild.members?.fetch?.(p.id).catch(() => null));
+      if (member?.voice?.channelId) {
+        connected.push({ ...p, voiceChannelId: member.voice.channelId });
+      } else {
+        missing.push(p);
+      }
+    }
+    return { missing, connected, totalDiscord: discordPlayers.length };
+  }
+
+  async prefixVoiceCheck(message) {
+    if (!message.guild) {
+      return message.reply('⚠️ Esse comando funciona apenas dentro de um servidor Discord.');
+    }
+    const mix = this.resolveActiveMixForChannel(message.channelId);
+    if (!mix) {
+      return message.reply('⚠️ Nenhum mix ativo encontrado neste canal agora.');
+    }
+    const { missing, connected, totalDiscord } = await this.computeMissingVoicePlayers(message.guild, mix);
+    if (totalDiscord === 0) {
+      return message.reply('ℹ️ Nenhum jogador do Discord está na lista deste mix ainda.');
+    }
+    if (missing.length === 0) {
+      return message.reply(`🔊 **Todos os ${connected.length}/${totalDiscord} jogadores do Discord já estão em canal de voz!** Tudo pronto para usar \`!calls\`.`);
+    }
+    const missingTags = missing.map((p) => `<@${p.id}>`).join(' ');
+    return message.reply(
+      `📢 **Chamada de Voz (${connected.length}/${totalDiscord} em call):**\n` +
+      `Ainda não entraram em um canal de voz: ${missingTags}\n` +
+      `👉 Entrem em uma call do servidor para o bot mover automaticamente com \`!calls\`!`
+    );
+  }
+
+  async handleVoiceStateUpdate(oldState, newState) {
+    if (oldState?.channelId === newState?.channelId) return;
+    if (!newState?.channelId || !newState?.guild?.id) return;
+    const userId = newState.id;
+    const guildId = newState.guild.id;
+    if (!userId) return;
+
+    const matchingMix = this.getUniqueActiveMixes().find(
+      (m) =>
+        m &&
+        m.phase !== 'finished' &&
+        m.phase !== 'cancelled' &&
+        !m._voiceAllReadyAnnounced &&
+        (m.players || []).some((p) => p.id === userId)
+    );
+    if (!matchingMix || !matchingMix.channelId) return;
+    if ((matchingMix.players || []).length < 2) return;
+
+    const { missing, connected, totalDiscord } = await this.computeMissingVoicePlayers(newState.guild, matchingMix);
+    if (totalDiscord >= 2 && missing.length === 0) {
+      matchingMix._voiceAllReadyAnnounced = true;
+      const channel =
+        this.client?.channels?.cache?.get?.(matchingMix.channelId) ||
+        (await this.client?.channels?.fetch?.(matchingMix.channelId).catch(() => null));
+      if (channel?.send) {
+        await channel
+          .send(
+            `🔊 **Chamada completa!** Todos os **${connected.length}/${totalDiscord}** jogadores deste mix conectaram em canal de voz no Discord (**${guildId ? 'Prontos para !calls' : ''}**).`
+              .replace(' (**Prontos para !calls**)', '') +
+              ` — use \`!calls\` quando os times estiverem definidos!`
+          )
+          .catch(() => {});
+      }
+    }
+  }
+
   async buildCoachReplyPayload(query, { authorId = null, authorName = 'Jogador', channelId = null } = {}) {
     const activeMix = channelId ? this.resolveActiveMixForChannel(channelId) : null;
     const leaderboard = typeof getLeaderboard === 'function' ? getLeaderboard() : [];
     const matchHistory = typeof loadUnifiedMatchHistory === 'function' ? loadUnifiedMatchHistory() : [];
     const grenadesState = typeof getGrenadesState === 'function' ? getGrenadesState() : { lineups: [] };
+    const conversationHistory = getCoachConversationHistory({ channelId, authorId });
 
     const context = buildCoachContext({
       query,
@@ -9057,6 +9288,7 @@ export class DiscordBotManager {
       serverConnect: activeMix?.serverIp || this.config.serverConnect || '',
       requesterId: authorId,
       requesterName: authorName,
+      conversationHistory,
     });
 
     const geminiKey = (this.config.geminiApiKey || process.env.GEMINI_API_KEY || '').trim();
@@ -9064,12 +9296,21 @@ export class DiscordBotManager {
       query,
       context,
       geminiApiKey: geminiKey,
+      conversationHistory,
+    });
+
+    recordCoachTurn({
+      channelId,
+      authorId,
+      query,
+      replyBody: reply.body,
+      mapKey: context.mapKey,
     });
 
     const footerText =
       reply.source === 'gemini'
-        ? '✨ Coach & Analista IA (Gemini) + Dados Reais do Hub'
-        : '🧠 Analista Local do Hub • Dica: fale naturalmente com @Bot (ex: "bota meu level 18")';
+        ? '✨ Coach & Analista IA (Gemini) • Memória de conversa ativa'
+        : '🧠 Analista Local do Hub • Dica: continue a conversa com @Bot (memória ativa)';
 
     const embed = new EmbedBuilder()
       .setTitle(reply.title || '🤖 Assistente CS2 Mix Hub')
@@ -9124,6 +9365,38 @@ export class DiscordBotManager {
         return this.prefixGrenade(message, detected.mapQuery);
       case 'head_to_head':
         return this.prefixHeadToHead(message, otherMentions[0] ? [otherMentions[0].id] : []);
+      case 'stats':
+        return this.prefixStats(message, otherMentions[0] ? otherMentions[0].id : '');
+      case 'steam':
+        return this.prefixSteam(message, detected.steamTarget || '');
+      case 'sub':
+        return this.prefixSubstitute(
+          message,
+          otherMentions.map((u) => `<@${u.id}>`)
+        );
+      case 'calls_check':
+        return this.prefixVoiceCheck(message);
+      case 'calls_return': {
+        const mix = this.resolveActiveMixForChannel(message.channelId, { includeFinished: true });
+        if (!mix || !message.guild) return message.reply('⚠️ Nenhum mix encontrado neste canal para devolver ao Lobby.');
+        const res = await this.executeVoiceReturnToLobby(message.guild, mix);
+        return message.reply(res.message);
+      }
+      case 'calls_move': {
+        const mix = this.resolveActiveMixForChannel(message.channelId);
+        if (!mix || !message.guild) return message.reply('⚠️ Nenhum mix ativo com times sorteados neste canal.');
+        const res = await this.executeVoiceMover(message.guild, mix, message.channel);
+        return message.reply(res.message);
+      }
+      case 'match_result': {
+        const argsList = [detected.winner, detected.score || '13-9'];
+        if (detected.mapQuery) argsList.push(detected.mapQuery);
+        return this.prefixMatchResult(message, argsList);
+      }
+      case 'map_stats':
+        return this.prefixMapStats(message);
+      case 'patch_notes':
+        return this.prefixPatchNotes(message);
       case 'draw':
         return this.prefixDraw(message);
       case 'veto':

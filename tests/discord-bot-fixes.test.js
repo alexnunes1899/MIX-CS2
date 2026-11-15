@@ -12,7 +12,18 @@ const {
   DiscordBotManager,
   resolveGrenadeMapKey,
   extractHostAndPort,
+  resolveSlashRegistrationTargets,
+  computePlayerAchievements,
 } = await import('../server/discordBot.js');
+const {
+  detectNaturalIntent,
+  buildCoachContext,
+  buildDeterministicCoachReply,
+  recordCoachTurn,
+  getCoachConversationHistory,
+  clearCoachConversationHistory,
+  buildPostMatchCoachInsight,
+} = await import('../server/discordAiRouter.js');
 const { BagreVoteService } = await import('../server/bagreVote.js');
 const { ProMatchesAgendaService } = await import('../server/proMatchesAgenda.js');
 
@@ -584,4 +595,138 @@ test('handlePrefixCommand routes @Bot natural-language mentions without Referenc
   });
   assert.ok(roleCoachReply?.embeds?.[0]);
   assert.match(roleCoachReply.embeds[0].toJSON().title, /ANCIENT/i);
+});
+
+test('resolveSlashRegistrationTargets evita comandos duplicados no menu / do Discord', () => {
+  const withGuilds = resolveSlashRegistrationTargets(['g1', 'g2', 'g1']);
+  assert.equal(withGuilds.registerGlobal, false);
+  assert.equal(withGuilds.clearGlobal, true);
+  assert.deepEqual(withGuilds.guildIds, ['g1', 'g2']);
+
+  const withoutGuilds = resolveSlashRegistrationTargets([]);
+  assert.equal(withoutGuilds.registerGlobal, true);
+  assert.equal(withoutGuilds.clearGlobal, false);
+  assert.deepEqual(withoutGuilds.guildIds, []);
+});
+
+test('discordAiRouter: memória de conversa, novas intenções naturais e insight pós-jogo', () => {
+  clearCoachConversationHistory({ channelId: 'c1', authorId: 'u1' });
+  recordCoachTurn({ channelId: 'c1', authorId: 'u1', query: 'como segurar meio na Mirage?', replyBody: 'Jogue janela/conector', mapKey: 'mirage' });
+  const hist = getCoachConversationHistory({ channelId: 'c1', authorId: 'u1' });
+  assert.equal(hist.length, 1);
+
+  const followCtx = buildCoachContext({
+    query: 'e se eu atacar de TR?',
+    conversationHistory: hist,
+  });
+  assert.equal(followCtx.mapKey, 'mirage');
+
+  const followReply = buildDeterministicCoachReply('e se eu atacar de TR?', followCtx);
+  assert.match(followReply.title, /MIRAGE/i);
+  assert.match(followReply.body, /Plano TR na MIRAGE/i);
+
+  assert.equal(detectNaturalIntent('mostra meu perfil').intent, 'stats');
+  assert.equal(detectNaturalIntent('quem falta na call?').intent, 'calls_check');
+  assert.equal(detectNaturalIntent('volta todo mundo pro geral').intent, 'calls_return');
+  assert.equal(detectNaturalIntent('move os times pra call').intent, 'calls_move');
+  assert.deepEqual(
+    {
+      intent: detectNaturalIntent('deu vitoria do Time B 13x11 na inferno').intent,
+      winner: detectNaturalIntent('deu vitoria do Time B 13x11 na inferno').winner,
+      score: detectNaturalIntent('deu vitoria do Time B 13x11 na inferno').score,
+      mapQuery: detectNaturalIntent('deu vitoria do Time B 13x11 na inferno').mapQuery,
+    },
+    { intent: 'match_result', winner: 'B', score: '13-11', mapQuery: 'inferno' }
+  );
+  assert.equal(detectNaturalIntent('checa a steam 76561198000000001').steamTarget, '76561198000000001');
+  assert.equal(detectNaturalIntent('substitui o @a pelo @b', { mentionsCount: 2 }).intent, 'sub');
+
+  const insight = buildPostMatchCoachInsight({
+    matchRecord: {
+      map: 'Mirage',
+      winner: 'Time A',
+      score: '13-11',
+      scoreWinner: 13,
+      scoreLoser: 11,
+      winnerPlayers: [{ id: '100000000000000001', nick: 'Alex' }],
+      hasRealGsiStats: false,
+    },
+    profiles: { '100000000000000001': { streak: 3 } },
+    matchHistory: [{ map: 'Mirage' }, { map: 'Mirage' }],
+  });
+  assert.match(insight, /Confronto equilibrado/i);
+  assert.match(insight, /2º jogo/i);
+  assert.match(insight, /\*\*Alex\*\* \(3x 🔥\)/);
+});
+
+test('Voice check, voiceStateUpdate auto-announce, achievements no !stats e botão Mudar Mapa RCON', async (t) => {
+  const bot = createBot(t);
+  const players = makePlayers(4);
+  const mix = bot.getOrCreateMix('ch-vc', players[0], { id: 'MIX-VC1', name: 'Mix Call' });
+  mix.players = [...players];
+  bot.balanceTeams(mix);
+  mix.phase = 'live';
+
+  const readyRows = bot.buildMatchReadyButtons(mix);
+  const rconCustomIds = readyRows[2].components.map((c) => c.toJSON().custom_id);
+  assert.ok(rconCustomIds.includes(`rcon_changemap:${mix.id}`));
+
+  const voiceMap = new Map([
+    [players[0].id, { voice: { channelId: 'vc-1' } }],
+    [players[1].id, { voice: { channelId: 'vc-1' } }],
+    [players[2].id, { voice: { channelId: null } }],
+    [players[3].id, { voice: { channelId: null } }],
+  ]);
+
+  let sentNotice = null;
+  const mockGuild = {
+    id: 'g-vc',
+    members: {
+      cache: voiceMap,
+      fetch: async (id) => voiceMap.get(id) || null,
+    },
+  };
+  bot.client.channels.cache.set('ch-vc', {
+    send: async (msg) => { sentNotice = msg; },
+  });
+
+  let checkReply = null;
+  await bot.prefixVoiceCheck({
+    guild: mockGuild,
+    channelId: 'ch-vc',
+    reply: async (msg) => { checkReply = msg; },
+  });
+  assert.match(checkReply, /2\/4 em call/);
+  assert.match(checkReply, new RegExp(players[2].id));
+
+  voiceMap.set(players[2].id, { voice: { channelId: 'vc-1' } });
+  voiceMap.set(players[3].id, { voice: { channelId: 'vc-1' } });
+  await bot.handleVoiceStateUpdate(
+    { channelId: null },
+    { id: players[3].id, channelId: 'vc-1', guild: mockGuild }
+  );
+  assert.match(String(sentNotice), /Chamada completa!.*4\/4/);
+
+  const badges = computePlayerAchievements(
+    { wins: 12, losses: 4, mvps: 6, streak: 5 },
+    [
+      { map: 'Mirage', winnerPlayers: [{ id: '100000000000000001' }] },
+      { map: 'Mirage', winnerPlayers: [{ id: '100000000000000001' }] },
+      { map: 'Mirage', winnerPlayers: [{ id: '100000000000000001' }] },
+    ],
+    '100000000000000001'
+  );
+  assert.ok(badges.some((b) => b.includes('Imparável')));
+  assert.ok(badges.some((b) => b.includes('Veterano')));
+  assert.ok(badges.some((b) => b.includes('Colecionador de MVPs')));
+  assert.ok(badges.some((b) => b.includes('Especialista Mirage')));
+
+  bot.setPlayerProfile(players[0].id, { level: 18, username: players[0].username, wins: 12, losses: 4, mvps: 6, streak: 5 });
+  const statsEmbed = bot.buildUserStatsEmbed({
+    id: players[0].id,
+    username: players[0].username,
+    displayName: players[0].displayName,
+    displayAvatarURL: () => '',
+  }).toJSON();
+  assert.ok(statsEmbed.fields.some((f) => f.name.includes('Conquistas Desbloqueadas') && f.value.includes('Imparável')));
 });
