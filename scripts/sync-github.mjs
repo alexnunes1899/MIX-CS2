@@ -65,6 +65,24 @@ function runNpm(args, options = {}) {
   return runCommand(npmBin, args, { ...options, useShell: process.platform === 'win32' });
 }
 
+function resolveCommitIdentityArgs() {
+  const configuredName = runGit(['config', '--get', 'user.name'], { capture: true, allowFail: true });
+  const configuredEmail = runGit(['config', '--get', 'user.email'], { capture: true, allowFail: true });
+  if (configuredName.ok && configuredName.stdout && configuredEmail.ok && configuredEmail.stdout) {
+    return [];
+  }
+
+  const lastName = runGit(['log', '-1', '--format=%an'], { capture: true, allowFail: true });
+  const lastEmail = runGit(['log', '-1', '--format=%ae'], { capture: true, allowFail: true });
+  const fallbackName = (configuredName.ok && configuredName.stdout) || (lastName.ok && lastName.stdout) || 'CS2 Mix Hub';
+  const fallbackEmail =
+    (configuredEmail.ok && configuredEmail.stdout) ||
+    (lastEmail.ok && lastEmail.stdout) ||
+    'noreply@users.noreply.github.com';
+
+  return ['-c', `user.name=${fallbackName}`, '-c', `user.email=${fallbackEmail}`];
+}
+
 function parseCliArgs(argv) {
   let dryRun = false;
   let skipBuild = false;
@@ -154,7 +172,8 @@ function main() {
     const cachedDiff = runGit(['diff', '--cached', '--quiet'], { allowFail: true });
     if (!cachedDiff.ok) {
       console.log(`Criando commit: "${commitMessage}"`);
-      runGit(['commit', '-m', commitMessage]);
+      const identityArgs = resolveCommitIdentityArgs();
+      runGit([...identityArgs, 'commit', '-m', commitMessage]);
     } else {
       console.log('Nenhuma alteração local nova para commitar.');
     }
