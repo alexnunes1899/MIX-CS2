@@ -375,6 +375,23 @@ export default function LandingPage({
                   <p className="text-[11px] text-slate-400 leading-snug">Host 0ms, Radmin & Dedicado</p>
                 </button>
               )}
+              {onOpenServersPage && (
+                <button
+                  onClick={() => {
+                    if (soundEnabled) playClickSound();
+                    onOpenServersPage('integracao');
+                  }}
+                  className="p-3 rounded-2xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/35 hover:border-emerald-400 transition-all shadow-lg group cursor-pointer active:scale-95 text-left"
+                >
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <div className="w-6 h-6 rounded-lg bg-emerald-500/20 text-emerald-300 flex items-center justify-center border border-emerald-500/40">
+                      <Plug size={13} />
+                    </div>
+                    <span className="text-xs font-black uppercase text-emerald-300 group-hover:text-white transition-colors">Integração Servidor Privado</span>
+                  </div>
+                  <p className="text-[11px] text-slate-300 leading-snug">Passo a passo p/ Bot Integrador</p>
+                </button>
+              )}
             </div>
           </div>
 

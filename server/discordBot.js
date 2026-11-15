@@ -5687,7 +5687,12 @@ export class DiscordBotManager {
         .setLabel('Substituir')
         .setEmoji('\ud83d\udd04')
         .setStyle(ButtonStyle.Secondary)
-        .setDisabled(total === 0)
+        .setDisabled(total === 0),
+      new ButtonBuilder()
+        .setLabel('Integração Servidor Privado')
+        .setEmoji('🔌')
+        .setStyle(ButtonStyle.Link)
+        .setURL(this.getPublicWebUrl('/?view=servers&tab=integracao'))
     );
 
     return [row1, row2, row3];
@@ -6024,6 +6029,11 @@ export class DiscordBotManager {
         .setEmoji('🌐')
         .setStyle(ButtonStyle.Link)
         .setURL(this.getPublicWebUrl(`/?room=${mix.id}`)),
+      new ButtonBuilder()
+        .setLabel('Integração Servidor Privado')
+        .setEmoji('🔌')
+        .setStyle(ButtonStyle.Link)
+        .setURL(this.getPublicWebUrl('/?view=servers&tab=integracao')),
       new ButtonBuilder()
         .setCustomId('panel_create_mix')
         .setLabel('Novo Mix')
