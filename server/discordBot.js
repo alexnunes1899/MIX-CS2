@@ -2311,21 +2311,31 @@ export class DiscordBotManager {
     let content = message.content?.trim() || '';
     if (!content) return;
 
-    const botMention = `<@${this.client.user.id}>`;
-    const botNickMention = `<@!${this.client.user.id}>`;
+    const botId = this.client?.user?.id;
+    const botMention = `<@${botId}>`;
+    const botNickMention = `<@!${botId}>`;
+    const managedBotRoles = [...(message.mentions?.roles?.values?.() || [])].filter(
+      (role) => role?.managed && role?.tags?.botId === botId
+    );
 
-    let isMentioned = false;
-    if (content.startsWith(botMention)) {
-      content = content.slice(botMention.length).trim();
-      isMentioned = true;
-    } else if (content.startsWith(botNickMention)) {
-      content = content.slice(botNickMention.length).trim();
-      isMentioned = true;
+    let isMentioned =
+      Boolean(message.mentions?.users?.has?.(botId)) ||
+      managedBotRoles.length > 0 ||
+      content.includes(botMention) ||
+      content.includes(botNickMention);
+
+    if (isMentioned && botId) {
+      content = content.replace(new RegExp(`<@!?${botId}>`, 'g'), ' ');
+      for (const role of managedBotRoles) {
+        content = content.replace(new RegExp(`<@&${role.id}>`, 'g'), ' ');
+      }
+      content = content.replace(/\s+/g, ' ').trim();
     }
 
-    if (!content.startsWith('!') && !content.startsWith('.') && !isMentioned) return;
+    const hasExplicitPrefix = content.startsWith('!') || content.startsWith('.');
+    if (!hasExplicitPrefix && !isMentioned) return;
 
-    if (content.startsWith('!') || content.startsWith('.')) {
+    if (hasExplicitPrefix) {
       content = content.slice(1).trim();
     }
 
@@ -2467,8 +2477,8 @@ export class DiscordBotManager {
       const q = args.slice(1).join(' ').trim();
       return q ? this.prefixCoachAi(message, q) : this.prefixHelp(message);
     }
-    if (commandName === 'comandos') return this.prefixHelp(message);
-    if (commandName === 'reset') return this.prefixCancel(message);
+    if (command === 'comandos') return this.prefixHelp(message);
+    if (command === 'reset') return this.prefixCancel(message);
 
     // Roteamento inteligente em linguagem natural + Coach IA quando mencionam @Bot
     if (isMentioned) {

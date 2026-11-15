@@ -527,3 +527,61 @@ test('ProMatchesAgendaService parses Liquipedia matches in BRT and shows honest 
   assert.match(desc, /HTTP 429/);
   assert.doesNotMatch(desc, /2 x 0|13 x 9/);
 });
+
+test('handlePrefixCommand routes @Bot natural-language mentions without ReferenceError', async (t) => {
+  const bot = createBot(t);
+  bot.client = {
+    user: { id: '999999999999999999', username: 'CS2MixBot' },
+    guilds: { cache: new Map() },
+  };
+
+  let mirageReply = null;
+  await bot.handlePrefixCommand({
+    author: { id: '100000000000000001', username: 'Alex', bot: false },
+    member: { displayName: 'Alex' },
+    channelId: 'ch-mention',
+    channel: { name: 'geral', sendTyping: async () => {} },
+    content: '<@999999999999999999> qual smoke do CT da Mirage?',
+    mentions: {
+      users: new Map([['999999999999999999', bot.client.user]]),
+      roles: new Map(),
+      channels: new Map(),
+    },
+    reply: async (p) => { mirageReply = p; },
+  });
+  assert.ok(mirageReply?.embeds?.[0]);
+  assert.match(mirageReply.embeds[0].toJSON().title, /MIRAGE/i);
+
+  let levelReply = null;
+  await bot.handlePrefixCommand({
+    author: { id: '100000000000000001', username: 'Alex', bot: false },
+    member: { displayName: 'Alex' },
+    channelId: 'ch-mention',
+    channel: { name: 'geral', sendTyping: async () => {} },
+    content: 'ei <@!999999999999999999> bota meu level 18',
+    mentions: {
+      users: new Map([['999999999999999999', bot.client.user]]),
+      roles: new Map(),
+      channels: new Map(),
+    },
+    reply: async (p) => { levelReply = p; },
+  });
+  assert.match(String(levelReply), /Lvl 18/);
+
+  let roleCoachReply = null;
+  await bot.handlePrefixCommand({
+    author: { id: '100000000000000001', username: 'Alex', bot: false },
+    member: { displayName: 'Alex' },
+    channelId: 'ch-mention',
+    channel: { name: 'geral', sendTyping: async () => {} },
+    content: '<@&888888888888888888> como segurar meio na Ancient de CT?',
+    mentions: {
+      users: new Map(),
+      roles: new Map([['888888888888888888', { id: '888888888888888888', managed: true, tags: { botId: '999999999999999999' } }]]),
+      channels: new Map(),
+    },
+    reply: async (p) => { roleCoachReply = p; },
+  });
+  assert.ok(roleCoachReply?.embeds?.[0]);
+  assert.match(roleCoachReply.embeds[0].toJSON().title, /ANCIENT/i);
+});
