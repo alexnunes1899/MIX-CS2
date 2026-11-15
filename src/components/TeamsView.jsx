@@ -109,6 +109,34 @@ export default function TeamsView({
             </button>
           </div>
         </div>
+
+        {/* Visual Team Balance Gauge */}
+        <div className="mt-4 pt-3 border-t border-slate-800/80 space-y-1.5">
+          <div className="flex items-center justify-between text-[11px] font-mono">
+            <span className="text-sky-400 font-bold">{upperA}: Lvl {metrics?.avgA ?? '-'}</span>
+            <span className="text-slate-400 font-semibold">Força Comparativa</span>
+            <span className="text-amber-400 font-bold">{upperB}: Lvl {metrics?.avgB ?? '-'}</span>
+          </div>
+          <div className="h-2 w-full rounded-full bg-slate-950 border border-slate-800 overflow-hidden flex">
+            {(() => {
+              const sA = Number(metrics?.sumA) || 1;
+              const sB = Number(metrics?.sumB) || 1;
+              const pctA = Math.round((sA / (sA + sB)) * 100);
+              return (
+                <>
+                  <div
+                    className="h-full bg-gradient-to-r from-sky-500 to-sky-400 transition-all duration-500"
+                    style={{ width: `${pctA}%` }}
+                  />
+                  <div
+                    className="h-full bg-gradient-to-r from-amber-500 to-orange-500 transition-all duration-500"
+                    style={{ width: `${100 - pctA}%` }}
+                  />
+                </>
+              );
+            })()}
+          </div>
+        </div>
       </div>
 
       {/* CS2 Server Connect Bar */}

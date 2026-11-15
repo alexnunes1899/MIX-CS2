@@ -2521,26 +2521,53 @@ export class DiscordBotManager {
     }
   }
 
-  async prefixPainel(message) {
-    const embed = new EmbedBuilder()
-      .setTitle('🏆 CS2 MIX HUB • PAINEL OFICIAL DA COMUNIDADE')
-      .setDescription(
-        `Bem-vindo à central de partidas 5v5 da comunidade!\n\n` +
-          `• **Lobbies Automáticos:** Clique em **Criar Mix** ou digite \`!mix\` para abrir uma fila 5v5.\n` +
-          `• **Check-in Anti-AFK:** Confirmação em 60 segundos para partidas sem ausentes.\n` +
-          `• **Balanceamento Snake-Draft:** Algoritmo Gamers Club e FACEIT oficial.\n` +
-          `• **Pick & Ban:** Veto oficial da Valve com escolha de lados CT/TR.\n` +
-          `• **Canais de Voz:** Movimentação automática para calls CT e TR na hora do jogo!\n\n` +
-          `*Pressione o botão verde abaixo para iniciar um Mix agora:*`
-      )
-      .setColor(0x38bdf8)
-      .setThumbnail('https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=200&q=80')
-      .setFooter({ text: 'CS2 Mix Hub • Plataforma Competitiva eSports' });
+  buildVisualBar(current = 0, total = 10, { length = 10, filledChar = '🟩', emptyChar = '⬛' } = {}) {
+    const safeTotal = Math.max(1, Number(total) || 1);
+    const ratio = Math.max(0, Math.min(1, (Number(current) || 0) / safeTotal));
+    const filled = Math.round(ratio * length);
+    return `${filledChar.repeat(filled)}${emptyChar.repeat(Math.max(0, length - filled))}`;
+  }
 
-    const row = new ActionRowBuilder().addComponents(
+  buildOfficialPanelPayload() {
+    const activeMixCount = this.getUniqueActiveMixes().filter((m) => m && m.phase !== 'finished' && m.phase !== 'cancelled').length;
+    const statusLine = activeMixCount > 0
+      ? `🟢 **${activeMixCount} lobby(s) ativo(s) agora no servidor**`
+      : '🟡 **Nenhum lobby aberto neste instante — crie o primeiro abaixo!**';
+
+    const embed = new EmbedBuilder()
+      .setAuthor({ name: 'CS2 MIX HUB • CENTRAL COMPETITIVA 5V5' })
+      .setTitle('🏆 PAINEL OFICIAL DA COMUNIDADE')
+      .setDescription(
+        `${statusLine}\n\n` +
+        `Organize partidas 5v5 equilibradas com **Check-in Anti-AFK**, **Pick & Ban oficial**, **Movimentação automática de Voz** e **Placar ao vivo via Valve GSI**.`
+      )
+      .setColor(0xf59e0b)
+      .addFields(
+        {
+          name: '🎮 Fila & Draft 5v5',
+          value: '• Botão **Criar Mix 5v5** ou `!mix`\n• Snake-Draft GC (1–21) / FACEIT\n• Reserva automática (3 vagas)',
+          inline: true,
+        },
+        {
+          name: '🗳️ Veto & Servidor',
+          value: '• Pick & Ban oficial ou Roleta\n• Escolha de lado CT / TR\n• Connect direto + Mover Calls',
+          inline: true,
+        },
+        {
+          name: '📡 Radar & Ranking',
+          value: '• Valve GSI ao vivo (`/aovivo`)\n• Hall da Fama, MVP & Win Streak\n• Sincronizado com o Web Hub',
+          inline: true,
+        }
+      )
+      .setThumbnail('https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=200&q=80')
+      .setFooter({ text: 'CS2 Mix Hub • Clique em Criar Mix 5v5 abaixo para abrir sua fila' })
+      .setTimestamp();
+
+    const row1 = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId('panel_create_mix')
-        .setLabel('🎮 Criar Mix 5v5')
+        .setLabel('Criar Mix 5v5')
+        .setEmoji('🎮')
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
         .setCustomId('panel_set_level')
@@ -2553,12 +2580,30 @@ export class DiscordBotManager {
         .setEmoji('📡')
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
-        .setLabel('🌐 Hub Web')
+        .setLabel('Hub Web')
+        .setEmoji('🌐')
         .setStyle(ButtonStyle.Link)
         .setURL(this.getPublicWebUrl('/'))
     );
 
-    return message.channel.send({ embeds: [embed], components: [row] });
+    const row2 = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId('panel_ranking')
+        .setLabel('Hall da Fama')
+        .setEmoji('🏆')
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId('panel_help')
+        .setLabel('Como Funciona?')
+        .setEmoji('📖')
+        .setStyle(ButtonStyle.Secondary)
+    );
+
+    return { embeds: [embed], components: [row1, row2] };
+  }
+
+  async prefixPainel(message) {
+    return message.channel.send(this.buildOfficialPanelPayload());
   }
 
   async prefixFila(message) {
@@ -3388,24 +3433,29 @@ export class DiscordBotManager {
     const mvps = prof.mvps || 0;
     const streak = prof.streak || 0;
     const gcBadge = level >= 20 ? '👑 Major Lvl 20+' : level >= 18 ? '🏆 Lvl 18-19' : level >= 14 ? '🥇 Lvl 14-17' : '🥈 Lvl 1-13';
+    const tierColor = level >= 20 ? 0xf59e0b : level >= 18 ? 0x10b981 : 0x38bdf8;
+    const winBar = this.buildVisualBar(winRate, 100, { length: 10, filledChar: '🟩', emptyChar: '🟥' });
+    const faceitApprox = Math.min(10, Math.max(1, Math.round(level / 2.1)));
 
     const embed = new EmbedBuilder()
-      .setTitle(`📊 CARD DO COMPETIDOR • ${targetUser.username.toUpperCase()}`)
+      .setAuthor({
+        name: 'CS2 MIX HUB • PERFIL COMPETITIVO',
+        iconURL: targetUser.displayAvatarURL({ dynamic: true, size: 128 }),
+      })
+      .setTitle(`📊 ${(targetUser.displayName || targetUser.username).toUpperCase()}`)
       .setThumbnail(targetUser.displayAvatarURL({ dynamic: true, size: 256 }))
-      .setColor(0x38bdf8)
+      .setColor(tierColor)
       .setDescription(
-        `🏆 **Nível Gamers Club:** **Lvl ${level}** (\`${gcBadge}\`)\n` +
-        `⚔️ **Classificação:** FACEIT Lvl ${Math.min(10, Math.max(5, Math.floor(level / 2)))} • Veterano da Comunidade CS2`
+        `🛡️ **Gamers Club:** **Lvl ${level}** (\`${gcBadge}\`)\n` +
+        `⚡ **FACEIT Est.:** **Lvl ${faceitApprox}/10**\n\n` +
+        `📈 **Aproveitamento:** \`${winBar}\` **${winRate}%** (${wins}V / ${losses}D)`
       )
       .addFields(
-        { name: '🎮 Partidas Oficiais', value: `${total}`, inline: true },
-        { name: '🏆 Vitórias', value: `${wins}`, inline: true },
-        { name: '💀 Derrotas', value: `${losses}`, inline: true },
-        { name: '🎯 Win Rate', value: `${winRate}%`, inline: true },
-        { name: '⭐ MVPs de Partida', value: `${mvps}`, inline: true },
-        { name: '🔥 Win Streak', value: streak > 0 ? `${streak} Seguidas` : '0', inline: true }
+        { name: '🎮 Partidas Oficiais', value: `**${total}** jogos`, inline: true },
+        { name: '🏆 Vitórias / Derrotas', value: `**${wins}V** • **${losses}D**`, inline: true },
+        { name: '⭐ MVPs / 🔥 Streak', value: `**${mvps}** MVPs • **${streak}** seguidas`, inline: true }
       )
-      .setFooter({ text: 'CS2 Mix Hub • Perfil Competitivo Atualizado' })
+      .setFooter({ text: 'CS2 Mix Hub • Estatísticas sincronizadas Discord + Web' })
       .setTimestamp();
 
     return embed;
@@ -3436,40 +3486,56 @@ export class DiscordBotManager {
 
     if (list.length === 0) {
       return new EmbedBuilder()
-        .setTitle('🏆 CS2 MIX HUB • HALL DA FAMA & RANKING')
+        .setAuthor({ name: 'CS2 MIX HUB • RANKING DA COMUNIDADE' })
+        .setTitle('🏆 HALL DA FAMA & RANKING')
         .setDescription(
           `Ainda não há partidas com resultado registrado neste servidor!\n\n` +
           `👉 **Como pontuar no Ranking:**\n` +
-          `1. Crie uma partida com \`!mix\`\n` +
-          `2. Jogue com seus amigos (10/10)\n` +
-          `3. Ao final, use o botão **\`[🏆 Declarar Placar]\`** ou digite \`!vitoria A 13-9\`!\n\n` +
-          `O ranking registrará automaticamente suas vitórias, taxa de win rate e MVPs!`
+          `1. Crie uma partida com \`!mix\` ou pelo Painel\n` +
+          `2. Jogue com seus amigos (**10/10**)\n` +
+          `3. Ao final, clique em **\`[🏆 Declarar Placar]\`** ou digite \`!vitoria A 13-9\`!`
         )
         .setColor(0x38bdf8)
         .setFooter({ text: 'CS2 Mix Hub • Seja o primeiro campeão!' });
     }
 
     const medals = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
-    const lines = list.slice(0, 10).map((p, i) => {
+    const formatRow = (p, i) => {
       const medal = medals[i] || `**#${i + 1}**`;
-      const mvpBadge = p.mvps > 0 ? ` • ⭐ **${p.mvps}x MVP**` : '';
-      const streakBadge = p.streak >= 2 ? ` • 🔥 **${p.streak} Win Streak**` : '';
+      const mvpBadge = p.mvps > 0 ? ` • ⭐ ${p.mvps}` : '';
+      const streakBadge = p.streak >= 2 ? ` • 🔥 ${p.streak}` : '';
       const userTag = isSnowflake(p.id) ? `<@${p.id}>` : `**${p.username}** 💬`;
-      return `${medal} ${userTag} — **${p.wins}V** / ${p.losses}D (\`${p.winRate}%\` Win Rate)${mvpBadge}${streakBadge} • \`Lvl ${p.level} GC\``;
-    });
+      return `${medal} ${userTag} — **${p.wins}V/${p.losses}D** (\`${p.winRate}%\`) • \`Lvl ${p.level}\`${mvpBadge}${streakBadge}`;
+    };
 
-    return new EmbedBuilder()
-      .setTitle('🏆 HALL DA FAMA & RANKING GERAL • TOP 10 CS2')
-      .setDescription(
-        `Confira os maiores vencedores da comunidade nos Mixes 5v5:\n\n` +
-        lines.join('\n\n') +
-        `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
-        `💡 *Para subir de posição, jogue mixes e registre a vitória com \`!vitoria A\` ou pelo botão!*`
-      )
+    const top3 = list.slice(0, 3).map((p, i) => formatRow(p, i)).join('\n');
+    const rest = list.slice(3, 10).map((p, i) => formatRow(p, i + 3)).join('\n');
+
+    const embed = new EmbedBuilder()
+      .setAuthor({ name: 'CS2 MIX HUB • TEMPORADA ATIVA' })
+      .setTitle('🏆 HALL DA FAMA & RANKING GERAL • TOP 10')
+      .setDescription(`Os maiores vencedores dos mixes 5v5 da comunidade (${list.length} competidor(es) ranqueado(s)):`)
       .setColor(0xf59e0b)
+      .addFields({
+        name: '👑 Pódio da Comunidade (Top 3)',
+        value: top3 || '*Sem jogadores*',
+        inline: false,
+      });
+
+    if (rest) {
+      embed.addFields({
+        name: '⚔️ Top 4 ao 10',
+        value: rest,
+        inline: false,
+      });
+    }
+
+    embed
       .setThumbnail('https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=200&q=80')
-      .setFooter({ text: 'CS2 Mix Hub • Atualizado em tempo real' })
+      .setFooter({ text: 'Use !vitoria A 13-9 ou o botão Declarar Placar ao fim da partida' })
       .setTimestamp();
+
+    return embed;
   }
 
   buildMatchHistoryEmbed(limit = 6) {
@@ -5139,32 +5205,34 @@ export class DiscordBotManager {
   buildReadyCheckEmbed(mix) {
     const confirmedCount = mix.readyCheck?.confirmed?.size || 0;
     const unixExpire = Math.floor((mix.readyCheck?.expiresAt || Date.now() + 60000) / 1000);
+    const readyBar = this.buildVisualBar(confirmedCount, 10, { length: 10, filledChar: '🟩', emptyChar: '⬜' });
 
     const statusList = mix.players.map((p) => {
       const isConfirmed = mix.readyCheck?.confirmed?.has(p.id) || String(p.id).startsWith('wa_');
-      return `${isConfirmed ? '\ud83d\udfe2' : '\u23f3'} <@${p.id}> - ${isConfirmed ? '**CONFIRMADO**' : '*Aguardando clique...*'}`;
+      return `${isConfirmed ? '🟢' : '⏳'} <@${p.id}> — ${isConfirmed ? '**CONFIRMADO**' : '*Aguardando...*'}`;
     });
 
     const embed = new EmbedBuilder()
-      .setTitle(`\ud83d\udea8 CHECK-IN ANTI-AFK (60s) \u2022 ${mix.name.toUpperCase()}`)
+      .setAuthor({ name: 'ETAPA 1/4 • VERIFICAÇÃO ANTI-AFK' })
+      .setTitle(`🚨 CHECK-IN ANTI-AFK (60s) • ${mix.name.toUpperCase()}`)
       .setDescription(
-        `O lobby atingiu 10 jogadores! Confirmem presen\u00e7a antes que o tempo acabe.\n\n` +
-        `\ud83d\udcca **Confirmados:** \`${confirmedCount}/10\` \u2022 \u23f1\ufe0f **Expira:** <t:${unixExpire}:R>`
+        `O lobby atingiu **10 jogadores**! Confirmem presença antes que o tempo acabe.\n\n` +
+        `📊 **Progresso:** \`${readyBar}\` **${confirmedCount}/10** • ⏱️ **Expira:** <t:${unixExpire}:R>`
       )
       .setColor(confirmedCount === 10 ? 0x10b981 : 0xeab308)
       .addFields(
         {
-          name: '\ud83d\udc65 Titulares (1 a 5)',
+          name: '👥 Titulares (1 a 5)',
           value: statusList.slice(0, 5).join('\n') || '*Nenhum*',
           inline: true,
         },
         {
-          name: '\ud83d\udc65 Titulares (6 a 10)',
+          name: '👥 Titulares (6 a 10)',
           value: statusList.slice(5, 10).join('\n') || '*Nenhum*',
           inline: true,
         }
       )
-      .setFooter({ text: 'CS2 Mix Hub \u2022 Quem n\u00e3o confirmar em 60s cede a vaga para a Reserva' })
+      .setFooter({ text: 'CS2 Mix Hub • Quem não confirmar em 60s cede a vaga para a Reserva' })
       .setTimestamp();
 
     return embed;
@@ -5275,36 +5343,40 @@ export class DiscordBotManager {
     const waitlist = Array.isArray(mix.waitlist) ? mix.waitlist : [];
     const isFull = total >= 10;
     const color = isFull ? 0x10b981 : 0xf59e0b;
+    const slotBar = this.buildVisualBar(total, 10, { length: 10, filledChar: '🟩', emptyChar: '⬛' });
+    const avgLvl = total > 0
+      ? (mix.players.reduce((sum, p) => sum + (Number(p.level) || this.getPlayerLevel(p.id) || 16), 0) / total).toFixed(1)
+      : '—';
 
     const playerList = [];
     for (let i = 0; i < 10; i++) {
       const p = mix.players[i];
       if (p) {
         const lvl = p.level || this.getPlayerLevel(p.id) || 16;
-        const gcEmoji = lvl >= 20 ? '\ud83d\udc51' : lvl >= 18 ? '\ud83c\udfc6' : lvl >= 14 ? '\ud83e\udd47' : '\ud83e\udd48';
+        const gcEmoji = lvl >= 20 ? '👑' : lvl >= 18 ? '🏆' : lvl >= 14 ? '🥇' : '🥈';
         const isWa = p.source === 'whatsapp' || String(p.id).startsWith('wa_') || Boolean(p.phone);
-        const capTag = (i === 0 || p.isCaptain) ? '\ud83d\udc51 ' : '';
+        const capTag = (i === 0 || p.isCaptain) ? '👑 ' : '';
         const name = p.displayName || p.nick || p.name || p.username || 'Jogador';
         if (isWa) {
-          playerList.push(`**${i + 1}.** ${capTag}\ud83d\udcac **${name}** \`[WhatsApp \u2022 Lvl ${lvl} GC ${gcEmoji}]\``);
+          playerList.push(`**${i + 1}.** ${capTag}💬 **${name}** \`[WA • Lvl ${lvl} ${gcEmoji}]\``);
         } else {
-          playerList.push(`**${i + 1}.** ${capTag}\ud83c\udfae <@${p.id}> \`[Discord \u2022 Lvl ${lvl} GC ${gcEmoji}]\``);
+          playerList.push(`**${i + 1}.** ${capTag}🎮 <@${p.id}> \`[Lvl ${lvl} ${gcEmoji}]\``);
         }
       } else {
-        playerList.push(`**${i + 1}.** \u23f3 *[Vazio - Dispon\u00edvel]*`);
+        playerList.push(`**${i + 1}.** ▫️ *Vaga aberta*`);
       }
     }
 
-    const creatorDisplay = mix.creatorNick || (String(mix.creatorId).startsWith('wa_') ? '\ud83d\udcac WhatsApp' : `<@${mix.creatorId}>`);
+    const creatorDisplay = mix.creatorNick || (String(mix.creatorId).startsWith('wa_') ? '💬 WhatsApp' : `<@${mix.creatorId}>`);
 
     const fields = [
       {
-        name: `\ud83d\udc65 Jogadores Conectados (${total}/10)`,
+        name: `👥 Titulares — Lado 1 (${Math.min(total, 5)}/5)`,
         value: playerList.slice(0, 5).join('\n'),
         inline: true,
       },
       {
-        name: '\u200B',
+        name: `👥 Titulares — Lado 2 (${Math.max(0, total - 5)}/5)`,
         value: playerList.slice(5, 10).join('\n'),
         inline: true,
       },
@@ -5312,36 +5384,37 @@ export class DiscordBotManager {
 
     if (waitlist.length > 0) {
       fields.push({
-        name: `\ud83d\udccb Fila de Reserva / Suplentes (${waitlist.length}/3)`,
-        value: waitlist.map((w, idx) => `**R${idx + 1}.** <@${w.id}> \`[Lvl ${w.level || 16} GC]\``).join(' \u2022 '),
+        name: `📋 Fila de Reserva / Suplentes (${waitlist.length}/3)`,
+        value: waitlist.map((w, idx) => `**R${idx + 1}.** <@${w.id}> \`[Lvl ${w.level || 16} GC]\``).join(' • '),
         inline: false,
       });
     }
 
     const conn = this.resolveMixDisplayConnect(mix);
-    const modeLabel = mix.balanceMode === 'captains' ? '👑 Draft de Capitães 1v1' : '⚖️ Snake-Draft Equilibrado';
+    const modeLabel = mix.balanceMode === 'captains' ? '👑 Draft Capitães 1v1' : '⚖️ Snake-Draft Equilibrado';
+    const webRoomUrl = this.getPublicWebUrl(`/?room=${encodeURIComponent(mix.id || 'MIX-PRO')}`);
 
     fields.push({
-      name: '\u2699\ufe0f Configura\u00e7\u00f5es da Partida',
+      name: '⚙️ Detalhes da Sala',
       value:
-        `\ud83c\udfc6 **Formato:** ${mix.format || 'MD1'} \u2022 **Modo:** ${modeLabel}\n` +
-        `\ud83d\udee1\ufe0f **Status:** ${isFull ? '\ud83d\udfe2 **LOBBY LOTADO (10/10)! Vagas abertas na Reserva**' : `\ud83d\udfe1 Aguardando jogadores (${10 - total} restante(s))`}\n` +
-        `\ud83d\udcbb **Servidor:** ${conn ? `\`${conn.consoleCommand}\`` : '*A definir ou host local*'}\n` +
-        `\ud83d\udc51 **Criador:** ${creatorDisplay}`,
+        `🏆 **Formato:** ${mix.format || 'MD1'} • **Modo:** ${modeLabel} • **Média GC:** \`Lvl ${avgLvl}\`\n` +
+        `🛡️ **Status:** ${isFull ? '🟢 **LOBBY FECHADO (10/10)! Pronto para Sortear ou Reserva**' : `🟡 Aguardando **${10 - total}** jogador(es)`}\n` +
+        `💻 **Servidor CS2:** ${conn ? `\`${conn.consoleCommand}\`` : '*A definir ou host local*'} • 👑 **Criador:** ${creatorDisplay}\n` +
+        `🌐 **Web Hub:** [Abrir sala no navegador](${webRoomUrl})`,
       inline: false,
     });
 
     const embed = new EmbedBuilder()
-      .setTitle(`\ud83c\udfae CS2 MIX HUB \u2022 ${(mix.name || 'Mix CS2').toUpperCase()}`)
+      .setAuthor({ name: `ETAPA 1/4 • LOBBY 5V5 (${total}/10)` })
+      .setTitle(`🎮 CS2 MIX HUB • ${(mix.name || 'Mix CS2').toUpperCase()}`)
       .setDescription(
-        `Fila oficial de Mix 5v5 para Counter-Strike 2.\n` +
-        `\ud83c\udf10 **Sincroniza\u00e7\u00e3o Ativa:** Jogadores do **Discord** e **Web Hub** jogam no mesmo lobby!\n` +
-        `Clique nos bot\u00f5es abaixo para entrar como titular, entrar na reserva ou sortear!`
+        `**Vagas na Fila:** \`${slotBar}\` **${total}/10**\n` +
+        `Sincronizado ao vivo entre **Discord** e **Web Hub** — clique em **Entrar** abaixo!`
       )
       .setColor(color)
       .addFields(fields)
       .setFooter({
-        text: `ID do Mix: ${mix.id} \u2022 Sincronizado Discord + Web`,
+        text: `Sala: ${mix.id} • Sincronizado Discord + Web`,
       })
       .setTimestamp();
 
@@ -5465,12 +5538,13 @@ export class DiscordBotManager {
     const capBName = captainB ? (String(captainB.id).startsWith('wa_') ? `💬 ${captainB.nick || captainB.name}` : `<@${captainB.id}>`) : 'A definir';
 
     const embed = new EmbedBuilder()
+      .setAuthor({ name: 'ETAPA 2/4 • EQUIPES BALANCEADAS' })
       .setTitle(`⚔️ TIMES FORMADOS • ${mix.name.toUpperCase()}`)
       .setDescription(
-        `Os dois esquadrões foram balanceados pelo algoritmo Snake-Draft Gamers Club!\n\n` +
-        `👑 **Capitão Time A:** ${capAName} \`[Lvl ${captainA?.level || 16} GC]\`\n` +
-        `👑 **Capitão Time B:** ${capBName} \`[Lvl ${captainB?.level || 16} GC]\`\n\n` +
-        `⚖️ **Equilíbrio:** \`[${bar}] ${pct}%\` (Média A: **${teamA.avgLevel || 16}** | Média B: **${teamB.avgLevel || 16}**)`
+        `Equipes geradas com **Snake-Draft Gamers Club**!\n\n` +
+        `👑 **Capitão ${teamA.name}:** ${capAName} \`[Lvl ${captainA?.level || 16}]\`\n` +
+        `👑 **Capitão ${teamB.name}:** ${capBName} \`[Lvl ${captainB?.level || 16}]\`\n\n` +
+        `⚖️ **Equilíbrio:** \`[${bar}] ${pct}%\` • Média A: **${teamA.avgLevel || 16}** | Média B: **${teamB.avgLevel || 16}**`
       )
       .setColor(0xf59e0b)
       .addFields(
@@ -5680,15 +5754,15 @@ export class DiscordBotManager {
     const connectCmd = conn ? conn.consoleCommand : null;
 
     const embed = new EmbedBuilder()
+      .setAuthor({ name: 'ETAPA FINAL • PARTIDA PRONTA PARA INICIAR' })
       .setTitle(`🏆 PARTIDA CONFIRMADA • ${mix.name.toUpperCase()}`)
       .setDescription(
-        `A fase de Pick & Ban e escolha de lados foi concluída com sucesso!\n\n` +
+        `Pick & Ban e lados definidos — bom jogo a todos!\n\n` +
         `🗺️ **MAPA OFICIAL:** ${map.emoji || '🎯'} **${map.name.toUpperCase()}** (\`${map.id}\`)\n` +
-        `🛡️ **${mix.teamA.name}:** Inicia de **${mix.teamA.side || 'CT'}**\n` +
-        `🔥 **${mix.teamB.name}:** Inicia de **${mix.teamB.side || 'TR'}**\n\n` +
+        `🛡️ **${mix.teamA.name}:** Inicia de **${mix.teamA.side || 'CT'}**  |  🔥 **${mix.teamB.name}:** Inicia de **${mix.teamB.side || 'TR'}**\n\n` +
         (connectCmd
-          ? `💻 **Comando de Conexão no Console do CS2:**\n\`\`\`bash\n${connectCmd}\n\`\`\`\n*Abra o console com aspas (\`) ou (') e cole o comando acima!*`
-          : `⚠️ *IP do servidor não configurado. Use \`!servidor ip:porta\` para definir.*`)
+          ? `💻 **Conectar pelo Console (\`) do CS2:**\n\`\`\`bash\n${connectCmd}\n\`\`\``
+          : `⚠️ *IP do servidor não configurado. Use \`!servidor ip:porta\` ou clique em Hub Web.*`)
       )
       .setColor(0x10b981)
       .addFields(
@@ -6046,6 +6120,22 @@ export class DiscordBotManager {
       const sent = await interaction.fetchReply();
       this.registerLiveTracker(sent, requester, null, false);
       return;
+    }
+
+    // Permanent Panel Hall of Fame Shortcut
+    if (customId === 'panel_ranking') {
+      return interaction.reply({
+        embeds: [this.buildRankingEmbed()],
+        ephemeral: true,
+      });
+    }
+
+    // Permanent Panel Quick Guide Shortcut
+    if (customId === 'panel_help') {
+      return interaction.reply({
+        embeds: [this.buildMixTutorialEmbed()],
+        ephemeral: true,
+      });
     }
     // Refresh Hardware Deals
     if (customId === 'deals_refresh_hot') {
@@ -8067,48 +8157,14 @@ export class DiscordBotManager {
   }
 
   async cmdSendPermanentPanel(interaction) {
-    const embed = new EmbedBuilder()
-      .setTitle('🏆 CS2 MIX HUB • PAINEL OFICIAL DA COMUNIDADE')
-      .setDescription(
-        `Bem-vindo à central de partidas 5v5 da comunidade!\n\n` +
-          `• **Lobbies Automáticos:** Clique em **Criar Mix** ou digite \`!mix\` para abrir uma fila 5v5.\n` +
-          `• **Check-in Anti-AFK:** Confirmação em 60 segundos para partidas sem ausentes.\n` +
-          `• **Balanceamento Snake-Draft:** Algoritmo competitivo Gamers Club e FACEIT.\n` +
-          `• **Pick & Ban:** Veto oficial da Valve com escolha de lados CT/TR.\n` +
-          `• **Canais de Voz:** Movimentação automática para calls CT e TR na hora do jogo!\n\n` +
-          `*Pressione o botão verde abaixo para iniciar um Mix agora:*`
-      )
-      .setColor(0x38bdf8)
-      .setThumbnail('https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=200&q=80')
-      .setFooter({ text: 'CS2 Mix Hub • Plataforma Competitiva eSports' });
-
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId('panel_create_mix')
-        .setLabel('🎮 Criar Mix 5v5')
-        .setStyle(ButtonStyle.Success),
-      new ButtonBuilder()
-        .setCustomId('panel_set_level')
-        .setLabel('Meu Nível GC')
-        .setEmoji('⭐')
-        .setStyle(ButtonStyle.Primary),
-      new ButtonBuilder()
-        .setCustomId('panel_live_radar')
-        .setLabel('Monitorar Partida')
-        .setEmoji('📡')
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setLabel('🌐 Hub Web')
-        .setStyle(ButtonStyle.Link)
-        .setURL(this.getPublicWebUrl('/'))
-    );
+    const payload = this.buildOfficialPanelPayload();
 
     await interaction.reply({
       content: '✅ Painel do Mix Hub gerado com sucesso no canal!',
       ephemeral: true,
     });
 
-    return interaction.channel.send({ embeds: [embed], components: [row] });
+    return interaction.channel.send(payload);
   }
 
   async cmdServer(interaction) {

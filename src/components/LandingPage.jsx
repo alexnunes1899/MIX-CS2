@@ -286,25 +286,41 @@ export default function LandingPage({
           </p>
 
           {/* Quick Room Code Box (Tactical Glassmorphism) */}
-          <div className="max-w-lg mx-auto glass-panel border-2 border-white/[0.1] focus-within:border-amber-400 rounded-2xl p-2.5 shadow-2xl backdrop-blur-2xl flex flex-col sm:flex-row gap-2 transition-all">
-            <div className="flex-1 flex items-center pl-3">
-              <Hash size={18} className="text-amber-400 mr-2" />
-              <input
-                type="text"
-                placeholder={myProfile?.nick ? `Código da sala (ex: TIME-${myProfile.nick.toUpperCase()})...` : 'Código da sala (ex: TIME-ALEX)...'}
-                value={roomCodeInput}
-                onChange={(e) => setRoomCodeInput(e.target.value.toUpperCase())}
-                className="w-full bg-transparent text-sm font-mono text-white placeholder-slate-500 outline-none font-semibold"
-              />
+          <form onSubmit={handleJoinByCode} className="max-w-lg mx-auto space-y-2.5">
+            <div className="glass-panel border-2 border-white/[0.1] focus-within:border-amber-400 rounded-2xl p-2.5 shadow-2xl backdrop-blur-2xl flex flex-col sm:flex-row gap-2 transition-all">
+              <div className="flex-1 flex items-center pl-3">
+                <Hash size={18} className="text-amber-400 mr-2 shrink-0" />
+                <input
+                  type="text"
+                  placeholder={myProfile?.nick ? `Código da sala (ex: TIME-${myProfile.nick.toUpperCase()})...` : 'Código da sala (ex: TIME-ALEX)...'}
+                  value={roomCodeInput}
+                  onChange={(e) => setRoomCodeInput(e.target.value.toUpperCase())}
+                  className="w-full bg-transparent text-sm font-mono text-white placeholder-slate-500 outline-none font-semibold"
+                />
+              </div>
+              <button
+                type="submit"
+                className="py-3 px-6 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 font-bold text-xs uppercase tracking-wider transition-all shadow-md shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+              >
+                <span>Entrar / Criar Sala</span>
+                <ArrowRight size={15} />
+              </button>
             </div>
-            <button
-              onClick={handleJoinByCode}
-              className="py-3 px-6 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 text-slate-950 font-bold text-xs uppercase tracking-wider transition-all shadow-md shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer active:scale-95"
-            >
-              <span>Entrar / Criar Sala</span>
-              <ArrowRight size={15} />
-            </button>
-          </div>
+
+            <div className="flex items-center justify-center gap-1.5 flex-wrap text-[11px]">
+              <span className="text-slate-500 font-medium">Acesso rápido:</span>
+              {['MIX-PRO', 'LOBBY-5V5', 'MIX-AMIGOS'].map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() => handleCreateMix(preset)}
+                  className="px-2.5 py-0.5 rounded-full bg-slate-900/90 hover:bg-amber-500/15 border border-slate-800 hover:border-amber-500/40 text-slate-300 hover:text-amber-300 font-mono font-bold transition-colors cursor-pointer"
+                >
+                  #{preset}
+                </button>
+              ))}
+            </div>
+          </form>
 
           {/* Fast Action Feature Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-3xl mx-auto pt-3 text-left">
@@ -428,25 +444,27 @@ export default function LandingPage({
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {displayedRooms.slice(0, 6).map((r) => {
               const isFaceitRoom = r.rankingSystem === 'faceit';
-              const phaseLabel =
+              const count = Math.min(10, Math.max(0, Number(r.playerCount) || 0));
+              const fillPct = Math.round((count / 10) * 100);
+              const phaseStyle =
                 r.phase === 'teams'
-                  ? 'Times Formados'
+                  ? { label: 'Times Formados', cls: 'bg-sky-500/15 text-sky-300 border-sky-500/30' }
                   : r.phase === 'captains_draft'
-                  ? 'Draft de Capitães'
+                  ? { label: 'Draft Capitães', cls: 'bg-purple-500/15 text-purple-300 border-purple-500/30' }
                   : r.phase === 'veto' || r.phase === 'side_pick'
-                  ? 'Veto de Mapas'
+                  ? { label: 'Veto de Mapas', cls: 'bg-amber-500/15 text-amber-300 border-amber-500/30' }
                   : r.phase === 'finished'
-                  ? 'Em Partida'
-                  : 'No Lobby';
+                  ? { label: 'Em Partida', cls: 'bg-rose-500/15 text-rose-300 border-rose-500/30' }
+                  : { label: 'No Lobby', cls: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' };
               return (
                 <div
                   key={r.id}
-                  className="bg-slate-900/85 hover:bg-slate-900 border border-slate-800 hover:border-amber-500/40 rounded-2xl p-4 flex flex-col justify-between gap-3 transition-all shadow-lg"
+                  className="bg-slate-900/85 hover:bg-slate-900 border border-slate-800 hover:border-amber-500/40 rounded-2xl p-4 flex flex-col justify-between gap-3 transition-all shadow-lg group hover:-translate-y-0.5"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="font-bold text-sm text-white truncate">{r.name || r.id}</span>
+                        <span className="font-bold text-sm text-white truncate group-hover:text-amber-300 transition-colors">{r.name || r.id}</span>
                         <span
                           className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${
                             isFaceitRoom
@@ -457,10 +475,11 @@ export default function LandingPage({
                           {isFaceitRoom ? 'FACEIT' : 'GC'}
                         </span>
                       </div>
-                      <div className="flex items-center gap-2 mt-1 text-[11px] font-mono text-slate-400">
-                        <span>#{r.id}</span>
-                        <span>•</span>
-                        <span>{phaseLabel}</span>
+                      <div className="flex items-center gap-2 mt-1.5 text-[11px] font-mono text-slate-400">
+                        <span className="text-slate-500">#{r.id}</span>
+                        <span className={`px-2 py-0.2 rounded-full text-[10px] font-sans font-bold border ${phaseStyle.cls}`}>
+                          {phaseStyle.label}
+                        </span>
                       </div>
                     </div>
 
@@ -478,10 +497,24 @@ export default function LandingPage({
                     </div>
                   </div>
 
+                  {/* Slot Progress Bar */}
+                  <div className="space-y-1">
+                    <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800/80">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${
+                          count >= 10
+                            ? 'bg-emerald-400'
+                            : 'bg-gradient-to-r from-amber-500 to-orange-400'
+                        }`}
+                        style={{ width: `${fillPct}%` }}
+                      />
+                    </div>
+                  </div>
+
                   <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
                     <div className="flex items-center gap-1.5 text-xs font-mono text-slate-300">
                       <Users size={13} className="text-sky-400" />
-                      <strong>{r.playerCount || 0}</strong>/10 jogadores
+                      <strong>{count}</strong>/10 jogadores
                     </div>
                     <button
                       type="button"

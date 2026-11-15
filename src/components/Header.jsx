@@ -84,11 +84,21 @@ export default function Header({
         {/* ROW 1: Room Identity, Center Match Phase Stepper & Utility Actions */}
         <div className="flex items-center justify-between gap-3 flex-wrap">
           {/* Left: Logo & Room Details */}
-          <div className="flex items-center gap-3 shrink-0">
-            <MixHubLogo className="w-9 h-9 sm:w-10 sm:h-10" />
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-sm sm:text-base font-black font-heading tracking-wide text-white">
+          <div className="flex items-center gap-3 shrink-0 min-w-0">
+            <button
+              type="button"
+              onClick={() => {
+                if (soundEnabled) playClickSound();
+                if (onGoHome) onGoHome();
+              }}
+              className="shrink-0 cursor-pointer group focus:outline-none"
+              title="Voltar para a Página Inicial"
+            >
+              <MixHubLogo className="w-9 h-9 sm:w-10 sm:h-10 group-hover:scale-105 transition-transform" />
+            </button>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                <h1 className="text-sm sm:text-base font-black font-heading tracking-wide text-white truncate max-w-[140px] sm:max-w-[200px]">
                   {roomName || 'MIX HUB'}
                 </h1>
                 <span
@@ -100,13 +110,23 @@ export default function Header({
                 >
                   {rankingSystem === 'faceit' ? '⚡ FACEIT' : '🛡️ GC'}
                 </span>
+                <span
+                  className={`text-[9px] sm:text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
+                    playerCount >= 10
+                      ? 'text-emerald-300 bg-emerald-500/15 border-emerald-500/40'
+                      : 'text-slate-300 bg-slate-800/80 border-slate-700'
+                  }`}
+                  title="Jogadores na sala"
+                >
+                  {playerCount}/10
+                </span>
                 {isPrivate ? (
-                  <span className="text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full border text-purple-300 bg-purple-500/15 border-purple-500/30 flex items-center gap-1 font-mono">
+                  <span className="text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full border text-purple-300 bg-purple-500/15 border-purple-500/30 hidden sm:flex items-center gap-1 font-mono">
                     <Lock size={10} /> Privado
                   </span>
                 ) : (
-                  <span className="text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full border text-emerald-400 bg-emerald-500/15 border-emerald-500/30 flex items-center gap-1 font-mono">
-                    <Globe size={10} /> Mix Público
+                  <span className="text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full border text-emerald-400 bg-emerald-500/15 border-emerald-500/30 hidden sm:flex items-center gap-1 font-mono">
+                    <Globe size={10} /> Público
                   </span>
                 )}
               </div>
@@ -254,16 +274,16 @@ export default function Header({
         />
 
         {/* Mobile Phase Stepper (< 1024px) */}
-        <div className="flex lg:hidden items-center justify-center gap-1.5 pt-1 border-t border-slate-800/40">
+        <div className="flex lg:hidden items-center justify-start sm:justify-center gap-1 pt-1.5 border-t border-slate-800/40 overflow-x-auto no-scrollbar">
           {steps.map((st, idx) => {
             const status = getStepStatus(st.id);
             const Icon = st.icon;
             return (
-              <div key={st.id} className="flex items-center gap-1">
+              <div key={st.id} className="flex items-center gap-1 shrink-0">
                 <div
-                  className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold transition-colors ${
+                  className={`flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-semibold transition-colors whitespace-nowrap ${
                     status === 'active'
-                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50'
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50 shadow-sm shadow-amber-500/15'
                       : status === 'completed'
                       ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
                       : 'bg-slate-800/50 text-slate-500 border border-slate-700/30'
@@ -273,7 +293,7 @@ export default function Header({
                   <span>{st.label}</span>
                 </div>
                 {idx < steps.length - 1 && (
-                  <span className="text-slate-700 text-[10px]">➔</span>
+                  <span className="text-slate-700 text-[10px] font-bold">›</span>
                 )}
               </div>
             );

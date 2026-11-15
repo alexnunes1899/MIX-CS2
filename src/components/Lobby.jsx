@@ -445,6 +445,26 @@ export default function Lobby({
               </>
             )}
           </div>
+
+          {/* 10-Slot Capacity Segmented Bar */}
+          <div className="mt-2.5 flex items-center gap-1 max-w-xs" aria-label={`Capacidade ${players.length} de ${maxSlots}`}>
+            {Array.from({ length: maxSlots }).map((_, slotIdx) => {
+              const player = players[slotIdx];
+              return (
+                <div
+                  key={slotIdx}
+                  className={`h-1.5 flex-1 rounded-full transition-all duration-300 ${
+                    player
+                      ? player.ready
+                        ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]'
+                        : 'bg-amber-400'
+                      : 'bg-slate-800'
+                  }`}
+                  title={player ? `${player.nick} (${player.ready ? 'Pronto' : 'Aguardando'})` : `Vaga #${slotIdx + 1} livre`}
+                />
+              );
+            })}
+          </div>
         </div>
 
         {/* Action Buttons */}
@@ -625,12 +645,18 @@ export default function Lobby({
           return (
             <div
               key={p.id || idx}
-              className={`relative overflow-hidden bg-slate-900/90 border rounded-2xl p-3 flex flex-col justify-between transition-all group ${
+              className={`relative overflow-hidden bg-slate-900/90 border rounded-2xl p-3 pt-3.5 flex flex-col justify-between transition-all group ${
                 p.ready
-                  ? 'border-emerald-500/40 shadow-sm shadow-emerald-500/10'
+                  ? 'border-emerald-500/45 shadow-md shadow-emerald-500/10'
                   : 'border-slate-800 hover:border-slate-700'
-              } ${isMe ? 'ring-2 ring-amber-500/40 bg-slate-900' : ''}`}
+              } ${isMe ? 'ring-2 ring-amber-500/45 bg-slate-900' : ''}`}
             >
+              {/* Top Status Strip */}
+              <div
+                className={`absolute top-0 inset-x-0 h-1 ${
+                  p.ready ? 'bg-emerald-400' : isMe ? 'bg-amber-400' : 'bg-slate-800'
+                }`}
+              />
               {/* Ready Indicator Dot */}
               <div
                 className={`absolute top-3 right-3 w-2.5 h-2.5 rounded-full z-10 ${
@@ -807,13 +833,13 @@ export default function Lobby({
         {Array.from({ length: emptySlots }).map((_, i) => (
           <div
             key={`empty-${i}`}
-            className="border-2 border-dashed border-slate-800/70 hover:border-slate-700/80 rounded-xl p-3.5 flex flex-col items-center justify-center text-center min-h-[110px] text-slate-600 bg-slate-950/25 transition-all select-none"
+            className="border-2 border-dashed border-slate-800/70 hover:border-amber-500/35 rounded-2xl p-3.5 flex flex-col items-center justify-center text-center min-h-[126px] text-slate-600 bg-slate-950/30 hover:bg-slate-900/40 transition-all select-none group"
           >
-            <div className="w-7 h-7 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-600 mb-1">
-              <Users size={13} />
+            <div className="w-8 h-8 rounded-full bg-slate-900 border border-slate-800 group-hover:border-amber-500/40 flex items-center justify-center text-slate-500 group-hover:text-amber-400 mb-1.5 transition-colors">
+              <Users size={14} />
             </div>
-            <span className="text-[11px] font-mono font-bold text-slate-400">Slot #{players.length + i + 1}</span>
-            <span className="text-[10px] text-slate-600 mt-0.5">Aguardando jogador</span>
+            <span className="text-[11px] font-mono font-bold text-slate-400">Vaga #{players.length + i + 1}</span>
+            <span className="text-[10px] text-slate-600 mt-0.5">Livre para entrar</span>
           </div>
         ))}
       </div>
