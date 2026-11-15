@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Target, Zap, RotateCcw, Share2, Check, Trophy, Flame, Sparkles } from 'lucide-react';
+import { X, Zap, Share2, Check, Sparkles } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
 import { copyText } from '../utils/clipboard';
 
@@ -9,8 +9,6 @@ export default function AimReflexModal({
   soundEnabled = true,
   onShareToChat = null,
 }) {
-  const [activeTab, setActiveTab] = useState('reaction'); // 'reaction' | 'grid'
-
   // Reaction State
   const [reactionState, setReactionState] = useState('idle'); // 'idle' | 'waiting' | 'ready' | 'clicked' | 'early'
   const [startTime, setStartTime] = useState(0);
@@ -18,14 +16,6 @@ export default function AimReflexModal({
   const [scoresList, setScoresList] = useState([]);
   const [copiedShare, setCopiedShare] = useState(false);
   const timerRef = useRef(null);
-
-  // Grid Aim State
-  const [gridState, setGridState] = useState('idle'); // 'idle' | 'playing' | 'finished'
-  const [gridScore, setGridScore] = useState(0);
-  const [gridStartTime, setGridStartTime] = useState(0);
-  const [gridTotalTime, setGridTotalTime] = useState(0);
-  const [currentTarget, setCurrentTarget] = useState({ top: 50, left: 50 });
-  const [targetCount, setTargetCount] = useState(0);
 
   // Clear timer on unmount
   useEffect(() => {
@@ -90,45 +80,10 @@ export default function AimReflexModal({
     ? Math.round(scoresList.reduce((a, b) => a + b, 0) / scoresList.length)
     : null;
 
-  // Grid Aim Trainer Logic
-  const startGridAim = () => {
-    if (soundEnabled) playClickSound();
-    setGridState('playing');
-    setGridScore(0);
-    setTargetCount(0);
-    setGridStartTime(Date.now());
-    spawnNewTarget();
-  };
-
-  const spawnNewTarget = () => {
-    const top = Math.floor(Math.random() * 70) + 15;
-    const left = Math.floor(Math.random() * 70) + 15;
-    setCurrentTarget({ top, left });
-  };
-
-  const handleHitTarget = (e) => {
-    e.stopPropagation();
-    if (gridState !== 'playing') return;
-    if (soundEnabled) playClickSound();
-
-    const nextCount = targetCount + 1;
-    setTargetCount(nextCount);
-    setGridScore((prev) => prev + 1);
-
-    if (nextCount >= 15) {
-      const total = ((Date.now() - gridStartTime) / 1000).toFixed(2);
-      setGridTotalTime(total);
-      setGridState('finished');
-    } else {
-      spawnNewTarget();
-    }
-  };
-
   const handleShareResult = () => {
+    if (!currentScore) return;
     if (soundEnabled) playClickSound();
-    const text = activeTab === 'reaction' && currentScore
-      ? `🎯 [CS2 MIX HUB] Teste de Reflexo: ${currentScore}ms (${getBenchmark(currentScore)?.label || ''})! Venha bater meu tempo!`
-      : `🎯 [CS2 MIX HUB] Grid Aim: 15 alvos abatidos em ${gridTotalTime}s!`;
+    const text = `⚡ [CS2 MIX HUB] Teste de Reflexo: ${currentScore}ms (${getBenchmark(currentScore)?.label || ''})! Venha bater meu tempo!`;
 
     copyText(text);
     setCopiedShare(true);
@@ -149,17 +104,17 @@ export default function AimReflexModal({
         <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/60">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center shadow-md">
-              <Target size={20} />
+              <Zap size={20} />
             </div>
             <div>
               <h2 className="text-base sm:text-lg font-black font-heading text-white flex items-center gap-2">
-                <span>Aquecimento de Mira & Reflexo</span>
+                <span>Teste de Reflexo (ms)</span>
                 <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 rounded-full uppercase">
                   Mini-Game
                 </span>
               </h2>
               <p className="text-xs text-slate-400">
-                Aqueça o tempo de resposta e precisão antes de a partida começar.
+                Aqueça seu tempo de resposta antes de a partida começar.
               </p>
             </div>
           </div>
@@ -174,40 +129,9 @@ export default function AimReflexModal({
           </button>
         </div>
 
-        {/* Tab Selector */}
-        <div className="px-6 pt-4 border-b border-slate-800 bg-slate-950/30 flex items-center gap-2">
-          <button
-            onClick={() => {
-              if (soundEnabled) playClickSound();
-              setActiveTab('reaction');
-            }}
-            className={`px-4 py-2 text-xs font-bold rounded-t-xl transition-all cursor-pointer border-t border-x ${
-              activeTab === 'reaction'
-                ? 'bg-slate-900 border-amber-500/40 text-amber-400 shadow-md'
-                : 'bg-transparent border-transparent text-slate-400 hover:text-white'
-            }`}
-          >
-            ⚡ Teste de Reflexo (ms)
-          </button>
-          <button
-            onClick={() => {
-              if (soundEnabled) playClickSound();
-              setActiveTab('grid');
-            }}
-            className={`px-4 py-2 text-xs font-bold rounded-t-xl transition-all cursor-pointer border-t border-x ${
-              activeTab === 'grid'
-                ? 'bg-slate-900 border-amber-500/40 text-amber-400 shadow-md'
-                : 'bg-transparent border-transparent text-slate-400 hover:text-white'
-            }`}
-          >
-            🎯 Grid Aim (15 Alvos)
-          </button>
-        </div>
-
         {/* Main Game Stage */}
         <div className="p-6 overflow-y-auto no-scrollbar space-y-4">
-          {activeTab === 'reaction' ? (
-            <div className="space-y-4">
+          <div className="space-y-4">
               {/* Interactive Reaction Box */}
               <div
                 onClick={
@@ -304,74 +228,6 @@ export default function AimReflexModal({
                 </div>
               )}
             </div>
-          ) : (
-            /* Grid Aim Trainer Tab */
-            <div className="space-y-4">
-              <div
-                className="relative w-full h-72 rounded-3xl bg-slate-950/90 border border-slate-800 overflow-hidden select-none"
-              >
-                {gridState === 'idle' && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center space-y-3">
-                    <Target size={44} className="text-amber-400 animate-pulse" />
-                    <h3 className="text-lg font-black font-heading text-white">GRID AIM TRAINER</h3>
-                    <p className="text-xs text-slate-400 max-w-sm">
-                      15 alvos irão surgir aleatoriamente na tela. Acerte todos o mais rápido possível para treinar flicks de mira!
-                    </p>
-                    <button
-                      onClick={startGridAim}
-                      className="px-5 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs uppercase tracking-wider rounded-xl transition-all cursor-pointer shadow-lg shadow-amber-500/20 active:scale-95"
-                    >
-                      Começar Treino
-                    </button>
-                  </div>
-                )}
-
-                {gridState === 'playing' && (
-                  <>
-                    <div className="absolute top-3 left-4 text-xs font-mono font-bold text-slate-400">
-                      Alvo: <span className="text-amber-400 font-bold">{targetCount + 1} / 15</span>
-                    </div>
-                    {/* The Moving Target */}
-                    <button
-                      type="button"
-                      onClick={handleHitTarget}
-                      style={{ top: `${currentTarget.top}%`, left: `${currentTarget.left}%` }}
-                      className="absolute -translate-x-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-gradient-to-tr from-amber-600 via-amber-400 to-yellow-200 border-2 border-white shadow-lg shadow-amber-500/50 flex items-center justify-center active:scale-90 transition-transform cursor-crosshair animate-pulse"
-                    >
-                      <div className="w-4 h-4 rounded-full bg-rose-600 border border-white" />
-                    </button>
-                  </>
-                )}
-
-                {gridState === 'finished' && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center space-y-3 animate-fadeIn">
-                    <Trophy size={44} className="text-amber-400" />
-                    <h3 className="text-2xl font-black font-heading text-white">TREINO CONCLUÍDO!</h3>
-                    <div className="text-4xl font-black font-mono text-emerald-400">
-                      {gridTotalTime} <span className="text-sm text-slate-400 font-sans">segundos</span>
-                    </div>
-                    <p className="text-xs text-slate-400">15 alvos abatidos com 100% de precisão.</p>
-                    <div className="flex items-center gap-2 pt-2">
-                      <button
-                        onClick={startGridAim}
-                        className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 cursor-pointer"
-                      >
-                        <RotateCcw size={13} />
-                        <span>Tentar Novamente</span>
-                      </button>
-                      <button
-                        onClick={handleShareResult}
-                        className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs uppercase tracking-wider rounded-xl flex items-center gap-1.5 cursor-pointer"
-                      >
-                        {copiedShare ? <Check size={13} /> : <Share2 size={13} />}
-                        <span>{copiedShare ? 'Copiado!' : 'Compartilhar'}</span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Footer */}

@@ -145,8 +145,8 @@ export default function MainNavigationMenu({
     },
     {
       id: 'mira',
-      label: 'Aquecer Mira',
-      subtitle: 'Reflexo & Grid Aim 60s',
+      label: 'Teste de Reflexo',
+      subtitle: 'Tempo de resposta em ms',
       icon: Target,
       action: onOpenAimReflex,
       iconColor: 'text-orange-400',
