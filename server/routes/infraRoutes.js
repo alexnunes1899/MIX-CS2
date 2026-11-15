@@ -19,6 +19,28 @@ import {
 } from '../gsi.js';
 import { sanitizeRconCommand } from '../roomHelpers.js';
 
+const ALLOWED_AVATAR_PROXY_HOSTS = new Set([
+  'avatars.steamstatic.com',
+  'avatars.akamai.steamstatic.com',
+  'steamcdn-a.akamaihd.net',
+  'cdn.discordapp.com',
+  'media.discordapp.net',
+]);
+
+const AVATAR_PROXY_MAX_BYTES = 2 * 1024 * 1024;
+
+export function isAllowedAvatarProxyUrl(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== 'string') return false;
+  try {
+    const parsed = new URL(rawUrl.trim());
+    if (parsed.protocol !== 'https:') return false;
+    if (parsed.username || parsed.password) return false;
+    return ALLOWED_AVATAR_PROXY_HOSTS.has(parsed.hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
 const gsiDiscordTracker = new Map();
 
 function processGsiDiscordNotifications(room, liveState, req) {
@@ -410,6 +432,50 @@ export function registerInfraRoutes(app, { io, rooms, lifecycle, discordBotManag
       res.json({ clientIp: ip, port, reachable: result.online, pingMs: result.pingMs, error: result.error });
     } catch (err) {
       res.status(500).json({ clientIp: ip, port, reachable: false, error: err.message });
+    }
+  });
+
+  app.get('/api/avatar-proxy', async (req, res) => {
+    const rawUrl = typeof req.query.url === 'string' ? req.query.url.trim() : '';
+    if (!isAllowedAvatarProxyUrl(rawUrl)) {
+      return res.status(400).json({ error: 'URL de avatar inválida ou host não permitido.' });
+    }
+
+    try {
+      const upstream = await fetch(rawUrl, {
+        redirect: 'manual',
+        signal: AbortSignal.timeout(4000),
+        headers: {
+          Accept: 'image/avif,image/webp,image/png,image/jpeg,image/*;q=0.8',
+        },
+      });
+
+      if (!upstream.ok) {
+        return res.status(502).json({ error: 'Não foi possível carregar o avatar remoto.' });
+      }
+
+      const contentType = String(upstream.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+      if (!contentType.startsWith('image/')) {
+        return res.status(415).json({ error: 'Resposta remota não é uma imagem válida.' });
+      }
+
+      const contentLength = Number(upstream.headers.get('content-length') || 0);
+      if (contentLength > AVATAR_PROXY_MAX_BYTES) {
+        return res.status(413).json({ error: 'Avatar excede o tamanho máximo permitido.' });
+      }
+
+      const buffer = Buffer.from(await upstream.arrayBuffer());
+      if (buffer.byteLength > AVATAR_PROXY_MAX_BYTES) {
+        return res.status(413).json({ error: 'Avatar excede o tamanho máximo permitido.' });
+      }
+
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+      return res.send(buffer);
+    } catch {
+      return res.status(502).json({ error: 'Falha ao buscar avatar remoto.' });
     }
   });
 }

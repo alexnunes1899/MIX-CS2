@@ -3,6 +3,12 @@ import { X, Download, Copy, Check, Sparkles, Smartphone, Share2, Trophy } from '
 import { playClickSound } from '../utils/audio';
 import { copyText } from '../utils/clipboard';
 
+import {
+  collectStoryPlayers,
+  drawCircularAvatar,
+  loadCanvasImage,
+} from '../utils/canvasHelpers';
+
 export default function PlayerStoryCardModal({
   isOpen,
   onClose,
@@ -11,23 +17,33 @@ export default function PlayerStoryCardModal({
   initialPlayer = null,
 }) {
   const canvasRef = useRef(null);
+  const avatarImgRef = useRef({ src: null, img: null });
+  const drawRunIdRef = useRef(0);
   const [selectedPlayerId, setSelectedPlayerId] = useState(initialPlayer?.id || null);
   const [generating, setGenerating] = useState(false);
   const [copiedImage, setCopiedImage] = useState(false);
   const [dataUrl, setDataUrl] = useState(null);
 
-  const teamA = room?.teamA || [];
-  const teamB = room?.teamB || [];
-  const allPlayers = [...teamA, ...teamB];
+  const allPlayers = collectStoryPlayers({ room, initialPlayer });
 
-  // Set default selected player if none
+  // Set default selected player matching initialPlayer or first available player
   useEffect(() => {
-    if (initialPlayer?.id) {
-      setSelectedPlayerId(initialPlayer.id);
-    } else if (allPlayers.length > 0 && !selectedPlayerId) {
-      setSelectedPlayerId(allPlayers[0].id);
+    const matchedInitial = initialPlayer
+      ? allPlayers.find(
+          (p) =>
+            (initialPlayer.id && p.id === initialPlayer.id) ||
+            (initialPlayer.steamId && p.steamId === initialPlayer.steamId)
+        )
+      : null;
+
+    if (!selectedPlayerId || !allPlayers.some((p) => p.id === selectedPlayerId)) {
+      if (matchedInitial) {
+        setSelectedPlayerId(matchedInitial.id);
+      } else if (allPlayers.length > 0) {
+        setSelectedPlayerId(allPlayers[0].id);
+      }
     }
-  }, [initialPlayer, allPlayers.length]);
+  }, [initialPlayer, allPlayers.length, selectedPlayerId]);
 
   // Handle ESC
   useEffect(() => {
@@ -42,7 +58,11 @@ export default function PlayerStoryCardModal({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose, soundEnabled]);
 
-  const selectedPlayer = allPlayers.find((p) => p.id === selectedPlayerId) || allPlayers[0] || { nick: 'Jogador', level: 15 };
+  const selectedPlayer =
+    allPlayers.find((p) => p.id === selectedPlayerId) ||
+    allPlayers[0] ||
+    initialPlayer ||
+    { nick: 'Jogador', level: 15 };
 
   // Draw 1080x1920 Story Card
   const drawStoryCard = useCallback(() => {
@@ -125,14 +145,22 @@ export default function PlayerStoryCardModal({
     ctx.arc(width / 2, avatarY, 180, 0, Math.PI * 2);
     ctx.fill();
 
-    // Circular Avatar Base
-    ctx.fillStyle = '#0f172a';
-    ctx.beginPath();
-    ctx.arc(width / 2, avatarY, 120, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = '#f59e0b';
-    ctx.lineWidth = 8;
-    ctx.stroke();
+    // Circular Steam Avatar (with initials / emoji fallback if image unavailable)
+    const avatarSrc = selectedPlayer?.avatar || '';
+    const loadedAvatarImg =
+      avatarImgRef.current.src === avatarSrc ? avatarImgRef.current.img : null;
+
+    drawCircularAvatar(ctx, {
+      cx: width / 2,
+      cy: avatarY,
+      radius: 120,
+      img: loadedAvatarImg,
+      nick: selectedPlayer?.nick || 'Jogador',
+      emojiAvatar: avatarSrc,
+      bgColor: '#0f172a',
+      borderColor: '#f59e0b',
+      borderWidth: 8,
+    });
 
     // Nickname
     ctx.fillStyle = '#ffffff';
@@ -244,12 +272,30 @@ export default function PlayerStoryCardModal({
   }, [room, selectedPlayer]);
 
   useEffect(() => {
-    if (isOpen) {
-      setTimeout(() => {
+    if (!isOpen) return;
+    let cancelled = false;
+    const runId = ++drawRunIdRef.current;
+    const avatarSrc = selectedPlayer?.avatar || '';
+
+    const timer = setTimeout(async () => {
+      if (cancelled || runId !== drawRunIdRef.current) return;
+      setGenerating(true);
+
+      if (avatarSrc && avatarImgRef.current.src !== avatarSrc) {
         drawStoryCard();
-      }, 100);
-    }
-  }, [isOpen, selectedPlayerId, drawStoryCard]);
+        const img = await loadCanvasImage(avatarSrc, { timeoutMs: 4000 });
+        if (cancelled || runId !== drawRunIdRef.current) return;
+        avatarImgRef.current = { src: avatarSrc, img };
+      }
+
+      drawStoryCard();
+    }, 60);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [isOpen, selectedPlayerId, selectedPlayer?.avatar, drawStoryCard]);
 
   const handleDownload = () => {
     if (soundEnabled) playClickSound();

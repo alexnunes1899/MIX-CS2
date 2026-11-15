@@ -19,6 +19,8 @@ const {
   verifyRoomPassword,
 } = await import('../server/authSession.js');
 const { sanitizeRconCommand, isValidMapName } = await import('../server/roomHelpers.js');
+const { collectStoryPlayers, isImageUrl, buildAvatarProxyUrl } = await import('../src/utils/canvasHelpers.js');
+const { isAllowedAvatarProxyUrl } = await import('../server/routes/infraRoutes.js');
 
 test('shared/balance: GC e FACEIT respeitam preferências e dividem 10 jogadores equilibradamente', () => {
   const players = [
@@ -144,4 +146,45 @@ test('server/roomHelpers: sanitização RCON e validação de nome de mapa bloqu
   assert.equal(isValidMapName('de_ancient'), true);
   assert.equal(isValidMapName('de_mirage; quit'), false);
   assert.equal(isValidMapName('../etc/passwd'), false);
+});
+
+test('src/utils/canvasHelpers & infraRoutes: coleta jogadores para Story Card e valida hosts do proxy de avatar', () => {
+  const steamAvatar = 'https://avatars.steamstatic.com/fef49e7fa7e1997310d705b2a6158ff8dc1cdfeb_full.jpg';
+
+  // Antes dos times sorteados, inclui room.players e initialPlayer sem cair em mock
+  const lobbyPlayers = collectStoryPlayers({
+    room: {
+      teamA: [],
+      teamB: [],
+      players: [{ id: 'p1', steamId: '76561198000000001', nick: 'Alex', level: 18, avatar: '🎯' }],
+    },
+    initialPlayer: {
+      id: 'p1',
+      steamId: '76561198000000001',
+      nick: 'Alex',
+      level: 18,
+      avatar: steamAvatar,
+    },
+  });
+
+  assert.equal(lobbyPlayers.length, 1);
+  assert.equal(lobbyPlayers[0].avatar, steamAvatar);
+
+  // Sem sala, ainda inclui initialPlayer para Story Card do perfil
+  const profileOnly = collectStoryPlayers({
+    room: null,
+    initialPlayer: { id: 'me', steamId: '76561198000000002', nick: 'Nunes', avatar: steamAvatar },
+  });
+  assert.equal(profileOnly.length, 1);
+  assert.equal(profileOnly[0].nick, 'Nunes');
+
+  assert.equal(isImageUrl(steamAvatar), true);
+  assert.equal(isImageUrl('🎯'), false);
+  assert.equal(buildAvatarProxyUrl(steamAvatar), `/api/avatar-proxy?url=${encodeURIComponent(steamAvatar)}`);
+
+  assert.equal(isAllowedAvatarProxyUrl(steamAvatar), true);
+  assert.equal(isAllowedAvatarProxyUrl('https://avatars.akamai.steamstatic.com/test_full.jpg'), true);
+  assert.equal(isAllowedAvatarProxyUrl('http://avatars.steamstatic.com/test.jpg'), false);
+  assert.equal(isAllowedAvatarProxyUrl('https://169.254.169.254/latest/meta-data/'), false);
+  assert.equal(isAllowedAvatarProxyUrl('https://user:pass@avatars.steamstatic.com/test.jpg'), false);
 });

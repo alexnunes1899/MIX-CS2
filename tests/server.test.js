@@ -86,6 +86,17 @@ test('HTTP + Socket.IO server integration suite', async (t) => {
     assert.ok(html.includes('&lt;script&gt;alert(1)&lt;/script&gt;'));
   });
 
+  await t.test('GET /api/avatar-proxy rejeita URLs inválidas ou fora da allowlist contra SSRF', async () => {
+    const missing = await fetch(`${baseUrl}/api/avatar-proxy`);
+    assert.equal(missing.status, 400);
+
+    const evil = await fetch(`${baseUrl}/api/avatar-proxy?url=${encodeURIComponent('http://127.0.0.1:3001/api/admin/backup')}`);
+    assert.equal(evil.status, 400);
+
+    const untrusted = await fetch(`${baseUrl}/api/avatar-proxy?url=${encodeURIComponent('https://evil.example/avatar.png')}`);
+    assert.equal(untrusted.status, 400);
+  });
+
   await t.test('Endpoints admin exigem ADMIN_API_KEY válida e liberam backup quando autorizados', async () => {
     const unauthCfg = await fetch(`${baseUrl}/api/discord/bot/config`, {
       method: 'POST',
