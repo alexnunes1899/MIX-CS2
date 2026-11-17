@@ -1698,7 +1698,7 @@ pause
                     </span>
                   </div>
                   <p className="text-xs text-slate-300 leading-relaxed">
-                    Treine granadas, <code className="text-amber-300 font-mono">noclip</code>, câmera lenta (<code className="font-mono">K/I</code>) e os 5 spawns competitivos da base TR (Mirage, Inferno, Dust 2, Ancient e Anubis).
+                    Treine granadas, <code className="text-amber-300 font-mono">noclip</code>, câmera lenta (<code className="font-mono">K/I</code>) e os 5 spawns competitivos da base TR nos <strong>12 mapas do CS2</strong> (Mirage, Inferno, Dust 2, Ancient, Anubis, Cache, Nuke, Overpass, Vertigo, Train, Office e Italy).
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <a

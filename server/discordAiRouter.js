@@ -15,6 +15,8 @@ const MAP_ALIASES = [
   { key: 'overpass', patterns: ['overpass', 'ovp', 'de_overpass'] },
   { key: 'train', patterns: ['train', 'trn', 'de_train'] },
   { key: 'cache', patterns: ['cache', 'cac', 'de_cache'] },
+  { key: 'office', patterns: ['office', 'ofc', 'cs_office'] },
+  { key: 'italy', patterns: ['italy', 'itl', 'cs_italy'] },
 ];
 
 const MAP_TACTICAL_TIPS = {
@@ -457,7 +459,7 @@ export function buildDeterministicCoachReply(query, context) {
         `• **\`N\`** — Voar (\`noclip\`) • **\`O\`** — Kit AWP + Colete + Granadas\n` +
         `• **\`K\` / \`I\`** — Câmera lenta (\`0.3x\`) / Velocidade normal (\`1.0x\`)\n` +
         `• **\`U\`** — Reiniciar round • **\`L\`** — Raio-X modelos\n` +
-        `• **\`Numpad 1–5\`** — 5 spawns TR (\`mirage\`, \`inferno\`, \`dust2\`, \`ancient\`, \`anubis\`)\n` +
+        `• **\`Numpad 1–5\`** — 5 spawns TR nos 12 mapas (\`mirage\`, \`inferno\`, \`dust2\`, \`ancient\`, \`anubis\`, \`cache\`, \`nuke\`, \`overpass\`, \`vertigo\`, \`train\`, \`office\`, \`italy\`)\n` +
         `• **\`reset\`** — Limpa as teclas do Numpad e recarrega sua \`autoexec\``,
     };
   }

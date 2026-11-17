@@ -754,7 +754,7 @@ export default function GrenadePlaybookModal({
                   <h3 className="text-sm font-black text-white flex items-center gap-2 flex-wrap">
                     <span>Pack Treino Completo LXN • Source 2</span>
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                      5 Mapas + Spawns Numpad
+                      12 Mapas + Spawns Numpad
                     </span>
                   </h3>
                   <p className="text-xs text-slate-300 mt-1 leading-relaxed">

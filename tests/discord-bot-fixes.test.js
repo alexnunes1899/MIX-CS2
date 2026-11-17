@@ -741,7 +741,13 @@ test('Pack Treino Completo LXN: shared/treinoCfg, AI Q&A e anexos do Discord (!t
   const defaultCfg = buildTreinoCfg();
   assert.match(defaultCfg, /bind "p" "sv_rethrow_last_grenade"/);
   assert.match(defaultCfg, /alias "mirage_s1"/);
-  assert.match(defaultCfg, /alias "anubis_s5"/);
+  assert.match(defaultCfg, /alias "cache_s1"/);
+  assert.match(defaultCfg, /alias "nuke_s5"/);
+  assert.match(defaultCfg, /alias "overpass_s1"/);
+  assert.match(defaultCfg, /alias "vertigo_s1"/);
+  assert.match(defaultCfg, /alias "train_s1"/);
+  assert.match(defaultCfg, /alias "office_s1"/);
+  assert.match(defaultCfg, /alias "italy_s5"/);
   assert.match(defaultCfg, /alias "reset" "unbind KP_1;.*exec autoexec;/);
 
   const customCfg = buildTreinoCfg({
@@ -752,9 +758,14 @@ test('Pack Treino Completo LXN: shared/treinoCfg, AI Q&A e anexos do Discord (!t
   assert.match(customCfg, /bind "altquit" "sv_rethrow_last_grenade"/);
   assert.match(customCfg, /bind "v" "noclip"/);
   assert.match(customCfg, /exec minha_cfgdrop;/);
-  assert.equal(buildTreinoLeiaMeMd({ rethrow: 'alt' }).includes('**ALT**'), true);
+  const guiaMd = buildTreinoLeiaMeMd({ rethrow: 'alt' });
+  assert.equal(guiaMd.includes('**ALT**'), true);
+  assert.equal(guiaMd.includes('**12 mapas do CS2**'), true);
   assert.match(buildTreinoRconCommands(), /sv_cheats 1/);
   assert.equal(resolveTreinoMapKey('d2'), 'dust2');
+  assert.equal(resolveTreinoMapKey('ovp'), 'overpass');
+  assert.equal(resolveTreinoMapKey('office'), 'office');
+  assert.equal(resolveTreinoMapKey('italy'), 'italy');
 
   const coachKeyReply = buildDeterministicCoachReply('qual tecla repete a smoke no treino?', {});
   assert.match(coachKeyReply.body, /Repetir última granada/);

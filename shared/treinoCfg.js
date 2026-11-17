@@ -1,5 +1,5 @@
 /**
- * CS2 Mix Hub • Gerador Oficial do Pacote de Treino Completo LXN (Source 2)
+ * CS2 Mix Hub • Gerador Oficial do Pacote de Treino Completo LXN (Source 2 - 12 Mapas CS2)
  * Compartilhado entre Bot do Discord, Endpoints HTTP e Interface Web.
  */
 
@@ -98,6 +98,97 @@ export const TREINO_MAPS = Object.freeze([
       'setpos -448.00 -1600.00 64.03; setang 0.00 90.00 0.00',
     ],
   },
+  {
+    id: 'cache',
+    name: 'Cache',
+    emoji: '☢️',
+    aliases: ['de_cache', 'cache', 'cac'],
+    spawns: [
+      'setpos 2944.00 384.00 1716.03; setang 0.00 180.00 0.00',
+      'setpos 2976.00 544.00 1716.03; setang 0.00 170.00 0.00',
+      'setpos 3072.00 384.00 1716.03; setang 0.00 180.00 0.00',
+      'setpos 2976.00 224.00 1716.03; setang 0.00 -170.00 0.00',
+      'setpos 3168.00 384.00 1716.03; setang 0.00 180.00 0.00',
+    ],
+  },
+  {
+    id: 'nuke',
+    name: 'Nuke',
+    emoji: '⚡',
+    aliases: ['de_nuke', 'nuke', 'nuk'],
+    spawns: [
+      'setpos -1536.00 -1024.00 -415.97; setang 0.00 15.00 0.00',
+      'setpos -1536.00 -896.00 -415.97; setang 0.00 25.00 0.00',
+      'setpos -1664.00 -960.00 -415.97; setang 0.00 15.00 0.00',
+      'setpos -1632.00 -1088.00 -415.97; setang 0.00 10.00 0.00',
+      'setpos -1760.00 -960.00 -415.97; setang 0.00 15.00 0.00',
+    ],
+  },
+  {
+    id: 'overpass',
+    name: 'Overpass',
+    emoji: '🌉',
+    aliases: ['de_overpass', 'overpass', 'ovp'],
+    spawns: [
+      'setpos -1312.00 -3008.00 120.03; setang 0.00 75.00 0.00',
+      'setpos -1216.00 -3072.00 120.03; setang 0.00 65.00 0.00',
+      'setpos -1344.00 -3136.00 120.03; setang 0.00 75.00 0.00',
+      'setpos -1440.00 -3072.00 120.03; setang 0.00 85.00 0.00',
+      'setpos -1376.00 -3232.00 120.03; setang 0.00 75.00 0.00',
+    ],
+  },
+  {
+    id: 'vertigo',
+    name: 'Vertigo',
+    emoji: '🏗️',
+    aliases: ['de_vertigo', 'vertigo', 'vrg'],
+    spawns: [
+      'setpos -1120.00 -1056.00 11496.03; setang 0.00 55.00 0.00',
+      'setpos -1216.00 -1024.00 11496.03; setang 0.00 65.00 0.00',
+      'setpos -1216.00 -1152.00 11496.03; setang 0.00 55.00 0.00',
+      'setpos -1312.00 -1088.00 11496.03; setang 0.00 75.00 0.00',
+      'setpos -1312.00 -1216.00 11496.03; setang 0.00 55.00 0.00',
+    ],
+  },
+  {
+    id: 'train',
+    name: 'Train',
+    emoji: '🚂',
+    aliases: ['de_train', 'train', 'trn'],
+    spawns: [
+      'setpos -1632.00 1344.00 -207.97; setang 0.00 -15.00 0.00',
+      'setpos -1632.00 1472.00 -207.97; setang 0.00 -10.00 0.00',
+      'setpos -1728.00 1344.00 -207.97; setang 0.00 -15.00 0.00',
+      'setpos -1664.00 1216.00 -207.97; setang 0.00 -25.00 0.00',
+      'setpos -1824.00 1344.00 -207.97; setang 0.00 -15.00 0.00',
+    ],
+  },
+  {
+    id: 'office',
+    name: 'Office',
+    emoji: '🏢',
+    aliases: ['cs_office', 'office', 'ofc'],
+    spawns: [
+      'setpos 1216.00 768.00 -159.97; setang 0.00 180.00 0.00',
+      'setpos 1216.00 896.00 -159.97; setang 0.00 -170.00 0.00',
+      'setpos 1312.00 832.00 -159.97; setang 0.00 180.00 0.00',
+      'setpos 1280.00 704.00 -159.97; setang 0.00 175.00 0.00',
+      'setpos 1408.00 832.00 -159.97; setang 0.00 180.00 0.00',
+    ],
+  },
+  {
+    id: 'italy',
+    name: 'Italy',
+    emoji: '🏘️',
+    aliases: ['cs_italy', 'italy', 'itl'],
+    spawns: [
+      'setpos -128.00 1824.00 160.03; setang 0.00 -90.00 0.00',
+      'setpos -224.00 1856.00 160.03; setang 0.00 -80.00 0.00',
+      'setpos -160.00 1920.00 160.03; setang 0.00 -90.00 0.00',
+      'setpos -64.00 1888.00 160.03; setang 0.00 -100.00 0.00',
+      'setpos -160.00 2016.00 160.03; setang 0.00 -90.00 0.00',
+    ],
+  },
 ]);
 
 export function sanitizeCfgBindKey(raw, fallback) {
@@ -149,7 +240,7 @@ export function resolveTreinoBinds(options = {}) {
 export function buildTreinoCfg(options = {}) {
   const b = resolveTreinoBinds(options);
 
-  const mapBlocks = TREINO_MAPS.map((map) => {
+  const mapBlocks = TREINO_MAPS.map((map, mapIdx) => {
     const spawnAliases = map.spawns
       .map((coords, idx) => `alias "${map.id}_s${idx + 1}" "${coords}"`)
       .join('\n');
@@ -157,14 +248,14 @@ export function buildTreinoCfg(options = {}) {
       .map((_, idx) => `bind KP_${idx + 1} ${map.id}_s${idx + 1}`)
       .join('; ');
     return (
-      `// ${map.name}\n` +
+      `// ${mapIdx + 1}. ${map.name}\n` +
       `${spawnAliases}\n` +
       `alias "${map.id}" "${kpBindings}; echo [SPAWNS ${map.name.toUpperCase()} TR CARREGADOS NO NUMPAD 1-5]"`
     );
   }).join('\n\n');
 
   return [
-    '// ====== TREINO COMPLETO LXN (ARQUIVO UNICO - VERIFICADO CS2) ======',
+    '// ====== TREINO COMPLETO LXN (ARQUIVO UNICO - TODOS OS MAPAS CS2) ======',
     '',
     '// Ativar cheats',
     'sv_cheats 1',
@@ -230,19 +321,22 @@ export function buildTreinoCfg(options = {}) {
     'clear',
     '',
     '// Mensagem de boas-vindas',
-    'echo "====================================================="',
+    'echo "========================================================================="',
     'echo "CS2 MIX HUB • TREINO COMPLETO LXN - BOM TREINO!"',
-    'echo "Spawns TR (Numpad 1-5): digite mirage, inferno, dust2, ancient ou anubis"',
+    'echo "Mapas disponiveis (Numpad 1-5): mirage, inferno, dust2, ancient, anubis,"',
+    'echo "cache, nuke, overpass, vertigo, train, office ou italy"',
     'echo "Para voltar ao normal depois do treino: digite reset"',
-    'echo "====================================================="',
+    'echo "========================================================================="',
   ].join('\n');
 }
 
 export function buildTreinoLeiaMeMd(options = {}) {
   const b = resolveTreinoBinds(options);
-  return `# Guia de Uso — Configuração de Treino CS2 (LXN • CS2 Mix Hub)
+  const mapRows = TREINO_MAPS.map((m) => `| **${m.name}** | \`${m.id}\` |`).join('\n');
 
-Este pacote contém o arquivo \`treino.cfg\` completo (modo treino, granadas infinitas, trajetória em tempo real e teleporte instantâneo para os 5 spawns competitivos da base TR nos principais mapas).
+  return `# Guia de Uso — Configuração de Treino CS2 Completa (LXN • CS2 Mix Hub)
+
+Este pacote contém o arquivo **\`treino.cfg\`** unificado com modo treino, granadas infinitas, câmera de trajetória e teleporte instantâneo para os **5 spawns da base TR** em **${TREINO_MAPS.length} mapas do CS2**.
 
 ---
 
@@ -252,26 +346,25 @@ Este pacote contém o arquivo \`treino.cfg\` completo (modo treino, granadas inf
    \`\`\`text
    C:\\Program Files (x86)\\Steam\\steamapps\\common\\Counter-Strike Global Offensive\\game\\csgo\\cfg\\
    \`\`\`
-   *(Caso sua Steam esteja em outro disco, abra a Steam > botão direito no CS2 > **Gerenciar > Explorar arquivos locais** e navegue até \`game\\csgo\\cfg\` — ou use o instalador 1-clique no site).*
+   *(Caso sua Steam esteja em outro disco, abra a Steam > clique com o botão direito no CS2 > **Gerenciar > Explorar arquivos locais** e navegue até \`game\\csgo\\cfg\` — ou use o instalador 1-clique no site).*
 
 ---
 
 ## 2. Como Ativar no Jogo
 
-1. Abra uma partida local no modo **Treino** (com *Granadas Infinitas* e *Câmera de Granada* desmarcados no menu, pois o script configura tudo automaticamente).
+1. Entre em uma partida local no modo **Treino**.
 2. Abra o console (\`'\`) e digite:
    \`\`\`text
    exec treino
    \`\`\`
-3. Digite o nome do mapa em que você está para carregar os 5 spawns da base TR no teclado numérico:
-   - \`mirage\`
-   - \`inferno\`
-   - \`dust2\`
-   - \`ancient\`
-   - \`anubis\`
+3. Em seguida, digite o comando correspondente ao mapa em que você está para vincular os 5 spawns da base TR nas teclas **1 a 5 do Numpad**:
 
-> **Dica rápida:** Execute tudo em um comando só, por exemplo:
-> \`exec treino; mirage\`
+| Mapa | Comando no Console |
+| :--- | :--- |
+${mapRows}
+
+> **Dica rápida:** Você pode ativar o treino e o mapa na mesma linha usando ponto e vírgula (\`;\`), por exemplo:
+> \`exec treino; cache\` ou \`exec treino; anubis\`
 
 ---
 
@@ -295,7 +388,7 @@ Este pacote contém o arquivo \`treino.cfg\` completo (modo treino, granadas inf
 | **${b.rethrow.toUpperCase()}** | \`sv_rethrow_last_grenade\` | Repete exatamente a última granada lançada |
 | **${b.noclip.toUpperCase()}** | \`noclip\` | Ativa/desativa voo livre pelo mapa |
 | **${b.giveKit.toUpperCase()}** | \`give ...\` | Entrega AWP, colete com capacete e kit completo de granadas |
-| **${b.slowMo.toUpperCase()}** | \`host_timescale 0.3\` | Deixa o jogo em câmera lenta |
+| **${b.slowMo.toUpperCase()}** | \`host_timescale 0.3\` | Deixa o jogo em câmera lenta (ideal para acompanhar trajetórias) |
 | **${b.normalSpeed.toUpperCase()}** | \`host_timescale 1\` | Retorna a velocidade do jogo ao normal |
 | **${b.restart.toUpperCase()}** | \`mp_restartgame 1\` | Reinicia a rodada imediatamente |
 | **${b.xray.toUpperCase()}** | \`toggle r_drawothermodels 2 1\` | Ativa/desativa visualização de modelos através das paredes |
@@ -304,8 +397,8 @@ Este pacote contém o arquivo \`treino.cfg\` completo (modo treino, granadas inf
 
 ## 4. Como Voltar ao Normal Após o Treino
 
-- **Se fechar o CS2:** As configurações de treino ficam apenas na sessão ativa.
-- **Sem fechar o jogo:** Abra o console (\`'\`) e digite:
+- **Se fechar o CS2:** As configurações de treino ficam apenas na sessão atual.
+- **Se for jogar Competitivo, Premier ou Mix sem fechar o jogo:** Abra o console (\`'\`) e digite:
   \`\`\`text
   reset
   \`\`\`

@@ -3540,13 +3540,13 @@ export class DiscordBotManager {
           inline: true,
         },
         {
-          name: '🎯 Spawns TR (Numpad 1–5)',
+          name: '🎯 Spawns TR — 12 Mapas (Numpad 1–5)',
           value:
             'Digite o mapa no console:\n' +
-            '`mirage` • `inferno` • `dust2`\n' +
-            '`ancient` • `anubis`\n\n' +
-            '• **`Numpad 1–5`** — Teleporte\n' +
-            '• **`reset`** — Voltar ao normal',
+            '`mirage` • `inferno` • `dust2` • `ancient`\n' +
+            '`anubis` • `cache` • `nuke` • `overpass`\n' +
+            '`vertigo` • `train` • `office` • `italy`\n\n' +
+            '• **`Numpad 1–5`** — Teleporte • **`reset`** — Sair',
           inline: true,
         }
       )
