@@ -775,17 +775,28 @@ test('Pack Treino Completo LXN: shared/treinoCfg, AI Q&A e anexos do Discord (!t
   assert.equal(detectNaturalIntent('quero arquivo de treino na ancient').mapQuery, 'ancient');
 
   const bot = createBot(t);
-  let treinoReply = null;
+  const sentSequence = [];
   await bot.prefixTreino(
-    { reply: async (p) => { treinoReply = p; } },
+    {
+      reply: async (p) => { sentSequence.push({ kind: 'reply', payload: p }); return p; },
+      channel: {
+        send: async (p) => { sentSequence.push({ kind: 'channel', payload: p }); return p; },
+      },
+    },
     'ancient'
   );
-  assert.equal(treinoReply.files.length, 2);
-  assert.equal(treinoReply.files[0].name, 'treino.cfg');
-  assert.equal(treinoReply.files[1].name, 'LEIA-ME-Treino.md');
-  const treinoJson = treinoReply.embeds[0].toJSON();
-  assert.ok(treinoJson.fields.some((f) => /exec treino; ancient/.test(f.value)));
-  const buttons = treinoReply.components[0].components.map((c) => c.toJSON());
+  assert.equal(sentSequence.length, 2);
+  // 1ª mensagem: Guia de instalação em texto puro (sem anexos acima)
+  assert.equal(sentSequence[0].kind, 'reply');
+  assert.equal(sentSequence[0].payload.files, undefined);
+  assert.match(sentSequence[0].payload.content, /Instalação/);
+  assert.match(sentSequence[0].payload.content, /exec treino; ancient/);
+  // 2ª mensagem (última, abaixo do guia): arquivos .cfg + .txt e botões
+  assert.equal(sentSequence[1].kind, 'channel');
+  assert.equal(sentSequence[1].payload.files.length, 2);
+  assert.equal(sentSequence[1].payload.files[0].name, 'treino.cfg');
+  assert.equal(sentSequence[1].payload.files[1].name, 'LEIA-ME-Treino.txt');
+  const buttons = sentSequence[1].payload.components[0].components.map((c) => c.toJSON());
   assert.ok(buttons.some((b) => String(b.url || '').includes('/?treino=1')));
   assert.ok(buttons.some((b) => b.custom_id === 'treino_rcon_apply'));
 

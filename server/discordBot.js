@@ -3501,55 +3501,44 @@ export class DiscordBotManager {
     return message.reply({ embeds: [embed] });
   }
 
-  buildTreinoPayload(mapQuery = '') {
+  buildTreinoGuidePayload(mapQuery = '') {
     const mapKey = resolveTreinoMapKey(mapQuery);
     const mapObj = TREINO_MAPS.find((m) => m.id === mapKey) || null;
     const activationCmd = mapObj ? `exec treino; ${mapObj.id}` : 'exec treino; mirage';
+    const titleSuffix = mapObj ? ` (${mapObj.emoji} ${mapObj.name})` : '';
 
+    const guideText = [
+      `## 🎯 PACK DE TREINO COMPLETO CS2 • LXN${titleSuffix}`,
+      '',
+      '**1️⃣ Instalação**',
+      '• Baixe o arquivo `treino.cfg` **enviado abaixo** e salve na pasta `cfg` do CS2:',
+      '`C:\\Program Files (x86)\\Steam\\steamapps\\common\\Counter-Strike Global Offensive\\game\\csgo\\cfg\\treino.cfg`',
+      '*(Ou clique no botão **Personalizar / Instalar 1-Clique** abaixo para instalar automático via PowerShell.)*',
+      '',
+      '**2️⃣ Como Ativar no Jogo**',
+      '• Abra um mapa no modo **Treino**, abra o console (`\'`) e digite:',
+      '```cfg',
+      activationCmd,
+      '```',
+      '• **Mirage (12 spawns por fileira):** `1–4` Frente | `5–8` Meio | `9, 0, Del, Enter` Fundo/A',
+      '• **Competitivos (`Numpad 1–0`):** `cache`, `anubis`, `inferno`, `dust2`, `ancient`, `nuke`, `overpass`, `vertigo`, `train`',
+      '• **Reféns (`Numpad 1–5`):** `office`, `italy`',
+      '',
+      '**3️⃣ Atalhos do Treino**',
+      '• **`P`** Repetir granada • **`N`** Voar (`noclip`) • **`O`** Kit AWP + Granadas',
+      '• **`K`** / **`I`** Câmera lenta `0.3x` / Normal • **`U`** Reiniciar • **`L`** Raio-X modelos',
+      '• **`reset`** Limpa todas as teclas do Numpad (`KP_1–KP_0, Del, Enter`) e recarrega sua `autoexec`',
+    ].join('\n');
+
+    return { content: guideText };
+  }
+
+  buildTreinoDownloadPayload() {
     const cfgBuffer = Buffer.from(buildTreinoCfg(), 'utf-8');
     const leiaMeBuffer = Buffer.from(buildTreinoLeiaMeMd(), 'utf-8');
 
     const cfgAttachment = new AttachmentBuilder(cfgBuffer, { name: 'treino.cfg' });
-    const guideAttachment = new AttachmentBuilder(leiaMeBuffer, { name: 'LEIA-ME-Treino.md' });
-
-    const embed = new EmbedBuilder()
-      .setAuthor({ name: 'CS2 MIX HUB • PACK TREINO COMPLETO LXN' })
-      .setTitle(
-        mapObj
-          ? `🎯 PACK DE TREINO CS2 (${mapObj.emoji} ${mapObj.name.toUpperCase()})`
-          : '🎯 PACK DE TREINO COMPLETO CS2 • LXN (SOURCE 2)'
-      )
-      .setDescription(
-        `Baixe o arquivo **` + 'treino.cfg' + `** em anexo e salve na pasta do CS2:\n` +
-        `\`...\\Counter-Strike Global Offensive\\game\\csgo\\cfg\\treino.cfg\``
-      )
-      .addFields(
-        {
-          name: '⚡ Comando no Console (\'\')',
-          value: `\`\`\`cfg\n${activationCmd}\n\`\`\``,
-          inline: false,
-        },
-        {
-          name: '⌨️ Atalhos Rápidos',
-          value:
-            '• **`P`** — Repetir granada\n' +
-            '• **`N`** — Noclip (voar)\n' +
-            '• **`O`** — Kit AWP + Granadas\n' +
-            '• **`K` / `I`** — Slow `0.3x` / Normal\n' +
-            '• **`U`** — Restart • **`L`** — Raio-X',
-          inline: true,
-        },
-        {
-          name: '🎯 Spawns TR — 12 Mapas',
-          value:
-            '**Mirage (12 spawns):** `1–4` Frente | `5–8` Meio | `9, 0, Del, Enter` Fundo/A\n' +
-            '**Competitivos (10 • Num `1`–`0`):** `cache`, `anubis`, `inferno`, `dust2`, `ancient`, `nuke`, `overpass`, `vertigo`, `train`\n' +
-            '**Reféns (5 • Num `1`–`5`):** `office`, `italy` • **`reset`** p/ sair',
-          inline: true,
-        }
-      )
-      .setColor(0xf59e0b)
-      .setFooter({ text: 'CS2 Mix Hub • Pacote LXN Verificado • Instalador 1-Clique no Site' });
+    const guideTxtAttachment = new AttachmentBuilder(leiaMeBuffer, { name: 'LEIA-ME-Treino.txt' });
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
@@ -3565,14 +3554,22 @@ export class DiscordBotManager {
     );
 
     return {
-      embeds: [embed],
-      files: [cfgAttachment, guideAttachment],
+      content: '📥 **Arquivos para download abaixo** *(salve o `treino.cfg` na pasta `cfg` do CS2)*:',
+      files: [cfgAttachment, guideTxtAttachment],
       components: [row],
     };
   }
 
   async prefixTreino(message, mapQuery = '') {
-    return message.reply(this.buildTreinoPayload(mapQuery));
+    const guidePayload = this.buildTreinoGuidePayload(mapQuery);
+    const downloadPayload = this.buildTreinoDownloadPayload();
+
+    const firstMsg = await message.reply(guidePayload);
+    if (message.channel?.send) {
+      await message.channel.send(downloadPayload);
+      return firstMsg;
+    }
+    return message.reply(downloadPayload);
   }
 
   async prefixCoinflip(message) {
@@ -7696,7 +7693,8 @@ export class DiscordBotManager {
     }
     if (commandName === 'treino') {
       const mapArg = interaction.options.getString('mapa') || '';
-      return interaction.reply(this.buildTreinoPayload(mapArg));
+      await interaction.reply(this.buildTreinoGuidePayload(mapArg));
+      return interaction.followUp(this.buildTreinoDownloadPayload());
     }
     if (commandName === 'moeda') {
       const isHeads = Math.random() < 0.5;
