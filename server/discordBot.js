@@ -2728,26 +2728,31 @@ export class DiscordBotManager {
         .setEmoji('📡')
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
-        .setLabel('Hub Web')
-        .setEmoji('🌐')
-        .setStyle(ButtonStyle.Link)
-        .setURL(this.getPublicWebUrl('/'))
+        .setCustomId('panel_ranking')
+        .setLabel('Hall da Fama')
+        .setEmoji('🏆')
+        .setStyle(ButtonStyle.Secondary)
     );
 
     const row2 = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setCustomId('panel_ranking')
-        .setLabel('Hall da Fama')
-        .setEmoji('🏆')
-        .setStyle(ButtonStyle.Secondary),
+        .setLabel('Hub Web')
+        .setEmoji('🌐')
+        .setStyle(ButtonStyle.Link)
+        .setURL(this.getPublicWebUrl('/')),
       new ButtonBuilder()
-        .setLabel('Integração Servidor Privado')
+        .setLabel('Treino LXN')
+        .setEmoji('🎯')
+        .setStyle(ButtonStyle.Link)
+        .setURL(this.getPublicWebUrl('/?treino=1')),
+      new ButtonBuilder()
+        .setLabel('Servidor Privado')
         .setEmoji('🔌')
         .setStyle(ButtonStyle.Link)
         .setURL(this.getPublicWebUrl('/?view=servers&tab=integracao')),
       new ButtonBuilder()
         .setCustomId('panel_help')
-        .setLabel('Como Funciona?')
+        .setLabel('Ajuda')
         .setEmoji('📖')
         .setStyle(ButtonStyle.Secondary)
     );
@@ -3515,23 +3520,33 @@ export class DiscordBotManager {
           : '🎯 PACK DE TREINO COMPLETO CS2 • LXN (SOURCE 2)'
       )
       .setDescription(
-        `Baixe o arquivo **` + 'treino.cfg' + `** anexado acima e salve na pasta \`cfg\` do CS2:\n` +
-        `\`...\\Counter-Strike Global Offensive\\game\\csgo\\cfg\\treino.cfg\`\n\n` +
-        `**1️⃣ Como ativar no console (\`'\`):**\n` +
-        `\`\`\`cfg\n${activationCmd}\n\`\`\`\n` +
-        `**2️⃣ Spawns TR Instantâneos (Numpad \`1\` a \`5\`):**\n` +
-        `Digite no console: \`mirage\`, \`inferno\`, \`dust2\`, \`ancient\` ou \`anubis\` (Num Lock ligado).\n` +
-        `Depois do treino, digite **\`reset\`** no console para limpar e recarregar sua \`autoexec\`.`
+        `Baixe o arquivo **` + 'treino.cfg' + `** em anexo e salve na pasta do CS2:\n` +
+        `\`...\\Counter-Strike Global Offensive\\game\\csgo\\cfg\\treino.cfg\``
       )
       .addFields(
         {
-          name: '💨 Utilitários & Câmera',
-          value: '`P` Repetir granada\n`N` Noclip (voar)\n`K` Câmera lenta `0.3x`\n`I` Velocidade normal',
+          name: '⚡ Comando no Console (\'\')',
+          value: `\`\`\`cfg\n${activationCmd}\n\`\`\``,
+          inline: false,
+        },
+        {
+          name: '⌨️ Atalhos Rápidos',
+          value:
+            '• **`P`** — Repetir granada\n' +
+            '• **`N`** — Noclip (voar)\n' +
+            '• **`O`** — Kit AWP + Granadas\n' +
+            '• **`K` / `I`** — Slow `0.3x` / Normal\n' +
+            '• **`U`** — Restart • **`L`** — Raio-X',
           inline: true,
         },
         {
-          name: '🔫 Itens & Controle',
-          value: '`O` Kit AWP + Granadas\n`U` Reiniciar round\n`L` Raio-X modelos\n`reset` Sair do treino',
+          name: '🎯 Spawns TR (Numpad 1–5)',
+          value:
+            'Digite o mapa no console:\n' +
+            '`mirage` • `inferno` • `dust2`\n' +
+            '`ancient` • `anubis`\n\n' +
+            '• **`Numpad 1–5`** — Teleporte\n' +
+            '• **`reset`** — Voltar ao normal',
           inline: true,
         }
       )
@@ -3540,13 +3555,13 @@ export class DiscordBotManager {
 
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setLabel('Personalizar & Instalar no Site')
+        .setLabel('Personalizar / Instalar 1-Clique')
         .setEmoji('🎛️')
         .setStyle(ButtonStyle.Link)
         .setURL(this.getPublicWebUrl('/?treino=1')),
       new ButtonBuilder()
         .setCustomId('treino_rcon_apply')
-        .setLabel('Aplicar Treino via RCON')
+        .setLabel('Aplicar via RCON')
         .setEmoji('⚡')
         .setStyle(ButtonStyle.Secondary)
     );
@@ -3601,56 +3616,90 @@ export class DiscordBotManager {
     return message.reply({ embeds: [embed] });
   }
 
-  async prefixHelp(message) {
+  buildHelpPayload() {
     const embed = new EmbedBuilder()
-      .setTitle('📖 GUIA DE COMANDOS • CS2 MIX HUB')
+      .setAuthor({ name: 'CS2 MIX HUB • CENTRAL DE COMANDOS' })
+      .setTitle('📖 GUIA RÁPIDO DO BOT')
       .setColor(0x38bdf8)
-      .setDescription(
-        `Você pode usar o prefixo \`!\` ou barra \`/\` para tudo:\n\n` +
-          `• \`!painel\` — Painel fixo com botão verde para abrir mix\n` +
-          `• \`!mix\` ou \`!criar\` — Abre uma nova fila 5v5 com botões interativos e modo Equilibrado/Capitães\n` +
-          `• \`!entrar\` / \`!sair\` — Entra no lobby (ou Fila de Reserva até 3/3 quando 10/10)\n` +
-          `• \`!sortear\` — Sorteio inteligente e balanceamento snake-draft\n` +
-          `• \`!roleta\` — Roleta rápida de mapas justa (não repete até sair todos os 7 mapas)\n` +
-          `• \`!escolher [mapa]\` ou \`!mapa [nome]\` — Escolhe diretamente o mapa do mix (ex: \`!mapa mirage\` ou menu interativo)\n` +
-          `• \`!veto\` — Pick & Ban oficial da Valve com escolha de lados CT/TR\n` +
-          `• \`!revanche\` — Inicia revanche imediata mantendo os 10 jogadores com lados invertidos\n` +
-          `• \`!vitoria [A|B] [placar]\` — Registra a vitória no ranking, calcula MVP/Bagre via GSI (ou abre voto no Bagre)\n` +
-          `• \`!aovivo\` [parar] — Monitorar Partida com auto-atualização round a round (ou \`!ao vivo\`)\n` +
-          `• \`!gsi\` — Instalação 1-comando ou download direto do \`.cfg\` do Valve GSI (zero \`.bat\`)\n` +
-          `• \`!historico [qtde]\` — Histórico das últimas partidas finalizadas\n` +
-          `• \`!x1 @amigo\` — Duelo direto Head-to-Head e sinergia de duo\n` +
-          `• \`!mapas\` — Estatísticas dos mapas mais disputados no servidor\n` +
-          `• \`!status-server\` — Consulta ping, mapa e players online no CS2 (A2S_INFO)\n` +
-          `• \`!ranking\` / \`!top\` — Hall da Fama e Top 10 de vitórias e MVPs\n` +
-          `• \`!sub [@antigo] @novo\` — Substitui um jogador (ou use o botão 🔄 Substituir no lobby)\n` +
-          `• \`!cargo\` — Ativa/desativa notificações do cargo @Mix CS2 quando faltarem vagas\n` +
-          `• \`!stats [@jogador]\` — Perfil competitivo, vitórias reais, conquistas e medalhas de MVP\n` +
-          `• \`!chamada\` / \`!calls [faltando|geral]\` — Verifica quem falta na call ou move/retorna times\n` +
-          `• \`!coach [pergunta]\` / \`/coach\` — Coach & Analista IA com memória da conversa\n` +
-          `• \`!integracao\` — Abre o passo a passo de integração com servidor privado CS2\n` +
-          `• \`!lvl <1-21>\` — Configura seu nível da Gamers Club (GC)\n` +
-          `• \`!smoke [mapa]\` — Lineups de granadas em 10 mapas (Mirage, Inferno, Nuke, D2, Ancient, Anubis, Overpass, Train, Cache, Vertigo)\n` +
-          `• \`!treino\` — CFG completa de treino para console do CS2\n` +
-          `• \`!moeda\` — Sorteio de cara ou coroa para desempates rápidos\n` +
-          `• \`!servidor [ip:porta [senha]]\` — Define ou consulta o IP/senha do servidor CS2\n` +
-          `• \`!steam [link/id]\` — Scanner Steam & Anti-Smurf (horas CS2, VAC bans, idade da conta)\n` +
-          `• \`!att\` ou \`!patchnotes\` — Últimas notas de atualização oficiais do CS2 pela Valve\n` +
-          `• \`!pro\` ou \`!jogos\` — Agenda ao vivo dos times BR e internacionais (PandaScore / Liquipedia)\n` +
-          `• \`!bagre\` — Votação bem-humorada do Bagre da Partida (com contagem real e desduplicação)\n` +
-          `• \`!jogosgratis\` — Radar de jogos grátis para PC da semana (Epic Games & Steam)\n` +
-          `• \`!clip [link]\` — Envia clipes de jogadas da comunidade com votação interativa\n` +
-          `• \`!ofertas [busca]\` — Radar de promoções gamer (KaBuM!, Pichau, Terabyte: GPU, CPU, mesas, cadeiras)`
+      .setDescription('Use com prefixo **`!`**, barra **`/`** ou mencionando **`@Bot`** naturalmente no chat.')
+      .addFields(
+        {
+          name: '🎮 Mix 5v5 & Draft',
+          value:
+            '`!painel` • Painel fixo oficial\n' +
+            '`!mix` / `!criar` • Abrir lobby 5v5\n' +
+            '`!entrar` / `!sair` • Fila ou reserva (3/3)\n' +
+            '`!sortear` • Balanceamento Snake-Draft\n' +
+            '`!sub` / `!revanche` • Troca ou revanche',
+          inline: true,
+        },
+        {
+          name: '🗺️ Mapas & Utilitários',
+          value:
+            '`!veto` • Pick & Ban + escolha de lado\n' +
+            '`!roleta` / `!mapa` • Sortear ou fixar mapa\n' +
+            '`!smoke [mapa]` • Lineups em 10 mapas\n' +
+            '`!treino [mapa]` • Pack LXN (`treino.cfg`)\n' +
+            '`!moeda` • Cara ou Coroa',
+          inline: true,
+        },
+        {
+          name: '📡 Servidor & Ao Vivo',
+          value:
+            '`!integracao` • Guia servidor privado\n' +
+            '`!servidor [ip]` / `!ip` • IP da partida\n' +
+            '`!status-server` • Ping & players (A2S)\n' +
+            '`!gsi` / `!aovivo` • Radar Valve GSI',
+          inline: true,
+        },
+        {
+          name: '🔊 Calls & Perfil',
+          value:
+            '`!calls` • Mover times ou voltar geral\n' +
+            '`!chamada` • Ver quem falta na call\n' +
+            '`!lvl <1-21>` • Definir seu nível GC\n' +
+            '`!stats` / `!cargo` • Perfil e tag @Mix',
+          inline: true,
+        },
+        {
+          name: '🏆 Ranking & Stats',
+          value:
+            '`!vitoria [A|B] [placar]` • Registrar jogo\n' +
+            '`!ranking` / `!historico` • Top & recentes\n' +
+            '`!x1 @amigo` • Confronto direto + duo\n' +
+            '`!mapas` / `!bagre` • Mapas e Bagre',
+          inline: true,
+        },
+        {
+          name: '🤖 IA & Comunidade',
+          value:
+            '`@Bot <pergunta>` / `/coach` • Coach IA\n' +
+            '`!steam <id>` • Anti-Smurf & VAC\n' +
+            '`!att` / `!pro` • Patches CS2 & jogos BR\n' +
+            '`!ofertas` / `!clip` / `!jogosgratis`',
+          inline: true,
+        }
       )
-      .setFooter({ text: 'CS2 Mix Hub • Powered by Discord.js' });
+      .setFooter({ text: 'CS2 Mix Hub • Tudo sincronizado entre Discord e Site' });
+
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
-        .setLabel('Integração Servidor Privado')
+        .setLabel('Servidor Privado (Guia)')
         .setEmoji('🔌')
         .setStyle(ButtonStyle.Link)
-        .setURL(this.getPublicWebUrl('/?view=servers&tab=integracao'))
+        .setURL(this.getPublicWebUrl('/?view=servers&tab=integracao')),
+      new ButtonBuilder()
+        .setLabel('Pack Treino LXN')
+        .setEmoji('🎯')
+        .setStyle(ButtonStyle.Link)
+        .setURL(this.getPublicWebUrl('/?treino=1'))
     );
-    return message.reply({ embeds: [embed], components: [row] });
+
+    return { embeds: [embed], components: [row] };
+  }
+
+  async prefixHelp(message) {
+    return message.reply(this.buildHelpPayload());
   }
 
   buildUserStatsEmbed(targetUser) {
@@ -5754,10 +5803,11 @@ export class DiscordBotManager {
         .setStyle(ButtonStyle.Secondary)
         .setDisabled(total === 0),
       new ButtonBuilder()
-        .setLabel('Integração Servidor Privado')
-        .setEmoji('🔌')
-        .setStyle(ButtonStyle.Link)
-        .setURL(this.getPublicWebUrl('/?view=servers&tab=integracao'))
+        .setCustomId(`mix_voice_check:${mix.id}`)
+        .setLabel('Verificar Calls')
+        .setEmoji('🔊')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(total === 0)
     );
 
     return [row1, row2, row3];
@@ -6052,10 +6102,18 @@ export class DiscordBotManager {
     if (conn) {
       row1.addComponents(
         new ButtonBuilder()
-          .setLabel('Conectar Direto no CS2')
+          .setLabel('Conectar CS2')
           .setEmoji('🚀')
           .setStyle(ButtonStyle.Link)
           .setURL(this.getPublicWebUrl(`/connect?ip=${encodeURIComponent(conn.normalized)}`))
+      );
+    } else {
+      row1.addComponents(
+        new ButtonBuilder()
+          .setLabel('Servidor Privado')
+          .setEmoji('🔌')
+          .setStyle(ButtonStyle.Link)
+          .setURL(this.getPublicWebUrl('/?view=servers&tab=integracao'))
       );
     }
 
@@ -6066,19 +6124,14 @@ export class DiscordBotManager {
         .setEmoji('🏆')
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
-        .setCustomId(`mix_toggle_narration:${mix.id}`)
-        .setLabel(narrOn ? 'Narração: ON' : 'Narração: OFF')
-        .setEmoji(narrOn ? '🎙️' : '🔇')
-        .setStyle(narrOn ? ButtonStyle.Success : ButtonStyle.Secondary),
+        .setCustomId(`mix_voice:${mix.id}`)
+        .setLabel('Mover Calls')
+        .setEmoji('📞')
+        .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId(`mix_sub:${mix.id}`)
         .setLabel('Substituto')
         .setEmoji('🔄')
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
-        .setCustomId(`mix_voice:${mix.id}`)
-        .setLabel('Mover Calls')
-        .setEmoji('📞')
         .setStyle(ButtonStyle.Secondary)
     );
     rows.push(row1);
@@ -6090,15 +6143,15 @@ export class DiscordBotManager {
         .setEmoji('📡')
         .setStyle(ButtonStyle.Success),
       new ButtonBuilder()
-        .setLabel('Acompanhar no Site')
+        .setCustomId(`mix_toggle_narration:${mix.id}`)
+        .setLabel(narrOn ? 'Narração: ON' : 'Narração: OFF')
+        .setEmoji(narrOn ? '🎙️' : '🔇')
+        .setStyle(narrOn ? ButtonStyle.Success : ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setLabel('Abrir no Site')
         .setEmoji('🌐')
         .setStyle(ButtonStyle.Link)
         .setURL(this.getPublicWebUrl(`/?room=${mix.id}`)),
-      new ButtonBuilder()
-        .setLabel('Integração Servidor Privado')
-        .setEmoji('🔌')
-        .setStyle(ButtonStyle.Link)
-        .setURL(this.getPublicWebUrl('/?view=servers&tab=integracao')),
       new ButtonBuilder()
         .setCustomId('panel_create_mix')
         .setLabel('Novo Mix')
@@ -6110,7 +6163,7 @@ export class DiscordBotManager {
     const row3 = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId(`rcon_pause:${mix.id}`)
-        .setLabel('Pausar CS2')
+        .setLabel('Pausar')
         .setEmoji('⏸️')
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
@@ -6120,7 +6173,7 @@ export class DiscordBotManager {
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId(`rcon_live:${mix.id}`)
-        .setLabel('Forçar Live/RR')
+        .setLabel('Live / RR')
         .setEmoji('🔥')
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
@@ -6130,7 +6183,7 @@ export class DiscordBotManager {
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId(`rcon_say_modal:${mix.id}`)
-        .setLabel('Aviso no CS2')
+        .setLabel('Aviso CS2')
         .setEmoji('📢')
         .setStyle(ButtonStyle.Primary)
     );
@@ -7046,10 +7099,31 @@ export class DiscordBotManager {
       });
     }
 
-    // 9. VOICE MOVER
+    // 9. VOICE MOVER & VOICE CHECK
     if (action === 'mix_voice') {
       const result = await this.executeVoiceMover(interaction.guild, mix, interaction.channel);
       return interaction.reply({ content: result.message, ephemeral: false });
+    }
+
+    if (action === 'mix_voice_check') {
+      if (!interaction.guild) {
+        return interaction.reply({ content: '⚠️ Use em um servidor Discord.', ephemeral: true });
+      }
+      const { missing, connected, totalDiscord } = await this.computeMissingVoicePlayers(interaction.guild, mix);
+      if (totalDiscord === 0) {
+        return interaction.reply({ content: 'ℹ️ Nenhum jogador do Discord inscrito ainda.', ephemeral: true });
+      }
+      if (missing.length === 0) {
+        return interaction.reply({
+          content: `🔊 **Todos os ${connected.length}/${totalDiscord} jogadores já estão em call!**`,
+          ephemeral: true,
+        });
+      }
+      const missingTags = missing.map((p) => `<@${p.id}>`).join(' ');
+      return interaction.reply({
+        content: `📢 **Chamada (${connected.length}/${totalDiscord} em call):** faltam ${missingTags} entrar em voz.`,
+        ephemeral: false,
+      });
     }
 
     if (action === 'mix_voice_lobby') {
@@ -8595,37 +8669,7 @@ export class DiscordBotManager {
     return sent;
   }
   async cmdHelp(interaction) {
-    const embed = new EmbedBuilder()
-      .setTitle('📖 GUIA DE COMANDOS • CS2 MIX HUB BOT')
-      .setColor(0x38bdf8)
-      .setDescription(
-        `O bot permite organizar mixes 5v5 completos sem precisar sair do Discord!\n\n` +
-          `**Comandos Principais (use com ! ou /):**\n` +
-          `• \`!painel\` ou \`/painel\` - Cria o painel fixo da comunidade com botão\n` +
-          `• \`!mix\` ou \`/mix criar\` - Inicia uma nova fila de mix 5v5 (suporta Reserva 3/3)\n` +
-          `• \`!fila\` ou \`/mix status\` - Exibe o lobby/fase atual do mix do canal\n` +
-          `• \`!entrar\` / \`!sair\` - Gerencia sua vaga no lobby ou fila de reserva\n` +
-          `• \`!sortear\` - Sorteio snake-draft balanceado por elo (ou use Draft 1v1)\n` +
-          `• \`!roleta\` ou \`/roleta\` - Roleta justa de mapas (sem repetir) ou escolha manual\n` +
-          `• \`!veto\` - Pick & Ban de mapas oficial com escolha de lados CT/TR\n` +
-          `• \`!revanche\` - Inicia revanche com os mesmos 10 jogadores e lados invertidos\n` +
-          `• \`!vitoria [A|B] [placar]\` - Registra a vitória no ranking, computa MVP/Bagre (GSI) ou abre votação\n` +
-          `• \`!bagre\` ou \`/bagre\` - Ranking de Bagre/MVP automático (GSI) ou votação interativa\n` +
-          `• \`!aovivo\` ou \`/aovivo\` - Monitorar Partida ao vivo round a round\n` +
-          `• \`!gsi\` ou \`/gsi\` - Instruções e download do arquivo CFG do Valve GSI\n` +
-          `• \`!servidor [ip:porta]\` / \`!ip\` - Define ou consulta o IP/senha do servidor CS2\n` +
-          `• \`!status-server\` ou \`/status-servidor\` - Consulta ping, mapa e players no servidor CS2\n` +
-          `• \`!historico\` / \`!x1\` / \`!mapas\` - Histórico, confronto direto e estatísticas de mapas\n` +
-          `• \`!sub [@novo]\` - Substitui jogador ausente (botão interativo ou comando)\n` +
-          `• \`!cargo\` - Ativa/desativa notificações de vagas restantes (@Mix CS2)\n` +
-          `• \`!ranking\` / \`!stats\` / \`!lvl <1-21>\` - Hall da Fama, perfil e nível GC\n` +
-          `• \`!smoke [mapa]\` ou \`/granada\` - Lineups em 10 mapas (Mirage, Inferno, Nuke, Dust2, Ancient, Anubis, Overpass, Train, Cache, Vertigo)\n` +
-          `• \`!treino\` / \`!moeda\` - CFG completa de treino e Cara ou Coroa\n` +
-          `• \`!steam\` / \`!att\` / \`!pro\` / \`!clip\` / \`!ofertas\` - Scanner Steam, Patches CS2, Agenda Pro e Ofertas`
-      )
-      .setFooter({ text: 'CS2 Mix Hub • eSports Competitive Engine' });
-
-    return interaction.reply({ embeds: [embed], ephemeral: true });
+    return interaction.reply({ ...this.buildHelpPayload(), ephemeral: true });
   }
 
   // ==========================================

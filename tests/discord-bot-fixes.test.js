@@ -770,8 +770,15 @@ test('Pack Treino Completo LXN: shared/treinoCfg, AI Q&A e anexos do Discord (!t
   assert.equal(treinoReply.files.length, 2);
   assert.equal(treinoReply.files[0].name, 'treino.cfg');
   assert.equal(treinoReply.files[1].name, 'LEIA-ME-Treino.md');
-  assert.match(treinoReply.embeds[0].toJSON().description, /exec treino; ancient/);
+  const treinoJson = treinoReply.embeds[0].toJSON();
+  assert.ok(treinoJson.fields.some((f) => /exec treino; ancient/.test(f.value)));
   const buttons = treinoReply.components[0].components.map((c) => c.toJSON());
   assert.ok(buttons.some((b) => String(b.url || '').includes('/?treino=1')));
   assert.ok(buttons.some((b) => b.custom_id === 'treino_rcon_apply'));
+
+  const panelPayload = bot.buildOfficialPanelPayload();
+  assert.equal(panelPayload.components[0].components.length, 4);
+  assert.equal(panelPayload.components[1].components.length, 4);
+  const helpPayload = bot.buildHelpPayload();
+  assert.equal(helpPayload.embeds[0].toJSON().fields.length, 6);
 });
