@@ -188,7 +188,20 @@ export default function App() {
   const [discordModalOpen, setDiscordModalOpen] = useState(false);
   const [matchCardOpen, setMatchCardOpen] = useState(false);
   const [storyCardOpen, setStoryCardOpen] = useState(false);
-  const [grenadeModalOpen, setGrenadeModalOpen] = useState(false);
+  const [grenadeModalOpen, setGrenadeModalOpen] = useState(() => {
+    try {
+      return new URLSearchParams(window.location.search).get('treino') === '1';
+    } catch (e) {
+      return false;
+    }
+  });
+  const [grenadeInitialTab, setGrenadeInitialTab] = useState(() => {
+    try {
+      return new URLSearchParams(window.location.search).get('treino') === '1' ? 'cfg' : 'lineups';
+    } catch (e) {
+      return 'lineups';
+    }
+  });
   const [aimReflexModalOpen, setAimReflexModalOpen] = useState(false);
   const [tournamentModalOpen, setTournamentModalOpen] = useState(false);
   const [localHostModalOpen, setLocalHostModalOpen] = useState(false);
@@ -2204,8 +2217,12 @@ export default function App() {
         {grenadeModalOpen && (
           <GrenadePlaybookModal
             isOpen={grenadeModalOpen}
-            onClose={() => setGrenadeModalOpen(false)}
+            onClose={() => {
+              setGrenadeModalOpen(false);
+              setGrenadeInitialTab('lineups');
+            }}
             initialMap={room.finalMap?.id}
+            initialTab={grenadeInitialTab}
             soundEnabled={soundEnabled}
           />
         )}

@@ -14,10 +14,12 @@ import {
   generateGsiConfig,
   generateGsiBatchInstaller,
   generateGsiPowerShellInstaller,
+  buildCs2CfgPowerShellInstaller,
   installGsiLocally,
   checkGsiInstalled,
 } from '../gsi.js';
 import { sanitizeRconCommand } from '../roomHelpers.js';
+import { buildTreinoCfg, buildTreinoLeiaMeMd } from '../../shared/treinoCfg.js';
 
 const ALLOWED_AVATAR_PROXY_HOSTS = new Set([
   'avatars.steamstatic.com',
@@ -477,5 +479,34 @@ export function registerInfraRoutes(app, { io, rooms, lifecycle, discordBotManag
     } catch {
       return res.status(502).json({ error: 'Falha ao buscar avatar remoto.' });
     }
+  });
+
+  app.get('/api/treino/cfg', (req, res) => {
+    const cfgContent = buildTreinoCfg(req.query || {});
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="treino.cfg"');
+    res.send(cfgContent);
+  });
+
+  app.get('/api/treino/leia-me', (req, res) => {
+    const mdContent = buildTreinoLeiaMeMd(req.query || {});
+    res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="LEIA-ME.md"');
+    res.send(mdContent);
+  });
+
+  app.get('/api/treino/installer.ps1', (req, res) => {
+    const cfgContent = buildTreinoCfg(req.query || {});
+    const ps1Content = buildCs2CfgPowerShellInstaller({
+      cfgContent,
+      fileName: 'treino.cfg',
+      successHeadline: 'TUDO PRONTO! O PACK DE TREINO LXN (treino.cfg) FOI INSTALADO NO SEU CS2!',
+      hintLines: [
+        'Abra um mapa no modo Treino do CS2, abra o console (apostrofo) e digite: exec treino',
+        'Para carregar spawns TR no Numpad 1-5 digite: mirage, inferno, dust2, ancient ou anubis!',
+      ],
+    });
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.send(ps1Content);
   });
 }

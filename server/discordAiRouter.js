@@ -318,8 +318,12 @@ export function detectNaturalIntent(rawContent, { mentionsCount = 0 } = {}) {
     return { intent: 'ip', query: cleanText };
   }
 
-  if (hasAny(norm, ['cfg de treino', 'config de treino', 'treino de granada'])) {
-    return { intent: 'treino', query: cleanText };
+  if (hasAny(norm, ['cfg de treino', 'config de treino', 'treino de granada', 'treino.cfg', 'baixar treino', 'arquivo de treino', 'pack de treino', 'pacote de treino'])) {
+    return { intent: 'treino', mapQuery: mapFound, query: cleanText };
+  }
+
+  if (hasWord(norm, ['treino']) && mapFound && !hasAny(norm, ['tecla', 'bind', 'spawn', 'reset', 'camera', 'noclip', 'como'])) {
+    return { intent: 'treino', mapQuery: mapFound, query: cleanText };
   }
 
   if (hasAny(norm, ['ajuda', 'comandos', 'o que voce faz', 'como funciona'])) {
@@ -436,6 +440,28 @@ export function buildCoachContext({
 export function buildDeterministicCoachReply(query, context) {
   const norm = normalizePtBrText(query);
   const mapKey = context?.mapKey || extractMapQueryFromText(norm);
+  const asksTreinoPack =
+    hasAny(norm, ['treino.cfg', 'spawns', 'spawn tr', 'numpad', 'camera lenta', 'noclip', 'rethrow', 'resetar treino', 'voltar ao normal']) ||
+    (hasWord(norm, ['treino', 'cfg']) && hasAny(norm, ['tecla', 'teclas', 'bind', 'binds', 'repete', 'repetir', 'como ativo', 'como usa', 'como reset']));
+
+  if (asksTreinoPack) {
+    const mapCmdHint = mapKey ? `exec treino; ${mapKey}` : 'exec treino; mirage';
+    return {
+      source: 'local',
+      title: '🎯 Guia Rápido • Pack Treino Completo LXN (treino.cfg)',
+      body:
+        `**Como ativar:** Salve em \`game\\csgo\\cfg\\treino.cfg\` (ou use \`!treino\` para baixar direto aqui) e digite no console:\n` +
+        `\`${mapCmdHint}\`\n\n` +
+        `**Teclas do Treino:**\n` +
+        `• **\`P\`** — Repetir última granada (\`sv_rethrow_last_grenade\`)\n` +
+        `• **\`N\`** — Voar (\`noclip\`) • **\`O\`** — Kit AWP + Colete + Granadas\n` +
+        `• **\`K\` / \`I\`** — Câmera lenta (\`0.3x\`) / Velocidade normal (\`1.0x\`)\n` +
+        `• **\`U\`** — Reiniciar round • **\`L\`** — Raio-X modelos\n` +
+        `• **\`Numpad 1–5\`** — 5 spawns TR (\`mirage\`, \`inferno\`, \`dust2\`, \`ancient\`, \`anubis\`)\n` +
+        `• **\`reset\`** — Limpa as teclas do Numpad e recarrega sua \`autoexec\``,
+    };
+  }
+
   const asksHistory = hasAny(norm, ['historico', 'hoje', 'ultimos', 'partidas', 'ranking', 'melhor', 'stats', 'desempenho']);
 
   if (asksHistory && !mapKey) {

@@ -28,6 +28,14 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { GRENADE_LINEUPS, GRENADE_TYPES, WORKSHOP_PRACTICE_MAPS } from '../data/grenades';
+import {
+  TREINO_DEFAULT_BINDS,
+  TREINO_BIND_META,
+  TREINO_MAPS,
+  TREINO_SPAWN_DESCRIPTIONS,
+  buildTreinoCfg,
+  buildTreinoLeiaMeMd,
+} from '../../shared/treinoCfg';
 import { playClickSound } from '../utils/audio';
 import { copyText } from '../utils/clipboard';
 
@@ -35,9 +43,10 @@ export default function GrenadePlaybookModal({
   isOpen,
   onClose,
   initialMap = null,
+  initialTab = 'lineups',
   soundEnabled = true,
 }) {
-  const [activeTab, setActiveTab] = useState('lineups'); // 'lineups' | 'workshop' | 'cfg'
+  const [activeTab, setActiveTab] = useState(initialTab || 'lineups'); // 'lineups' | 'workshop' | 'cfg'
   const [selectedMap, setSelectedMap] = useState(initialMap || 'all');
   const [selectedType, setSelectedType] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -48,6 +57,14 @@ export default function GrenadePlaybookModal({
   const [isZoomed, setIsZoomed] = useState(false);
   const [lineupsData, setLineupsData] = useState(GRENADE_LINEUPS);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [treinoMapId, setTreinoMapId] = useState('mirage');
+  const [treinoBinds, setTreinoBinds] = useState(() => ({ ...TREINO_DEFAULT_BINDS }));
+
+  useEffect(() => {
+    if (isOpen && initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [isOpen, initialTab]);
   const [syncMessage, setSyncMessage] = useState(null);
 
   const openMediaModal = (lineup, initialMedia = 'video') => {
@@ -160,31 +177,34 @@ export default function GrenadePlaybookModal({
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  const practiceCfgText = `// ============================================
-// CS2 MIX HUB • CFG DE TREINO OFICIAL DE GRANADAS
-// Cole no Console do CS2 (tecla ' ou ~)
-// ============================================
-sv_cheats 1;
-mp_warmup_end;
-mp_roundtime_defuse 60;
-mp_buy_anywhere 1;
-mp_buytime 9999;
-mp_maxmoney 60000;
-mp_startmoney 60000;
-sv_infinite_ammo 1;
-ammo_grenade_limit_total 6;
-sv_grenade_trajectory_prac_pipreview 1;
-sv_grenade_trajectory_prac_trailtime 8;
-cl_grenadepreview 1;
-sv_showimpacts 1;
-sv_showimpacts_time 10;
-bot_kick;
-mp_limitteams 0;
-mp_autoteambalance 0;
-bind "alt" "sv_rethrow_last_grenade";
-bind "v" "noclip";
-mp_restartgame 1;
-echo ">>> CS2 MIX HUB PRATICE CFG ATIVADA! ALT: Repetir Granada | V: Noclip <<<"`;
+  const practiceCfgText = useMemo(() => buildTreinoCfg(treinoBinds), [treinoBinds]);
+  const treinoLeiaMeText = useMemo(() => buildTreinoLeiaMeMd(treinoBinds), [treinoBinds]);
+
+  const treinoQueryString = useMemo(() => {
+    const params = new URLSearchParams();
+    Object.entries(treinoBinds).forEach(([k, v]) => {
+      if (v && String(v).trim()) params.set(k, String(v).trim());
+    });
+    return params.toString();
+  }, [treinoBinds]);
+
+  const treinoPsCommand = useMemo(() => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://mix-cs2.onrender.com';
+    return `powershell -ExecutionPolicy Bypass -Command "irm '${origin}/api/treino/installer.ps1?${treinoQueryString}' | iex"`;
+  }, [treinoQueryString]);
+
+  const triggerDownloadTextFile = (content, filename, mime = 'text/plain;charset=utf-8') => {
+    if (soundEnabled) playClickSound();
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
 
   if (!isOpen) return null;
 
@@ -295,7 +315,7 @@ echo ">>> CS2 MIX HUB PRATICE CFG ATIVADA! ALT: Repetir Granada | V: Noclip <<<"
             }`}
           >
             <Terminal size={14} />
-            <span>CFG de Treino Console</span>
+            <span>Pack Treino LXN (treino.cfg)</span>
           </button>
         </div>
 
@@ -723,26 +743,190 @@ echo ">>> CS2 MIX HUB PRATICE CFG ATIVADA! ALT: Repetir Granada | V: Noclip <<<"
           </div>
         )}
 
-        {/* Tab 3: Console Practice CFG */}
+        {/* Tab 3: Pack Treino Completo LXN (treino.cfg + Personalizador + Spawns TR) */}
         {activeTab === 'cfg' && (
-          <div className="p-5 sm:p-6 overflow-y-auto space-y-4 max-h-[70vh] custom-scrollbar">
-            <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-3">
-              <Terminal size={22} className="text-amber-400 shrink-0 mt-0.5" />
-              <div>
-                <h3 className="text-sm font-bold text-white">Como Usar o Servidor de Treino no seu CS2</h3>
-                <p className="text-xs text-slate-300 mt-1">
-                  1. Abra o CS2 e entre em qualquer mapa pelo modo <strong>Praticar (Treino com Bots)</strong>.<br />
-                  2. Abra o Console de Desenvolvedor (tecla <strong>'</strong> ou <strong>~</strong>).<br />
-                  3. Cole a configuração completa abaixo e aperte Enter. Você terá dinheiro infinito, tempo ilimitado e a tecla <strong>ALT</strong> repetirá sua última granada automaticamente!
-                </p>
+          <div className="p-5 sm:p-6 overflow-y-auto space-y-5 max-h-[70vh] custom-scrollbar">
+            {/* Banner + Downloads */}
+            <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-slate-950 to-emerald-500/10 border border-amber-500/35 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <Terminal size={22} className="text-amber-400 shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="text-sm font-black text-white flex items-center gap-2 flex-wrap">
+                    <span>Pack Treino Completo LXN • Source 2</span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      5 Mapas + Spawns Numpad
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                    Salve o arquivo <code className="text-amber-300 font-mono">treino.cfg</code> na pasta{' '}
+                    <code className="text-slate-200 font-mono">Counter-Strike Global Offensive/game/csgo/cfg/</code>{' '}
+                    ou instale em 1 comando pelo PowerShell. Depois digite no console (<strong>'</strong>):{' '}
+                    <code className="text-emerald-300 font-mono">exec treino; {treinoMapId}</code>.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => triggerDownloadTextFile(practiceCfgText, 'treino.cfg')}
+                  className="px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black rounded-xl flex items-center gap-1.5 cursor-pointer transition-colors shadow-lg shadow-amber-500/20"
+                >
+                  <Download size={14} />
+                  <span>Baixar treino.cfg</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => triggerDownloadTextFile(treinoLeiaMeText, 'LEIA-ME.md', 'text/markdown;charset=utf-8')}
+                  className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer transition-colors"
+                >
+                  <BookOpen size={14} className="text-sky-400" />
+                  <span>Baixar LEIA-ME</span>
+                </button>
               </div>
             </div>
 
-            {/* CFG Box */}
-            <div className="relative bg-slate-950 border border-slate-800 rounded-2xl p-4">
-              <div className="flex items-center justify-between mb-2 pb-2 border-b border-slate-800">
-                <span className="text-xs font-mono font-bold text-amber-400">practice_grenades.cfg</span>
+            {/* 1-Click PowerShell Auto-Installer */}
+            <div className="p-4 rounded-2xl bg-slate-950/90 border border-emerald-500/30 space-y-2">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
+                  <Sparkles size={14} />
+                  <span>Instalação Automática 1-Clique no Windows (PowerShell detecta sua Steam)</span>
+                </span>
                 <button
+                  type="button"
+                  onClick={() => handleCopyCommand(treinoPsCommand, 'treino-ps1')}
+                  className="px-3 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 text-xs font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                >
+                  {copiedId === 'treino-ps1' ? <Check size={13} /> : <Copy size={13} />}
+                  <span>{copiedId === 'treino-ps1' ? 'Comando Copiado!' : 'Copiar Instalador PowerShell'}</span>
+                </button>
+              </div>
+              <code className="block font-mono text-[11px] text-slate-300 bg-slate-900/90 px-3 py-2 rounded-xl border border-slate-800 overflow-x-auto whitespace-nowrap">
+                {treinoPsCommand}
+              </code>
+            </div>
+
+            {/* Map Selector + Numpad 1-5 Spawns */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+              <div className="lg:col-span-6 p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-white flex items-center gap-1.5">
+                    <MapPin size={14} className="text-amber-400" />
+                    <span>Spawns TR por Mapa (Numpad 1–5)</span>
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => handleCopyCommand(`exec treino; ${treinoMapId}`, 'treino-exec-cmd')}
+                    className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 text-[11px] font-mono font-bold flex items-center gap-1 cursor-pointer"
+                  >
+                    {copiedId === 'treino-exec-cmd' ? <Check size={12} /> : <Copy size={12} />}
+                    <span>exec treino; {treinoMapId}</span>
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap gap-1.5">
+                  {TREINO_MAPS.map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => {
+                        if (soundEnabled) playClickSound();
+                        setTreinoMapId(m.id);
+                      }}
+                      className={`px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all ${
+                        treinoMapId === m.id
+                          ? 'bg-amber-500 text-slate-950 shadow-sm'
+                          : 'bg-slate-900 text-slate-300 hover:text-white border border-slate-800'
+                      }`}
+                    >
+                      <span>{m.emoji}</span>
+                      <span>{m.name}</span>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="space-y-1.5 pt-1">
+                  {TREINO_SPAWN_DESCRIPTIONS.map((sp) => (
+                    <div
+                      key={sp.slot}
+                      className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-xl bg-slate-900/90 border border-slate-800/90 text-xs"
+                    >
+                      <span className="font-mono font-bold text-amber-300 shrink-0">{sp.label}</span>
+                      <span className="text-slate-300 truncate">{sp.role}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-slate-900/70 border border-slate-800 text-[11px] text-slate-300">
+                  Depois do treino, digite <code className="text-emerald-300 font-mono font-bold">reset</code> no console para limpar <code className="font-mono">KP_1–KP_5</code> e recarregar <code className="text-amber-300 font-mono">{treinoBinds.autoexecName || 'autoexec'}.cfg</code>.
+                </div>
+              </div>
+
+              {/* Customizer of Keybinds & Autoexec */}
+              <div className="lg:col-span-6 p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <h4 className="text-xs font-black uppercase tracking-wider text-white flex items-center gap-1.5">
+                    <Wrench size={14} className="text-sky-400" />
+                    <span>Personalizar Teclas antes de Baixar</span>
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (soundEnabled) playClickSound();
+                      setTreinoBinds({ ...TREINO_DEFAULT_BINDS });
+                    }}
+                    className="text-[11px] font-bold text-sky-300 hover:text-sky-200 cursor-pointer"
+                  >
+                    Restaurar Padrão LXN
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {TREINO_BIND_META.map((item) => (
+                    <label
+                      key={item.key}
+                      className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-xl bg-slate-900/90 border border-slate-800 text-xs"
+                      title={item.hint}
+                    >
+                      <span className="text-slate-300 truncate">{item.label}</span>
+                      <input
+                        type="text"
+                        value={treinoBinds[item.key] || ''}
+                        onChange={(e) =>
+                          setTreinoBinds((prev) => ({ ...prev, [item.key]: e.target.value }))
+                        }
+                        maxLength={14}
+                        className="w-16 text-center font-mono font-bold uppercase text-amber-300 bg-slate-950 border border-slate-700 rounded-lg px-1.5 py-1 outline-none focus:border-amber-400 shrink-0"
+                      />
+                    </label>
+                  ))}
+                  <label
+                    className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-xl bg-slate-900/90 border border-slate-800 text-xs sm:col-span-2"
+                    title="Nome do arquivo .cfg recarregado ao digitar reset no console"
+                  >
+                    <span className="text-slate-300">Autoexec para comando reset</span>
+                    <input
+                      type="text"
+                      value={treinoBinds.autoexecName || ''}
+                      onChange={(e) =>
+                        setTreinoBinds((prev) => ({ ...prev, autoexecName: e.target.value }))
+                      }
+                      placeholder="autoexec"
+                      maxLength={32}
+                      className="w-36 font-mono font-bold text-emerald-300 bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 outline-none focus:border-emerald-400 shrink-0"
+                    />
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* Full Live Preview CFG Box */}
+            <div className="relative bg-slate-950 border border-slate-800 rounded-2xl p-4">
+              <div className="flex items-center justify-between mb-2 pb-2 border-b border-slate-800 gap-2 flex-wrap">
+                <span className="text-xs font-mono font-bold text-amber-400">treino.cfg • Pré-visualização completa</span>
+                <button
+                  type="button"
                   onClick={() => handleCopyCommand(practiceCfgText, 'cfg-full')}
                   className="px-3 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold rounded-lg flex items-center gap-1 cursor-pointer transition-colors"
                 >
@@ -750,7 +934,7 @@ echo ">>> CS2 MIX HUB PRATICE CFG ATIVADA! ALT: Repetir Granada | V: Noclip <<<"
                   <span>{copiedId === 'cfg-full' ? 'CFG Copiada!' : 'Copiar CFG Completa'}</span>
                 </button>
               </div>
-              <pre className="font-mono text-xs text-slate-300 whitespace-pre-wrap leading-relaxed max-h-[40vh] overflow-y-auto no-scrollbar">
+              <pre className="font-mono text-xs text-slate-300 whitespace-pre-wrap leading-relaxed max-h-[34vh] overflow-y-auto no-scrollbar">
                 {practiceCfgText}
               </pre>
             </div>
@@ -766,7 +950,7 @@ echo ">>> CS2 MIX HUB PRATICE CFG ATIVADA! ALT: Repetir Granada | V: Noclip <<<"
                 ? `${filteredLineups.length} lineups prontas para uso no seu Mix.`
                 : activeTab === 'workshop'
                 ? 'Mapas oficiais aprovados pela comunidade do CS2.'
-                : 'Binds úteis: ALT para repetir granada, V para voar.'}
+                : `Atalhos LXN ativos: ${treinoBinds.rethrow.toUpperCase()} repetir granada • ${treinoBinds.noclip.toUpperCase()} voar • Numpad 1–5 spawns TR • reset para sair.`}
             </span>
           </div>
           <button

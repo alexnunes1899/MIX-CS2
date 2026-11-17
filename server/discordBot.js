@@ -57,6 +57,13 @@ import { getBundledDataFilePath, getDataDir, getDataFilePath, resolveSeededDataF
 import { getGrenadesState } from './grenadeSync.js';
 import { isValidMapName } from './roomHelpers.js';
 import {
+  buildTreinoCfg,
+  buildTreinoLeiaMeMd,
+  buildTreinoRconCommands,
+  resolveTreinoMapKey,
+  TREINO_MAPS,
+} from '../shared/treinoCfg.js';
+import {
   detectNaturalIntent,
   buildCoachContext,
   generateCoachResponse,
@@ -2033,7 +2040,14 @@ export class DiscordBotManager {
 
       new SlashCommandBuilder()
         .setName('treino')
-        .setDescription('Gera a CFG oficial de treino do CS2 com cheats, granadas e dinheiro infinito'),
+        .setDescription('Envia o pacote completo de treino LXN (treino.cfg + guia + spawns TR no Numpad)')
+        .addStringOption((opt) =>
+          opt
+            .setName('mapa')
+            .setDescription('Mapa para destacar os spawns TR (Numpad 1-5)')
+            .setRequired(false)
+            .addChoices(...TREINO_MAPS.map((m) => ({ name: m.name, value: m.id })))
+        ),
 
       new SlashCommandBuilder()
         .setName('moeda')
@@ -2497,7 +2511,7 @@ export class DiscordBotManager {
     if (command === 'level' || command === 'lvl' || command === 'gc') return this.prefixSetLevel(message, args[1]);
     if (command === 'stats' || command === 'perfil') return this.prefixStats(message, args[1]);
     if (command === 'smoke' || command === 'granada' || command === 'lineup') return this.prefixGrenade(message, args.slice(1).join(' '));
-    if (command === 'treino' || command === 'cfg' || command === 'praticar') return this.prefixTreino(message);
+    if (command === 'treino' || command === 'cfg' || command === 'praticar') return this.prefixTreino(message, args.slice(1).join(' '));
     if (command === 'moeda' || command === 'coinflip' || command === 'flip') return this.prefixCoinflip(message);
     if (command === 'ping' || command === 'bot' || command === 'uptime') return this.prefixPing(message);
     if (command === 'servidor') {
@@ -3482,19 +3496,70 @@ export class DiscordBotManager {
     return message.reply({ embeds: [embed] });
   }
 
-  async prefixTreino(message) {
-    const cfg = `sv_cheats 1;\nmp_warmup_end;\nmp_roundtime_defuse 60;\nmp_buy_anywhere 1;\nmp_buytime 9999;\nmp_maxmoney 60000;\nmp_startmoney 60000;\nsv_infinite_ammo 1;\nammo_grenade_limit_total 6;\nsv_grenade_trajectory_prac_pipreview 1;\nsv_showimpacts 1;\nbot_kick;\nmp_restartgame 1;`;
+  buildTreinoPayload(mapQuery = '') {
+    const mapKey = resolveTreinoMapKey(mapQuery);
+    const mapObj = TREINO_MAPS.find((m) => m.id === mapKey) || null;
+    const activationCmd = mapObj ? `exec treino; ${mapObj.id}` : 'exec treino; mirage';
+
+    const cfgBuffer = Buffer.from(buildTreinoCfg(), 'utf-8');
+    const leiaMeBuffer = Buffer.from(buildTreinoLeiaMeMd(), 'utf-8');
+
+    const cfgAttachment = new AttachmentBuilder(cfgBuffer, { name: 'treino.cfg' });
+    const guideAttachment = new AttachmentBuilder(leiaMeBuffer, { name: 'LEIA-ME-Treino.md' });
 
     const embed = new EmbedBuilder()
-      .setTitle('🎯 CFG OFICIAL DE TREINO • CS2')
+      .setAuthor({ name: 'CS2 MIX HUB • PACK TREINO COMPLETO LXN' })
+      .setTitle(
+        mapObj
+          ? `🎯 PACK DE TREINO CS2 (${mapObj.emoji} ${mapObj.name.toUpperCase()})`
+          : '🎯 PACK DE TREINO COMPLETO CS2 • LXN (SOURCE 2)'
+      )
       .setDescription(
-        `Copie o bloco abaixo e cole no seu **Console do CS2** (tecla \` ou ') para iniciar um servidor de treino perfeito com dinheiro infinito, trajetória de granadas e tempo ilimitado:\n\n` +
-        `\`\`\`cfg\n${cfg}\n\`\`\``
+        `Baixe o arquivo **` + 'treino.cfg' + `** anexado acima e salve na pasta \`cfg\` do CS2:\n` +
+        `\`...\\Counter-Strike Global Offensive\\game\\csgo\\cfg\\treino.cfg\`\n\n` +
+        `**1️⃣ Como ativar no console (\`'\`):**\n` +
+        `\`\`\`cfg\n${activationCmd}\n\`\`\`\n` +
+        `**2️⃣ Spawns TR Instantâneos (Numpad \`1\` a \`5\`):**\n` +
+        `Digite no console: \`mirage\`, \`inferno\`, \`dust2\`, \`ancient\` ou \`anubis\` (Num Lock ligado).\n` +
+        `Depois do treino, digite **\`reset\`** no console para limpar e recarregar sua \`autoexec\`.`
+      )
+      .addFields(
+        {
+          name: '💨 Utilitários & Câmera',
+          value: '`P` Repetir granada\n`N` Noclip (voar)\n`K` Câmera lenta `0.3x`\n`I` Velocidade normal',
+          inline: true,
+        },
+        {
+          name: '🔫 Itens & Controle',
+          value: '`O` Kit AWP + Granadas\n`U` Reiniciar round\n`L` Raio-X modelos\n`reset` Sair do treino',
+          inline: true,
+        }
       )
       .setColor(0xf59e0b)
-      .setFooter({ text: 'CS2 Mix Hub • Treino & Utilitários' });
+      .setFooter({ text: 'CS2 Mix Hub • Pacote LXN Verificado • Instalador 1-Clique no Site' });
 
-    return message.reply({ embeds: [embed] });
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setLabel('Personalizar & Instalar no Site')
+        .setEmoji('🎛️')
+        .setStyle(ButtonStyle.Link)
+        .setURL(this.getPublicWebUrl('/?treino=1')),
+      new ButtonBuilder()
+        .setCustomId('treino_rcon_apply')
+        .setLabel('Aplicar Treino via RCON')
+        .setEmoji('⚡')
+        .setStyle(ButtonStyle.Secondary)
+    );
+
+    return {
+      embeds: [embed],
+      files: [cfgAttachment, guideAttachment],
+      components: [row],
+    };
+  }
+
+  async prefixTreino(message, mapQuery = '') {
+    return message.reply(this.buildTreinoPayload(mapQuery));
   }
 
   async prefixCoinflip(message) {
@@ -6112,6 +6177,39 @@ export class DiscordBotManager {
       }).catch(() => {});
     }
 
+    if (customId === 'treino_rcon_apply') {
+      const mix = this.resolveActiveMixForChannel(interaction.channelId);
+      const isAuthorized = this.isGuildModerator(interaction.member, interaction.guild, mix, user?.id);
+      if (!isAuthorized) {
+        return interaction.reply({
+          content: '🚫 Apenas administradores do servidor ou o criador do mix podem enviar comandos de treino via RCON.',
+          ephemeral: true,
+        });
+      }
+      const rawServer = mix?.serverIp || this.config.serverConnect || '';
+      const rconPwd = (mix?.rconPassword || this.config.rconPassword || process.env.CS2_RCON_PASSWORD || '').trim();
+      const { host, port } = extractHostAndPort(rawServer);
+      if (!host || !rconPwd) {
+        return interaction.reply({
+          content: '⚠️ IP do servidor ou senha RCON não configurados. Use `!servidor ip:porta` ou configure no Painel Web.',
+          ephemeral: true,
+        });
+      }
+      try {
+        await executeRconCommand({
+          host,
+          port,
+          password: rconPwd,
+          command: buildTreinoRconCommands(),
+        });
+        return interaction.reply({
+          content: `🎯 <@${user.id}> ativou as configurações do **Pack Treino LXN** no servidor CS2 via RCON!`,
+        });
+      } catch (err) {
+        return interaction.reply({ content: `❌ Falha ao aplicar treino via RCON: ${err.message}`, ephemeral: true });
+      }
+    }
+
     // RCON In-Game Controls (Pause, Unpause, Restart/Live, Change Map, Chat Broadcast)
     if (
       customId.startsWith('rcon_pause:') ||
@@ -7525,13 +7623,8 @@ export class DiscordBotManager {
       return interaction.reply({ embeds: [embed] });
     }
     if (commandName === 'treino') {
-      const cfg = `sv_cheats 1;\nmp_warmup_end;\nmp_roundtime_defuse 60;\nmp_buy_anywhere 1;\nmp_buytime 9999;\nmp_maxmoney 60000;\nmp_startmoney 60000;\nsv_infinite_ammo 1;\nammo_grenade_limit_total 6;\nsv_grenade_trajectory_prac_pipreview 1;\nsv_showimpacts 1;\nbot_kick;\nmp_restartgame 1;`;
-      const embed = new EmbedBuilder()
-        .setTitle('🎯 CFG OFICIAL DE TREINO • CS2')
-        .setDescription(`Copie o bloco abaixo e cole no seu **Console do CS2**:\n\n\`\`\`cfg\n${cfg}\n\`\`\``)
-        .setColor(0xf59e0b)
-        .setFooter({ text: 'CS2 Mix Hub • Treino & Utilitários' });
-      return interaction.reply({ embeds: [embed] });
+      const mapArg = interaction.options.getString('mapa') || '';
+      return interaction.reply(this.buildTreinoPayload(mapArg));
     }
     if (commandName === 'moeda') {
       const isHeads = Math.random() < 0.5;
@@ -9438,7 +9531,7 @@ export class DiscordBotManager {
       case 'ip':
         return this.prefixIp(message);
       case 'treino':
-        return this.prefixTreino(message);
+        return this.prefixTreino(message, detected.mapQuery || '');
       case 'bagre':
         return this.prefixBagre(message);
       case 'help':

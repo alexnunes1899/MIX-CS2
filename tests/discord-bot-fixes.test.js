@@ -16,6 +16,12 @@ const {
   computePlayerAchievements,
 } = await import('../server/discordBot.js');
 const {
+  buildTreinoCfg,
+  buildTreinoLeiaMeMd,
+  buildTreinoRconCommands,
+  resolveTreinoMapKey,
+} = await import('../shared/treinoCfg.js');
+const {
   detectNaturalIntent,
   buildCoachContext,
   buildDeterministicCoachReply,
@@ -729,4 +735,43 @@ test('Voice check, voiceStateUpdate auto-announce, achievements no !stats e bot�
     displayAvatarURL: () => '',
   }).toJSON();
   assert.ok(statsEmbed.fields.some((f) => f.name.includes('Conquistas Desbloqueadas') && f.value.includes('Imparável')));
+});
+
+test('Pack Treino Completo LXN: shared/treinoCfg, AI Q&A e anexos do Discord (!treino)', async (t) => {
+  const defaultCfg = buildTreinoCfg();
+  assert.match(defaultCfg, /bind "p" "sv_rethrow_last_grenade"/);
+  assert.match(defaultCfg, /alias "mirage_s1"/);
+  assert.match(defaultCfg, /alias "anubis_s5"/);
+  assert.match(defaultCfg, /alias "reset" "unbind KP_1;.*exec autoexec;/);
+
+  const customCfg = buildTreinoCfg({
+    rethrow: 'alt"; quit',
+    noclip: 'v',
+    autoexecName: 'minha_cfg; drop',
+  });
+  assert.match(customCfg, /bind "altquit" "sv_rethrow_last_grenade"/);
+  assert.match(customCfg, /bind "v" "noclip"/);
+  assert.match(customCfg, /exec minha_cfgdrop;/);
+  assert.equal(buildTreinoLeiaMeMd({ rethrow: 'alt' }).includes('**ALT**'), true);
+  assert.match(buildTreinoRconCommands(), /sv_cheats 1/);
+  assert.equal(resolveTreinoMapKey('d2'), 'dust2');
+
+  const coachKeyReply = buildDeterministicCoachReply('qual tecla repete a smoke no treino?', {});
+  assert.match(coachKeyReply.body, /Repetir última granada/);
+  assert.equal(detectNaturalIntent('quero arquivo de treino na ancient').intent, 'treino');
+  assert.equal(detectNaturalIntent('quero arquivo de treino na ancient').mapQuery, 'ancient');
+
+  const bot = createBot(t);
+  let treinoReply = null;
+  await bot.prefixTreino(
+    { reply: async (p) => { treinoReply = p; } },
+    'ancient'
+  );
+  assert.equal(treinoReply.files.length, 2);
+  assert.equal(treinoReply.files[0].name, 'treino.cfg');
+  assert.equal(treinoReply.files[1].name, 'LEIA-ME-Treino.md');
+  assert.match(treinoReply.embeds[0].toJSON().description, /exec treino; ancient/);
+  const buttons = treinoReply.components[0].components.map((c) => c.toJSON());
+  assert.ok(buttons.some((b) => String(b.url || '').includes('/?treino=1')));
+  assert.ok(buttons.some((b) => b.custom_id === 'treino_rcon_apply'));
 });

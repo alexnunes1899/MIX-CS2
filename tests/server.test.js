@@ -246,4 +246,23 @@ test('HTTP + Socket.IO server integration suite', async (t) => {
       playerBSock.close();
     }
   });
+
+  await t.test('GET /api/treino/* entrega treino.cfg, LEIA-ME.md e instalador PowerShell personalizados', async () => {
+    const cfgRes = await fetch(`${baseUrl}/api/treino/cfg?rethrow=alt&autoexecName=custom_exec`);
+    assert.equal(cfgRes.status, 200);
+    const cfgText = await cfgRes.text();
+    assert.match(cfgText, /bind "alt" "sv_rethrow_last_grenade"/);
+    assert.match(cfgText, /exec custom_exec;/);
+
+    const mdRes = await fetch(`${baseUrl}/api/treino/leia-me?rethrow=alt`);
+    assert.equal(mdRes.status, 200);
+    const mdText = await mdRes.text();
+    assert.match(mdText, /Guia de Uso/);
+
+    const ps1Res = await fetch(`${baseUrl}/api/treino/installer.ps1?rethrow=alt`);
+    assert.equal(ps1Res.status, 200);
+    const ps1Text = await ps1Res.text();
+    assert.match(ps1Text, /treino\.cfg/);
+    assert.match(ps1Text, /Get-Cs2Paths/);
+  });
 });

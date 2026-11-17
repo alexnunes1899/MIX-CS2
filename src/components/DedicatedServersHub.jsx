@@ -1686,6 +1686,48 @@ pause
                   </ol>
                 </div>
 
+                {/* Pack Treino Completo LXN Box */}
+                <div className="bg-slate-900/90 border border-amber-500/40 rounded-3xl p-6 space-y-3.5 shadow-xl">
+                  <div className="flex items-center justify-between gap-2">
+                    <h4 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                      <Sparkles size={16} className="text-amber-400" />
+                      Pack Treino Completo LXN (treino.cfg)
+                    </h4>
+                    <span className="text-[10px] font-mono text-amber-300 bg-amber-500/15 px-2 py-0.5 rounded-full border border-amber-500/30">
+                      Spawns Numpad 1–5
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    Treine granadas, <code className="text-amber-300 font-mono">noclip</code>, câmera lenta (<code className="font-mono">K/I</code>) e os 5 spawns competitivos da base TR (Mirage, Inferno, Dust 2, Ancient e Anubis).
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <a
+                      href="/api/treino/cfg"
+                      download="treino.cfg"
+                      className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs flex items-center gap-1.5 transition-colors"
+                    >
+                      <Download size={13} />
+                      <span>Baixar treino.cfg</span>
+                    </a>
+                    <a
+                      href="/api/treino/leia-me"
+                      download="LEIA-ME.md"
+                      className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs flex items-center gap-1.5 transition-colors"
+                    >
+                      <FileCode size={13} className="text-sky-400" />
+                      <span>Baixar LEIA-ME</span>
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy('exec treino; mirage', 'treino-cmd-srv')}
+                      className="px-3 py-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/35 text-emerald-300 font-mono font-bold text-xs flex items-center gap-1.5 cursor-pointer"
+                    >
+                      {copiedKey === 'treino-cmd-srv' ? <Check size={13} /> : <Copy size={13} />}
+                      <span>{copiedKey === 'treino-cmd-srv' ? 'Copiado!' : 'exec treino; mirage'}</span>
+                    </button>
+                  </div>
+                </div>
+
                 {/* MatchZy / PugSharp Plugin Automation Box */}
                 <div className="bg-slate-900/90 border border-teal-500/40 rounded-3xl p-6 space-y-3.5 shadow-xl">
                   <div className="flex items-center justify-between">

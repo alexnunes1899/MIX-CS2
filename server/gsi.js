@@ -637,12 +637,17 @@ pause >nul
 `;
 }
 
-/**
- * Generates raw PowerShell script for 1-click execution (irm ... | iex)
- */
-export function generateGsiPowerShellInstaller(serverBaseUrl, roomId) {
-  const cfgContent = generateGsiConfig(serverBaseUrl, roomId);
-  const b64 = Buffer.from(cfgContent, 'utf8').toString('base64');
+export function buildCs2CfgPowerShellInstaller({
+  cfgContent,
+  fileName,
+  successHeadline = 'INSTALAÇÃO CONCLUÍDA COM SUCESSO NO SEU CS2!',
+  hintLines = [],
+} = {}) {
+  const b64 = Buffer.from(String(cfgContent || ''), 'utf8').toString('base64');
+  const safeFile = String(fileName || 'custom.cfg').replace(/[^a-zA-Z0-9._-]/g, '');
+  const hints = (Array.isArray(hintLines) ? hintLines : [])
+    .map((line) => `Write-Host ' ${String(line).replace(/'/g, "''")}' -ForegroundColor Cyan;`)
+    .join('\n');
 
   return `$ErrorActionPreference = 'SilentlyContinue';
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8;
@@ -694,18 +699,33 @@ if ($targetDirs.Count -eq 0) {
 
 foreach ($dir in $targetDirs) {
     if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null };
-    $file = Join-Path $dir 'gamestate_integration_cs2mixhub.cfg';
+    $file = Join-Path $dir '${safeFile}';
     [System.IO.File]::WriteAllText($file, $cfg, $utf8NoBom);
     Write-Host "✅ Instalado com sucesso em: $file" -ForegroundColor Green;
 }
 
 Write-Host '';
 Write-Host '========================================================================' -ForegroundColor Green;
-Write-Host ' TUDO PRONTO! O MONITORAMENTO FOI INSTALADO NO SEU CS2 COM SUCESSO!    ' -ForegroundColor Green;
+Write-Host ' ${String(successHeadline).replace(/'/g, "''")}' -ForegroundColor Green;
 Write-Host '========================================================================' -ForegroundColor Green;
-Write-Host ' Agora é só abrir o Counter-Strike 2 e jogar normalmente!' -ForegroundColor Cyan;
-Write-Host ' Seus amigos já podem acompanhar seu placar, vida e armas ao vivo!' -ForegroundColor Cyan;
+${hints}
 Write-Host '';
 Start-Sleep -Seconds 3;
 `;
+}
+
+/**
+ * Generates raw PowerShell script for 1-click execution (irm ... | iex)
+ */
+export function generateGsiPowerShellInstaller(serverBaseUrl, roomId) {
+  const cfgContent = generateGsiConfig(serverBaseUrl, roomId);
+  return buildCs2CfgPowerShellInstaller({
+    cfgContent,
+    fileName: 'gamestate_integration_cs2mixhub.cfg',
+    successHeadline: 'TUDO PRONTO! O MONITORAMENTO FOI INSTALADO NO SEU CS2 COM SUCESSO!',
+    hintLines: [
+      'Agora é só abrir o Counter-Strike 2 e jogar normalmente!',
+      'Seus amigos já podem acompanhar seu placar, vida e armas ao vivo!',
+    ],
+  });
 }
