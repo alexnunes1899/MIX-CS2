@@ -5802,7 +5802,12 @@ export class DiscordBotManager {
         .setLabel('Verificar Calls')
         .setEmoji('🔊')
         .setStyle(ButtonStyle.Secondary)
-        .setDisabled(total === 0)
+        .setDisabled(total === 0),
+      new ButtonBuilder()
+        .setCustomId(`mix_treino:${mix.id}`)
+        .setLabel('Treino LXN')
+        .setEmoji('🎯')
+        .setStyle(ButtonStyle.Secondary)
     );
 
     return [row1, row2, row3];
@@ -6626,6 +6631,17 @@ export class DiscordBotManager {
       const sent = await interaction.fetchReply();
       this.registerLiveTracker(sent, requester, null, false);
       return;
+    }
+
+    // Mix Training Pack Trigger from Lobby Menu (!mix)
+    if (action === 'mix_treino') {
+      const byExplicit = mixId ? this.activeMixes?.get(mixId) : null;
+      const resolvedMix =
+        (byExplicit && (!byExplicit.channelId || byExplicit.channelId === interaction.channelId) ? byExplicit : null) ||
+        this.resolveActiveMixForChannel(interaction.channelId);
+      const mapQuery = resolvedMix?.finalMap?.id || resolvedMix?.veto?.deciderMap?.id || '';
+      await interaction.reply({ ...this.buildTreinoGuidePayload(mapQuery), ephemeral: true });
+      return interaction.followUp({ ...this.buildTreinoDownloadPayload(), ephemeral: true });
     }
 
     let mix = this.activeMixes.get(interaction.channelId);

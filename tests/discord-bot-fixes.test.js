@@ -805,4 +805,30 @@ test('Pack Treino Completo LXN: shared/treinoCfg, AI Q&A e anexos do Discord (!t
   assert.equal(panelPayload.components[1].components.length, 4);
   const helpPayload = bot.buildHelpPayload();
   assert.equal(helpPayload.embeds[0].toJSON().fields.length, 6);
+
+  // Botão de treino no menu principal do !mix (buildLobbyButtons + handleButtonInteraction)
+  const emptyMix = { id: 'MIX-TESTE-TREINO', channelId: 'ch-treino', players: [], waitlist: [], balanceMode: 'balanced' };
+  const lobbyRows = bot.buildLobbyButtons(emptyMix);
+  const row3Buttons = lobbyRows[2].components.map((c) => c.toJSON());
+  const treinoBtn = row3Buttons.find((b) => b.custom_id === 'mix_treino:MIX-TESTE-TREINO');
+  assert.ok(treinoBtn, 'Menu principal do !mix deve incluir botão Treino LXN');
+  assert.equal(Boolean(treinoBtn.disabled), false);
+
+  const btnCalls = [];
+  await bot.handleButtonInteraction({
+    customId: 'mix_treino:MIX-TESTE-TREINO',
+    channelId: 'ch-treino',
+    user: { id: 'u-1', username: 'Alex' },
+    reply: async (p) => { btnCalls.push({ kind: 'reply', payload: p }); return p; },
+    followUp: async (p) => { btnCalls.push({ kind: 'followUp', payload: p }); return p; },
+  });
+  assert.equal(btnCalls.length, 2);
+  assert.equal(btnCalls[0].kind, 'reply');
+  assert.equal(btnCalls[0].payload.ephemeral, true);
+  assert.equal(btnCalls[0].payload.files, undefined);
+  assert.equal(btnCalls[1].kind, 'followUp');
+  assert.equal(btnCalls[1].payload.ephemeral, true);
+  assert.equal(btnCalls[1].payload.files.length, 2);
+  assert.equal(btnCalls[1].payload.files[0].name, 'treino.cfg');
+  assert.equal(btnCalls[1].payload.files[1].name, 'LEIA-ME-Treino.txt');
 });
