@@ -459,8 +459,9 @@ export function buildDeterministicCoachReply(query, context) {
         `• **\`N\`** — Voar (\`noclip\`) • **\`O\`** — Kit AWP + Colete + Granadas\n` +
         `• **\`K\` / \`I\`** — Câmera lenta (\`0.3x\`) / Velocidade normal (\`1.0x\`)\n` +
         `• **\`U\`** — Reiniciar round • **\`L\`** — Raio-X modelos\n` +
-        `• **\`Numpad 1–0\`** — 10 spawns TR nos 10 competitivos (\`mirage\`, \`cache\`, \`anubis\`, \`inferno\`, \`dust2\`, \`ancient\`, \`nuke\`, \`overpass\`, \`vertigo\`, \`train\`)\n` +
-        `• **\`Numpad 1–5\`** — 5 spawns TR (\`office\`, \`italy\`) • **\`reset\`** — Limpa \`KP_1–KP_0\` e recarrega \`autoexec\``,
+        `• **Mirage (12 spawns por fileira):** \`1–4\` Frente • \`5–8\` Meio • \`9, 0, Del, Enter\` Fundo/A\n` +
+        `• **Demais 9 competitivos (Num \`1–0\`):** \`cache\`, \`anubis\`, \`inferno\`, \`dust2\`, \`ancient\`, \`nuke\`, \`overpass\`, \`vertigo\`, \`train\`\n` +
+        `• **Reféns (Num \`1–5\`):** \`office\`, \`italy\` • **\`reset\`** — Limpa \`KP_1–KP_0, Del, Enter\` e recarrega \`autoexec\``,
     };
   }
 

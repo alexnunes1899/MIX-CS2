@@ -1,5 +1,5 @@
 /**
- * CS2 Mix Hub • Gerador Oficial do Pacote de Treino Completo LXN (Coordenadas Exatas CS2 - 12 Mapas / Numpad 1-0)
+ * CS2 Mix Hub • Gerador Oficial do Pacote de Treino Completo LXN (Coordenadas Exatas CS2 - 12 Mapas / Até 12 Spawns)
  * Compartilhado entre Bot do Discord, Endpoints HTTP e Interface Web.
  */
 
@@ -24,19 +24,34 @@ export const TREINO_BIND_META = Object.freeze([
   { key: 'xray', label: 'Raio-X de Modelos', cmd: 'toggle r_drawothermodels 2 1', hint: 'Alterna visualização de modelos através das paredes' },
 ]);
 
-const SPAWN_NUMPAD_KEYS = ['KP_1', 'KP_2', 'KP_3', 'KP_4', 'KP_5', 'KP_6', 'KP_7', 'KP_8', 'KP_9', 'KP_0'];
+const SPAWN_NUMPAD_KEYS = [
+  'KP_1',
+  'KP_2',
+  'KP_3',
+  'KP_4',
+  'KP_5',
+  'KP_6',
+  'KP_7',
+  'KP_8',
+  'KP_9',
+  'KP_0',
+  'KP_DEL',
+  'KP_ENTER',
+];
 
 export const TREINO_SPAWN_DESCRIPTIONS = Object.freeze([
-  { slot: 1, kp: 'KP_1', label: 'Numpad 1', role: 'Teleporta para o Spawn 1', competitiveOnly: false },
-  { slot: 2, kp: 'KP_2', label: 'Numpad 2', role: 'Teleporta para o Spawn 2', competitiveOnly: false },
-  { slot: 3, kp: 'KP_3', label: 'Numpad 3', role: 'Teleporta para o Spawn 3', competitiveOnly: false },
-  { slot: 4, kp: 'KP_4', label: 'Numpad 4', role: 'Teleporta para o Spawn 4', competitiveOnly: false },
-  { slot: 5, kp: 'KP_5', label: 'Numpad 5', role: 'Teleporta para o Spawn 5', competitiveOnly: false },
-  { slot: 6, kp: 'KP_6', label: 'Numpad 6', role: 'Teleporta para o Spawn 6 (Mapas competitivos)', competitiveOnly: true },
-  { slot: 7, kp: 'KP_7', label: 'Numpad 7', role: 'Teleporta para o Spawn 7 (Mapas competitivos)', competitiveOnly: true },
-  { slot: 8, kp: 'KP_8', label: 'Numpad 8', role: 'Teleporta para o Spawn 8 (Mapas competitivos)', competitiveOnly: true },
-  { slot: 9, kp: 'KP_9', label: 'Numpad 9', role: 'Teleporta para o Spawn 9 (Mapas competitivos)', competitiveOnly: true },
-  { slot: 10, kp: 'KP_0', label: 'Numpad 0', role: 'Teleporta para o Spawn 10 (Mapas competitivos)', competitiveOnly: true },
+  { slot: 1, kp: 'KP_1', label: 'Numpad 1', role: 'Spawn 1', mirageRole: 'Frente #1 (Canto direito / B)', competitiveOnly: false },
+  { slot: 2, kp: 'KP_2', label: 'Numpad 2', role: 'Spawn 2', mirageRole: 'Frente #2 (Parede frente)', competitiveOnly: false },
+  { slot: 3, kp: 'KP_3', label: 'Numpad 3', role: 'Spawn 3', mirageRole: 'Frente #3 (Parede frente)', competitiveOnly: false },
+  { slot: 4, kp: 'KP_4', label: 'Numpad 4', role: 'Spawn 4', mirageRole: 'Frente #4 (Porta de madeira / A)', competitiveOnly: false },
+  { slot: 5, kp: 'KP_5', label: 'Numpad 5', role: 'Spawn 5', mirageRole: 'Meio #5 (Fileira do meio / B)', competitiveOnly: false },
+  { slot: 6, kp: 'KP_6', label: 'Numpad 6', role: 'Spawn 6 (Competitivos)', mirageRole: 'Meio #6 (Centro da base)', competitiveOnly: true },
+  { slot: 7, kp: 'KP_7', label: 'Numpad 7', role: 'Spawn 7 (Competitivos)', mirageRole: 'Meio #7 (Centro-esquerda)', competitiveOnly: true },
+  { slot: 8, kp: 'KP_8', label: 'Numpad 8', role: 'Spawn 8 (Competitivos)', mirageRole: 'Meio #8 (Alinhado saída Bomb A)', competitiveOnly: true },
+  { slot: 9, kp: 'KP_9', label: 'Numpad 9', role: 'Spawn 9 (Competitivos)', mirageRole: 'Fundo #9 (Fundo direita / B)', competitiveOnly: true },
+  { slot: 10, kp: 'KP_0', label: 'Numpad 0', role: 'Spawn 10 (Competitivos)', mirageRole: 'Fundo #10 (Fundo meio)', competitiveOnly: true },
+  { slot: 11, kp: 'KP_DEL', label: 'Numpad Del', role: 'Spawn 11 (Mirage Fundo/A)', mirageRole: 'Fundo #11 (Lado Bomb A)', competitiveOnly: true },
+  { slot: 12, kp: 'KP_ENTER', label: 'Numpad Enter', role: 'Spawn 12 (Mirage Entrada A)', mirageRole: 'Fundo #12 (Mais próximo do Bomb A)', competitiveOnly: true },
 ]);
 
 export const TREINO_MAPS = Object.freeze([
@@ -45,17 +60,21 @@ export const TREINO_MAPS = Object.freeze([
     name: 'Mirage',
     emoji: '🏜️',
     aliases: ['de_mirage', 'mirage', 'mrg'],
+    customHeader: 'Todos os spawns organizados por fileira: 1-4 Frente | 5-8 Meio | 9, 0, Del Fundo/Lado A',
+    customEcho: '[SPAWNS MIRAGE CS2 TR CARREGADOS: 1-4 FRENTE | 5-8 MEIO | 9, 0, DEL, ENTER FUNDO/A]',
     spawns: [
       'setpos 1136.00 32.00 -164.80; setang 0.00 -175.00 0.00',
-      'setpos 1296.00 32.00 -168.00; setang 0.00 -175.00 0.00',
       'setpos 1136.00 -64.00 -164.50; setang 0.00 -170.00 0.00',
-      'setpos 1216.00 -115.00 -164.00; setang 0.00 -170.00 0.00',
-      'setpos 1216.00 -16.00 -164.00; setang 0.00 -175.00 0.00',
       'setpos 1136.00 -160.00 -164.00; setang 0.00 -170.00 0.00',
-      'setpos 1296.00 -160.00 -164.00; setang 0.00 -170.00 0.00',
       'setpos 1136.00 -256.00 -164.00; setang 0.00 -165.00 0.00',
+      'setpos 1216.00 -16.00 -164.00; setang 0.00 -175.00 0.00',
+      'setpos 1216.00 -115.00 -164.00; setang 0.00 -170.00 0.00',
       'setpos 1216.00 -211.00 -164.00; setang 0.00 -165.00 0.00',
+      'setpos 1216.00 -307.00 -164.00; setang 0.00 -160.00 0.00',
+      'setpos 1296.00 32.00 -168.00; setang 0.00 -175.00 0.00',
+      'setpos 1296.00 -160.00 -164.00; setang 0.00 -170.00 0.00',
       'setpos 1296.00 -256.00 -164.00; setang 0.00 -165.00 0.00',
+      'setpos 1296.00 -352.00 -164.00; setang 0.00 -155.00 0.00',
     ],
   },
   {
@@ -299,8 +318,10 @@ export function buildTreinoCfg(options = {}) {
 
   const mapBlocks = TREINO_MAPS.map((map, mapIdx) => {
     const count = map.spawns.length;
-    const isFullTen = count >= 10;
-    const headerSuffix = isFullTen
+    const isFullTen = count === 10;
+    const headerSuffix = map.customHeader
+      ? map.customHeader
+      : isFullTen
       ? '10 Spawns TR no Numpad 1 a 0'
       : `${count} Spawns TR no Numpad 1 a ${count}`;
     const rangeTag = isFullTen ? '1-10' : `1-${count}`;
@@ -312,14 +333,15 @@ export function buildTreinoCfg(options = {}) {
     const kpBindings = map.spawns
       .map((_, idx) => `bind ${SPAWN_NUMPAD_KEYS[idx]} ${map.id}_s${idx + 1}`)
       .join('; ');
-    const unusedUnbinds = isFullTen
-      ? ''
-      : `; ${SPAWN_NUMPAD_KEYS.slice(count).map((kp) => `unbind ${kp}`).join('; ')}`;
+    const unusedUnbinds = count < SPAWN_NUMPAD_KEYS.length
+      ? `; ${SPAWN_NUMPAD_KEYS.slice(count).map((kp) => `unbind ${kp}`).join('; ')}`
+      : '';
+    const echoMsg = map.customEcho || `[SPAWNS ${map.name.toUpperCase()} CS2 TR ${rangeTag} CARREGADOS NO NUMPAD ${keyRangeTag}]`;
 
     return (
       `// ${mapIdx + 1}. ${map.name} (${headerSuffix})\n` +
       `${spawnAliases}\n` +
-      `alias "${map.id}" "${kpBindings}${unusedUnbinds}; echo [SPAWNS ${map.name.toUpperCase()} CS2 TR ${rangeTag} CARREGADOS NO NUMPAD ${keyRangeTag}]"`
+      `alias "${map.id}" "${kpBindings}${unusedUnbinds}; echo ${echoMsg}"`
     );
   }).join('\n\n');
 
@@ -380,7 +402,7 @@ export function buildTreinoCfg(options = {}) {
     `bind "${b.restart}" "mp_restartgame 1"`,
     `bind "${b.xray}" "toggle r_drawothermodels 2 1"`,
     '',
-    '// ====== SPAWNS TR POR MAPA (SINTAXE PURA SOURCE 2 - NUMPAD 1 A 0) ======',
+    '// ====== SPAWNS TR POR MAPA (SINTAXE PURA SOURCE 2) ======',
     '',
     mapBlocks,
     '',
@@ -394,9 +416,10 @@ export function buildTreinoCfg(options = {}) {
     '// Mensagem de boas-vindas',
     'echo "========================================================================="',
     'echo "CS2 MIX HUB • TREINO COMPLETO LXN - BOM TREINO!"',
-    'echo "Mapas competitivos (10 spawns TR no Numpad 1-0): mirage, cache, anubis,"',
-    'echo "inferno, dust2, ancient, nuke, overpass, vertigo ou train"',
-    'echo "Mapas refens (5 spawns TR no Numpad 1-5): office ou italy"',
+    'echo "Mirage (12 spawns TR organizados por fileira): 1-4 Frente | 5-8 Meio | 9, 0, Del, Enter Fundo/A"',
+    'echo "Demais mapas competitivos (Numpad 1-0): cache, anubis, inferno, dust2,"',
+    'echo "ancient, nuke, overpass, vertigo ou train"',
+    'echo "Mapas refens (Numpad 1-5): office ou italy"',
     'echo "Para voltar ao normal depois do treino: digite reset"',
     'echo "========================================================================="',
   ].join('\n');
@@ -405,18 +428,17 @@ export function buildTreinoCfg(options = {}) {
 export function buildTreinoLeiaMeMd(options = {}) {
   const b = resolveTreinoBinds(options);
   const mapRows = TREINO_MAPS.map((m) => {
-    const label = m.spawns.length >= 10 ? '**10 spawns TR** (Numpad `1` a `0`)' : `**${m.spawns.length} spawns TR** (Numpad \`1\` a \`${m.spawns.length}\`)`;
+    const label = m.spawns.length >= 12
+      ? `**${m.spawns.length} spawns TR** (Numpad \`1\`–\`0\`, \`Del\` e \`Enter\`)`
+      : m.spawns.length >= 10
+      ? '**10 spawns TR** (Numpad `1` a `0`)'
+      : `**${m.spawns.length} spawns TR** (Numpad \`1\` a \`${m.spawns.length}\`)`;
     return `| **${m.name}** | \`${m.id}\` | ${label} |`;
-  }).join('\n');
-
-  const numpadRows = TREINO_SPAWN_DESCRIPTIONS.map((s) => {
-    const suffix = s.competitiveOnly ? ' *(Mapas competitivos)*' : '';
-    return `| **${s.label}** | \`${s.kp}\` | Teleporta para o **Spawn ${s.slot}**${suffix} |`;
   }).join('\n');
 
   return `# Guia de Uso — Configuração de Treino CS2 Completa (LXN • CS2 Mix Hub)
 
-Este pacote contém o arquivo **\`treino.cfg\`** unificado e atualizado com as **coordenadas oficiais extraídas dos mapas do CS2** — incluindo **todos os 10 spawns competitivos da base TR** nas teclas **1 a 0 do Numpad** nos 10 principais mapas competitivos (incluindo os remakes de **Cache** e **Train**), além de modo treino, granadas infinitas e câmera de trajetória.
+Este pacote contém o arquivo **\`treino.cfg\`** unificado e atualizado com as **coordenadas oficiais extraídas dos mapas do CS2** — incluindo **todos os 12 spawns da base TR da Mirage organizados por fileira** (inclusive os spawns do extremo lado do **Bomb A / Rampa / Palácio**) e os **10 spawns competitivos** nos demais mapas (incluindo os remakes de **Cache** e **Train**).
 
 ---
 
@@ -437,27 +459,30 @@ Este pacote contém o arquivo **\`treino.cfg\`** unificado e atualizado com as *
    \`\`\`text
    exec treino
    \`\`\`
-3. Em seguida, digite o comando correspondente ao mapa em que você está para vincular os spawns da base TR no teclado numérico:
+3. Em seguida, digite o comando correspondente ao mapa em que você está:
 
 | Mapa | Comando no Console | Spawns Disponíveis |
 | :--- | :--- | :--- |
 ${mapRows}
 
 > **Dica rápida:** Você pode ativar o treino e o mapa na mesma linha usando ponto e vírgula (\`;\`), por exemplo:
-> \`exec treino; mirage\` ou \`exec treino; train\`
+> \`exec treino; mirage\`
 
 ---
 
-## 3. Atalhos de Teclado Configurados
+## 3. Organização dos Spawns na Mirage (Do Lado B para o Lado A)
 
-### Teleporte para Spawns TR (Teclado Numérico / Numpad)
-*Certifique-se de que a tecla **Num Lock** está ativada.*
+Na **Mirage**, as teclas do Numpad seguem agora a ordem exata das fileiras da direita (lado B) para a esquerda (lado do **Bomb A / Rampa / Palácio**):
 
-| Tecla | Código Interno | Função |
-| :--- | :--- | :--- |
-${numpadRows}
+| Fileira | Tecla Numpad | Código | Posição |
+| :--- | :--- | :--- | :--- |
+| **Frente** (colada na parede) | **1, 2, 3, 4** | \`KP_1\` a \`KP_4\` | Do canto direito (B) até a porta de madeira (A) |
+| **Meio** | **5, 6, 7, 8** | \`KP_5\` a \`KP_8\` | Do lado B até o spawn **8** alinhado com a saída do Bomb A |
+| **Fundo** | **9, 0, Del, Enter** | \`KP_9\`, \`KP_0\`, \`KP_DEL\`, \`KP_ENTER\` | Do fundo B até o **Enter** (spawn mais próximo da entrada do Bomb A) |
 
-### Utilitários e Treino de Granadas
+---
+
+## 4. Utilitários e Treino de Granadas
 
 | Tecla | Comando | Função |
 | :--- | :--- | :--- |
@@ -471,14 +496,14 @@ ${numpadRows}
 
 ---
 
-## 4. Como Voltar ao Normal Após o Treino
+## 5. Como Voltar ao Normal Após o Treino
 
 - **Se fechar o CS2:** As configurações de treino ficam apenas na sessão atual; ao abrir o jogo novamente, sua \`${b.autoexecName}.cfg\` será carregada normalmente.
 - **Se for jogar Competitivo, Premier ou Mix sem fechar o jogo:** Abra o console (\`'\`) e digite:
   \`\`\`text
   reset
   \`\`\`
-  Esse comando limpa automaticamente todas as teclas do Numpad (\`KP_1\` a \`KP_0\`) e recarrega sua \`${b.autoexecName}.cfg\`.
+  Esse comando limpa automaticamente todas as teclas do Numpad (\`KP_1\` a \`KP_0\`, \`KP_DEL\`, \`KP_ENTER\`) e recarrega sua \`${b.autoexecName}.cfg\`.
 `;
 }
 

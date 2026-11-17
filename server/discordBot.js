@@ -2040,11 +2040,11 @@ export class DiscordBotManager {
 
       new SlashCommandBuilder()
         .setName('treino')
-        .setDescription('Envia o pacote completo de treino LXN (treino.cfg + guia + até 10 spawns TR no Numpad 1-0)')
+        .setDescription('Envia o pacote completo de treino LXN (treino.cfg + guia + até 12 spawns TR no Numpad)')
         .addStringOption((opt) =>
           opt
             .setName('mapa')
-            .setDescription('Mapa para destacar os spawns TR (Numpad 1-0)')
+            .setDescription('Mapa para destacar os spawns TR (Mirage 12 spawns | outros 10/5 spawns)')
             .setRequired(false)
             .addChoices(...TREINO_MAPS.map((m) => ({ name: m.name, value: m.id })))
         ),
@@ -3540,13 +3540,11 @@ export class DiscordBotManager {
           inline: true,
         },
         {
-          name: '🎯 Spawns TR — 12 Mapas (Numpad 1–0)',
+          name: '🎯 Spawns TR — 12 Mapas',
           value:
-            '**Competitivos (10 spawns • Num `1`–`0`):**\n' +
-            '`mirage` • `cache` • `anubis` • `inferno` • `dust2`\n' +
-            '`ancient` • `nuke` • `overpass` • `vertigo` • `train`\n' +
-            '**Reféns (5 spawns • Num `1`–`5`):** `office` • `italy`\n' +
-            '• **`reset`** — Limpar Numpad e sair',
+            '**Mirage (12 spawns):** `1–4` Frente | `5–8` Meio | `9, 0, Del, Enter` Fundo/A\n' +
+            '**Competitivos (10 • Num `1`–`0`):** `cache`, `anubis`, `inferno`, `dust2`, `ancient`, `nuke`, `overpass`, `vertigo`, `train`\n' +
+            '**Reféns (5 • Num `1`–`5`):** `office`, `italy` • **`reset`** p/ sair',
           inline: true,
         }
       )

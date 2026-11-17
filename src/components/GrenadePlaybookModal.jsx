@@ -754,7 +754,7 @@ export default function GrenadePlaybookModal({
                   <h3 className="text-sm font-black text-white flex items-center gap-2 flex-wrap">
                     <span>Pack Treino Completo LXN • Source 2</span>
                     <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                      12 Mapas • Até 10 Spawns Numpad
+                      12 Mapas • Até 12 Spawns Numpad
                     </span>
                   </h3>
                   <p className="text-xs text-slate-300 mt-1 leading-relaxed">
@@ -814,7 +814,11 @@ export default function GrenadePlaybookModal({
                   <h4 className="text-xs font-black uppercase tracking-wider text-white flex items-center gap-1.5">
                     <MapPin size={14} className="text-amber-400" />
                     <span>
-                      Spawns TR por Mapa (Numpad {(TREINO_MAPS.find((m) => m.id === treinoMapId)?.spawns.length || 10) >= 10 ? '1–0' : '1–5'})
+                      {(() => {
+                        const cnt = TREINO_MAPS.find((m) => m.id === treinoMapId)?.spawns.length || 10;
+                        if (cnt >= 12) return 'Spawns TR Mirage (Numpad 1–0, Del, Enter)';
+                        return `Spawns TR por Mapa (Numpad ${cnt >= 10 ? '1–0' : '1–5'})`;
+                      })()}
                     </span>
                   </h4>
                   <button
@@ -858,13 +862,13 @@ export default function GrenadePlaybookModal({
                       className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-xl bg-slate-900/90 border border-slate-800/90 text-xs"
                     >
                       <span className="font-mono font-bold text-amber-300 shrink-0">{sp.label}</span>
-                      <span className="text-slate-300 truncate">{sp.role}</span>
+                      <span className="text-slate-300 truncate">{treinoMapId === 'mirage' ? sp.mirageRole : sp.role}</span>
                     </div>
                   ))}
                 </div>
 
                 <div className="p-2.5 rounded-xl bg-slate-900/70 border border-slate-800 text-[11px] text-slate-300">
-                  Depois do treino, digite <code className="text-emerald-300 font-mono font-bold">reset</code> no console para limpar <code className="font-mono">KP_1–KP_0</code> e recarregar <code className="text-amber-300 font-mono">{treinoBinds.autoexecName || 'autoexec'}.cfg</code>.
+                  Depois do treino, digite <code className="text-emerald-300 font-mono font-bold">reset</code> no console para limpar <code className="font-mono">KP_1–KP_0, Del, Enter</code> e recarregar <code className="text-amber-300 font-mono">{treinoBinds.autoexecName || 'autoexec'}.cfg</code>.
                 </div>
               </div>
 
@@ -955,7 +959,7 @@ export default function GrenadePlaybookModal({
                 ? `${filteredLineups.length} lineups prontas para uso no seu Mix.`
                 : activeTab === 'workshop'
                 ? 'Mapas oficiais aprovados pela comunidade do CS2.'
-                : `Atalhos LXN ativos: ${treinoBinds.rethrow.toUpperCase()} repetir granada • ${treinoBinds.noclip.toUpperCase()} voar • Numpad 1–0 spawns TR • reset para sair.`}
+                : `Atalhos LXN ativos: ${treinoBinds.rethrow.toUpperCase()} repetir granada • ${treinoBinds.noclip.toUpperCase()} voar • Numpad 1–0/Del/Enter spawns TR • reset para sair.`}
             </span>
           </div>
           <button

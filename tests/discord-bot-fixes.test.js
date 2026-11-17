@@ -740,16 +740,16 @@ test('Voice check, voiceStateUpdate auto-announce, achievements no !stats e botÃ
 test('Pack Treino Completo LXN: shared/treinoCfg, AI Q&A e anexos do Discord (!treino)', async (t) => {
   const defaultCfg = buildTreinoCfg();
   assert.match(defaultCfg, /bind "p" "sv_rethrow_last_grenade"/);
-  assert.match(defaultCfg, /alias "mirage_s10" "setpos 1296\.00 -256\.00 -164\.00; setang 0\.00 -165\.00 0\.00"/);
+  assert.match(defaultCfg, /alias "mirage_s12" "setpos 1296\.00 -352\.00 -164\.00; setang 0\.00 -155\.00 0\.00"/);
+  assert.match(defaultCfg, /bind KP_DEL mirage_s11; bind KP_ENTER mirage_s12/);
   assert.match(defaultCfg, /alias "cache_s1" "setpos 3019\.30 225\.40 1616\.00; setang 0\.00 -176\.30 0\.00"/);
-  assert.match(defaultCfg, /alias "cache_s10"/);
+  assert.match(defaultCfg, /alias "cache" ".*unbind KP_DEL; unbind KP_ENTER;/);
   assert.match(defaultCfg, /alias "anubis_s1" "setpos -384\.00 -1552\.00 -12\.00; setang 0\.00 90\.00 0\.00"/);
-  assert.match(defaultCfg, /bind KP_0 mirage_s10/);
+  assert.match(defaultCfg, /bind KP_0 train_s10/);
   assert.match(defaultCfg, /alias "train_s1" "setpos -1568\.00 1376\.00 -200\.00; setang 0\.00 -15\.00 0\.00"/);
-  assert.match(defaultCfg, /alias "train_s10"/);
-  assert.match(defaultCfg, /alias "office" ".*unbind KP_6; unbind KP_7; unbind KP_8; unbind KP_9; unbind KP_0;/);
+  assert.match(defaultCfg, /alias "office" ".*unbind KP_6; unbind KP_7; unbind KP_8; unbind KP_9; unbind KP_0; unbind KP_DEL; unbind KP_ENTER;/);
   assert.match(defaultCfg, /alias "italy_s5"/);
-  assert.match(defaultCfg, /alias "reset" "unbind KP_1;.*unbind KP_0; exec autoexec;/);
+  assert.match(defaultCfg, /alias "reset" "unbind KP_1;.*unbind KP_DEL; unbind KP_ENTER; exec autoexec;/);
 
   const customCfg = buildTreinoCfg({
     rethrow: 'alt"; quit',
@@ -761,8 +761,8 @@ test('Pack Treino Completo LXN: shared/treinoCfg, AI Q&A e anexos do Discord (!t
   assert.match(customCfg, /exec minha_cfgdrop;/);
   const guiaMd = buildTreinoLeiaMeMd({ rethrow: 'alt' });
   assert.equal(guiaMd.includes('**ALT**'), true);
-  assert.equal(guiaMd.includes('**todos os 10 spawns competitivos da base TR**'), true);
-  assert.equal(guiaMd.includes('**10 spawns TR** (Numpad `1` a `0`)'), true);
+  assert.equal(guiaMd.includes('**todos os 12 spawns da base TR da Mirage organizados por fileira**'), true);
+  assert.equal(guiaMd.includes('**12 spawns TR** (Numpad `1`â€“`0`, `Del` e `Enter`)'), true);
   assert.match(buildTreinoRconCommands(), /sv_cheats 1/);
   assert.equal(resolveTreinoMapKey('d2'), 'dust2');
   assert.equal(resolveTreinoMapKey('ovp'), 'overpass');

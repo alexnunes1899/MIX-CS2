@@ -1694,11 +1694,11 @@ pause
                       Pack Treino Completo LXN (treino.cfg)
                     </h4>
                     <span className="text-[10px] font-mono text-amber-300 bg-amber-500/15 px-2 py-0.5 rounded-full border border-amber-500/30">
-                      Spawns Numpad 1–0
+                      Até 12 Spawns Numpad
                     </span>
                   </div>
                   <p className="text-xs text-slate-300 leading-relaxed">
-                    Treine granadas, <code className="text-amber-300 font-mono">noclip</code>, câmera lenta (<code className="font-mono">K/I</code>) e até <strong>10 spawns oficiais da base TR</strong> nos <strong>12 mapas do CS2</strong> (Mirage, Cache Remake, Anubis, Inferno, Dust 2, Ancient, Nuke, Overpass, Vertigo, Train Remake, Office e Italy).
+                    Treine granadas, <code className="text-amber-300 font-mono">noclip</code>, câmera lenta (<code className="font-mono">K/I</code>) e os spawns exatos da base TR nos <strong>12 mapas do CS2</strong> — <strong>Mirage (12 spawns por fileira: 1–0, Del e Enter)</strong>, demais 9 competitivos (10 spawns) e Office/Italy (5 spawns).
                   </p>
                   <div className="flex flex-wrap gap-2">
                     <a

@@ -503,7 +503,8 @@ export function registerInfraRoutes(app, { io, rooms, lifecycle, discordBotManag
       successHeadline: 'TUDO PRONTO! O PACK DE TREINO LXN (treino.cfg) FOI INSTALADO NO SEU CS2!',
       hintLines: [
         'Abra um mapa no modo Treino do CS2, abra o console (apostrofo) e digite: exec treino',
-        'Competitivos (Numpad 1-0): mirage, cache, anubis, inferno, dust2, ancient, nuke, overpass, vertigo ou train!',
+        'Mirage (12 spawns por fileira): 1-4 Frente | 5-8 Meio | 9, 0, Del, Enter Fundo/A!',
+        'Demais competitivos (Numpad 1-0): cache, anubis, inferno, dust2, ancient, nuke, overpass, vertigo ou train!',
         'Refens (Numpad 1-5): office ou italy | Digite reset ao terminar!',
       ],
     });
