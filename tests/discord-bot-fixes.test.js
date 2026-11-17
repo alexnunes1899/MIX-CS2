@@ -740,11 +740,12 @@ test('Voice check, voiceStateUpdate auto-announce, achievements no !stats e botÃ
 test('Pack Treino Completo LXN: shared/treinoCfg, AI Q&A e anexos do Discord (!treino)', async (t) => {
   const defaultCfg = buildTreinoCfg();
   assert.match(defaultCfg, /bind "p" "sv_rethrow_last_grenade"/);
-  assert.match(defaultCfg, /alias "mirage_s1"/);
-  assert.match(defaultCfg, /alias "cache_s1"/);
+  assert.match(defaultCfg, /alias "cache_s1" "setpos 3019\.30 225\.40 1616\.00; setang 0\.00 -176\.30 0\.00"/);
+  assert.match(defaultCfg, /alias "anubis_s1" "setpos -384\.00 -1552\.00 -12\.00; setang 0\.00 90\.00 0\.00"/);
+  assert.match(defaultCfg, /alias "mirage_s1" "setpos 1136\.00 32\.00 -164\.80; setang 0\.00 -175\.00 0\.00"/);
   assert.match(defaultCfg, /alias "nuke_s5"/);
-  assert.match(defaultCfg, /alias "overpass_s1"/);
-  assert.match(defaultCfg, /alias "vertigo_s1"/);
+  assert.match(defaultCfg, /alias "overpass_s1" "setpos -1510\.40 -3053\.90 281\.10; setang 0\.00 75\.00 0\.00"/);
+  assert.match(defaultCfg, /alias "vertigo_s1" "setpos -1468\.80 -1194\.40 11488\.00; setang 0\.00 55\.00 0\.00"/);
   assert.match(defaultCfg, /alias "train_s1"/);
   assert.match(defaultCfg, /alias "office_s1"/);
   assert.match(defaultCfg, /alias "italy_s5"/);
