@@ -459,8 +459,8 @@ export function buildDeterministicCoachReply(query, context) {
         `• **\`N\`** — Voar (\`noclip\`) • **\`O\`** — Kit AWP + Colete + Granadas\n` +
         `• **\`K\` / \`I\`** — Câmera lenta (\`0.3x\`) / Velocidade normal (\`1.0x\`)\n` +
         `• **\`U\`** — Reiniciar round • **\`L\`** — Raio-X modelos\n` +
-        `• **\`Numpad 1–5\`** — 5 spawns TR nos 12 mapas (\`mirage\`, \`inferno\`, \`dust2\`, \`ancient\`, \`anubis\`, \`cache\`, \`nuke\`, \`overpass\`, \`vertigo\`, \`train\`, \`office\`, \`italy\`)\n` +
-        `• **\`reset\`** — Limpa as teclas do Numpad e recarrega sua \`autoexec\``,
+        `• **\`Numpad 1–0\`** — 10 spawns TR nos 10 competitivos (\`mirage\`, \`cache\`, \`anubis\`, \`inferno\`, \`dust2\`, \`ancient\`, \`nuke\`, \`overpass\`, \`vertigo\`, \`train\`)\n` +
+        `• **\`Numpad 1–5\`** — 5 spawns TR (\`office\`, \`italy\`) • **\`reset\`** — Limpa \`KP_1–KP_0\` e recarrega \`autoexec\``,
     };
   }
 

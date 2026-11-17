@@ -1,5 +1,5 @@
 /**
- * CS2 Mix Hub • Gerador Oficial do Pacote de Treino Completo LXN (Coordenadas Exatas CS2 - 12 Mapas)
+ * CS2 Mix Hub • Gerador Oficial do Pacote de Treino Completo LXN (Coordenadas Exatas CS2 - 12 Mapas / Numpad 1-0)
  * Compartilhado entre Bot do Discord, Endpoints HTTP e Interface Web.
  */
 
@@ -24,15 +24,40 @@ export const TREINO_BIND_META = Object.freeze([
   { key: 'xray', label: 'Raio-X de Modelos', cmd: 'toggle r_drawothermodels 2 1', hint: 'Alterna visualização de modelos através das paredes' },
 ]);
 
+const SPAWN_NUMPAD_KEYS = ['KP_1', 'KP_2', 'KP_3', 'KP_4', 'KP_5', 'KP_6', 'KP_7', 'KP_8', 'KP_9', 'KP_0'];
+
 export const TREINO_SPAWN_DESCRIPTIONS = Object.freeze([
-  { slot: 1, kp: 'KP_1', label: 'Numpad 1', role: 'Teleporta para o Spawn 1 (exato CS2)' },
-  { slot: 2, kp: 'KP_2', label: 'Numpad 2', role: 'Teleporta para o Spawn 2 (exato CS2)' },
-  { slot: 3, kp: 'KP_3', label: 'Numpad 3', role: 'Teleporta para o Spawn 3 (exato CS2)' },
-  { slot: 4, kp: 'KP_4', label: 'Numpad 4', role: 'Teleporta para o Spawn 4 (exato CS2)' },
-  { slot: 5, kp: 'KP_5', label: 'Numpad 5', role: 'Teleporta para o Spawn 5 (exato CS2)' },
+  { slot: 1, kp: 'KP_1', label: 'Numpad 1', role: 'Teleporta para o Spawn 1', competitiveOnly: false },
+  { slot: 2, kp: 'KP_2', label: 'Numpad 2', role: 'Teleporta para o Spawn 2', competitiveOnly: false },
+  { slot: 3, kp: 'KP_3', label: 'Numpad 3', role: 'Teleporta para o Spawn 3', competitiveOnly: false },
+  { slot: 4, kp: 'KP_4', label: 'Numpad 4', role: 'Teleporta para o Spawn 4', competitiveOnly: false },
+  { slot: 5, kp: 'KP_5', label: 'Numpad 5', role: 'Teleporta para o Spawn 5', competitiveOnly: false },
+  { slot: 6, kp: 'KP_6', label: 'Numpad 6', role: 'Teleporta para o Spawn 6 (Mapas competitivos)', competitiveOnly: true },
+  { slot: 7, kp: 'KP_7', label: 'Numpad 7', role: 'Teleporta para o Spawn 7 (Mapas competitivos)', competitiveOnly: true },
+  { slot: 8, kp: 'KP_8', label: 'Numpad 8', role: 'Teleporta para o Spawn 8 (Mapas competitivos)', competitiveOnly: true },
+  { slot: 9, kp: 'KP_9', label: 'Numpad 9', role: 'Teleporta para o Spawn 9 (Mapas competitivos)', competitiveOnly: true },
+  { slot: 10, kp: 'KP_0', label: 'Numpad 0', role: 'Teleporta para o Spawn 10 (Mapas competitivos)', competitiveOnly: true },
 ]);
 
 export const TREINO_MAPS = Object.freeze([
+  {
+    id: 'mirage',
+    name: 'Mirage',
+    emoji: '🏜️',
+    aliases: ['de_mirage', 'mirage', 'mrg'],
+    spawns: [
+      'setpos 1136.00 32.00 -164.80; setang 0.00 -175.00 0.00',
+      'setpos 1296.00 32.00 -168.00; setang 0.00 -175.00 0.00',
+      'setpos 1136.00 -64.00 -164.50; setang 0.00 -170.00 0.00',
+      'setpos 1216.00 -115.00 -164.00; setang 0.00 -170.00 0.00',
+      'setpos 1216.00 -16.00 -164.00; setang 0.00 -175.00 0.00',
+      'setpos 1136.00 -160.00 -164.00; setang 0.00 -170.00 0.00',
+      'setpos 1296.00 -160.00 -164.00; setang 0.00 -170.00 0.00',
+      'setpos 1136.00 -256.00 -164.00; setang 0.00 -165.00 0.00',
+      'setpos 1216.00 -211.00 -164.00; setang 0.00 -165.00 0.00',
+      'setpos 1296.00 -256.00 -164.00; setang 0.00 -165.00 0.00',
+    ],
+  },
   {
     id: 'cache',
     name: 'Cache (Remake CS2)',
@@ -44,6 +69,11 @@ export const TREINO_MAPS = Object.freeze([
       'setpos 2916.80 69.40 1608.00; setang 0.00 -178.70 0.00',
       'setpos 3041.80 -21.10 1608.00; setang 0.00 180.00 0.00',
       'setpos 3094.30 -152.60 1608.00; setang 0.00 177.00 0.00',
+      'setpos 2960.00 156.00 1616.00; setang 0.00 -176.00 0.00',
+      'setpos 2980.00 40.00 1612.00; setang 0.00 -178.00 0.00',
+      'setpos 2944.00 -88.00 1612.00; setang 0.00 179.00 0.00',
+      'setpos 3120.00 48.00 1616.00; setang 0.00 -178.00 0.00',
+      'setpos 3128.00 -76.00 1612.00; setang 0.00 178.00 0.00',
     ],
   },
   {
@@ -57,19 +87,11 @@ export const TREINO_MAPS = Object.freeze([
       'setpos -234.00 -1503.10 -12.00; setang 0.00 80.00 0.00',
       'setpos -154.00 -1503.10 -12.00; setang 0.00 80.00 0.00',
       'setpos -416.00 -1608.00 2.00; setang 0.00 95.00 0.00',
-    ],
-  },
-  {
-    id: 'mirage',
-    name: 'Mirage',
-    emoji: '🏜️',
-    aliases: ['de_mirage', 'mirage', 'mrg'],
-    spawns: [
-      'setpos 1136.00 32.00 -164.80; setang 0.00 -175.00 0.00',
-      'setpos 1296.00 32.00 -168.00; setang 0.00 -175.00 0.00',
-      'setpos 1136.00 -64.00 -164.50; setang 0.00 -170.00 0.00',
-      'setpos 1216.00 -115.00 -164.00; setang 0.00 -170.00 0.00',
-      'setpos 1216.00 -16.00 -164.00; setang 0.00 -175.00 0.00',
+      'setpos -480.00 -1552.00 -12.00; setang 0.00 95.00 0.00',
+      'setpos -320.00 -1608.00 2.00; setang 0.00 90.00 0.00',
+      'setpos -234.00 -1584.00 -4.00; setang 0.00 85.00 0.00',
+      'setpos -464.00 -1496.00 -12.00; setang 0.00 95.00 0.00',
+      'setpos -154.00 -1576.00 -6.00; setang 0.00 80.00 0.00',
     ],
   },
   {
@@ -83,6 +105,11 @@ export const TREINO_MAPS = Object.freeze([
       'setpos -1675.60 351.70 -64.00; setang 0.00 15.00 0.00',
       'setpos -1657.20 419.60 -64.00; setang 0.00 20.00 0.00',
       'setpos -1662.20 288.80 -64.00; setang 0.00 10.00 0.00',
+      'setpos -1591.20 361.90 -64.00; setang 0.00 15.00 0.00',
+      'setpos -1524.00 355.00 -64.00; setang 0.00 15.00 0.00',
+      'setpos -1462.00 398.00 -64.00; setang 0.00 20.00 0.00',
+      'setpos -1585.00 292.00 -64.00; setang 0.00 10.00 0.00',
+      'setpos -1728.00 384.00 -64.00; setang 0.00 15.00 0.00',
     ],
   },
   {
@@ -96,6 +123,11 @@ export const TREINO_MAPS = Object.freeze([
       'setpos -1015.00 -808.00 116.10; setang 0.00 90.00 0.00',
       'setpos -696.80 -806.60 116.70; setang 0.00 85.00 0.00',
       'setpos -332.00 -754.00 78.90; setang 0.00 85.00 0.00',
+      'setpos -512.00 -752.00 104.50; setang 0.00 85.00 0.00',
+      'setpos -940.00 -744.00 121.50; setang 0.00 90.00 0.00',
+      'setpos -1104.00 -812.00 117.80; setang 0.00 95.00 0.00',
+      'setpos -776.00 -748.00 121.00; setang 0.00 90.00 0.00',
+      'setpos -608.00 -748.00 115.20; setang 0.00 85.00 0.00',
     ],
   },
   {
@@ -109,6 +141,11 @@ export const TREINO_MAPS = Object.freeze([
       'setpos -584.00 -2288.00 -162.40; setang 0.00 95.00 0.00',
       'setpos -456.00 -2288.00 -163.30; setang 0.00 90.00 0.00',
       'setpos -328.00 -2288.00 -163.30; setang 0.00 85.00 0.00',
+      'setpos -264.00 -2224.00 -163.30; setang 0.00 85.00 0.00',
+      'setpos -648.00 -2224.00 -162.40; setang 0.00 95.00 0.00',
+      'setpos -520.00 -2352.00 -163.30; setang 0.00 90.00 0.00',
+      'setpos -392.00 -2352.00 -163.30; setang 0.00 90.00 0.00',
+      'setpos -264.00 -2352.00 -163.30; setang 0.00 85.00 0.00',
     ],
   },
   {
@@ -122,6 +159,11 @@ export const TREINO_MAPS = Object.freeze([
       'setpos -1947.00 -1102.10 -416.00; setang 0.00 15.00 0.00',
       'setpos -1874.00 -1076.00 -416.00; setang 0.00 15.00 0.00',
       'setpos -1832.00 -1160.00 -416.00; setang 0.00 15.00 0.00',
+      'setpos -1876.00 -988.00 -416.00; setang 0.00 15.00 0.00',
+      'setpos -1752.00 -1068.00 -416.00; setang 0.00 15.00 0.00',
+      'setpos -1760.00 -964.00 -416.00; setang 0.00 15.00 0.00',
+      'setpos -1912.00 -1168.00 -416.00; setang 0.00 15.00 0.00',
+      'setpos -1752.00 -1148.00 -416.00; setang 0.00 15.00 0.00',
     ],
   },
   {
@@ -135,6 +177,11 @@ export const TREINO_MAPS = Object.freeze([
       'setpos -1422.40 -3129.70 268.40; setang 0.00 75.00 0.00',
       'setpos -1363.00 -3122.00 260.60; setang 0.00 75.00 0.00',
       'setpos -1271.00 -3262.00 266.20; setang 0.00 75.00 0.00',
+      'setpos -1440.00 -3056.00 272.00; setang 0.00 75.00 0.00',
+      'setpos -1368.00 -3056.00 263.50; setang 0.00 75.00 0.00',
+      'setpos -1488.00 -3204.00 282.00; setang 0.00 75.00 0.00',
+      'setpos -1408.00 -3208.00 273.50; setang 0.00 75.00 0.00',
+      'setpos -1336.00 -3208.00 265.00; setang 0.00 75.00 0.00',
     ],
   },
   {
@@ -148,19 +195,29 @@ export const TREINO_MAPS = Object.freeze([
       'setpos -1439.80 -1322.00 11488.00; setang 0.00 55.00 0.00',
       'setpos -1439.60 -1251.70 11488.00; setang 0.00 60.00 0.00',
       'setpos -1502.60 -1360.80 11488.00; setang 0.00 55.00 0.00',
+      'setpos -1356.00 -1188.00 11488.00; setang 0.00 60.00 0.00',
+      'setpos -1376.00 -1288.00 11488.00; setang 0.00 55.00 0.00',
+      'setpos -1524.00 -1264.00 11488.00; setang 0.00 55.00 0.00',
+      'setpos -1324.00 -1248.00 11488.00; setang 0.00 60.00 0.00',
+      'setpos -1424.00 -1388.00 11488.00; setang 0.00 55.00 0.00',
     ],
   },
   {
     id: 'train',
-    name: 'Train',
+    name: 'Train (Remake CS2)',
     emoji: '🚂',
     aliases: ['de_train', 'train', 'trn'],
     spawns: [
-      'setpos -1632.00 1344.00 -207.97; setang 0.00 -15.00 0.00',
-      'setpos -1632.00 1472.00 -207.97; setang 0.00 -10.00 0.00',
-      'setpos -1728.00 1344.00 -207.97; setang 0.00 -15.00 0.00',
-      'setpos -1664.00 1216.00 -207.97; setang 0.00 -25.00 0.00',
-      'setpos -1824.00 1344.00 -207.97; setang 0.00 -15.00 0.00',
+      'setpos -1568.00 1376.00 -200.00; setang 0.00 -15.00 0.00',
+      'setpos -1568.00 1472.00 -200.00; setang 0.00 -15.00 0.00',
+      'setpos -1648.00 1312.00 -200.00; setang 0.00 -10.00 0.00',
+      'setpos -1648.00 1424.00 -200.00; setang 0.00 -15.00 0.00',
+      'setpos -1728.00 1360.00 -200.00; setang 0.00 -15.00 0.00',
+      'setpos -1728.00 1472.00 -200.00; setang 0.00 -15.00 0.00',
+      'setpos -1632.00 1232.00 -200.00; setang 0.00 -20.00 0.00',
+      'setpos -1712.00 1248.00 -200.00; setang 0.00 -20.00 0.00',
+      'setpos -1808.00 1312.00 -200.00; setang 0.00 -15.00 0.00',
+      'setpos -1808.00 1424.00 -200.00; setang 0.00 -15.00 0.00',
     ],
   },
   {
@@ -241,21 +298,35 @@ export function buildTreinoCfg(options = {}) {
   const b = resolveTreinoBinds(options);
 
   const mapBlocks = TREINO_MAPS.map((map, mapIdx) => {
+    const count = map.spawns.length;
+    const isFullTen = count >= 10;
+    const headerSuffix = isFullTen
+      ? '10 Spawns TR no Numpad 1 a 0'
+      : `${count} Spawns TR no Numpad 1 a ${count}`;
+    const rangeTag = isFullTen ? '1-10' : `1-${count}`;
+    const keyRangeTag = isFullTen ? '1-0' : `1-${count}`;
+
     const spawnAliases = map.spawns
       .map((coords, idx) => `alias "${map.id}_s${idx + 1}" "${coords}"`)
       .join('\n');
     const kpBindings = map.spawns
-      .map((_, idx) => `bind KP_${idx + 1} ${map.id}_s${idx + 1}`)
+      .map((_, idx) => `bind ${SPAWN_NUMPAD_KEYS[idx]} ${map.id}_s${idx + 1}`)
       .join('; ');
+    const unusedUnbinds = isFullTen
+      ? ''
+      : `; ${SPAWN_NUMPAD_KEYS.slice(count).map((kp) => `unbind ${kp}`).join('; ')}`;
+
     return (
-      `// ${mapIdx + 1}. ${map.name}\n` +
+      `// ${mapIdx + 1}. ${map.name} (${headerSuffix})\n` +
       `${spawnAliases}\n` +
-      `alias "${map.id}" "${kpBindings}; echo [SPAWNS ${map.name.toUpperCase()} CS2 TR CARREGADOS NO NUMPAD 1-5]"`
+      `alias "${map.id}" "${kpBindings}${unusedUnbinds}; echo [SPAWNS ${map.name.toUpperCase()} CS2 TR ${rangeTag} CARREGADOS NO NUMPAD ${keyRangeTag}]"`
     );
   }).join('\n\n');
 
+  const unbindAllNumpad = SPAWN_NUMPAD_KEYS.map((kp) => `unbind ${kp}`).join('; ');
+
   return [
-    '// ====== TREINO COMPLETO LXN (ARQUIVO UNICO - COORDENADAS EXATAS CS2) ======',
+    '// ====== TREINO COMPLETO LXN (ARQUIVO UNICO - TODOS OS MAPAS ATUALIZADOS CS2) ======',
     '',
     '// Ativar cheats',
     'sv_cheats 1',
@@ -309,12 +380,12 @@ export function buildTreinoCfg(options = {}) {
     `bind "${b.restart}" "mp_restartgame 1"`,
     `bind "${b.xray}" "toggle r_drawothermodels 2 1"`,
     '',
-    '// ====== SPAWNS TR POR MAPA (NUMPAD 1 A 5 - COORDENADAS EXATAS DO MAPA CS2) ======',
+    '// ====== SPAWNS TR POR MAPA (SINTAXE PURA SOURCE 2 - NUMPAD 1 A 0) ======',
     '',
     mapBlocks,
     '',
-    '// Comando rapido para limpar as teclas depois do treino',
-    `alias "reset" "unbind KP_1; unbind KP_2; unbind KP_3; unbind KP_4; unbind KP_5; exec ${b.autoexecName}; echo [TREINO RESETADO E AUTOEXEC RECARREGADA]"`,
+    '// Comando rapido para limpar todas as teclas do Numpad depois do treino',
+    `alias "reset" "${unbindAllNumpad}; exec ${b.autoexecName}; echo [TREINO RESETADO E AUTOEXEC RECARREGADA]"`,
     '',
     '// Reiniciar o round e limpar console',
     'mp_restartgame 1',
@@ -323,8 +394,9 @@ export function buildTreinoCfg(options = {}) {
     '// Mensagem de boas-vindas',
     'echo "========================================================================="',
     'echo "CS2 MIX HUB • TREINO COMPLETO LXN - BOM TREINO!"',
-    'echo "Mapas disponiveis (Numpad 1-5): cache, anubis, mirage, inferno, dust2,"',
-    'echo "ancient, nuke, overpass, vertigo, train, office ou italy"',
+    'echo "Mapas competitivos (10 spawns TR no Numpad 1-0): mirage, cache, anubis,"',
+    'echo "inferno, dust2, ancient, nuke, overpass, vertigo ou train"',
+    'echo "Mapas refens (5 spawns TR no Numpad 1-5): office ou italy"',
     'echo "Para voltar ao normal depois do treino: digite reset"',
     'echo "========================================================================="',
   ].join('\n');
@@ -332,11 +404,19 @@ export function buildTreinoCfg(options = {}) {
 
 export function buildTreinoLeiaMeMd(options = {}) {
   const b = resolveTreinoBinds(options);
-  const mapRows = TREINO_MAPS.map((m) => `| **${m.name}** | \`${m.id}\` |`).join('\n');
+  const mapRows = TREINO_MAPS.map((m) => {
+    const label = m.spawns.length >= 10 ? '**10 spawns TR** (Numpad `1` a `0`)' : `**${m.spawns.length} spawns TR** (Numpad \`1\` a \`${m.spawns.length}\`)`;
+    return `| **${m.name}** | \`${m.id}\` | ${label} |`;
+  }).join('\n');
+
+  const numpadRows = TREINO_SPAWN_DESCRIPTIONS.map((s) => {
+    const suffix = s.competitiveOnly ? ' *(Mapas competitivos)*' : '';
+    return `| **${s.label}** | \`${s.kp}\` | Teleporta para o **Spawn ${s.slot}**${suffix} |`;
+  }).join('\n');
 
   return `# Guia de Uso — Configuração de Treino CS2 Completa (LXN • CS2 Mix Hub)
 
-Este pacote contém o arquivo **\`treino.cfg\`** atualizado com as **coordenadas exatas extraídas diretamente dos mapas do CS2** (incluindo o **novo remake da Cache** e **Anubis**), além de modo treino, granadas infinitas e câmera de trajetória em **${TREINO_MAPS.length} mapas do CS2**.
+Este pacote contém o arquivo **\`treino.cfg\`** unificado e atualizado com as **coordenadas oficiais extraídas dos mapas do CS2** — incluindo **todos os 10 spawns competitivos da base TR** nas teclas **1 a 0 do Numpad** nos 10 principais mapas competitivos (incluindo os remakes de **Cache** e **Train**), além de modo treino, granadas infinitas e câmera de trajetória.
 
 ---
 
@@ -357,14 +437,14 @@ Este pacote contém o arquivo **\`treino.cfg\`** atualizado com as **coordenadas
    \`\`\`text
    exec treino
    \`\`\`
-3. Em seguida, digite o comando correspondente ao mapa em que você está para vincular os 5 spawns oficiais da base TR nas teclas **1 a 5 do Numpad**:
+3. Em seguida, digite o comando correspondente ao mapa em que você está para vincular os spawns da base TR no teclado numérico:
 
-| Mapa | Comando no Console |
-| :--- | :--- |
+| Mapa | Comando no Console | Spawns Disponíveis |
+| :--- | :--- | :--- |
 ${mapRows}
 
 > **Dica rápida:** Você pode ativar o treino e o mapa na mesma linha usando ponto e vírgula (\`;\`), por exemplo:
-> \`exec treino; cache\` ou \`exec treino; anubis\`
+> \`exec treino; mirage\` ou \`exec treino; train\`
 
 ---
 
@@ -375,11 +455,7 @@ ${mapRows}
 
 | Tecla | Código Interno | Função |
 | :--- | :--- | :--- |
-| **Numpad 1** | \`KP_1\` | Teleporta para o **Spawn 1** |
-| **Numpad 2** | \`KP_2\` | Teleporta para o **Spawn 2** |
-| **Numpad 3** | \`KP_3\` | Teleporta para o **Spawn 3** |
-| **Numpad 4** | \`KP_4\` | Teleporta para o **Spawn 4** |
-| **Numpad 5** | \`KP_5\` | Teleporta para o **Spawn 5** |
+${numpadRows}
 
 ### Utilitários e Treino de Granadas
 
@@ -402,7 +478,7 @@ ${mapRows}
   \`\`\`text
   reset
   \`\`\`
-  Esse comando limpa automaticamente as teclas \`KP_1\` a \`KP_5\` e recarrega sua \`${b.autoexecName}.cfg\`.
+  Esse comando limpa automaticamente todas as teclas do Numpad (\`KP_1\` a \`KP_0\`) e recarrega sua \`${b.autoexecName}.cfg\`.
 `;
 }
 

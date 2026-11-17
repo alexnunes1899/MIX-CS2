@@ -2040,11 +2040,11 @@ export class DiscordBotManager {
 
       new SlashCommandBuilder()
         .setName('treino')
-        .setDescription('Envia o pacote completo de treino LXN (treino.cfg + guia + spawns TR no Numpad)')
+        .setDescription('Envia o pacote completo de treino LXN (treino.cfg + guia + até 10 spawns TR no Numpad 1-0)')
         .addStringOption((opt) =>
           opt
             .setName('mapa')
-            .setDescription('Mapa para destacar os spawns TR (Numpad 1-5)')
+            .setDescription('Mapa para destacar os spawns TR (Numpad 1-0)')
             .setRequired(false)
             .addChoices(...TREINO_MAPS.map((m) => ({ name: m.name, value: m.id })))
         ),
@@ -3540,13 +3540,13 @@ export class DiscordBotManager {
           inline: true,
         },
         {
-          name: '🎯 Spawns TR — 12 Mapas (Numpad 1–5)',
+          name: '🎯 Spawns TR — 12 Mapas (Numpad 1–0)',
           value:
-            'Digite o mapa no console:\n' +
-            '`mirage` • `inferno` • `dust2` • `ancient`\n' +
-            '`anubis` • `cache` • `nuke` • `overpass`\n' +
-            '`vertigo` • `train` • `office` • `italy`\n\n' +
-            '• **`Numpad 1–5`** — Teleporte • **`reset`** — Sair',
+            '**Competitivos (10 spawns • Num `1`–`0`):**\n' +
+            '`mirage` • `cache` • `anubis` • `inferno` • `dust2`\n' +
+            '`ancient` • `nuke` • `overpass` • `vertigo` • `train`\n' +
+            '**Reféns (5 spawns • Num `1`–`5`):** `office` • `italy`\n' +
+            '• **`reset`** — Limpar Numpad e sair',
           inline: true,
         }
       )
