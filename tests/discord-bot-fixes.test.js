@@ -921,6 +921,42 @@ test('CS2NewsRadar: detecta ingles disfarcado, conserva termos do CS2 e inclui b
     const embedButtons = components[0].components.map((c) => c.toJSON());
     assert.ok(embedButtons.some((b) => String(b.url || '').includes('?view=updates')));
     assert.ok(embedButtons.some((b) => b.label === 'Ler no Site (PT-BR)'));
+
+    // Fonte primária: Steam Comunidade PT-BR (ajaxgetpartnereventspageable lang=22)
+    globalThis.fetch = async (url) => {
+      if (String(url).includes('ajaxgetpartnereventspageable')) {
+        return {
+          ok: true,
+          json: async () => ({
+            success: 1,
+            events: [
+              {
+                gid: '687522235410286587',
+                event_type: 12,
+                announcement_body: {
+                  gid: '687522235410286588',
+                  language: 22,
+                  posttime: 1794958807,
+                  headline: 'Detalhes da atualização de 17/11/2026',
+                  body: '[video poster="https://cdn.example/poster.png" autoplay="true"][/video]\n[b][Mapas][/b][list]\n[*] Adição do mapa Cobblestone aos servidores oficiais.[/list]\n[b][Diversos][/b][list]\n[*] Correção de problema de navegação dos bots.[/list]',
+                },
+              },
+            ],
+          }),
+        };
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    };
+    const officialSteam = await radar.fetchRecentUpdates({ limit: 2, forceRefresh: true });
+    assert.equal(officialSteam.updates.length, 1);
+    const ev = officialSteam.updates[0];
+    assert.equal(ev.translationSource, 'valve-ptbr');
+    assert.equal(ev.title, 'Detalhes da atualização de 17/11/2026');
+    assert.equal(ev.bannerImage, 'https://cdn.example/poster.png');
+    assert.match(ev.url, /store\.steampowered\.com\/news\/app\/730\/view\/687522235410286587/);
+    assert.match(ev.formattedNotes, /Cobblestone/);
+    assert.equal(ev.formattedNotes.includes('[video'), false);
+    assert.equal(ev.sections.length, 2);
   } finally {
     globalThis.fetch = originalFetch;
   }

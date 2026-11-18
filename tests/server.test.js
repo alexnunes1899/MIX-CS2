@@ -267,7 +267,7 @@ test('HTTP + Socket.IO server integration suite', async (t) => {
   });
 
   await t.test('GET /api/cs2/updates retorna feed estruturado sem quebrar', async () => {
-    const res = await fetch(`${baseUrl}/api/cs2/updates?limit=5`);
+    const res = await fetch(`${baseUrl}/api/cs2/updates?limit=2`);
     assert.equal(res.status, 200);
     const data = await res.json();
     assert.equal(data.success, true);

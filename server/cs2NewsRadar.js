@@ -4,6 +4,16 @@ import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'disc
 import { resolveSeededDataFile } from './dataDir.js';
 
 const STATE_FILE = resolveSeededDataFile('cs2NewsState.json');
+const CACHE_SCHEMA_VERSION = 2;
+
+const STEAM_PAGEABLE_EVENTS_URL =
+  'https://store.steampowered.com/events/ajaxgetpartnereventspageable/?clan_accountid=0&appid=730&offset=0&count=12&l=brazilian&origin=https://store.steampowered.com';
+
+const STEAM_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
+  'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8',
+  Cookie: 'Steam_Language=brazilian;',
+};
 
 // Ordered longest-first so multi-word and hyphenated game terms match before shorter fragments.
 const CS2_PROTECTED_TERMS = [
@@ -28,6 +38,7 @@ const CS2_PROTECTED_TERMS = [
   'Glock-18',
   'PP-Bizon',
   'SCAR-20',
+  'Cobblestone',
   'Flashbang',
   'Incendiary',
   'Jumpthrow',
@@ -75,7 +86,6 @@ const CS2_PROTECTED_TERMS = [
   'Skybox',
   'Noclip',
   'Armory',
-  'Premier',
   'Shoots',
   'Basalt',
   'Palais',
@@ -122,23 +132,39 @@ const UNIQUE_PROTECTED_TERMS = [...new Set(CS2_PROTECTED_TERMS)].sort((a, b) => 
 
 const HEADER_TRANSLATIONS = {
   GAMEPLAY: '🎯 [JOGABILIDADE]',
+  JOGABILIDADE: '🎯 [JOGABILIDADE]',
   MAPS: '🗺️ [MAPAS]',
-  MISC: '⚙️ [GERAL & CORREÇÕES]',
-  MISCELLANEOUS: '⚙️ [GERAL & CORREÇÕES]',
+  MAPAS: '🗺️ [MAPAS]',
+  MISC: '⚙️ [DIVERSOS & CORREÇÕES]',
+  MISCELLANEOUS: '⚙️ [DIVERSOS & CORREÇÕES]',
+  DIVERSOS: '⚙️ [DIVERSOS & CORREÇÕES]',
   GRAPHICS: '🎨 [GRÁFICOS & VISUAL]',
+  GRÁFICOS: '🎨 [GRÁFICOS & VISUAL]',
+  GRAFICOS: '🎨 [GRÁFICOS & VISUAL]',
   AUDIO: '🎧 [ÁUDIO & SONS]',
+  ÁUDIO: '🎧 [ÁUDIO & SONS]',
+  SOM: '🎧 [ÁUDIO & SONS]',
   SOUND: '🎧 [ÁUDIO & SONS]',
+  MÚSICA: '🎵 [MÚSICA]',
+  MUSICA: '🎵 [MÚSICA]',
   ANIMATION: '🏃 [ANIMAÇÃO]',
+  ANIMAÇÃO: '🏃 [ANIMAÇÃO]',
+  ANIMACAO: '🏃 [ANIMAÇÃO]',
   'MAP SCRIPTING': '🛠️ [SCRIPTS DE MAPAS]',
+  'SCRIPTS DE MAPA': '🛠️ [SCRIPTS DE MAPAS]',
+  'SCRIPTS DE MAPAS': '🛠️ [SCRIPTS DE MAPAS]',
   WORKSHOP: '📦 [OFICINA STEAM / WORKSHOP]',
   UI: '🖥️ [INTERFACE / HUD]',
+  INTERFACE: '🖥️ [INTERFACE / HUD]',
   NETWORKING: '📡 [REDE & SUB-TICK]',
   NETWORK: '📡 [REDE & SUB-TICK]',
   ARMORY: '🛡️ [ARSENAL / ARMORY]',
+  ARSENAL: '🛡️ [ARSENAL / ARMORY]',
   PREMIER: '🏆 [MODO PREMIER]',
   INPUT: '⌨️ [CONTROLES & INPUT]',
   SERVER: '🖥️ [SERVIDORES]',
   SERVERS: '🖥️ [SERVIDORES]',
+  SERVIDORES: '🖥️ [SERVIDORES]',
   LINUX: '🐧 [LINUX]',
   MACOS: '🍎 [MACOS]',
   STEAM: '🎮 [STEAM]',
@@ -182,10 +208,16 @@ export class CS2NewsRadarService {
         const data = JSON.parse(raw);
         this.lastKnownGid = data.lastGid || null;
         this.lastCheckedAt = data.lastCheckedAt || data.updatedAt || null;
-        if (Array.isArray(data.updates)) {
+        if (data.cacheVersion === CACHE_SCHEMA_VERSION && Array.isArray(data.updates)) {
           this.updatesHistory = data.updates.filter((u) => u && u.gid);
           for (const item of this.updatesHistory) {
-            if (item.gid && item.translationSource !== 'offline-fallback' && this.isAlreadyPortuguese(item.formattedNotes || '')) {
+            if (
+              item.gid &&
+              item.translationSource !== 'offline-fallback' &&
+              (item.translationSource === 'valve-ptbr' ||
+                item.translationSource === 'gemini' ||
+                this.isAlreadyPortuguese(item.formattedNotes || ''))
+            ) {
               this.translationCache.set(String(item.gid), {
                 translatedTitle: item.title,
                 formattedNotes: item.formattedNotes,
@@ -207,6 +239,7 @@ export class CS2NewsRadarService {
       const dir = path.dirname(STATE_FILE);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
       const payload = {
+        cacheVersion: CACHE_SCHEMA_VERSION,
         lastGid: nextLastGid ? String(nextLastGid) : null,
         updatedAt: new Date().toISOString(),
         lastCheckedAt: this.lastCheckedAt || new Date().toISOString(),
@@ -234,6 +267,8 @@ export class CS2NewsRadarService {
       author: patchObj.author,
       date: patchObj.date,
       formattedDate: patchObj.formattedDate,
+      bannerImage: patchObj.bannerImage || '',
+      eventType: patchObj.eventType || null,
       rawContents: patchObj.rawContents,
       formattedNotes: patchObj.formattedNotes,
       sections: Array.isArray(patchObj.sections) ? patchObj.sections : [],
@@ -242,17 +277,32 @@ export class CS2NewsRadarService {
     filtered.sort((a, b) => Number(b.date || 0) - Number(a.date || 0));
     this.updatesHistory = filtered.slice(0, 12);
     this.lastCheckedAt = new Date().toISOString();
-    // Note: intentionally preserves existing this.lastKnownGid so Discord monitor still notifies on unseen releases
     this.persistStateFile(this.lastKnownGid);
+  }
+
+  extractBannerImage(rawContents = '') {
+    const raw = String(rawContents || '');
+    const posterMatch = raw.match(/\bposter="([^"]+)"/i);
+    if (posterMatch?.[1]) return posterMatch[1];
+
+    const imgTagMatch = raw.match(/\[img\]([\s\S]*?)\[\/img\]/i);
+    if (imgTagMatch?.[1]) {
+      return imgTagMatch[1]
+        .trim()
+        .replace(/\{STEAM_CLAN_IMAGE\}/gi, 'https://clan.fastly.steamstatic.com/images');
+    }
+    return '';
   }
 
   cleanBbcode(text) {
     if (!text) return '';
     return String(text)
-      .replace(/\{STEAM_CLAN_IMAGE\}[^\s\]]*/gi, '')
-      .replace(/\[img\][\s\S]*?\[\/img\]/gi, '')
-      .replace(/\[url=([^\]]+)\](.*?)\[\/url\]/gi, '$2 ($1)')
-      .replace(/\[\/?(p|b|i|u|h1|h2|h3|h4|url|img|list|\*|quote|code|previewyoutube|strike|spoiler)(\=[^\]]*)?\]/gi, '')
+      .replace(/\[video\b[^\]]*\][\s\S]*?\[\/video\]/gi, '\n')
+      .replace(/\[previewyoutube\b[^\]]*\][\s\S]*?\[\/previewyoutube\]/gi, '\n')
+      .replace(/\[img\b[^\]]*\][\s\S]*?\[\/img\]/gi, '\n')
+      .replace(/\{STEAM_CLAN_IMAGE\}[^\s\]"']*/gi, '')
+      .replace(/\[url=([^\]]+)\](.*?)\[\/url\]/gi, '$2')
+      .replace(/\[\/?(p|b|i|u|h1|h2|h3|h4|url|img|list|\*|quote|code|previewyoutube|video|strike|spoiler)(\=[^\]]*)?\]/gi, '')
       .replace(/<br\s*\/?>/gi, '\n')
       .replace(/<\/?(p|div|li|ul|ol|h1|h2|h3|h4|strong|b|em|i|code|pre|span)[^>]*>/gi, '\n')
       .replace(/<a\b[^>]*>(.*?)<\/a>/gi, '$1')
@@ -312,41 +362,55 @@ export class CS2NewsRadarService {
       /\bcorrigida\b/g,
       /\bcorrigidos\b/g,
       /\bcorrigidas\b/g,
+      /\bcorre[çc][ãa]o\b/g,
+      /\bcorre[çc][õo]es\b/g,
       /\badicionado\b/g,
       /\badicionada\b/g,
       /\badicionados\b/g,
+      /\badi[çc][ãa]o\b/g,
+      /\bremo[çc][ãa]o\b/g,
       /\batualizado\b/g,
       /\batualizada\b/g,
       /\batualizados\b/g,
+      /\batuali[cz]a[çc][ãa]o\b/g,
       /\bajustado\b/g,
       /\bajustada\b/g,
+      /\bajuste\b/g,
       /\bmelhorado\b/g,
       /\bmelhorada\b/g,
+      /\baprimoramento\b/g,
+      /\baprimoramentos\b/g,
       /\breduzido\b/g,
+      /\bredu[çc][ãa]o\b/g,
       /\baumentado\b/g,
       /\bremovido\b/g,
       /\balterado\b/g,
-      /\bimp[eê]dido\b/g,
       /\bjogadores?\b/g,
       /\bpartidas?\b/g,
+      /\brodada\b/g,
+      /\brodadas\b/g,
       /\barmas?\b/g,
       /\bmapas?\b/g,
       /\bservidores?\b/g,
       /\bproblema\b/g,
       /\barquivos?\b/g,
       /\bnotas de\b/g,
-      /\batuali[cz]a[çc][ãa]o\b/g,
+      /\bdetalhes da\b/g,
+      /\bdispon[íi]vel\b/g,
       /\bpara\b/g,
       /\bcom\b/g,
       /\bquando\b/g,
       /\bonde\b/g,
-      /\bnão\b/g,
+      /\bn[ãa]o\b/g,
       /\bagora\b/g,
       /\bdurante\b/g,
       /\bpelo\b/g,
       /\bpela\b/g,
       /\bdos\b/g,
       /\bdas\b/g,
+      /\bvoc[êe]\b/g,
+      /\best[áa]\b/g,
+      /\bpodem?\b/g,
     ];
 
     let enHits = 0;
@@ -372,7 +436,6 @@ export class CS2NewsRadarService {
     const capturedOriginals = new Map();
     UNIQUE_PROTECTED_TERMS.forEach((term, idx) => {
       const escaped = escapeRegExp(term);
-      // Match whole word / token boundaries safely even with hyphens or digits like M4A1-S, AK-47, Dust II
       const regex = new RegExp(`(?<![A-Za-z0-9])${escaped}(?![A-Za-z0-9])`, 'gi');
       out = out.replace(regex, (matched) => {
         if (!capturedOriginals.has(idx)) {
@@ -452,7 +515,7 @@ export class CS2NewsRadarService {
       'Você é o tradutor oficial de Patch Notes de Counter-Strike 2 para Português do Brasil (PT-BR). ' +
       'Traduza o título e cada linha da lista para um português natural e preciso da comunidade gamer brasileira. ' +
       'REGRA OBRIGATÓRIA DE CONSERVAÇÃO: NÃO traduza termos próprios e técnicos do jogo CS2, mantendo-os em inglês/original: ' +
-      'nomes de mapas (Mirage, Inferno, Dust II, Nuke, Ancient, Anubis, Overpass, Vertigo, Train, Cache, Italy, Office, Jura, Grail, Agency, etc.), ' +
+      'nomes de mapas (Mirage, Inferno, Dust II, Nuke, Ancient, Anubis, Overpass, Vertigo, Train, Cache, Cobblestone, Italy, Office, Jura, Grail, Agency, etc.), ' +
       'nomes de armas e utilitários (AK-47, M4A4, M4A1-S, AWP, Desert Eagle, Zeus x27, Glock-18, USP-S, Smoke, Flashbang, Molotov, Incendiary, HE Grenade, Decoy, StatTrak, Armory, Skins, Charms), ' +
       'e termos consagrados no CS2 (Sub-tick, Premier, Wingman, Retakes, Deathmatch, Arms Race, Jumpthrow, Noclip, Hitbox, Bombsite, Spawn, Crosshair, Loadout, Buy Menu, Killfeed, Overtime, HUD, FPS, Ping, Workshop, VAC, CSTV, GOTV, Clipping). ' +
       'Traduza verbos e explicações ("Fixed", "Added", "Updated localization files", "Adjusted", "players", "server", "weapons", etc.). ' +
@@ -482,9 +545,7 @@ export class CS2NewsRadarService {
         signal: AbortSignal.timeout(12000),
       });
 
-      if (!res.ok) {
-        return null;
-      }
+      if (!res.ok) return null;
 
       const data = await res.json();
       const rawText = data?.candidates?.[0]?.content?.parts?.map((p) => p?.text || '').join('').trim();
@@ -554,7 +615,7 @@ export class CS2NewsRadarService {
       }
     } catch (_) {}
 
-    // 2. Google Translate clients5 endpoint (bucket separado de rate limit)
+    // 2. Google Translate clients5 endpoint
     try {
       const g5Url =
         'https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=en&tl=pt-BR&q=' +
@@ -600,7 +661,7 @@ export class CS2NewsRadarService {
       }
     }
 
-    // 4. MyMemory Translation API (Backup gratuito)
+    // 4. MyMemory Translation API
     try {
       const mmUrl =
         'https://api.mymemory.translated.net/get?q=' +
@@ -622,7 +683,7 @@ export class CS2NewsRadarService {
       }
     } catch (_) {}
 
-    // 5. Dicionario offline de termos CS2 (ultimo recurso)
+    // 5. Dicionario offline
     const offline = this.restoreCs2Terms(this.offlineTranslateFallback(protectedText), capturedMap);
     return returnMeta ? { text: offline, source: 'offline-fallback' } : offline;
   }
@@ -686,14 +747,23 @@ export class CS2NewsRadarService {
 
   buildStructuredLines(rawContents) {
     let structured = String(rawContents || '')
-      .replace(/\[p\]\\?\[\s*([A-Z0-9\s_&-]+?)\s*\\?\]\[\/p\]/gi, '\n[[HEADER:$1]]\n')
+      // Remove media blocks before parsing tags so poster/caption strings don't bleed into body
+      .replace(/\[video\b[^\]]*\][\s\S]*?\[\/video\]/gi, '\n')
+      .replace(/\[previewyoutube\b[^\]]*\][\s\S]*?\[\/previewyoutube\]/gi, '\n')
+      .replace(/\[img\b[^\]]*\][\s\S]*?\[\/img\]/gi, '\n')
+      // Valve Partner Events PT-BR & EN headings: [p][b][Jogabilidade][/b][/p], [b][Mapas][/b], [p]\[ MISC \][/p], [h2]...[/h2]
+      .replace(/\[p\]\s*\[b\]\s*\\?\[\s*([^\]\n]+?)\s*\\?\]\s*\[\/b\]\s*\[\/p\]/gi, '\n[[HEADER:$1]]\n')
+      .replace(/\[b\]\s*\\?\[\s*([^\]\n]+?)\s*\\?\]\s*\[\/b\]/gi, '\n[[HEADER:$1]]\n')
+      .replace(/\[p\]\\?\[\s*([A-ZÀ-Ÿ0-9\s_&-]+?)\s*\\?\]\[\/p\]/gi, '\n[[HEADER:$1]]\n')
       .replace(/\[h[123]\](.*?)\[\/h[123]\]/gi, '\n[[HEADER:$1]]\n')
       .replace(/<h[123][^>]*>(.*?)<\/h[123]>/gi, '\n[[HEADER:$1]]\n')
       .replace(/(?:^|\n)###?\s+([^\n]+)/g, '\n[[HEADER:$1]]\n')
       .replace(new RegExp(`\\\\?\\[\\s*(${HEADER_PATTERN_LIST})\\s*\\\\?\\]`, 'gi'), '\n[[HEADER:$1]]\n')
-      .replace(/(?:^|\n)\[\s*([A-Za-zÀ-ÿ0-9\s_&-]{2,32})\s*\](?=\s*(?:\n|$))/g, '\n[[HEADER:$1]]\n')
-      .replace(/\[\*\]\[p\](.*?)\[\/p\]\[\/\*\]/gis, '\n• $1\n')
-      .replace(/\[\*\](.*?)(?=\[\*\]|\[\/list\]|$)/gis, '\n• $1\n')
+      .replace(/(?:^|\n)\[\s*([A-Za-zÀ-ÿ0-9\s_&-]{2,40})\s*\](?=\s*(?:\[list\]|\n|$))/gi, '\n[[HEADER:$1]]\n')
+      // Convert Valve BBCode lists cleanly (handles nested [list] safely!)
+      .replace(/\[\*\]\[p\](.*?)\[\/p\]/gi, '\n• $1\n')
+      .replace(/\[\*\]/gi, '\n• ')
+      .replace(/\[\/\*\]/gi, '\n')
       .replace(/<li[^>]*>(.*?)<\/li>/gis, '\n• $1\n')
       .replace(/\[\/?list\]/gi, '\n')
       .replace(/\[\/?p\]/gi, '\n');
@@ -712,12 +782,18 @@ export class CS2NewsRadarService {
     if (HEADER_TRANSLATIONS[upper]) {
       return HEADER_TRANSLATIONS[upper];
     }
+    if (/mundial|major|singapura|championship|blast|pgl|esl/i.test(clean)) {
+      return `🏆 [${upper}]`;
+    }
     return `📌 [${upper}]`;
   }
 
-  async formatAndTranslatePatch(gid, rawTitle, rawContents) {
+  async formatAndTranslatePatch(gid, rawTitle, rawContents, { isSteamOfficialPtBr = false } = {}) {
     if (gid && this.translationCache.has(String(gid))) {
-      return this.translationCache.get(String(gid));
+      const cached = this.translationCache.get(String(gid));
+      if (!isSteamOfficialPtBr || cached.translationSource === 'valve-ptbr') {
+        return cached;
+      }
     }
 
     const lines = this.buildStructuredLines(rawContents);
@@ -751,7 +827,8 @@ export class CS2NewsRadarService {
       sectionItems.push(currentSection);
     }
 
-    const alreadyPt = this.isAlreadyPortuguese(linesToTranslate.join(' '));
+    const bodyJoined = linesToTranslate.join(' ');
+    const alreadyPt = Boolean(isSteamOfficialPtBr || this.isAlreadyPortuguese(bodyJoined));
     let translationSource = alreadyPt ? 'valve-ptbr' : 'offline-fallback';
     let geminiTranslatedTitle = '';
 
@@ -789,11 +866,11 @@ export class CS2NewsRadarService {
 
     let finalBody = processedLines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
     if (finalBody.length > 3400) {
-      finalBody = finalBody.slice(0, 3320) + '\n\n*(...leia a nota completa no site oficial ou na página de Atualizações do Hub)*';
+      finalBody = finalBody.slice(0, 3320) + '\n\n*(...leia a nota completa no site ou no link oficial do Steam)*';
     }
 
     let translatedTitle = geminiTranslatedTitle || rawTitle || 'Atualização Oficial do Counter-Strike 2';
-    if (!geminiTranslatedTitle) {
+    if (!isSteamOfficialPtBr && !geminiTranslatedTitle) {
       if (/release notes for/i.test(translatedTitle)) {
         const datePart = translatedTitle.replace(/release notes for/i, '').trim();
         const ptDate = await this.translateSingleChunkPtBr(datePart);
@@ -815,7 +892,9 @@ export class CS2NewsRadarService {
     if (
       gid &&
       translationSource !== 'offline-fallback' &&
-      (translationSource === 'gemini' || translationSource === 'valve-ptbr' || this.isAlreadyPortuguese(result.formattedNotes))
+      (translationSource === 'valve-ptbr' ||
+        translationSource === 'gemini' ||
+        this.isAlreadyPortuguese(result.formattedNotes))
     ) {
       this.translationCache.set(String(gid), result);
     }
@@ -834,59 +913,100 @@ export class CS2NewsRadarService {
     });
   }
 
-  async resolvePartnerEventsLookup() {
+  async fetchSteamPageableEvents({ count = 12 } = {}) {
     try {
-      const ptUrl =
-        'https://store.steampowered.com/events/ajaxgetadjacentpartnerevents/?appid=730&count_before=0&count_after=10&l=brazilian';
-      const ptRes = await fetch(ptUrl, {
-        headers: { 'Accept-Language': 'pt-BR,pt;q=0.9', 'User-Agent': 'Mozilla/5.0' },
-        signal: AbortSignal.timeout(4500),
+      const url = STEAM_PAGEABLE_EVENTS_URL.replace('count=12', `count=${Math.max(1, Math.min(20, count))}`);
+      const res = await fetch(url, {
+        headers: STEAM_HEADERS,
+        signal: AbortSignal.timeout(7000),
       });
-      if (!ptRes.ok) return [];
-      const ptJson = await ptRes.json();
-      return Array.isArray(ptJson?.events) ? ptJson.events : [];
+      if (!res.ok) return [];
+      const json = await res.json();
+      return Array.isArray(json?.events) ? json.events : [];
     } catch (_) {
       return [];
     }
   }
 
-  async normalizeSteamItem(officialUpdate, partnerEvents = []) {
-    let rawContents = officialUpdate.contents || '';
-    let rawTitle = officialUpdate.title || 'Counter-Strike 2 Update';
+  async normalizePartnerEvent(ev) {
+    const ab = ev?.announcement_body || {};
+    const gid = String(ev?.gid || ab?.gid || '');
+    const posttime = Number(ab?.posttime || ev?.rtime32_start_time || 0);
+    const rawTitle = ab?.headline || ev?.event_name || 'Atualização do Counter-Strike 2';
+    const rawContents = ab?.body || ev?.event_notes || '';
+    const langCode = Number(ab?.language);
+    // Language 22 = Brazilian Portuguese on Steam Community / Valve Partner Events
+    const isSteamOfficialPtBr = langCode === 22;
 
-    const matchedEvent = partnerEvents.find(
-      (ev) =>
-        String(ev.announcement_body?.gid) === String(officialUpdate.gid) ||
-        String(ev.gid) === String(officialUpdate.gid) ||
-        (ev.announcement_body?.posttime &&
-          Math.abs(Number(ev.announcement_body.posttime) - Number(officialUpdate.date)) < 1800)
-    );
-    if (matchedEvent && matchedEvent.announcement_body?.body) {
-      rawContents = matchedEvent.announcement_body.body;
-      if (matchedEvent.announcement_body.headline) {
-        rawTitle = matchedEvent.announcement_body.headline;
-      }
-    }
+    const bannerImage = this.extractBannerImage(rawContents);
+    const formattedDate = this.formatBrasiliaDate(posttime);
 
-    const formattedDate = this.formatBrasiliaDate(officialUpdate.date);
     const { translatedTitle, formattedNotes, sections, translationSource } = await this.formatAndTranslatePatch(
-      officialUpdate.gid,
+      gid,
       rawTitle,
-      rawContents
+      rawContents,
+      { isSteamOfficialPtBr }
     );
 
     const isFirstBoot = this.lastKnownGid === null;
-    const isRecent24h = Date.now() - officialUpdate.date * 1000 < 24 * 3600 * 1000;
-    const isNew = isFirstBoot ? isRecent24h : String(this.lastKnownGid) !== String(officialUpdate.gid);
+    const isRecent24h = Date.now() - posttime * 1000 < 24 * 3600 * 1000;
+    const isNew = isFirstBoot ? isRecent24h : String(this.lastKnownGid) !== gid;
 
     const patchObj = {
-      gid: String(officialUpdate.gid),
+      gid,
       title: translatedTitle,
-      originalTitle: officialUpdate.title || rawTitle,
-      url: officialUpdate.url || 'https://www.counter-strike.net/news/updates',
-      author: officialUpdate.author || 'Valve CS2 Team',
-      date: Number(officialUpdate.date || 0),
+      originalTitle: rawTitle,
+      url: gid
+        ? `https://store.steampowered.com/news/app/730/view/${gid}?l=brazilian`
+        : 'https://store.steampowered.com/news/app/730?l=brazilian',
+      author: 'Valve CS2 Team',
+      date: posttime,
       formattedDate,
+      bannerImage,
+      eventType: Number(ev?.event_type || 0) || null,
+      rawContents,
+      formattedNotes,
+      sections,
+      translationSource,
+      isNew,
+      isFirstBoot,
+    };
+
+    if (translationSource !== 'offline-fallback') {
+      this.upsertHistoryItem(patchObj);
+    }
+
+    return patchObj;
+  }
+
+  async normalizeSteamNewsItem(officialUpdate) {
+    const gid = String(officialUpdate?.gid || '');
+    const rawContents = officialUpdate?.contents || '';
+    const rawTitle = officialUpdate?.title || 'Counter-Strike 2 Update';
+    const formattedDate = this.formatBrasiliaDate(officialUpdate?.date);
+    const bannerImage = this.extractBannerImage(rawContents);
+
+    const { translatedTitle, formattedNotes, sections, translationSource } = await this.formatAndTranslatePatch(
+      gid,
+      rawTitle,
+      rawContents,
+      { isSteamOfficialPtBr: false }
+    );
+
+    const isFirstBoot = this.lastKnownGid === null;
+    const isRecent24h = Date.now() - Number(officialUpdate?.date || 0) * 1000 < 24 * 3600 * 1000;
+    const isNew = isFirstBoot ? isRecent24h : String(this.lastKnownGid) !== gid;
+
+    const patchObj = {
+      gid,
+      title: translatedTitle,
+      originalTitle: rawTitle,
+      url: officialUpdate?.url || 'https://store.steampowered.com/news/app/730?l=brazilian',
+      author: officialUpdate?.author || 'Valve CS2 Team',
+      date: Number(officialUpdate?.date || 0),
+      formattedDate,
+      bannerImage,
+      eventType: 12,
       rawContents,
       formattedNotes,
       sections,
@@ -904,6 +1024,21 @@ export class CS2NewsRadarService {
 
   async fetchLatestPatch() {
     try {
+      // 1. Primary: Valve official Steam News Hub (store.steampowered.com/news/app/730) with PT-BR lang=22
+      const pageableEvents = await this.fetchSteamPageableEvents({ count: 8 });
+      if (pageableEvents.length > 0) {
+        const officialUpdate =
+          pageableEvents.find(
+            (ev) =>
+              Number(ev.event_type) === 12 ||
+              /detalhes da atualiza|release notes|counter-strike 2 update|atualiza/i.test(
+                ev.announcement_body?.headline || ''
+              )
+          ) || pageableEvents[0];
+        return await this.normalizePartnerEvent(officialUpdate);
+      }
+
+      // 2. Fallback: ISteamNews GetNewsForApp + translation pipeline
       const url =
         'https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=730&count=15&feeds=steam_community_announcements&l=brazilian&format=json';
       const res = await fetch(url, {
@@ -917,7 +1052,6 @@ export class CS2NewsRadarService {
 
       const json = await res.json();
       const newsitems = json.appnews?.newsitems || [];
-
       const officialUpdate =
         newsitems.find((item) => /release notes|notas de atualiza|counter-strike 2 update|atualiza/i.test(item.title)) ||
         newsitems.find((item) => item.feedname === 'steam_community_announcements') ||
@@ -926,9 +1060,7 @@ export class CS2NewsRadarService {
       if (!officialUpdate) {
         return this.updatesHistory[0] || null;
       }
-
-      const partnerEvents = await this.resolvePartnerEventsLookup();
-      return await this.normalizeSteamItem(officialUpdate, partnerEvents);
+      return await this.normalizeSteamNewsItem(officialUpdate);
     } catch (err) {
       console.warn('[CS2 NEWS] Erro ao consultar notas de atualizacao da Valve:', err.message);
       return this.updatesHistory[0] || null;
@@ -941,6 +1073,7 @@ export class CS2NewsRadarService {
     if (
       !forceRefresh &&
       this.updatesHistory.length >= Math.min(safeLimit, 3) &&
+      this.updatesHistory[0]?.translationSource === 'valve-ptbr' &&
       this.lastCheckedAt &&
       Date.now() - Date.parse(this.lastCheckedAt) < 5 * 60 * 1000
     ) {
@@ -957,8 +1090,25 @@ export class CS2NewsRadarService {
 
     this._recentFetchPromise = (async () => {
       try {
+        // 1. Primary: store.steampowered.com/news/app/730 native PT-BR feed
+        const pageableEvents = await this.fetchSteamPageableEvents({ count: safeLimit + 2 });
+        if (pageableEvents.length > 0) {
+          const normalized = [];
+          for (const ev of pageableEvents.slice(0, safeLimit)) {
+            normalized.push(await this.normalizePartnerEvent(ev));
+          }
+          normalized.sort((a, b) => Number(b.date || 0) - Number(a.date || 0));
+          this.lastCheckedAt = new Date().toISOString();
+          return {
+            updates: normalized,
+            lastCheckedAt: this.lastCheckedAt,
+            fromCache: false,
+          };
+        }
+
+        // 2. Fallback: ISteamNews API + auto-translator
         const url =
-          'https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=730&count=20&feeds=steam_community_announcements&l=brazilian&format=json';
+          'https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid=730&count=15&feeds=steam_community_announcements&l=brazilian&format=json';
         const res = await fetch(url, {
           headers: { 'User-Agent': 'CS2-Mix-Hub-Bot', 'Accept-Language': 'pt-BR,pt;q=0.9' },
           signal: AbortSignal.timeout(7000),
@@ -970,19 +1120,16 @@ export class CS2NewsRadarService {
 
         const json = await res.json();
         const newsitems = Array.isArray(json.appnews?.newsitems) ? json.appnews.newsitems : [];
-
-        // Prioritize official update / release note posts, falling back to announcements if few exist
         const updateItems = newsitems.filter((item) =>
           /release notes|notas de atualiza|counter-strike 2 update|atualiza|update|patch|armory|premier|season/i.test(
             item.title || ''
           )
         );
         const selected = (updateItems.length >= 3 ? updateItems : newsitems).slice(0, safeLimit);
-        const partnerEvents = await this.resolvePartnerEventsLookup();
 
         const normalized = [];
         for (const item of selected) {
-          normalized.push(await this.normalizeSteamItem(item, partnerEvents));
+          normalized.push(await this.normalizeSteamNewsItem(item));
         }
 
         normalized.sort((a, b) => Number(b.date || 0) - Number(a.date || 0));
@@ -1010,10 +1157,10 @@ export class CS2NewsRadarService {
 
   buildEmbed(patchData, updatesPageUrl = '') {
     const sourceLabel =
-      patchData.translationSource === 'gemini'
+      patchData.translationSource === 'valve-ptbr'
+        ? 'Steam Comunidade Oficial • Português (PT-BR)'
+        : patchData.translationSource === 'gemini'
         ? 'Valve Corporation • Tradução IA (PT-BR)'
-        : patchData.translationSource === 'valve-ptbr'
-        ? 'Valve Corporation • Português (PT-BR)'
         : 'Valve Corporation • Tradução Automática (PT-BR)';
 
     const embed = new EmbedBuilder()
@@ -1028,10 +1175,14 @@ export class CS2NewsRadarService {
           patchData.formattedNotes
       )
       .setFooter({
-        text: 'Radar Oficial Valve CS2 • Tradução PT-BR (termos do jogo preservados)',
+        text: 'Radar Oficial Steam News CS2 • Português (PT-BR)',
         iconURL: 'https://cdn.cloudflare.steamstatic.com/apps/csgo/images/csgo_react/icons/valve_logo.png',
       })
       .setTimestamp(new Date((patchData.date || Math.floor(Date.now() / 1000)) * 1000));
+
+    if (patchData.bannerImage) {
+      embed.setImage(patchData.bannerImage);
+    }
 
     const buttons = [];
     if (updatesPageUrl) {
@@ -1050,9 +1201,9 @@ export class CS2NewsRadarService {
         .setURL(patchData.url)
         .setEmoji('🔗'),
       new ButtonBuilder()
-        .setLabel('Counter-Strike.net')
+        .setLabel('Comunidade Steam CS2')
         .setStyle(ButtonStyle.Link)
-        .setURL('https://www.counter-strike.net/news/updates')
+        .setURL('https://store.steampowered.com/news/app/730?l=brazilian')
         .setEmoji('🌐')
     );
 

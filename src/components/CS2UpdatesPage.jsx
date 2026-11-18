@@ -24,7 +24,7 @@ import { playClickSound } from '../utils/audio';
 import { copyText } from '../utils/clipboard';
 
 const CS2_HIGHLIGHT_REGEX =
-  /\b(Dust II|Dust 2|Mirage|Inferno|Nuke|Ancient|Anubis|Vertigo|Overpass|Train|Cache|Italy|Office|Sub-tick|Premier|Wingman|Retakes|Deathmatch|Arms Race|Jumpthrow|Smoke|Flashbang|Molotov|Incendiary|HE Grenade|Decoy|AK-47|M4A4|M4A1-S|AWP|Desert Eagle|Zeus x27|Glock-18|USP-S|HUD|FPS|VAC|Workshop|Armory|Hitbox|Bombsite|Noclip|CSTV|GOTV)\b/g;
+  /\b(Dust II|Dust 2|Mirage|Inferno|Nuke|Ancient|Anubis|Vertigo|Overpass|Train|Cache|Cobblestone|Italy|Office|Sub-tick|Premier|Wingman|Retakes|Retomada|Deathmatch|Arms Race|Jumpthrow|Smoke|Flashbang|Molotov|Incendiary|HE Grenade|Decoy|AK-47|M4A4|M4A1-S|AWP|Desert Eagle|Zeus x27|Glock-18|USP-S|HUD|FPS|VAC|Workshop|Armory|Hitbox|Bombsite|Noclip|CSTV|GOTV)\b/g;
 
 function HighlightedCs2Text({ text }) {
   const str = String(text || '');
@@ -53,7 +53,7 @@ function getSourceBadge(source) {
   }
   if (source === 'valve-ptbr') {
     return {
-      label: 'Valve Oficial PT-BR',
+      label: 'Steam Comunidade PT-BR',
       className: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40',
     };
   }
@@ -583,7 +583,7 @@ export default function CS2UpdatesPage({
                       )}
 
                       <a
-                        href={selectedPatch.url || 'https://www.counter-strike.net/news/updates'}
+                        href={selectedPatch.url || 'https://store.steampowered.com/news/app/730?l=brazilian'}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="px-3.5 py-2 rounded-xl bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/40 text-sky-300 text-xs font-bold flex items-center gap-1.5 transition-colors"
@@ -593,16 +593,27 @@ export default function CS2UpdatesPage({
                       </a>
 
                       <a
-                        href="https://www.counter-strike.net/news/updates"
+                        href="https://store.steampowered.com/news/app/730?l=brazilian"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="px-3.5 py-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700 text-slate-300 text-xs font-bold flex items-center gap-1.5 transition-colors"
                       >
-                        <span>Counter-Strike.net</span>
+                        <span>Steam News (PT-BR)</span>
                         <ExternalLink size={13} />
                       </a>
                     </div>
                   </div>
+
+                  {selectedPatch.bannerImage && !showOriginalEn && (
+                    <div className="rounded-2xl overflow-hidden border border-slate-800/90 bg-slate-950 shadow-xl">
+                      <img
+                        src={selectedPatch.bannerImage}
+                        alt={selectedPatch.title}
+                        className="w-full max-h-72 object-cover"
+                        loading="lazy"
+                      />
+                    </div>
+                  )}
 
                   {/* Body */}
                   {showOriginalEn ? (
