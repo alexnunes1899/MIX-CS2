@@ -1,6 +1,10 @@
+import crypto from 'crypto';
 import { hashRoomPassword } from './authSession.js';
 import { sendDiscordWebhook } from './discordWebhook.js';
 import { balanceTeams as sharedBalanceTeams, calculateMetricsForTeams, getPlayerScore } from '../shared/balance.js';
+import { sanitizeRconCommand } from './utils/security.js';
+
+export { sanitizeRconCommand };
 
 export const INACTIVITY_EMPTY_TIMEOUT = 15 * 60 * 1000;
 export const INACTIVITY_IDLE_TIMEOUT = 60 * 60 * 1000;
@@ -30,15 +34,6 @@ export function sanitizeInput(str, maxLength = 100) {
 export function isValidMapName(map) {
   if (typeof map !== 'string') return false;
   return /^[a-zA-Z0-9_-]{3,32}$/.test(map.trim());
-}
-
-export function sanitizeRconCommand(cmd) {
-  if (typeof cmd !== 'string') return '';
-  return cmd
-    .replace(/[\r\n;`$]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 200);
 }
 
 export function parseHostPort(raw) {
@@ -120,7 +115,7 @@ export function isSocketTurnAuthorized(room, socket, targetTeam) {
 
 export function getSafeRoomState(room) {
   if (!room) return null;
-  const { password, passwordHash, rconPassword, ...safe } = room;
+  const { password, passwordHash, rconPassword, gsiToken, ...safe } = room;
   return {
     ...safe,
     adminId: getRoomAdminId(room),
@@ -129,6 +124,7 @@ export function getSafeRoomState(room) {
     creatorNick: room.creatorNick || null,
     hasPassword: Boolean(passwordHash || (password && String(password).trim())),
     hasRconPassword: Boolean(rconPassword && String(rconPassword).trim()),
+    hasGsiToken: Boolean(gsiToken),
     isPrivate: Boolean(room.isPrivate),
     inviteKey: room.inviteKey || null,
   };
@@ -293,6 +289,7 @@ export function createRoomLifecycle({ io, rooms, getCurrentRotationState, schedu
         startingSideTeamB: null,
         serverIp: serverIp ? serverIp.trim() : '',
         rconPassword: '',
+        gsiToken: crypto.randomBytes(16).toString('hex'),
         passwordHash: hashedPwd,
         isPrivate: Boolean(isPrivate),
         inviteKey: finalInviteKey,

@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import fs from 'fs';
 import { getDataFilePath } from './dataDir.js';
+import { DEFAULT_PUBLIC_URL } from '../shared/appConfig.js';
 
 export const SESSION_COOKIE_NAME = 'mixhub_session';
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -263,7 +264,7 @@ export function buildAllowedOriginChecker() {
       } catch {}
     }
   }
-  envOrigins.push('https://mix-cs2.onrender.com');
+  envOrigins.push(DEFAULT_PUBLIC_URL);
   const explicitSet = new Set(envOrigins);
 
   return function isOriginAllowed(origin) {

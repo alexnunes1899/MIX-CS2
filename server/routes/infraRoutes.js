@@ -2,6 +2,7 @@ import {
   getSessionUser,
   isAdminRequest,
   isLoopbackRequest,
+  timingSafeStringEqual,
 } from '../authSession.js';
 import { executeRconCommand } from '../rcon.js';
 import { pingCs2Server } from '../serverQuery.js';
@@ -18,7 +19,9 @@ import {
   installGsiLocally,
   checkGsiInstalled,
 } from '../gsi.js';
-import { sanitizeRconCommand } from '../roomHelpers.js';
+import { sanitizeRconCommand, normalizeRoomId, resolveSafeBaseUrl } from '../utils/security.js';
+import { setBounded } from '../utils/boundedMap.js';
+import { DEFAULT_PUBLIC_URL } from '../../shared/appConfig.js';
 import { buildTreinoCfg, buildTreinoLeiaMeMd } from '../../shared/treinoCfg.js';
 
 const ALLOWED_AVATAR_PROXY_HOSTS = new Set([
@@ -52,7 +55,7 @@ function processGsiDiscordNotifications(room, liveState, req) {
   let tracker = gsiDiscordTracker.get(roomId);
   if (!tracker) {
     tracker = { lastRound: -1, lastBombState: 'none', gameOverSent: false };
-    gsiDiscordTracker.set(roomId, tracker);
+    setBounded(gsiDiscordTracker, roomId, tracker, 200);
   }
 
   if (liveState.phase === 'warmup' || (liveState.roundNumber === 0 && liveState.roundPhase === 'freezetime')) {
@@ -62,9 +65,8 @@ function processGsiDiscordNotifications(room, liveState, req) {
     return;
   }
 
-  const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-  const host = req.get('host');
-  const roomUrl = `${protocol}://${host}/?room=${encodeURIComponent(roomId)}`;
+  const baseUrl = resolveSafeBaseUrl(req, DEFAULT_PUBLIC_URL);
+  const roomUrl = `${baseUrl}/?room=${encodeURIComponent(roomId)}`;
 
   if (
     room.discordGsiRounds !== false &&
@@ -152,7 +154,23 @@ export function registerInfraRoutes(app, { io, rooms, lifecycle, discordBotManag
     }).catch(() => {});
   }
 
-  function applyRoomGsiUpdate(roomId, liveState, req) {
+  function verifyGsiAuth(req, room) {
+    const incomingToken = String(req?.body?.auth?.token || '').trim();
+    const globalSecret = String(process.env.GSI_AUTH_TOKEN || '').trim();
+    if (globalSecret) {
+      return Boolean(
+        timingSafeStringEqual(incomingToken, globalSecret) ||
+          (room?.gsiToken && timingSafeStringEqual(incomingToken, room.gsiToken))
+      );
+    }
+    return Boolean(
+      isLoopbackRequest(req) ||
+        isAdminRequest(req) ||
+        (room?.gsiToken && timingSafeStringEqual(incomingToken, room.gsiToken))
+    );
+  }
+
+  function applyRoomGsiUpdate(roomId, liveState, req, { isAuthorizedGsi = false } = {}) {
     const room = lifecycle.getRoomAndTouch(roomId);
     if (!room) return;
     room.liveMatch = liveState;
@@ -184,7 +202,7 @@ export function registerInfraRoutes(app, { io, rooms, lifecycle, discordBotManag
           source: 'Valve CS2 GSI',
         });
         if (room.history.length > 20) room.history.pop();
-        if (winners.length > 0 || losers.length > 0) {
+        if (isAuthorizedGsi && (winners.length > 0 || losers.length > 0)) {
           try {
             recordMatch({
               winners,
@@ -202,6 +220,15 @@ export function registerInfraRoutes(app, { io, rooms, lifecycle, discordBotManag
     }
   }
 
+  function resolveRoomGsiTokenForInstaller(req, roomId) {
+    if (!(getSessionUser(req) || isAdminRequest(req) || isLoopbackRequest(req))) {
+      return '';
+    }
+    const cleanId = normalizeRoomId(roomId, 'MIX-PRO');
+    const room = rooms.get(cleanId);
+    return room?.gsiToken || String(process.env.GSI_AUTH_TOKEN || '').trim() || '';
+  }
+
   app.post('/api/gsi/install-local', (req, res) => {
     if (!isLocalPc || (!isLoopbackRequest(req) && !isAdminRequest(req))) {
       return res.status(403).json({
@@ -209,11 +236,10 @@ export function registerInfraRoutes(app, { io, rooms, lifecycle, discordBotManag
         error: 'Instalação automática de GSI só pode ser executada no PC local com o servidor local.',
       });
     }
-    const roomId = (req.body?.roomId || 'MIX-PRO').trim().toUpperCase();
-    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-    const host = req.get('host');
-    const serverBaseUrl = `${protocol}://${host}`;
-    const result = installGsiLocally(serverBaseUrl, roomId);
+    const roomId = normalizeRoomId(req.body?.roomId, 'MIX-PRO');
+    const serverBaseUrl = resolveSafeBaseUrl(req, DEFAULT_PUBLIC_URL);
+    const gsiToken = resolveRoomGsiTokenForInstaller(req, roomId);
+    const result = installGsiLocally(serverBaseUrl, roomId, gsiToken);
     res.json(result);
   });
 
@@ -222,14 +248,19 @@ export function registerInfraRoutes(app, { io, rooms, lifecycle, discordBotManag
   });
 
   app.post('/api/gsi/:roomId', (req, res) => {
-    const roomId = (req.params.roomId || req.body?.auth?.token || 'MIX-PRO').trim().toUpperCase();
+    const roomId = normalizeRoomId(req.params.roomId || req.body?.auth?.token, 'MIX-PRO');
+    const room = rooms.get(roomId);
+    const isAuthorizedGsi = verifyGsiAuth(req, room);
+    if (String(process.env.GSI_AUTH_TOKEN || '').trim() && !isAuthorizedGsi) {
+      return res.status(403).json({ success: false, error: 'Token GSI inválido.' });
+    }
     forwardGsiToCloudIfLocal(roomId, req.body, req);
 
     const liveState = handleGsiPayload(roomId, req.body);
     if (liveState) {
       discordBotManager.handleGsiEvent(roomId, liveState);
-      if (rooms.has(roomId)) {
-        applyRoomGsiUpdate(roomId, liveState, req);
+      if (room) {
+        applyRoomGsiUpdate(roomId, liveState, req, { isAuthorizedGsi });
       } else {
         io.to(roomId).emit('gsi_update', liveState);
       }
@@ -239,14 +270,19 @@ export function registerInfraRoutes(app, { io, rooms, lifecycle, discordBotManag
 
   // Fallback endpoint: routes strictly to the room matching auth.token (no longer clobbers all rooms)
   app.post('/api/gsi', (req, res) => {
-    const token = (req.body?.auth?.token || 'MIX-PRO').trim().toUpperCase();
+    const token = normalizeRoomId(req.body?.auth?.token, 'MIX-PRO');
+    const room = rooms.get(token);
+    const isAuthorizedGsi = verifyGsiAuth(req, room);
+    if (String(process.env.GSI_AUTH_TOKEN || '').trim() && !isAuthorizedGsi) {
+      return res.status(403).json({ success: false, error: 'Token GSI inválido.' });
+    }
     forwardGsiToCloudIfLocal(token, req.body, req);
 
     const liveState = handleGsiPayload(token, req.body);
     if (liveState) {
       discordBotManager.handleGsiEvent(token, liveState);
-      if (rooms.has(token)) {
-        applyRoomGsiUpdate(token, liveState, req);
+      if (room) {
+        applyRoomGsiUpdate(token, liveState, req, { isAuthorizedGsi });
       } else {
         io.to(token).emit('gsi_update', liveState);
       }
@@ -256,9 +292,8 @@ export function registerInfraRoutes(app, { io, rooms, lifecycle, discordBotManag
 
   app.get('/api/gsi/cfg/:roomId', (req, res) => {
     const roomId = req.params.roomId || 'MIX-PRO';
-    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-    const host = req.get('host');
-    const cfgContent = generateGsiConfig(`${protocol}://${host}`, roomId);
+    const baseUrl = resolveSafeBaseUrl(req, DEFAULT_PUBLIC_URL);
+    const cfgContent = generateGsiConfig(baseUrl, roomId, resolveRoomGsiTokenForInstaller(req, roomId));
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename="gamestate_integration_cs2mixhub.cfg"');
     res.send(cfgContent);
@@ -266,9 +301,8 @@ export function registerInfraRoutes(app, { io, rooms, lifecycle, discordBotManag
 
   app.get('/api/gsi/installer/:roomId', (req, res) => {
     const roomId = req.params.roomId || 'MIX-PRO';
-    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-    const host = req.get('host');
-    const batContent = generateGsiBatchInstaller(`${protocol}://${host}`, roomId);
+    const baseUrl = resolveSafeBaseUrl(req, DEFAULT_PUBLIC_URL);
+    const batContent = generateGsiBatchInstaller(baseUrl, roomId, resolveRoomGsiTokenForInstaller(req, roomId));
     res.setHeader('Content-Type', 'application/x-bat; charset=utf-8');
     res.setHeader('Content-Disposition', 'attachment; filename="instalar_monitoramento_cs2.bat"');
     res.send(batContent);
@@ -276,9 +310,8 @@ export function registerInfraRoutes(app, { io, rooms, lifecycle, discordBotManag
 
   app.get('/api/gsi/installer/ps1/:roomId', (req, res) => {
     const roomId = req.params.roomId || 'MIX-PRO';
-    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-    const host = req.get('host');
-    const ps1Content = generateGsiPowerShellInstaller(`${protocol}://${host}`, roomId);
+    const baseUrl = resolveSafeBaseUrl(req, DEFAULT_PUBLIC_URL);
+    const ps1Content = generateGsiPowerShellInstaller(baseUrl, roomId, resolveRoomGsiTokenForInstaller(req, roomId));
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     res.send(ps1Content);
   });

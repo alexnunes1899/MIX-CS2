@@ -8,6 +8,8 @@ import { fileURLToPath, pathToFileURL } from 'url';
 
 import { buildAllowedOriginChecker, getSessionUser, isAdminRequest } from './authSession.js';
 import { createRoomLifecycle, buildPublicRoomsList, sanitizeInput } from './roomHelpers.js';
+import { resolveSafeBaseUrl } from './utils/security.js';
+import { DEFAULT_PUBLIC_URL } from '../shared/appConfig.js';
 import { registerRoomSocket, processRoomDeadlines } from './socket/registerRoomSocket.js';
 import { registerAuthRoutes } from './routes/authRoutes.js';
 import { registerAdminAndSocialRoutes } from './routes/adminRoutes.js';
@@ -168,7 +170,7 @@ export function createMixServer({ startBackgroundTasks = true, buildVersion = Da
     scheduleSave,
   });
 
-  const CLOUD_BASE_URL = (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || 'https://mix-cs2.onrender.com').replace(/\/+$/, '');
+  const CLOUD_BASE_URL = (process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || DEFAULT_PUBLIC_URL).replace(/\/+$/, '');
   const CLOUD_GSI_URL = process.env.CLOUD_GSI_URL || `${CLOUD_BASE_URL}/api/gsi/status/MIX-PRO`;
   const IS_LOCAL_PC = process.platform === 'win32' && !process.env.RENDER && !process.env.RAILWAY_ENVIRONMENT;
 
@@ -216,9 +218,7 @@ export function createMixServer({ startBackgroundTasks = true, buildVersion = Da
 
     try {
       let html = fs.readFileSync(indexPath, 'utf8');
-      const protocol = String(req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0].trim();
-      const host = req.get('host');
-      const originBase = host ? `${protocol}://${host}` : CLOUD_BASE_URL;
+      const originBase = resolveSafeBaseUrl(req, CLOUD_BASE_URL);
       const absoluteOgImage = escapeHtmlAttr(`${originBase}/favicon-512x512.png?v=3`);
       const absolutePageUrl = escapeHtmlAttr(`${originBase}${req.originalUrl || '/'}`);
 

@@ -1,5 +1,7 @@
 import fs from 'fs';
 import { getDataDir, getDataFilePath } from './dataDir.js';
+import { writeJsonAtomic } from './utils/atomicJson.js';
+import { logger } from './utils/logger.js';
 
 const DATA_DIR = getDataDir();
 const STORE_PATH = getDataFilePath('activeMixStore.json');
@@ -92,11 +94,9 @@ export function saveActiveMixStateNow() {
       discordMixes: discordMixesList,
     };
 
-    const tmpPath = `${STORE_PATH}.tmp`;
-    fs.writeFileSync(tmpPath, JSON.stringify(payload, null, 2), 'utf8');
-    fs.renameSync(tmpPath, STORE_PATH);
+    writeJsonAtomic(STORE_PATH, payload);
   } catch (err) {
-    console.warn('[PERSISTÊNCIA] Falha ao salvar estado dos mixes:', err.message);
+    logger.warn('PERSISTENCIA', 'Falha ao salvar estado dos mixes', err);
   }
 }
 
@@ -141,7 +141,8 @@ export function clearMixPersistence(mixId) {
     const state = loadActiveMixState();
     state.rooms = (state.rooms || []).filter((r) => r.id !== mixId);
     state.discordMixes = (state.discordMixes || []).filter((item) => item.mix?.id !== mixId);
-    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-    fs.writeFileSync(STORE_PATH, JSON.stringify(state, null, 2), 'utf8');
-  } catch (_) {}
+    writeJsonAtomic(STORE_PATH, state);
+  } catch (err) {
+    logger.warn('PERSISTENCIA', 'Falha ao limpar mix persistido', err);
+  }
 }

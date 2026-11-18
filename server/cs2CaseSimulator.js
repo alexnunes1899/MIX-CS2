@@ -1,7 +1,8 @@
 import fs from 'fs';
-import path from 'path';
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } from 'discord.js';
 import { resolveSeededDataFile } from './dataDir.js';
+import { writeJsonAtomic } from './utils/atomicJson.js';
+import { logger } from './utils/logger.js';
 
 const INVENTORY_FILE = resolveSeededDataFile('caseInventory.json');
 
@@ -110,19 +111,21 @@ export class CS2CaseSimulator {
           this.inventories.set(userId, inv);
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      logger.warn('CASES', 'Falha ao ler caseInventory.json', e);
+    }
   }
 
   saveInventories() {
     try {
-      const dir = path.dirname(INVENTORY_FILE);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
       const obj = {};
       for (const [userId, inv] of this.inventories.entries()) {
         obj[userId] = inv;
       }
-      fs.writeFileSync(INVENTORY_FILE, JSON.stringify(obj, null, 2));
-    } catch (e) {}
+      writeJsonAtomic(INVENTORY_FILE, obj);
+    } catch (e) {
+      logger.warn('CASES', 'Falha ao salvar caseInventory.json', e);
+    }
   }
 
   getUserInventory(userId, username = 'Gamer') {

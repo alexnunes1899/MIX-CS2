@@ -6,6 +6,8 @@ import { getLeaderboard, recordMatch } from '../leaderboard.js';
 import { getMatchHistoryState } from '../matchHistory.js';
 import { sendDiscordWebhook, isValidDiscordWebhookUrl } from '../discordWebhook.js';
 import { moveGuildMember, testDiscordBotVoiceChannels } from '../discordVoiceMover.js';
+import { writeJsonAtomic } from '../utils/atomicJson.js';
+import { logger } from '../utils/logger.js';
 
 const BACKUPABLE_FILES = [
   'leaderboard.json',
@@ -32,13 +34,16 @@ export function registerAdminAndSocialRoutes(app, { io, rooms, discordBotManager
     return res.json({ success: true, commendations: economyDb.getCommendations(ids) });
   });
 
-  app.post('/api/commendations', (req, res) => {
-    const { targetId, type = 'friendly', matchId = 'global', voterId = '' } = req.body || {};
+  app.post('/api/commendations', sensitiveLimiter, (req, res) => {
+    const { targetId, type = 'friendly', matchId = 'global' } = req.body || {};
     if (!targetId) {
       return res.status(400).json({ error: 'targetId é obrigatório.' });
     }
     const sessionUser = getSessionUser(req);
-    const effectiveVoter = sessionUser?.steamId || String(voterId || req.ip || 'anon').slice(0, 64);
+    const clientIp = String(req.headers['x-forwarded-for'] || req.ip || req.socket?.remoteAddress || 'anon')
+      .split(',')[0]
+      .trim();
+    const effectiveVoter = (sessionUser?.steamId || `ip:${clientIp}`).slice(0, 64);
     const result = economyDb.commendPlayer(targetId, type, effectiveVoter, matchId);
     if (!result) {
       return res.status(400).json({ error: 'Dados inválidos.' });
@@ -90,12 +95,19 @@ export function registerAdminAndSocialRoutes(app, { io, rooms, discordBotManager
       try {
         const parsed = JSON.parse(fs.readFileSync(fullPath, 'utf8'));
         if (filename === 'discordBotConfig.json' && !includeSecrets && parsed && typeof parsed === 'object') {
-          const { token, ...redacted } = parsed;
-          files[filename] = { ...redacted, hasToken: Boolean(token) };
+          const { token, geminiApiKey, rconPassword, ...redacted } = parsed;
+          files[filename] = {
+            ...redacted,
+            hasToken: Boolean(token),
+            hasGeminiKey: Boolean(geminiApiKey),
+            hasRconPassword: Boolean(rconPassword),
+          };
         } else {
           files[filename] = parsed;
         }
-      } catch {}
+      } catch (err) {
+        logger.warn('ADMIN_BACKUP', `Falha ao ler ${filename}`, err);
+      }
     }
 
     return res.json({
@@ -115,10 +127,9 @@ export function registerAdminAndSocialRoutes(app, { io, rooms, discordBotManager
     for (const [filename, content] of Object.entries(files)) {
       if (!allowed.has(filename)) continue;
       const target = getDataFilePath(filename);
-      const tmp = `${target}.tmp`;
-      fs.writeFileSync(tmp, JSON.stringify(content, null, 2), 'utf8');
-      fs.renameSync(tmp, target);
-      restored.push(filename);
+      if (writeJsonAtomic(target, content)) {
+        restored.push(filename);
+      }
     }
     return res.json({
       success: true,
@@ -129,6 +140,9 @@ export function registerAdminAndSocialRoutes(app, { io, rooms, discordBotManager
 
   // Discord Webhook & Bot Endpoints
   app.post('/api/discord/webhook', sensitiveLimiter, async (req, res) => {
+    if (!getSessionUser(req) && !isAdminRequest(req)) {
+      return res.status(401).json({ error: 'Faça login com a Steam ou forneça chave Admin para enviar webhooks.' });
+    }
     const { webhookUrl, eventType, data } = req.body || {};
     if (!webhookUrl || !isValidDiscordWebhookUrl(webhookUrl)) {
       return res.status(400).json({ error: 'URL do Webhook do Discord inválida.' });

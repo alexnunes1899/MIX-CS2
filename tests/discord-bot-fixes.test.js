@@ -931,10 +931,10 @@ test('CS2NewsRadar: detecta ingles disfarcado, conserva termos do CS2 e inclui b
             success: 1,
             events: [
               {
-                gid: '687522235410286587',
+                gid: 'gid-test-steam-ptbr-777',
                 event_type: 12,
                 announcement_body: {
-                  gid: '687522235410286588',
+                  gid: 'gid-test-steam-ptbr-778',
                   language: 22,
                   posttime: 1794958807,
                   headline: 'Detalhes da atualização de 17/11/2026',
@@ -953,7 +953,7 @@ test('CS2NewsRadar: detecta ingles disfarcado, conserva termos do CS2 e inclui b
     assert.equal(ev.translationSource, 'valve-ptbr');
     assert.equal(ev.title, 'Detalhes da atualização de 17/11/2026');
     assert.equal(ev.bannerImage, 'https://cdn.example/poster.png');
-    assert.match(ev.url, /store\.steampowered\.com\/news\/app\/730\/view\/687522235410286587/);
+    assert.match(ev.url, /store\.steampowered\.com\/news\/app\/730\/view\/gid-test-steam-ptbr-777/);
     assert.match(ev.formattedNotes, /Cobblestone/);
     assert.equal(ev.formattedNotes.includes('[video'), false);
     assert.equal(ev.formattedNotes.includes('[LIST]'), false);

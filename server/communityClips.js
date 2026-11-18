@@ -1,7 +1,8 @@
 import fs from 'fs';
-import path from 'path';
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { resolveSeededDataFile } from './dataDir.js';
+import { writeJsonAtomic } from './utils/atomicJson.js';
+import { logger } from './utils/logger.js';
 
 const CLIPS_FILE = resolveSeededDataFile('communityClips.json');
 
@@ -20,19 +21,21 @@ export class CommunityClipsService {
           this.clips.set(id, clip);
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      logger.warn('CLIPS', 'Falha ao ler communityClips.json', e);
+    }
   }
 
   saveClips() {
     try {
-      const dir = path.dirname(CLIPS_FILE);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
       const obj = {};
       for (const [id, clip] of this.clips.entries()) {
         obj[id] = clip;
       }
-      fs.writeFileSync(CLIPS_FILE, JSON.stringify(obj, null, 2));
-    } catch (e) {}
+      writeJsonAtomic(CLIPS_FILE, obj);
+    } catch (e) {
+      logger.warn('CLIPS', 'Falha ao salvar communityClips.json', e);
+    }
   }
 
   detectPlatform(url) {

@@ -1,15 +1,22 @@
 import dgram from 'dgram';
 import net from 'net';
+import { isBlockedMetadataHost, isCloudEnvironment, isPrivateOrLoopbackHost } from './utils/security.js';
 
 /**
  * Pings a CS2/Source Server using Valve A2S_INFO UDP protocol or TCP fallback.
  */
 export async function pingCs2Server(host, port = 27015, timeoutMs = 1800) {
-  const cleanHost = String(host || '').trim().replace(/^connect\s+/i, '').split(':')[0];
+  const cleanHost = String(host || '').trim().replace(/^connect\s+/i, '').split(':')[0].trim();
   const cleanPort = parseInt(port, 10) || 27015;
 
   if (!cleanHost) {
     return { online: false, pingMs: null, error: 'Host não informado.' };
+  }
+  if (isBlockedMetadataHost(cleanHost) || (isCloudEnvironment() && isPrivateOrLoopbackHost(cleanHost))) {
+    return { online: false, pingMs: null, error: 'Host inválido ou bloqueado pela política de segurança.' };
+  }
+  if (!Number.isInteger(cleanPort) || cleanPort < 1 || cleanPort > 65535) {
+    return { online: false, pingMs: null, error: 'Porta inválida (use 1 a 65535).' };
   }
 
   // 1. Try Valve A2S_INFO UDP

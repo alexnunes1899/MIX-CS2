@@ -6,6 +6,9 @@ import {
 } from '../authSession.js';
 import { getSteamPlayerDetails } from '../steamApi.js';
 import { fetchFaceitPlayer } from '../faceit.js';
+import { resolveSafeBaseUrl } from '../utils/security.js';
+import { logger } from '../utils/logger.js';
+import { DEFAULT_PUBLIC_URL } from '../../shared/appConfig.js';
 
 export function registerAuthRoutes(app) {
   app.get('/api/auth/me', (req, res) => {
@@ -36,10 +39,9 @@ export function registerAuthRoutes(app) {
   });
 
   app.get('/api/auth/steam', (req, res) => {
-    const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-    const host = req.get('host');
-    const returnTo = `${protocol}://${host}/api/auth/steam/return`;
-    const realm = `${protocol}://${host}/`;
+    const baseUrl = resolveSafeBaseUrl(req, DEFAULT_PUBLIC_URL);
+    const returnTo = `${baseUrl}/api/auth/steam/return`;
+    const realm = `${baseUrl}/`;
 
     const params = new URLSearchParams({
       'openid.ns': 'http://specs.openid.net/auth/2.0',
@@ -113,7 +115,9 @@ export function registerAuthRoutes(app) {
         if (steamDetails && steamDetails.cs2Hours) {
           cs2Hours = steamDetails.cs2Hours;
         }
-      } catch (e) {}
+      } catch (e) {
+        logger.debug('STEAM_AUTH', 'Falha opcional ao buscar horas CS2 no login Steam', e);
+      }
 
       // Mint signed HttpOnly session cookie verified by Express & Socket.IO
       setSessionCookie(req, res, {
@@ -126,9 +130,7 @@ export function registerAuthRoutes(app) {
         cs2Hours,
       });
 
-      return res.redirect(
-        `/?steam_auth=1&steamId=${steamId}&nick=${encodeURIComponent(nick)}&avatar=${encodeURIComponent(avatar)}&faceitLevel=${faceitLevel}&faceitElo=${faceitElo}&faceitFound=${faceitFound}&cs2Hours=${encodeURIComponent(cs2Hours)}`
-      );
+      return res.redirect('/?steam_auth=1');
     } catch (err) {
       console.error('Steam Auth Error:', err);
       return res.redirect('/?steam_error=server_error');

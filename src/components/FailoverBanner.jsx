@@ -1,5 +1,6 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { AlertTriangle, HardDrive, Wifi, WifiOff, X, ArrowRight, CheckCircle2, RefreshCw } from 'lucide-react';
+import { DEFAULT_PUBLIC_URL } from '../../shared/appConfig.js';
 
 export default function FailoverBanner({ roomId = 'MIX-PRO', roomPassword = '', socketConnected = true }) {
   const [isLocalHost, setIsLocalHost] = useState(false);
@@ -78,7 +79,7 @@ export default function FailoverBanner({ roomId = 'MIX-PRO', roomPassword = '', 
   // If on localhost, check if production online is back
   const checkOnlineProduction = async () => {
     try {
-      const res = await fetch('https://mix-cs2.onrender.com/api/health', { mode: 'cors' });
+      const res = await fetch(`${DEFAULT_PUBLIC_URL}/api/health`, { mode: 'cors' });
       if (res.ok) {
         setOnlineAvailable(true);
       } else {

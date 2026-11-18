@@ -5,6 +5,7 @@
 
 import fs from 'fs';
 import { resolveSeededDataFile } from './dataDir.js';
+import { writeJsonAtomic } from './utils/atomicJson.js';
 
 const GRENADES_DATA_FILE = resolveSeededDataFile('grenadesPtBr.json');
 
@@ -481,11 +482,7 @@ export function loadSavedGrenades() {
  */
 function saveGrenadesToDisk(state) {
   try {
-    const dir = path.dirname(GRENADES_DATA_FILE);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    fs.writeFileSync(GRENADES_DATA_FILE, JSON.stringify(state, null, 2), 'utf8');
+    writeJsonAtomic(GRENADES_DATA_FILE, state);
   } catch (err) {
     console.error('[GRENADE_SYNC] Erro ao salvar grenadesPtBr.json:', err.message);
   }

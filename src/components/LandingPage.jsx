@@ -7,6 +7,7 @@ import MainNavigationMenu from './MainNavigationMenu';
 import MixHubLogo from './MixHubLogo';
 import { playClickSound } from '../utils/audio';
 import { savePendingInvite } from '../hooks/useSteamSession';
+import { buildDiscordBotInviteUrl } from '../../shared/appConfig.js';
 
 export default function LandingPage({
   onGoHome,
@@ -946,7 +947,7 @@ export default function LandingPage({
 
             <div className="flex flex-col sm:flex-row lg:flex-col gap-3 w-full sm:w-auto shrink-0">
               <a
-                href="https://discord.com/oauth2/authorize?client_id=1569029813518336030&permissions=8&integration_type=0&scope=bot+applications.commands"
+                href={buildDiscordBotInviteUrl()}
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => soundEnabled && playClickSound()}

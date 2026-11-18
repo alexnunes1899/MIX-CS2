@@ -43,6 +43,7 @@ import { playClickSound } from '../utils/audio';
 import { parseServerDetails } from '../utils/serverParser';
 import { ACTIVE_DUTY_MAPS } from '../data/maps';
 import { copyText } from '../utils/clipboard';
+import { DEFAULT_PUBLIC_URL } from '../../shared/appConfig.js';
 
 export default function DedicatedServersHub({
   roomId = '',
@@ -646,7 +647,7 @@ pause
 
         {/* TAB 0: PASSO A PASSO INTEGRACAO SERVIDOR PRIVADO + BOT */}
         {activeTab === 'integracao' && (() => {
-          const originUrl = typeof window !== 'undefined' ? window.location.origin : 'https://mix-cs2.onrender.com';
+          const originUrl = typeof window !== 'undefined' ? window.location.origin : DEFAULT_PUBLIC_URL;
           const effectiveRoom = roomId || 'MIX-PRO';
           const discordServerCmd = parsedActive.isValid ? `!servidor ${parsedActive.ip}` : '!servidor SEU_IP:27015; password mix';
           const matchzyCmd = `matchzy_loadmatch_url "${originUrl}/api/matchzy/config/${effectiveRoom}"`;

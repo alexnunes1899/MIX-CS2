@@ -6,6 +6,7 @@
 
 import fs from 'fs';
 import { getBundledDataFilePath, getDataDir, getDataFilePath } from './dataDir.js';
+import { writeJsonAtomic } from './utils/atomicJson.js';
 
 const DATA_DIR = getDataDir();
 const MATCH_HISTORY_FILE = getDataFilePath('matchHistory.json');
@@ -572,7 +573,7 @@ export function saveMatchHistory(matches) {
     const valid = (Array.isArray(matches) ? matches : [])
       .filter(isValidMatchRecord)
       .map(normalizeMatchRecord);
-    fs.writeFileSync(MATCH_HISTORY_FILE, JSON.stringify(valid, null, 2), 'utf8');
+    writeJsonAtomic(MATCH_HISTORY_FILE, valid);
     return valid;
   } catch (e) {
     console.error('[MATCH_HISTORY] Falha ao salvar matchHistory.json:', e.message);

@@ -1,4 +1,5 @@
 import net from 'net';
+import { isBlockedMetadataHost, isCloudEnvironment, isPrivateOrLoopbackHost } from './utils/security.js';
 
 /**
  * Valve Source RCON Protocol Client
@@ -17,25 +18,57 @@ export function executeRconCommand({ host, port = 27015, password, command, time
       return reject(new Error('Host e senha RCON são obrigatórios.'));
     }
 
-    const cleanHost = host.trim();
+    const cleanHost = String(host).trim();
     const cleanPort = Number(port) || 27015;
-    const socket = new net.Socket();
+    if (
+      !cleanHost ||
+      isBlockedMetadataHost(cleanHost) ||
+      (isCloudEnvironment() && isPrivateOrLoopbackHost(cleanHost))
+    ) {
+      return reject(new Error('Host RCON inválido ou bloqueado pela política de segurança.'));
+    }
+    if (!Number.isInteger(cleanPort) || cleanPort < 1 || cleanPort > 65535) {
+      return reject(new Error('Porta RCON inválida (use 1 a 65535).'));
+    }
 
+    const socket = new net.Socket();
+    let settled = false;
     let authenticated = false;
-    let authReqId = Math.floor(Math.random() * 10000) + 1;
-    let cmdReqId = authReqId + 1;
+    const authReqId = Math.floor(Math.random() * 10000) + 1;
+    const cmdReqId = authReqId + 1;
     let responseBuffer = '';
     let timeoutTimer = null;
+    let finishTimer = null;
 
     const cleanup = () => {
-      if (timeoutTimer) clearTimeout(timeoutTimer);
+      if (timeoutTimer) {
+        clearTimeout(timeoutTimer);
+        timeoutTimer = null;
+      }
+      if (finishTimer) {
+        clearTimeout(finishTimer);
+        finishTimer = null;
+      }
       socket.removeAllListeners();
       socket.destroy();
     };
 
-    timeoutTimer = setTimeout(() => {
+    const settleResolve = (val) => {
+      if (settled) return;
+      settled = true;
       cleanup();
-      reject(new Error(`Timeout de RCON (${timeoutMs}ms) ao conectar em ${cleanHost}:${cleanPort}`));
+      resolve(val);
+    };
+
+    const settleReject = (err) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(err);
+    };
+
+    timeoutTimer = setTimeout(() => {
+      settleReject(new Error(`Timeout de RCON (${timeoutMs}ms) ao conectar em ${cleanHost}:${cleanPort}`));
     }, timeoutMs);
 
     function createPacket(id, type, body) {
@@ -54,7 +87,6 @@ export function executeRconCommand({ host, port = 27015, password, command, time
     }
 
     socket.connect(cleanPort, cleanHost, () => {
-      // 1. Send AUTH packet
       const authPacket = createPacket(authReqId, SERVERDATA_AUTH, password);
       socket.write(authPacket);
     });
@@ -64,12 +96,15 @@ export function executeRconCommand({ host, port = 27015, password, command, time
     socket.on('data', (chunk) => {
       incomingData = Buffer.concat([incomingData, chunk]);
 
-      while (incomingData.length >= 12) {
+      while (incomingData.length >= 12 && !settled) {
         const size = incomingData.readInt32LE(0);
         const totalSize = size + 4;
-
+        if (size < 10 || totalSize > 65536) {
+          settleReject(new Error('Resposta RCON malformada recebida do servidor.'));
+          return;
+        }
         if (incomingData.length < totalSize) {
-          break; // wait for more bytes
+          break;
         }
 
         const packetBuf = incomingData.slice(0, totalSize);
@@ -79,59 +114,49 @@ export function executeRconCommand({ host, port = 27015, password, command, time
         const type = packetBuf.readInt32LE(8);
         const body = packetBuf.slice(12, totalSize - 2).toString('utf8');
 
-        // Authentication response
         if (!authenticated) {
           if (type === SERVERDATA_AUTH_RESPONSE) {
             if (id === -1) {
-              cleanup();
-              return reject(new Error('Senha RCON incorreta.'));
+              settleReject(new Error('Senha RCON incorreta.'));
+              return;
             }
             authenticated = true;
 
-            // If just testing connection
             if (!command || command.trim() === 'test') {
-              cleanup();
-              return resolve({ success: true, message: 'Autenticado com sucesso via RCON!' });
+              settleResolve({ success: true, message: 'Autenticado com sucesso via RCON!' });
+              return;
             }
 
-            // 2. Send command packet
             const cmdPacket = createPacket(cmdReqId, SERVERDATA_EXECCOMMAND, command);
             socket.write(cmdPacket);
           }
-        } else {
-          // Command response
-          if (id === cmdReqId || type === SERVERDATA_RESPONSE_VALUE) {
-            responseBuffer += body;
-
-            // Most commands return immediate response
-            setTimeout(() => {
-              cleanup();
-              resolve({
-                success: true,
-                command,
-                response: responseBuffer.trim() || 'Comando executado com sucesso no servidor.',
-              });
-            }, 300);
-          }
+        } else if (id === cmdReqId || type === SERVERDATA_RESPONSE_VALUE) {
+          responseBuffer += body;
+          if (finishTimer) clearTimeout(finishTimer);
+          finishTimer = setTimeout(() => {
+            settleResolve({
+              success: true,
+              command,
+              response: responseBuffer.trim() || 'Comando executado com sucesso no servidor.',
+            });
+          }, 300);
         }
       }
     });
 
     socket.on('error', (err) => {
-      cleanup();
-      reject(new Error(`Falha de conexão RCON com ${cleanHost}:${cleanPort}: ${err.message}`));
+      settleReject(new Error(`Falha de conexão RCON com ${cleanHost}:${cleanPort}: ${err.message}`));
     });
 
     socket.on('end', () => {
-      cleanup();
       if (authenticated) {
-        resolve({
+        settleResolve({
           success: true,
           command,
           response: responseBuffer.trim() || 'Comando enviado.',
         });
       } else {
-        reject(new Error('Conexão encerrada pelo servidor sem resposta de autenticação.'));
+        settleReject(new Error('Conexão encerrada pelo servidor sem resposta de autenticação.'));
       }
     });
   });

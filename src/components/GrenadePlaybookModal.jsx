@@ -28,6 +28,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { GRENADE_LINEUPS, GRENADE_TYPES, WORKSHOP_PRACTICE_MAPS } from '../data/grenades';
+import { DEFAULT_PUBLIC_URL } from '../../shared/appConfig.js';
 import {
   TREINO_DEFAULT_BINDS,
   TREINO_BIND_META,
@@ -189,7 +190,7 @@ export default function GrenadePlaybookModal({
   }, [treinoBinds]);
 
   const treinoPsCommand = useMemo(() => {
-    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://mix-cs2.onrender.com';
+    const origin = typeof window !== 'undefined' ? window.location.origin : DEFAULT_PUBLIC_URL;
     return `powershell -ExecutionPolicy Bypass -Command "irm '${origin}/api/treino/installer.ps1?${treinoQueryString}' | iex"`;
   }, [treinoQueryString]);
 

@@ -1,7 +1,9 @@
 ﻿import fs from 'fs';
-import path from 'path';
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { resolveSeededDataFile } from './dataDir.js';
+import { writeJsonAtomic } from './utils/atomicJson.js';
+import { setBounded } from './utils/boundedMap.js';
+import { logger } from './utils/logger.js';
 
 const STATE_FILE = resolveSeededDataFile('cs2NewsState.json');
 const CACHE_SCHEMA_VERSION = 3;
@@ -236,8 +238,6 @@ export class CS2NewsRadarService {
 
   persistStateFile(nextLastGid = this.lastKnownGid) {
     try {
-      const dir = path.dirname(STATE_FILE);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
       const payload = {
         cacheVersion: CACHE_SCHEMA_VERSION,
         lastGid: nextLastGid ? String(nextLastGid) : null,
@@ -245,8 +245,10 @@ export class CS2NewsRadarService {
         lastCheckedAt: this.lastCheckedAt || new Date().toISOString(),
         updates: this.updatesHistory.slice(0, 12),
       };
-      fs.writeFileSync(STATE_FILE, JSON.stringify(payload, null, 2), 'utf-8');
-    } catch (_) {}
+      writeJsonAtomic(STATE_FILE, payload);
+    } catch (err) {
+      logger.warn('CS2_NEWS', 'Falha ao persistir cs2NewsState.json', err);
+    }
   }
 
   saveState(gid) {
@@ -896,7 +898,7 @@ export class CS2NewsRadarService {
         translationSource === 'gemini' ||
         this.isAlreadyPortuguese(result.formattedNotes))
     ) {
-      this.translationCache.set(String(gid), result);
+      setBounded(this.translationCache, String(gid), result, 100);
     }
     return result;
   }

@@ -167,6 +167,44 @@ export function isBlockedMetadataHost(host) {
 }
 
 /**
+ * Returns true when running inside Render or Railway cloud runtime.
+ */
+export function isCloudEnvironment() {
+  return Boolean(process.env.RENDER || process.env.RAILWAY_ENVIRONMENT);
+}
+
+/**
+ * Returns true if host resolves syntactically to loopback, RFC1918 private IPv4, or RFC4193/link-local IPv6.
+ */
+export function isPrivateOrLoopbackHost(host) {
+  if (!host || typeof host !== 'string') return true;
+  const clean = host.trim().toLowerCase().replace(/^\[|\]$/g, '');
+  if (!clean) return true;
+  if (clean === 'localhost' || clean.endsWith('.localhost')) return true;
+
+  if (net.isIPv4(clean)) {
+    const [a, b] = clean.split('.').map(Number);
+    if (a === 127 || a === 10 || a === 0) return true;
+    if (a === 169 && b === 254) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 100 && b >= 64 && b <= 127) return true;
+    return false;
+  }
+
+  if (net.isIPv6(clean)) {
+    if (clean === '::1' || clean === '::' || clean.startsWith('::ffff:127.') || clean.startsWith('::ffff:10.') || clean.startsWith('::ffff:192.168.')) {
+      return true;
+    }
+    if (clean.startsWith('fe80:') || clean.startsWith('fc') || clean.startsWith('fd')) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
  * Resolves a safe external base URL from env override or validated request headers.
  */
 export function resolveSafeBaseUrl(req, fallbackUrl = 'http://localhost:3000') {

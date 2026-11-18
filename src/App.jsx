@@ -13,6 +13,8 @@ import { getVetoSchedule } from './utils/proVeto';
 import { MOCK_PLAYERS } from './data/mockPlayers';
 import { useAppVersion } from './hooks/useAppVersion';
 import { useSteamSession, savePendingInvite } from './hooks/useSteamSession';
+import { useNavigationView } from './hooks/useNavigationView';
+import AppModalsHost from './components/AppModalsHost';
 
 const Lobby = lazy(() => import('./components/Lobby'));
 const TeamsView = lazy(() => import('./components/TeamsView'));
@@ -22,26 +24,6 @@ const CaptainsDraftView = lazy(() => import('./components/CaptainsDraftView'));
 const LandingPage = lazy(() => import('./components/LandingPage'));
 const DedicatedServersHub = lazy(() => import('./components/DedicatedServersHub'));
 const CS2UpdatesPage = lazy(() => import('./components/CS2UpdatesPage'));
-
-const RoomsHubModal = lazy(() => import('./components/RoomsHubModal'));
-const MatchHistoryModal = lazy(() => import('./components/MatchHistoryModal'));
-const QuickVetoModal = lazy(() => import('./components/QuickVetoModal'));
-const QuickMapRollModal = lazy(() => import('./components/QuickMapRollModal'));
-const ChatDrawer = lazy(() => import('./components/ChatDrawer'));
-const CoinFlipModal = lazy(() => import('./components/CoinFlipModal'));
-const DraftRoulette = lazy(() => import('./components/DraftRoulette'));
-const SteamLoginGateModal = lazy(() => import('./components/SteamLoginGateModal'));
-const PlayerProfileModal = lazy(() => import('./components/PlayerProfileModal'));
-const GsiSetupModal = lazy(() => import('./components/GsiSetupModal'));
-const RoomPasswordModal = lazy(() => import('./components/RoomPasswordModal'));
-const LeaderboardModal = lazy(() => import('./components/LeaderboardModal'));
-const DiscordWebhookModal = lazy(() => import('./components/DiscordWebhookModal'));
-const MatchCardModal = lazy(() => import('./components/MatchCardModal'));
-const PlayerStoryCardModal = lazy(() => import('./components/PlayerStoryCardModal'));
-const GrenadePlaybookModal = lazy(() => import('./components/GrenadePlaybookModal'));
-const AimReflexModal = lazy(() => import('./components/AimReflexModal'));
-const TournamentBracketModal = lazy(() => import('./components/TournamentBracketModal'));
-const LocalHostModal = lazy(() => import('./components/LocalHostModal'));
 
 function PageFallback() {
   return (
@@ -87,23 +69,16 @@ export default function App() {
   const [passwordError, setPasswordError] = useState(null);
   const [authErrorType, setAuthErrorType] = useState('wrong_password');
 
-  const [view, setView] = useState(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('view') === 'servers') {
-      return 'servers';
-    }
-    if (params.get('view') === 'updates') {
-      return 'updates';
-    }
-    // Ao fazer login (steam_auth=1) ou quando não há parâmetro room, SEMPRE abre a tela inicial
-    if (params.get('steam_auth') === '1' || !params.get('room')) {
-      return 'landing';
-    }
-    return 'mix';
-  });
-
   // Som desativado por padrão conforme solicitação, com persistência no localStorage
   const [soundEnabled, setSoundEnabled] = useState(() => isSoundEnabled());
+
+  const {
+    view,
+    setView,
+    handleOpenServersPage,
+    handleOpenUpdatesPage,
+    handleGoHome,
+  } = useNavigationView({ setRoomId, soundEnabled });
 
   const handleToggleSound = () => {
     setSoundEnabled((prev) => {
@@ -126,25 +101,6 @@ export default function App() {
       socket.off('disconnect', handleDisconnect);
       socket.off('connect_error', handleDisconnect);
     };
-  }, []);
-
-  // Sync browser navigation (Back / Forward buttons)
-  useEffect(() => {
-    const handlePopState = () => {
-      const p = new URLSearchParams(window.location.search);
-      if (p.get('view') === 'servers') {
-        setView('servers');
-      } else if (p.get('view') === 'updates') {
-        setView('updates');
-      } else if (p.get('room')) {
-        setRoomId(p.get('room'));
-        setView('mix');
-      } else {
-        setView('landing');
-      }
-    };
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
   }, []);
   const [roomsHubOpen, setRoomsHubOpen] = useState(false);
   const [publicRooms, setPublicRooms] = useState([]);
@@ -1185,43 +1141,6 @@ export default function App() {
     window.history.pushState({}, '', u);
   };
 
-  const handleOpenServersPage = (tab = null) => {
-    if (soundEnabled) playClickSound();
-    setView('servers');
-    const u = new URL(window.location);
-    u.searchParams.set('view', 'servers');
-    if (typeof tab === 'string' && tab) {
-      u.searchParams.set('tab', tab);
-    }
-    window.history.pushState({}, '', u);
-    window.dispatchEvent(new PopStateEvent('popstate'));
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const handleOpenUpdatesPage = () => {
-    if (soundEnabled) playClickSound();
-    setView('updates');
-    const u = new URL(window.location);
-    u.searchParams.set('view', 'updates');
-    u.searchParams.delete('tab');
-    window.history.pushState({}, '', u);
-    window.dispatchEvent(new PopStateEvent('popstate'));
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const handleGoHome = () => {
-    if (soundEnabled) playClickSound();
-    setView('landing');
-    const u = new URL(window.location);
-    u.searchParams.delete('view');
-    u.searchParams.delete('tab');
-    u.searchParams.delete('room');
-    u.searchParams.delete('pwd');
-    u.searchParams.delete('key');
-    window.history.pushState({}, '', u);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
   const handleGoToRoom = (targetRoomId) => {
     if (soundEnabled) playClickSound();
     const safeTarget = typeof targetRoomId === 'string' && targetRoomId.trim() ? targetRoomId : (roomId || 'MIX-PRO');
@@ -2069,235 +1988,77 @@ export default function App() {
       )}
 
       {/* Single Shared Lazy-Loaded Modal & Drawer Tree */}
-      <Suspense fallback={null}>
-        {roomsHubOpen && (
-          <RoomsHubModal
-            isOpen={roomsHubOpen}
-            onClose={() => setRoomsHubOpen(false)}
-            currentRoomId={roomId}
-            onSelectRoom={handleSelectRoom}
-            onDeleteRoom={handleDeleteRoom}
-            soundEnabled={soundEnabled}
-            isSteamLogged={isSteamLogged}
-            onRequireSteamLogin={handleRequireSteamLogin}
-            myProfile={myProfile}
-          />
-        )}
-
-        {(steamGateModalOpen || (view === 'mix' && room.phase === 'lobby' && !isSteamLogged)) && (
-          <SteamLoginGateModal
-            isOpen={steamGateModalOpen || (view === 'mix' && room.phase === 'lobby' && !isSteamLogged)}
-            roomId={roomId}
-            actionText={steamGateActionText}
-            soundEnabled={soundEnabled}
-            onClose={
-              view === 'mix' && !isSteamLogged
-                ? () => {
-                    setView('landing');
-                    const u = new URL(window.location);
-                    u.searchParams.delete('room');
-                    window.history.pushState({}, '', u);
-                  }
-                : () => setSteamGateModalOpen(false)
-            }
-          />
-        )}
-
-        {historyOpen && (
-          <MatchHistoryModal
-            isOpen={historyOpen}
-            onClose={() => setHistoryOpen(false)}
-            history={room.history}
-            currentMap={room.finalMap?.name || room.finalMap || 'Mirage'}
-            onSaveScore={handleSaveScore}
-            onOpenGlobalHistory={() => {
-              setHistoryOpen(false);
-              setLeaderboardOpen(true);
-            }}
-            soundEnabled={soundEnabled}
-          />
-        )}
-
-        {quickVetoOpen && (
-          <QuickVetoModal
-            isOpen={quickVetoOpen}
-            onClose={() => setQuickVetoOpen(false)}
-            onStartQuickVeto={handleStartQuickVeto}
-            soundEnabled={soundEnabled}
-          />
-        )}
-
-        {quickMapRollOpen && (
-          <QuickMapRollModal
-            isOpen={quickMapRollOpen}
-            onClose={() => setQuickMapRollOpen(false)}
-            onApplyMap={handleApplyQuickMap}
-            soundEnabled={soundEnabled}
-            officialRotation={officialRotation}
-            syncingRotation={syncingRotation}
-            onSyncOfficialRotation={handleSyncOfficialRotation}
-          />
-        )}
-
-        {room.phase === 'coin_flip' && (
-          <CoinFlipModal
-            isOpen={room.phase === 'coin_flip'}
-            room={room}
-            coin={room.coin}
-            onChooseAction={handleCoinChoice}
-            soundEnabled={soundEnabled}
-          />
-        )}
-
-        {rouletteActive && (
-          <DraftRoulette
-            players={room.players}
-            rankingSystem={room.rankingSystem || 'gc'}
-            onComplete={handleRouletteComplete}
-            soundEnabled={soundEnabled}
-          />
-        )}
-
-        {view === 'mix' && (
-          <ChatDrawer
-            chat={room.chat}
-            onSendMessage={handleSendMessage}
-            myProfile={myProfile}
-            rankingSystem={room.rankingSystem || 'gc'}
-            soundEnabled={soundEnabled}
-          />
-        )}
-
-        {profileModalOpen && (
-          <PlayerProfileModal
-            isOpen={profileModalOpen}
-            onClose={() => setProfileModalOpen(false)}
-            profile={myProfile}
-            rankingSystem={room.rankingSystem || 'gc'}
-            onLogout={handleLogoutSteam}
-            onSwitchAccount={handleSwitchSteamAccount}
-            soundEnabled={soundEnabled}
-            onSaveProfile={handleSaveProfile}
-            onOpenStoryCard={() => setStoryCardOpen(true)}
-          />
-        )}
-
-        {gsiModalOpen && (
-          <GsiSetupModal
-            isOpen={gsiModalOpen}
-            onClose={() => setGsiModalOpen(false)}
-            roomId={roomId}
-            liveMatch={room.liveMatch}
-            soundEnabled={soundEnabled}
-          />
-        )}
-
-        {passwordModalOpen && (
-          <RoomPasswordModal
-            isOpen={passwordModalOpen}
-            onClose={() => {
-              setPasswordModalOpen(false);
-              setPasswordError(null);
-              setPendingRoomAuth(null);
-            }}
-            roomId={pendingRoomAuth?.roomId || roomId}
-            roomName={pendingRoomAuth?.roomName || room.name}
-            onSubmitPassword={handleSubmitRoomPassword}
-            errorMessage={passwordError}
-            errorType={authErrorType}
-            onOpenRoomsHub={() => setRoomsHubOpen(true)}
-            soundEnabled={soundEnabled}
-          />
-        )}
-
-        {leaderboardOpen && (
-          <LeaderboardModal
-            isOpen={leaderboardOpen}
-            onClose={() => setLeaderboardOpen(false)}
-            socket={socket}
-            soundEnabled={soundEnabled}
-          />
-        )}
-
-        {discordModalOpen && (
-          <DiscordWebhookModal
-            isOpen={discordModalOpen}
-            onClose={() => setDiscordModalOpen(false)}
-            roomId={roomId}
-            currentWebhook={room.discordWebhook || ''}
-            autoLobby={room.discordAutoLobby !== false}
-            autoVeto={room.discordAutoVeto !== false}
-            autoGsiRounds={room.discordGsiRounds !== false}
-            autoGsiBomb={Boolean(room.discordGsiBomb)}
-            autoStats={room.discordAutoStats !== false}
-            onSaveWebhook={handleSaveDiscordWebhook}
-            onOpenServersPage={handleOpenServersPage}
-            soundEnabled={soundEnabled}
-          />
-        )}
-
-        {matchCardOpen && (
-          <MatchCardModal
-            isOpen={matchCardOpen}
-            onClose={() => setMatchCardOpen(false)}
-            room={room}
-            soundEnabled={soundEnabled}
-          />
-        )}
-
-        {storyCardOpen && (
-          <PlayerStoryCardModal
-            isOpen={storyCardOpen}
-            onClose={() => setStoryCardOpen(false)}
-            room={room}
-            soundEnabled={soundEnabled}
-            initialPlayer={myProfile}
-          />
-        )}
-
-        {grenadeModalOpen && (
-          <GrenadePlaybookModal
-            isOpen={grenadeModalOpen}
-            onClose={() => {
-              setGrenadeModalOpen(false);
-              setGrenadeInitialTab('lineups');
-            }}
-            initialMap={room.finalMap?.id}
-            initialTab={grenadeInitialTab}
-            soundEnabled={soundEnabled}
-          />
-        )}
-
-        {aimReflexModalOpen && (
-          <AimReflexModal
-            isOpen={aimReflexModalOpen}
-            onClose={() => setAimReflexModalOpen(false)}
-            soundEnabled={soundEnabled}
-            onShareToChat={(text) => handleSendMessage(text)}
-          />
-        )}
-
-        {tournamentModalOpen && (
-          <TournamentBracketModal
-            isOpen={tournamentModalOpen}
-            onClose={() => setTournamentModalOpen(false)}
-            onLoadTeamsToMix={handleLoadTournamentTeams}
-            soundEnabled={soundEnabled}
-          />
-        )}
-
-        {localHostModalOpen && (
-          <LocalHostModal
-            isOpen={localHostModalOpen}
-            onClose={() => setLocalHostModalOpen(false)}
-            roomId={roomId}
-            currentServerIp={room.serverIp || ''}
-            finalMap={room.finalMap?.name || 'de_mirage'}
-            onUpdateServerIp={handleUpdateServerIp}
-            soundEnabled={soundEnabled}
-          />
-        )}
-      </Suspense>
+      <AppModalsHost
+        view={view}
+        setView={setView}
+        roomId={roomId}
+        room={room}
+        myProfile={myProfile}
+        isSteamLogged={isSteamLogged}
+        soundEnabled={soundEnabled}
+        socket={socket}
+        officialRotation={officialRotation}
+        syncingRotation={syncingRotation}
+        onSyncOfficialRotation={handleSyncOfficialRotation}
+        roomsHubOpen={roomsHubOpen}
+        setRoomsHubOpen={setRoomsHubOpen}
+        steamGateModalOpen={steamGateModalOpen}
+        setSteamGateModalOpen={setSteamGateModalOpen}
+        steamGateActionText={steamGateActionText}
+        historyOpen={historyOpen}
+        setHistoryOpen={setHistoryOpen}
+        quickVetoOpen={quickVetoOpen}
+        setQuickVetoOpen={setQuickVetoOpen}
+        quickMapRollOpen={quickMapRollOpen}
+        setQuickMapRollOpen={setQuickMapRollOpen}
+        rouletteActive={rouletteActive}
+        profileModalOpen={profileModalOpen}
+        setProfileModalOpen={setProfileModalOpen}
+        gsiModalOpen={gsiModalOpen}
+        setGsiModalOpen={setGsiModalOpen}
+        passwordModalOpen={passwordModalOpen}
+        setPasswordModalOpen={setPasswordModalOpen}
+        pendingRoomAuth={pendingRoomAuth}
+        setPendingRoomAuth={setPendingRoomAuth}
+        passwordError={passwordError}
+        setPasswordError={setPasswordError}
+        authErrorType={authErrorType}
+        leaderboardOpen={leaderboardOpen}
+        setLeaderboardOpen={setLeaderboardOpen}
+        discordModalOpen={discordModalOpen}
+        setDiscordModalOpen={setDiscordModalOpen}
+        matchCardOpen={matchCardOpen}
+        setMatchCardOpen={setMatchCardOpen}
+        storyCardOpen={storyCardOpen}
+        setStoryCardOpen={setStoryCardOpen}
+        grenadeModalOpen={grenadeModalOpen}
+        setGrenadeModalOpen={setGrenadeModalOpen}
+        grenadeInitialTab={grenadeInitialTab}
+        setGrenadeInitialTab={setGrenadeInitialTab}
+        aimReflexModalOpen={aimReflexModalOpen}
+        setAimReflexModalOpen={setAimReflexModalOpen}
+        tournamentModalOpen={tournamentModalOpen}
+        setTournamentModalOpen={setTournamentModalOpen}
+        localHostModalOpen={localHostModalOpen}
+        setLocalHostModalOpen={setLocalHostModalOpen}
+        onSelectRoom={handleSelectRoom}
+        onDeleteRoom={handleDeleteRoom}
+        onRequireSteamLogin={handleRequireSteamLogin}
+        onSaveScore={handleSaveScore}
+        onStartQuickVeto={handleStartQuickVeto}
+        onApplyQuickMap={handleApplyQuickMap}
+        onCoinChoice={handleCoinChoice}
+        onRouletteComplete={handleRouletteComplete}
+        onSendMessage={handleSendMessage}
+        onLogoutSteam={handleLogoutSteam}
+        onSwitchSteamAccount={handleSwitchSteamAccount}
+        onSaveProfile={handleSaveProfile}
+        onSubmitRoomPassword={handleSubmitRoomPassword}
+        onSaveDiscordWebhook={handleSaveDiscordWebhook}
+        onOpenServersPage={handleOpenServersPage}
+        onLoadTournamentTeams={handleLoadTournamentTeams}
+        onUpdateServerIp={handleUpdateServerIp}
+      />
     </div>
   );
 }

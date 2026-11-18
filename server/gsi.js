@@ -8,6 +8,7 @@ import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 import { normalizeRoomId } from './utils/security.js';
+import { DEFAULT_PUBLIC_URL } from '../shared/appConfig.js';
 
 const roomGsiStates = new Map();
 const roomContexts = new Map();
@@ -410,8 +411,9 @@ export function getGsiState(roomId) {
 /**
  * Generates official Valve CS2 Game State Integration .cfg configuration
  */
-export function generateGsiConfig(serverBaseUrl, roomId) {
+export function generateGsiConfig(serverBaseUrl, roomId, authToken = '') {
   const cleanRoomId = normalizeRoomId(roomId, 'MIX-PRO');
+  const effectiveToken = String(authToken || '').replace(/["\r\n]/g, '').trim() || cleanRoomId;
   const cleanUrl = String(serverBaseUrl || 'http://localhost:3000').replace(/["\r\n]/g, '').replace(/\/+$/, '');
   const targetUri = `${cleanUrl}/api/gsi/${cleanRoomId}`;
 
@@ -438,7 +440,7 @@ export function generateGsiConfig(serverBaseUrl, roomId) {
     }
     "auth"
     {
-        "token" "${cleanRoomId}"
+        "token" "${effectiveToken}"
     }
 }
 `;
@@ -497,13 +499,13 @@ export function findCs2CfgDirs() {
 /**
  * Installs GSI directly to CS2 on the host PC in 1 click without downloading files
  */
-export function installGsiLocally(serverBaseUrl = 'http://127.0.0.1:3000', roomId = 'MIX-PRO') {
+export function installGsiLocally(serverBaseUrl = 'http://127.0.0.1:3000', roomId = 'MIX-PRO', authToken = '') {
   if (process.platform !== 'win32') {
     return {
       success: false,
       installed: false,
       useBrowserSave: true,
-      cfgContent: generateGsiConfig(process.env.RENDER_EXTERNAL_URL || 'https://mix-cs2.onrender.com', roomId),
+      cfgContent: generateGsiConfig(process.env.RENDER_EXTERNAL_URL || DEFAULT_PUBLIC_URL, roomId, authToken),
       error: 'Servidor em nuvem: usando instalador direto pelo navegador.',
     };
   }
@@ -536,10 +538,10 @@ export function installGsiLocally(serverBaseUrl = 'http://127.0.0.1:3000', roomI
   const publicBaseUrl =
     serverBaseUrl && !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(serverBaseUrl)
       ? serverBaseUrl
-      : process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || 'https://mix-cs2.onrender.com';
+      : process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL || DEFAULT_PUBLIC_URL;
   const localPort = Number(process.env.PORT) || 3000;
-  const cloudCfg = generateGsiConfig(publicBaseUrl, roomId);
-  const localCfg = generateGsiConfig(`http://127.0.0.1:${localPort}`, roomId);
+  const cloudCfg = generateGsiConfig(publicBaseUrl, roomId, authToken);
+  const localCfg = generateGsiConfig(`http://127.0.0.1:${localPort}`, roomId, authToken);
 
   const written = [];
   for (const dir of dirs) {
@@ -605,8 +607,8 @@ export function checkGsiInstalled() {
  * Generates an automated 1-click Windows Batch installer (.bat)
  * Automatically detects Steam library folders across all drives and installs GSI CFG.
  */
-export function generateGsiBatchInstaller(serverBaseUrl, roomId) {
-  const cfgContent = generateGsiConfig(serverBaseUrl, roomId);
+export function generateGsiBatchInstaller(serverBaseUrl, roomId, authToken = '') {
+  const cfgContent = generateGsiConfig(serverBaseUrl, roomId, authToken);
   const b64 = Buffer.from(cfgContent, 'utf8').toString('base64');
 
   return `@echo off
@@ -717,8 +719,8 @@ Start-Sleep -Seconds 3;
 /**
  * Generates raw PowerShell script for 1-click execution (irm ... | iex)
  */
-export function generateGsiPowerShellInstaller(serverBaseUrl, roomId) {
-  const cfgContent = generateGsiConfig(serverBaseUrl, roomId);
+export function generateGsiPowerShellInstaller(serverBaseUrl, roomId, authToken = '') {
+  const cfgContent = generateGsiConfig(serverBaseUrl, roomId, authToken);
   return buildCs2CfgPowerShellInstaller({
     cfgContent,
     fileName: 'gamestate_integration_cs2mixhub.cfg',

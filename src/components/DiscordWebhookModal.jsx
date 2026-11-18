@@ -28,6 +28,7 @@ import {
   Plug,
 } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
+import { DEFAULT_DISCORD_CLIENT_ID, buildDiscordBotInviteUrl } from '../../shared/appConfig.js';
 
 export default function DiscordWebhookModal({
   isOpen,
@@ -414,8 +415,8 @@ export default function DiscordWebhookModal({
     }, 1200);
   };
 
-  const effectiveClientId = clientId.trim() || botStatus.id || '1569029813518336030';
-  const botInviteUrl = `https://discord.com/oauth2/authorize?client_id=${effectiveClientId}&permissions=8&integration_type=0&scope=bot+applications.commands`;
+  const effectiveClientId = clientId.trim() || botStatus.id || DEFAULT_DISCORD_CLIENT_ID;
+  const botInviteUrl = buildDiscordBotInviteUrl(effectiveClientId);
 
   const handleCopyInvite = () => {
     if (soundEnabled) playClickSound();

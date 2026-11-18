@@ -11,7 +11,6 @@ import {
   GatewayIntentBits,
   REST,
   Routes,
-  SlashCommandBuilder,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
@@ -57,12 +56,27 @@ import { getBundledDataFilePath, getDataDir, getDataFilePath, resolveSeededDataF
 import { getGrenadesState } from './grenadeSync.js';
 import { isValidMapName } from './roomHelpers.js';
 import {
-  buildTreinoCfg,
-  buildTreinoLeiaMeMd,
   buildTreinoRconCommands,
-  resolveTreinoMapKey,
   TREINO_MAPS,
 } from '../shared/treinoCfg.js';
+import { DEFAULT_PUBLIC_URL } from '../shared/appConfig.js';
+import { writeJsonAtomic } from './utils/atomicJson.js';
+import { setBounded } from './utils/boundedMap.js';
+import { logger } from './utils/logger.js';
+import {
+  OFFICIAL_MAPS,
+  GRENADE_GUIDES,
+  isSnowflake,
+  resolveSlashRegistrationTargets,
+  computePlayerAchievements,
+  resolveGrenadeMapKey,
+  extractHostAndPort,
+} from './discord/constants.js';
+import { buildSlashCommands } from './discord/slashCommands.js';
+import {
+  buildTreinoGuidePayload as buildTreinoGuidePayloadExternal,
+  buildTreinoDownloadPayload as buildTreinoDownloadPayloadExternal,
+} from './discord/treinoBuilders.js';
 import {
   detectNaturalIntent,
   buildCoachContext,
@@ -72,248 +86,20 @@ import {
   buildPostMatchCoachInsight,
 } from './discordAiRouter.js';
 
+export {
+  isSnowflake,
+  resolveSlashRegistrationTargets,
+  computePlayerAchievements,
+  resolveGrenadeMapKey,
+  extractHostAndPort,
+};
+
 const DATA_DIR = getDataDir();
 const CONFIG_FILE = getDataFilePath('discordBotConfig.json');
 const PROFILES_FILE = getDataFilePath('playerProfiles.json');
 const MATCH_HISTORY_FILE = getDataFilePath('matchHistory.json');
 const LEADERBOARD_FILE = getDataFilePath('leaderboard.json');
 const ROULETTE_STATE_FILE = resolveSeededDataFile('mapRouletteState.json');
-
-// Validates numeric Discord Snowflake ID (17 to 20 digits)
-export const isSnowflake = (id) => typeof id === 'string' && /^\d{17,20}$/.test(id);
-
-/**
- * Evita comandos `/` duplicados no menu do Discord: quando há servidores conectados,
- * registra os Slash Commands apenas por guild e limpa os globais antigos.
- */
-export function resolveSlashRegistrationTargets(guildIds = []) {
-  const uniqueGuilds = [...new Set([...guildIds].filter(Boolean))];
-  if (uniqueGuilds.length > 0) {
-    return {
-      registerGlobal: false,
-      clearGlobal: true,
-      guildIds: uniqueGuilds,
-    };
-  }
-  return {
-    registerGlobal: true,
-    clearGlobal: false,
-    guildIds: [],
-  };
-}
-
-/**
- * Calcula medalhas e conquistas reais do jogador com base exclusivamente no perfil e histórico salvo.
- */
-export function computePlayerAchievements(prof = {}, matchHistory = [], targetUserId = '') {
-  const wins = Number(prof?.wins || 0);
-  const losses = Number(prof?.losses || 0);
-  const total = wins + losses;
-  const mvps = Number(prof?.mvps || 0);
-  const streak = Number(prof?.streak || 0);
-  const winRate = total > 0 ? Math.round((wins / total) * 100) : 0;
-
-  const badges = [];
-  if (streak >= 5) badges.push(`⚡ Imparável (${streak}x streak)`);
-  else if (streak >= 3) badges.push(`🔥 Em Chamas (${streak}x streak)`);
-
-  if (wins >= 25) badges.push(`👑 Lenda do Hub (${wins}V)`);
-  else if (wins >= 10) badges.push(`🏆 Veterano (${wins}V)`);
-  else if (wins >= 3) badges.push(`🥉 Competidor (${wins}V)`);
-
-  if (mvps >= 5) badges.push(`⭐ Colecionador de MVPs (${mvps})`);
-  else if (mvps >= 1) badges.push(`🌟 Destaque MVP (${mvps}x)`);
-
-  if (total >= 5 && winRate >= 60) badges.push(`📈 Consistência ${winRate}%`);
-
-  if (targetUserId && Array.isArray(matchHistory) && matchHistory.length > 0) {
-    const mapWins = {};
-    for (const m of matchHistory) {
-      const wonInMatch = Array.isArray(m?.winnerPlayers) && m.winnerPlayers.some((wp) => wp?.id === targetUserId);
-      if (wonInMatch && m?.map) {
-        const cleanMap = String(m.map).replace(/^de_/i, '').trim();
-        if (cleanMap) mapWins[cleanMap] = (mapWins[cleanMap] || 0) + 1;
-      }
-    }
-    const topMap = Object.entries(mapWins).sort((a, b) => b[1] - a[1])[0];
-    if (topMap && topMap[1] >= 3) {
-      badges.push(`🎯 Especialista ${topMap[0]} (${topMap[1]}V)`);
-    }
-  }
-
-  return badges;
-}
-
-// Default Active Duty Maps for Pick & Ban with official CDN images
-const OFFICIAL_MAPS = [
-  {
-    id: 'de_mirage',
-    name: 'Mirage',
-    emoji: '🏜️',
-    image: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_mirage_1_png.png',
-  },
-  {
-    id: 'de_inferno',
-    name: 'Inferno',
-    emoji: '🔥',
-    image: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_inferno_1_png.png',
-  },
-  {
-    id: 'de_nuke',
-    name: 'Nuke',
-    emoji: '☢️',
-    image: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_nuke_1_png.png',
-  },
-  {
-    id: 'de_dust2',
-    name: 'Dust II',
-    emoji: '☀️',
-    image: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_dust2_1_png.png',
-  },
-  {
-    id: 'de_ancient',
-    name: 'Ancient',
-    emoji: '🌿',
-    image: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_ancient_1_png.png',
-  },
-  {
-    id: 'de_anubis',
-    name: 'Anubis',
-    emoji: '🏺',
-    image: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_anubis_1_png.png',
-  },
-  {
-    id: 'de_cache',
-    name: 'Cache',
-    emoji: '🏭',
-    image: 'https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main/images/thumbs/de_cache_1_png.png',
-  },
-];
-
-// Tactical Grenade Lineups by Map
-const GRENADE_GUIDES = {
-  mirage: [
-    { title: 'Smoke Janela (Window)', desc: 'Spawn TR ➔ Encoste na lixeira, agache, mire no topo da grade e solte com Jumpthrow + tecla D.' },
-    { title: 'Smoke Cabecinha (Top Mid / Cat)', desc: 'Spawn TR ➔ Encoste na porta, mire na ponta da antena e solte com Jumpthrow normal.' },
-    { title: 'Smoke Passagem (B Short / Jungle)', desc: 'Spawn TR ➔ Encoste no pilar, mire na quina da torre e clique com o botão esquerdo.' },
-    { title: 'Smoke CT (Bomb A)', desc: 'Caverna (A Main) ➔ Suba na madeira, mire no topo do prédio e Jumpthrow.' },
-  ],
-  inferno: [
-    { title: 'Smoke Caixão (Coffin B)', desc: 'Banana ➔ Encoste nos sacos de areia, mire na quina do telhado e clique com botão esquerdo.' },
-    { title: 'Smoke CT (Bomb B)', desc: 'Banana ➔ Atrás do tronco de madeira, mire no topo da torre e solte com Jumpthrow.' },
-    { title: 'Smoke Meio / Moto (A)', desc: 'Segundo Meio ➔ Mire na viga do telhado da casa e solte em corrida suave.' },
-  ],
-  nuke: [
-    { title: 'Smoke Fora 1 (Secret Wall)', desc: 'Fora TR ➔ Encoste na grade do caminhão, mire no topo da caixa amarela e Jumpthrow.' },
-    { title: 'Smoke Fora 2 (Red Box)', desc: 'Fora TR ➔ Alinhe na quina da cerca e mire na chaminé alta com Jumpthrow.' },
-    { title: 'Smoke Main / Céu (Bomb A)', desc: 'Lobby / Telhado ➔ Quebre o vidro, mire na quina da caixa de ventilação e solte com botão esquerdo.' },
-  ],
-  dust2: [
-    { title: 'Smoke Porta Meio (Mid Doors)', desc: 'Spawn TR ➔ Alinhe no portão de ferro, mire na ponta da antena e solte com botão esquerdo.' },
-    { title: 'Smoke Fundo / Long A (Corner)', desc: 'Long Doors ➔ Encoste no barril azul, mire na beirada da parede e Jumpthrow.' },
-    { title: 'Smoke Passagem B (B Doors)', desc: 'Túnel Superior ➔ Encoste na quina da caixa e Jumpthrow na fresta do teto.' },
-  ],
-  ancient: [
-    { title: 'Smoke Donut', desc: 'Pátio A ➔ Suba no degrau, mire na ponta da folha e solte com Jumpthrow.' },
-    { title: 'Smoke Red / Meio', desc: 'Spawn TR ➔ Mire no topo da estátua de pedra e solte em movimento suave.' },
-    { title: 'Smoke Caverna / Ramp B', desc: 'Fora B ➔ Encoste na parede esquerda do pilar, mire acima da moldura de pedra e solte com Jumpthrow.' },
-  ],
-  anubis: [
-    { title: 'Smoke Conector / B', desc: 'Ruínas B ➔ Encoste no pilar de pedra, mire no topo do arco e Jumpthrow.' },
-    { title: 'Smoke Meio / Canal', desc: 'Canal ➔ Alinhe na escada de madeira e mire na quina da parede.' },
-    { title: 'Smoke Heaven / Câmera A', desc: 'Main A ➔ Encoste na porta dupla e alinhe no topo da pilastra direita com Jumpthrow.' },
-  ],
-  overpass: [
-    { title: 'Smoke Lixeira / Dumpster (A)', desc: 'Fundo / Long A ➔ Encoste no poste da cerca, mire acima do poste elétrico e solte com Jumpthrow.' },
-    { title: 'Smoke Banco (A Site)', desc: 'Banheiro A ➔ Encoste na quina antes da saída, mire no topo do letreiro e Jumpthrow.' },
-    { title: 'Smoke Céu / Passarela (B)', desc: 'Água / Sapo ➔ Alinhe no corrimão de ferro, mire na antena do prédio e solte com Jumpthrow.' },
-  ],
-  train: [
-    { title: 'Smoke Ivy / Olof (A)', desc: 'Saída T-Main ➔ Encoste na parede da direita, mire na quina do prédio industrial e Jumpthrow.' },
-    { title: 'Smoke Z / Conector (A)', desc: 'Pombo / T-Main ➔ Alinhe na caixa elétrica e mire no fio superior direito com Jumpthrow.' },
-    { title: 'Smoke Bomb B (Upper)', desc: 'Rampa B ➔ Encoste na porta antes da passarela, mire na janela alta e clique com botão esquerdo.' },
-  ],
-  cache: [
-    { title: 'Smoke Cruz (Main A)', desc: 'Galpão A ➔ Encoste no muro branco, mire no canto da claraboia e clique com botão esquerdo.' },
-    { title: 'Smoke Empilhadeira / Quad (A)', desc: 'Squeaky ➔ Mire no topo da estrutura de metal à esquerda e solte em passo curto.' },
-    { title: 'Smoke CT / Passarela (B)', desc: 'Checkers / Rampa B ➔ Encoste no engradado, mire na barra de ferro superior e Jumpthrow.' },
-  ],
-  vertigo: [
-    { title: 'Smoke CT / Elevador (A)', desc: 'Rampa A ➔ Encoste no saco de cimento, mire acima do guindaste vermelho e clique com botão esquerdo.' },
-    { title: 'Smoke Sandbag / Esquerda (A)', desc: 'Rampa A ➔ Encoste na parede amarela e alinhe no topo da viga metálica.' },
-    { title: 'Smoke Gerador (B)', desc: 'Escada B ➔ Alinhe no degrau médio, mire na borda da caixa elétrica e clique com botão esquerdo.' },
-  ],
-};
-
-const GRENADE_MAP_ALIASES = {
-  mir: 'mirage',
-  mirage: 'mirage',
-  inf: 'inferno',
-  infer: 'inferno',
-  inferno: 'inferno',
-  nuk: 'nuke',
-  nuke: 'nuke',
-  d2: 'dust2',
-  dd2: 'dust2',
-  dust: 'dust2',
-  dust2: 'dust2',
-  dustii: 'dust2',
-  anc: 'ancient',
-  ancient: 'ancient',
-  anu: 'anubis',
-  anubis: 'anubis',
-  ovp: 'overpass',
-  over: 'overpass',
-  overpass: 'overpass',
-  trn: 'train',
-  train: 'train',
-  cac: 'cache',
-  cache: 'cache',
-  vrg: 'vertigo',
-  vert: 'vertigo',
-  vertigo: 'vertigo',
-};
-
-export function resolveGrenadeMapKey(query) {
-  const raw = String(query || '').toLowerCase().trim();
-  if (!raw) return 'mirage';
-  const normalized = raw.replace(/^de_/, '').replace(/[^a-z0-9]/g, '');
-  if (!normalized) return 'mirage';
-  if (GRENADE_MAP_ALIASES[normalized]) return GRENADE_MAP_ALIASES[normalized];
-  const exact = Object.keys(GRENADE_GUIDES).find((k) => k === normalized);
-  if (exact) return exact;
-  const partial = Object.keys(GRENADE_GUIDES).find((k) => k.startsWith(normalized) || normalized.includes(k));
-  return partial || null;
-}
-
-export function extractHostAndPort(rawServer) {
-  const parsed = parseServerConnect(rawServer || '');
-  if (parsed.valid) {
-    return {
-      host: parsed.host,
-      port: parsed.port,
-      hostPort: parsed.hostPort,
-      normalized: parsed.normalized,
-      password: parsed.password,
-    };
-  }
-  const stripped = String(rawServer || '')
-    .replace(/^connect\s+/i, '')
-    .split(';')[0]
-    .replace(/["']/g, '')
-    .trim();
-  const colonIdx = stripped.lastIndexOf(':');
-  const host = colonIdx !== -1 ? stripped.slice(0, colonIdx).trim() : stripped;
-  const portCandidate = colonIdx !== -1 ? parseInt(stripped.slice(colonIdx + 1), 10) : 27015;
-  const port = !Number.isNaN(portCandidate) && portCandidate >= 1 && portCandidate <= 65535 ? portCandidate : 27015;
-  return {
-    host,
-    port,
-    hostPort: host ? `${host}:${port}` : '',
-    normalized: host ? `${host}:${port}` : '',
-    password: '',
-  };
-}
 
 /**
  * Steam A2S_INFO UDP Server Query Protocol
@@ -531,7 +317,7 @@ export class DiscordBotManager {
       this.config.publicWebUrl ||
       process.env.PUBLIC_URL ||
       process.env.RENDER_EXTERNAL_URL ||
-      (process.env.RAILWAY_STATIC_URL ? `https://${process.env.RAILWAY_STATIC_URL}` : 'https://mix-cs2.onrender.com')
+      (process.env.RAILWAY_STATIC_URL ? `https://${process.env.RAILWAY_STATIC_URL}` : DEFAULT_PUBLIC_URL)
     ).replace(/\/+$/, '');
     const cleanPath = path ? (path.startsWith('/') ? path : `/${path}`) : '';
     return `${base}${cleanPath}`;
@@ -671,10 +457,10 @@ export class DiscordBotManager {
     if (mix) {
       mix.narrationEnabled = nextState;
       if (mix.channelId && this.channelNarrationEnabled) {
-        this.channelNarrationEnabled.set(mix.channelId, nextState);
+        setBounded(this.channelNarrationEnabled, mix.channelId, nextState, 200);
       }
     } else if (chId && this.channelNarrationEnabled) {
-      this.channelNarrationEnabled.set(chId, nextState);
+      setBounded(this.channelNarrationEnabled, chId, nextState, 200);
     } else {
       this.narrationEnabled = nextState;
     }
@@ -687,7 +473,7 @@ export class DiscordBotManager {
     }
     const chId = channelId || mix?.channelId;
     if (chId && this.channelNarrationEnabled) {
-      this.channelNarrationEnabled.set(chId, false);
+      setBounded(this.channelNarrationEnabled, chId, false, 200);
     }
   }
 
@@ -779,7 +565,7 @@ export class DiscordBotManager {
       this._hlTrackers = this._hlTrackers || new Map();
       const trackerKey = activeMix?.id || activeMix?.channelId || liveState?.roomId || 'global';
       if (!this._hlTrackers.has(trackerKey)) {
-        this._hlTrackers.set(trackerKey, {
+        setBounded(this._hlTrackers, trackerKey, {
           mapName: '',
           roundNumber: -1,
           killsAtRoundStart: new Map(),
@@ -787,7 +573,7 @@ export class DiscordBotManager {
           clutchCandidateTR: null,
           announcedRound: -1,
           sentEvents: new Set(),
-        });
+        }, 200);
       }
       const trk = this._hlTrackers.get(trackerKey);
       const sCT = Number(liveState.scoreCT || 0);
@@ -945,19 +731,11 @@ export class DiscordBotManager {
 
     const steamId = liveState.player?.steamId || liveState.rawPlayer?.steamId;
     if (steamId) {
-      this.playersGsiStates.set(steamId, {
+      setBounded(this.playersGsiStates, steamId, {
         ...liveState,
         roomId: safeRoom,
         receivedAt: now,
-      });
-      if (this.playersGsiStates.size > 200) {
-        const cutoff = now - 6 * 3600 * 1000;
-        for (const [k, v] of this.playersGsiStates.entries()) {
-          if (!v || (v.receivedAt || 0) < cutoff) {
-            this.playersGsiStates.delete(k);
-          }
-        }
-      }
+      }, 200);
     }
 
     // SEMPRE atualiza em tempo real os cards do !aovivo / /aovivo que estiverem abertos no Discord!
@@ -1718,11 +1496,9 @@ export class DiscordBotManager {
 
   savePlayerProfiles(profiles) {
     try {
-      const dataDir = path.dirname(PROFILES_FILE);
-      if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-      fs.writeFileSync(PROFILES_FILE, JSON.stringify(profiles, null, 2), 'utf8');
+      writeJsonAtomic(PROFILES_FILE, profiles);
     } catch (e) {
-      console.error('[DISCORD BOT] Falha ao salvar playerProfiles.json:', e.message);
+      logger.error('DISCORD_BOT', 'Falha ao salvar playerProfiles.json', e);
     }
   }
 
@@ -1808,11 +1584,9 @@ export class DiscordBotManager {
   saveConfig(newConfig) {
     this.config = { ...this.config, ...newConfig };
     try {
-      const dataDir = path.dirname(CONFIG_FILE);
-      if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-      fs.writeFileSync(CONFIG_FILE, JSON.stringify(this.config, null, 2), 'utf8');
+      writeJsonAtomic(CONFIG_FILE, this.config);
     } catch (e) {
-      console.error('[DISCORD BOT] Falha ao salvar discordBotConfig.json:', e.message);
+      logger.error('DISCORD_BOT', 'Falha ao salvar discordBotConfig.json', e);
     }
   }
 
@@ -1971,340 +1745,7 @@ export class DiscordBotManager {
     const token = (this.config.token || process.env.DISCORD_BOT_TOKEN || '').trim();
     const clientId = (this.client.user?.id || this.config.clientId || '').trim();
 
-    const commands = [
-      new SlashCommandBuilder()
-        .setName('mix')
-        .setDescription('Comandos de Mix CS2 5v5 oficial')
-        .addSubcommand((sub) =>
-          sub
-            .setName('criar')
-            .setDescription('Cria um novo lobby de Mix 5v5 com botões interativos')
-            .addStringOption((opt) =>
-              opt.setName('nome').setDescription('Nome personalizado para o Mix (ex: Mix dos Primos)').setRequired(false)
-            )
-            .addStringOption((opt) =>
-              opt
-                .setName('formato')
-                .setDescription('Formato da Partida')
-                .setRequired(false)
-                .addChoices({ name: 'Melhor de 1 (MD1)', value: 'MD1' }, { name: 'Melhor de 3 (MD3)', value: 'MD3' })
-            )
-        )
-        .addSubcommand((sub) => sub.setName('entrar').setDescription('Entra na fila do Mix ativo neste canal'))
-        .addSubcommand((sub) => sub.setName('sair').setDescription('Sai da fila do Mix'))
-        .addSubcommand((sub) => sub.setName('sortear').setDescription('Sorteia e balanceia os dois times (Time A vs Time B)'))
-        .addSubcommand((sub) => sub.setName('veto').setDescription('Inicia o Pick & Ban (Veto) oficial de mapas'))
-        .addSubcommand((sub) => sub.setName('roleta').setDescription('Sorteia um mapa na roleta rápida do CS2'))
-        .addSubcommand((sub) => sub.setName('status').setDescription('Exibe o status do mix atual'))
-        .addSubcommand((sub) => sub.setName('cancelar').setDescription('Cancela o mix atual do canal')),
-
-      new SlashCommandBuilder()
-        .setName('painel')
-        .setDescription('Cria o Painel Permanente do CS2 Mix Hub com botão de criar mix em 1 clique'),
-
-      new SlashCommandBuilder()
-        .setName('roleta')
-        .setDescription('Roleta justa de mapas (não repete até sair todos) ou escolha um mapa')
-        .addStringOption((opt) =>
-          opt
-            .setName('mapa')
-            .setDescription('Opcional: escolher um mapa específico em vez de sortear')
-            .setRequired(false)
-            .addChoices(...OFFICIAL_MAPS.map((m) => ({ name: m.name, value: m.id })))
-        ),
-
-      new SlashCommandBuilder()
-        .setName('stats')
-        .setDescription('Consulta as estatísticas competitivas e nível GC/FACEIT de um jogador')
-        .addUserOption((opt) => opt.setName('jogador').setDescription('Jogador a consultar').setRequired(false)),
-
-      new SlashCommandBuilder()
-        .setName('granada')
-        .setDescription('Guia tático de granadas e smokes essenciais')
-        .addStringOption((opt) =>
-          opt
-            .setName('mapa')
-            .setDescription('Mapa desejado')
-            .setRequired(false)
-            .addChoices(
-              { name: 'Mirage', value: 'mirage' },
-              { name: 'Inferno', value: 'inferno' },
-              { name: 'Nuke', value: 'nuke' },
-              { name: 'Dust II', value: 'dust2' },
-              { name: 'Ancient', value: 'ancient' },
-              { name: 'Anubis', value: 'anubis' },
-              { name: 'Overpass', value: 'overpass' },
-              { name: 'Train', value: 'train' },
-              { name: 'Cache', value: 'cache' },
-              { name: 'Vertigo', value: 'vertigo' }
-            )
-        ),
-
-      new SlashCommandBuilder()
-        .setName('treino')
-        .setDescription('Envia o pacote completo de treino LXN (treino.cfg + guia + até 12 spawns TR no Numpad)')
-        .addStringOption((opt) =>
-          opt
-            .setName('mapa')
-            .setDescription('Mapa para destacar os spawns TR (Mirage 12 spawns | outros 10/5 spawns)')
-            .setRequired(false)
-            .addChoices(...TREINO_MAPS.map((m) => ({ name: m.name, value: m.id })))
-        ),
-
-      new SlashCommandBuilder()
-        .setName('moeda')
-        .setDescription('Gira uma moeda (Cara ou Coroa) com algoritmo criptográfico'),
-
-      new SlashCommandBuilder()
-        .setName('servidor')
-        .setDescription('Exibe ou configura o endereço IP do servidor de CS2 para o mix')
-        .addStringOption((opt) =>
-          opt.setName('ip_porta').setDescription('Ex: 189.1.168.20:27015 (ou connect com senha)').setRequired(false)
-        ),
-
-      new SlashCommandBuilder()
-        .setName('ranking')
-        .setDescription('Exibe os melhores jogadores e o Hall da Fama do CS2 Mix Hub'),
-
-      new SlashCommandBuilder()
-        .setName('level')
-        .setDescription('Configura o seu nível da Gamers Club (1 a 21) para o balanceamento de times')
-        .addIntegerOption((opt) =>
-          opt
-            .setName('nivel')
-            .setDescription('Seu nível na Gamers Club (de 1 a 21)')
-            .setRequired(true)
-            .setMinValue(1)
-            .setMaxValue(21)
-        ),
-
-      new SlashCommandBuilder()
-        .setName('lvl')
-        .setDescription('Atalho rápido para definir seu nível da Gamers Club (1 a 21)')
-        .addIntegerOption((opt) =>
-          opt
-            .setName('nivel')
-            .setDescription('Seu nível na Gamers Club (de 1 a 21)')
-            .setRequired(true)
-            .setMinValue(1)
-            .setMaxValue(21)
-        ),
-
-      new SlashCommandBuilder()
-        .setName('vitoria')
-        .setDescription('Registra o resultado da partida (Time A ou B) e atualiza o ranking')
-        .addStringOption((opt) =>
-          opt
-            .setName('time')
-            .setDescription('Qual time venceu a partida?')
-            .setRequired(true)
-            .addChoices({ name: 'Time A', value: 'A' }, { name: 'Time B', value: 'B' })
-        )
-        .addStringOption((opt) =>
-          opt
-            .setName('placar')
-            .setDescription('Placar final do jogo (ex: 13-9, 13-11, 16-14)')
-            .setRequired(false)
-        )
-        .addStringOption((opt) =>
-          opt
-            .setName('mapa')
-            .setDescription('Mapa jogado (ex: Mirage, Dust II, Inferno, Nuke, Ancient, Anubis, Cache)')
-            .setRequired(false)
-        ),
-
-      new SlashCommandBuilder()
-        .setName('sub')
-        .setDescription('Substitui um jogador ausente ou desconectado por um reserva')
-        .addUserOption((opt) => opt.setName('novo').setDescription('Novo jogador que vai entrar').setRequired(true))
-        .addUserOption((opt) => opt.setName('antigo').setDescription('Jogador que saiu (opcional)').setRequired(false)),
-
-      new SlashCommandBuilder()
-        .setName('cargo')
-        .setDescription('Ativa ou desativa notificações do cargo @Mix CS2 para ser avisado quando faltarem vagas'),
-
-      new SlashCommandBuilder()
-        .setName('historico')
-        .setDescription('Exibe o histórico das últimas partidas finalizadas no servidor'),
-
-      new SlashCommandBuilder()
-        .setName('x1')
-        .setDescription('Compara o confronto direto (Head-to-Head) e sinergia entre dois jogadores')
-        .addUserOption((opt) =>
-          opt
-            .setName('adversario')
-            .setDescription('Jogador adversário para comparar estatísticas mútuas')
-            .setRequired(true)
-        ),
-
-      new SlashCommandBuilder()
-        .setName('mapas')
-        .setDescription('Estatísticas dos mapas mais disputados e populares no servidor'),
-
-      new SlashCommandBuilder()
-        .setName('status-servidor')
-        .setDescription('Consulta ao vivo o servidor CS2 (A2S_INFO Steam UDP: Ping, mapa e players online)')
-        .addStringOption((opt) =>
-          opt
-            .setName('endereco')
-            .setDescription('IP:Porta do servidor CS2 (opcional; usa o servidor do mix/padrão)')
-            .setRequired(false)
-        ),
-
-      new SlashCommandBuilder()
-        .setName('gsi')
-        .setDescription('Instruções e download do Valve GSI para monitorar partidas ao vivo do CS2'),
-
-      new SlashCommandBuilder()
-        .setName('aovivo')
-        .setDescription('Acompanha a partida de CS2 ao vivo em tempo real (placar, lado CT/TR, vida e armas)')
-        .addStringOption((opt) =>
-          opt
-            .setName('jogador')
-            .setDescription('Nome ou SteamID do jogador para monitorar (opcional)')
-            .setRequired(false)
-        ),
-
-      new SlashCommandBuilder()
-        .setName('monitorar')
-        .setDescription('Monitorar Partida de CS2 ao vivo: placar, lado CT/TR, vida e armas em tempo real')
-        .addStringOption((opt) =>
-          opt
-            .setName('jogador')
-            .setDescription('Nome ou SteamID do jogador para monitorar (opcional)')
-            .setRequired(false)
-        ),
-
-      new SlashCommandBuilder()
-        .setName('monitorar-partida')
-        .setDescription('Monitorar Partida de CS2 ao vivo: placar, lado CT/TR, vida e armas em tempo real')
-        .addStringOption((opt) =>
-          opt
-            .setName('jogador')
-            .setDescription('Nome ou SteamID do jogador para monitorar (opcional)')
-            .setRequired(false)
-        ),
-
-      new SlashCommandBuilder()
-        .setName('ofertas')
-        .setDescription('Busca ofertas de hardware e setup gamer (KaBuM!, Pichau, Terabyte)')
-        .addStringOption((opt) =>
-          opt.setName('busca').setDescription('Peça a buscar (ex: cadeira, mesa, mouse, teclado, rtx 4060, ryzen)').setRequired(false)
-        )
-        .addStringOption((opt) =>
-          opt
-            .setName('categoria')
-            .setDescription('Filtrar por categoria de hardware ou setup')
-            .setRequired(false)
-            .addChoices(
-              { name: 'Placas de Vídeo (GPUs)', value: 'gpu' },
-              { name: 'Processadores (CPUs)', value: 'cpu' },
-              { name: 'Memórias RAM & SSDs', value: 'ram_ssd' },
-              { name: 'Placas-Mãe, Fontes & Gabinetes', value: 'placa_mae_fonte' },
-              { name: 'Monitores Gamer (144Hz a 240Hz)', value: 'monitor' },
-              { name: 'Mouses & Teclados Mecânicos', value: 'mouse_teclado' },
-              { name: 'Headsets & Áudio Gamer', value: 'audio' },
-              { name: 'Cadeiras Gamer', value: 'cadeira' },
-              { name: 'Mesas Gamer & Setup', value: 'mesa' }
-            )
-        )
-        .addStringOption((opt) =>
-          opt
-            .setName('loja')
-            .setDescription('Filtrar por loja confiável')
-            .setRequired(false)
-            .addChoices(
-              { name: '🟠 KaBuM!', value: 'kabum' },
-              { name: '🔴 Pichau Informática', value: 'pichau' },
-              { name: '🟢 TerabyteShop', value: 'terabyte' }
-            )
-        ),
-
-      new SlashCommandBuilder()
-        .setName('alertas-hardware')
-        .setDescription('Configura o canal de alertas automáticos de promoções de hardware')
-        .addChannelOption((opt) =>
-          opt.setName('canal').setDescription('Canal de texto para postar promoções').setRequired(true)
-        )
-        .addBooleanOption((opt) =>
-          opt.setName('ativar').setDescription('Ativar ou desativar postagens automáticas').setRequired(false)
-        ),
-
-      new SlashCommandBuilder()
-        .setName('steam')
-        .setDescription('Scanner Steam & Anti-Smurf: Horas de CS2, VAC bans e integridade da conta')
-        .addStringOption((opt) =>
-          opt.setName('perfil').setDescription('Link do perfil, SteamID64 ou Vanity URL (ex: gaules ou 7656119...)').setRequired(true)
-        ),
-
-      new SlashCommandBuilder()
-        .setName('patchnotes')
-        .setDescription('Últimas notas de atualização e patches oficiais do CS2 lançados pela Valve'),
-
-      new SlashCommandBuilder()
-        .setName('att')
-        .setDescription('Atalho rápido para as notas de atualização oficiais do CS2 pela Valve'),
-
-      new SlashCommandBuilder()
-        .setName('pro')
-        .setDescription('Agenda de jogos dos times brasileiros de CS2 (FURIA, MIBR, paiN, Imperial)'),
-
-      new SlashCommandBuilder()
-        .setName('jogos')
-        .setDescription('Agenda e horários de jogos dos times brasileiros de CS2 (FURIA, MIBR, paiN)'),
-
-      new SlashCommandBuilder()
-        .setName('bagre')
-        .setDescription('Inicia ou consulta a votação do Bagre da Partida (o jogador que mais pinou no mix)'),
-
-      new SlashCommandBuilder()
-        .setName('jogosgratis')
-        .setDescription('Radar de jogos para PC gratuitos para resgatar na Epic Games Store e Steam'),
-
-      new SlashCommandBuilder()
-        .setName('clip')
-        .setDescription('Envia um clipe de jogada no canal com votação da comunidade')
-        .addStringOption((opt) => opt.setName('link').setDescription('Link do clipe (Medal.tv, Twitch, YouTube, etc)').setRequired(true))
-        .addStringOption((opt) => opt.setName('titulo').setDescription('Título ou descrição da jogada (opcional)').setRequired(false)),
-
-      new SlashCommandBuilder()
-        .setName('calls')
-        .setDescription('Configura ou move os jogadores do mix para as calls de voz oficiais Time A e Time B')
-        .addChannelOption((opt) =>
-          opt
-            .setName('time_a')
-            .setDescription('Selecione o canal de voz oficial do Time A')
-            .addChannelTypes(ChannelType.GuildVoice)
-            .setRequired(false)
-        )
-        .addChannelOption((opt) =>
-          opt
-            .setName('time_b')
-            .setDescription('Selecione o canal de voz oficial do Time B')
-            .addChannelTypes(ChannelType.GuildVoice)
-            .setRequired(false)
-        )
-        .addChannelOption((opt) =>
-          opt
-            .setName('lobby')
-            .setDescription('Selecione o canal de voz do Lobby / Geral')
-            .addChannelTypes(ChannelType.GuildVoice)
-            .setRequired(false)
-        ),
-
-      new SlashCommandBuilder()
-        .setName('integracao')
-        .setDescription('Abre o passo a passo oficial para integrar seu servidor privado de CS2 ao Bot e ao Web Hub'),
-
-      new SlashCommandBuilder()
-        .setName('coach')
-        .setDescription('Pergunte ao Coach/Analista IA do Hub sobre táticas CS2, smokes ou análise do histórico')
-        .addStringOption((opt) =>
-          opt.setName('pergunta').setDescription('Ex: Como segurar meio na Ancient de CT? Ou analisa nosso histórico hoje').setRequired(true)
-        ),
-
-      new SlashCommandBuilder().setName('ajuda').setDescription('Manual completo de comandos do Bot do Mix'),
-    ];
+    const commands = buildSlashCommands({ officialMaps: OFFICIAL_MAPS, treinoMaps: TREINO_MAPS });
 
     try {
       const rest = new REST({ version: '10' }).setToken(token);
@@ -2980,10 +2421,9 @@ export class DiscordBotManager {
 
   saveRouletteState(state) {
     try {
-      if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-      fs.writeFileSync(ROULETTE_STATE_FILE, JSON.stringify(state, null, 2), 'utf8');
+      writeJsonAtomic(ROULETTE_STATE_FILE, state);
     } catch (e) {
-      console.warn('[ROLETA] Falha ao salvar estado da roleta:', e.message);
+      logger.warn('ROLETA', 'Falha ao salvar estado da roleta', e);
     }
   }
 
@@ -3504,62 +2944,11 @@ export class DiscordBotManager {
   }
 
   buildTreinoGuidePayload(mapQuery = '') {
-    const mapKey = resolveTreinoMapKey(mapQuery);
-    const mapObj = TREINO_MAPS.find((m) => m.id === mapKey) || null;
-    const activationCmd = mapObj ? `exec treino; ${mapObj.id}` : 'exec treino; mirage';
-    const titleSuffix = mapObj ? ` (${mapObj.emoji} ${mapObj.name})` : '';
-
-    const guideText = [
-      `## 🎯 PACK DE TREINO COMPLETO CS2 • LXN${titleSuffix}`,
-      '',
-      '**1️⃣ Instalação**',
-      '• Baixe o arquivo `treino.cfg` **enviado abaixo** e salve na pasta `cfg` do CS2:',
-      '`C:\\Program Files (x86)\\Steam\\steamapps\\common\\Counter-Strike Global Offensive\\game\\csgo\\cfg\\treino.cfg`',
-      '*(Ou clique no botão **Personalizar / Instalar 1-Clique** abaixo para instalar automático via PowerShell.)*',
-      '',
-      '**2️⃣ Como Ativar no Jogo**',
-      '• Abra um mapa no modo **Treino**, abra o console (`\'`) e digite:',
-      '```cfg',
-      activationCmd,
-      '```',
-      '• **Mirage (12 spawns por fileira):** `1–4` Frente | `5–8` Meio | `9, 0, Del, Enter` Fundo/A',
-      '• **Competitivos (`Numpad 1–0`):** `cache`, `anubis`, `inferno`, `dust2`, `ancient`, `nuke`, `overpass`, `vertigo`, `train`',
-      '• **Reféns (`Numpad 1–5`):** `office`, `italy`',
-      '',
-      '**3️⃣ Atalhos do Treino**',
-      '• **`P`** Repetir granada • **`N`** Voar (`noclip`) • **`O`** Kit AWP + Granadas',
-      '• **`K`** / **`I`** Câmera lenta `0.3x` / Normal • **`U`** Reiniciar • **`L`** Raio-X modelos',
-      '• **`reset`** Limpa todas as teclas do Numpad (`KP_1–KP_0, Del, Enter`) e recarrega sua `autoexec`',
-    ].join('\n');
-
-    return { content: guideText };
+    return buildTreinoGuidePayloadExternal(mapQuery);
   }
 
   buildTreinoDownloadPayload() {
-    const cfgBuffer = Buffer.from(buildTreinoCfg(), 'utf-8');
-    const leiaMeBuffer = Buffer.from(buildTreinoLeiaMeMd(), 'utf-8');
-
-    const cfgAttachment = new AttachmentBuilder(cfgBuffer, { name: 'treino.cfg' });
-    const guideTxtAttachment = new AttachmentBuilder(leiaMeBuffer, { name: 'LEIA-ME-Treino.txt' });
-
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setLabel('Personalizar / Instalar 1-Clique')
-        .setEmoji('🎛️')
-        .setStyle(ButtonStyle.Link)
-        .setURL(this.getPublicWebUrl('/?treino=1')),
-      new ButtonBuilder()
-        .setCustomId('treino_rcon_apply')
-        .setLabel('Aplicar via RCON')
-        .setEmoji('⚡')
-        .setStyle(ButtonStyle.Secondary)
-    );
-
-    return {
-      content: '📥 **Arquivos para download abaixo** *(salve o `treino.cfg` na pasta `cfg` do CS2)*:',
-      files: [cfgAttachment, guideTxtAttachment],
-      components: [row],
-    };
+    return buildTreinoDownloadPayloadExternal(this.getPublicWebUrl('/?treino=1'));
   }
 
   async prefixTreino(message, mapQuery = '') {
@@ -4326,15 +3715,10 @@ export class DiscordBotManager {
     // Cache finished mix so post-match Bagre vote, Rematch & Voice Return work cleanly
     this.lastFinishedMixes = this.lastFinishedMixes || new Map();
     if (mix.id) {
-      this.lastFinishedMixes.set(mix.id, mix);
+      setBounded(this.lastFinishedMixes, mix.id, mix, 200);
     }
     if (mix.channelId) {
-      this.lastFinishedMixes.set(`ch:${mix.channelId}`, mix);
-    }
-    while (this.lastFinishedMixes.size > 100) {
-      const oldestKey = this.lastFinishedMixes.keys().next().value;
-      if (oldestKey === undefined) break;
-      this.lastFinishedMixes.delete(oldestKey);
+      setBounded(this.lastFinishedMixes, `ch:${mix.channelId}`, mix, 200);
     }
     this.syncToWebRoom(mix);
 
@@ -7417,14 +6801,7 @@ export class DiscordBotManager {
     const canEditOverwrites = (nowTs - prevTs) > 10 * 60 * 1000 || prevSig !== rosterSig;
 
     if (canEditOverwrites) {
-      this._voiceOverwriteCache.set(cacheKey, { ts: nowTs, signature: rosterSig });
-      if (this._voiceOverwriteCache.size > 200) {
-        const cutoff = nowTs - 30 * 60 * 1000;
-        for (const [k, v] of this._voiceOverwriteCache.entries()) {
-          const tsVal = typeof v === 'number' ? v : (v?.ts || 0);
-          if (tsVal < cutoff) this._voiceOverwriteCache.delete(k);
-        }
-      }
+      setBounded(this._voiceOverwriteCache, cacheKey, { ts: nowTs, signature: rosterSig }, 200);
       try {
         if (channelA && channelA.manageable) {
           const overwritesA = [
