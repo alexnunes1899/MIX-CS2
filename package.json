@@ -14,7 +14,7 @@
     "client": "vite",
     "server": "node server/index.js",
     "lint": "node scripts/lint.mjs",
-    "test": "node --test tests/core.test.js tests/server.test.js tests/discord-bot-fixes.test.js tests/gsi-and-history.test.js tests/security-and-automation.test.js",
+    "test": "node --test tests/core.test.js tests/server.test.js tests/discord-bot-fixes.test.js tests/gsi-and-history.test.js tests/security-and-automation.test.js tests/community-and-features.test.js",
     "check": "npm run lint && npm test && npm run build",
     "sync": "node scripts/sync-github.mjs"
   },

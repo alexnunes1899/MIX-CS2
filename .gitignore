@@ -39,6 +39,12 @@ server/logs/
 server/data/*.db
 server/data/*.db-shm
 server/data/*.db-wal
+server/data/*.sqlite
+server/data/*.sqlite-shm
+server/data/*.sqlite-wal
+server/data/accountLinks.json
+server/data/seasons.json
+server/data/scheduledMixes.json
 server/data/economyStore.json
 server/data/commendationsStore.json
 server/data/linkedClipsStore.json

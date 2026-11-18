@@ -2,8 +2,18 @@ import fs from 'fs';
 import { getDataDir, getDataFilePath } from '../dataDir.js';
 import { getSessionUser, isAdminRequest, requireAdmin } from '../authSession.js';
 import { economyDb } from '../db.js';
-import { getLeaderboard, recordMatch } from '../leaderboard.js';
-import { getMatchHistoryState } from '../matchHistory.js';
+import {
+  getLeaderboard,
+  recordMatch,
+  getSeasonLeaderboard,
+  getSeasonsSummary,
+  getCurrentSeasonKey,
+  linkLeaderboardIdentity,
+} from '../leaderboard.js';
+import { getMatchHistoryState, loadMatchHistory } from '../matchHistory.js';
+import { computePlayerAnalytics } from '../playerAnalytics.js';
+import { accountLinkService } from '../accountLinks.js';
+import { mixScheduler } from '../mixScheduler.js';
 import { sendDiscordWebhook, isValidDiscordWebhookUrl } from '../discordWebhook.js';
 import { moveGuildMember, testDiscordBotVoiceChannels } from '../discordVoiceMover.js';
 import { writeJsonAtomic } from '../utils/atomicJson.js';
@@ -11,9 +21,13 @@ import { logger } from '../utils/logger.js';
 
 const BACKUPABLE_FILES = [
   'leaderboard.json',
+  'seasons.json',
   'matchHistory.json',
   'activeMixStore.json',
   'playerProfiles.json',
+  'accountLinks.json',
+  'scheduledMixes.json',
+  'communityClips.json',
   'mapRouletteState.json',
   'economyStore.json',
   'linkedClipsStore.json',
@@ -54,9 +68,109 @@ export function registerAdminAndSocialRoutes(app, { io, rooms, discordBotManager
     return res.json({ success: true, ...result });
   });
 
-  // Leaderboard API
+  // Leaderboard API (supports ?season=YYYY-MM or default all-time)
   app.get('/api/leaderboard', (req, res) => {
-    res.json(getLeaderboard());
+    const season = String(req.query.season || '').trim();
+    if (season && season !== 'all') {
+      return res.json(getSeasonLeaderboard(season));
+    }
+    return res.json(getLeaderboard());
+  });
+
+  app.get('/api/leaderboard/seasons', (req, res) => {
+    try {
+      const seasons = getSeasonsSummary(loadMatchHistory());
+      return res.json({
+        success: true,
+        currentSeason: getCurrentSeasonKey(),
+        seasons,
+      });
+    } catch (err) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.get('/api/players/:id/analytics', (req, res) => {
+    try {
+      const analytics = computePlayerAnalytics(req.params.id, {
+        matches: loadMatchHistory(),
+        leaderboard: getLeaderboard(),
+      });
+      return res.json({ success: true, analytics });
+    } catch (err) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.get('/api/account/link', (req, res) => {
+    const sessionUser = getSessionUser(req);
+    if (!sessionUser?.steamId) {
+      return res.json({ linked: false, link: null });
+    }
+    const link = accountLinkService.getLinkBySteamId(sessionUser.steamId);
+    return res.json({ linked: Boolean(link), link });
+  });
+
+  app.post('/api/account/link/code', sensitiveLimiter, (req, res) => {
+    const sessionUser = getSessionUser(req);
+    if (!sessionUser?.steamId) {
+      return res.status(401).json({ error: 'Faça login com a Steam para gerar um código de vinculação.' });
+    }
+    try {
+      const result = accountLinkService.createSteamLinkCode({
+        steamId: sessionUser.steamId,
+        steamNick: sessionUser.nick || 'Jogador',
+      });
+      return res.json({ success: true, ...result });
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
+    }
+  });
+
+  app.post('/api/account/link/confirm', sensitiveLimiter, (req, res) => {
+    const sessionUser = getSessionUser(req);
+    if (!sessionUser?.steamId) {
+      return res.status(401).json({ error: 'Faça login com a Steam para vincular sua conta Discord.' });
+    }
+    const code = String(req.body?.code || '').trim();
+    if (!code) {
+      return res.status(400).json({ error: 'Informe o código gerado pelo comando /vincular no Discord.' });
+    }
+    const result = accountLinkService.confirmCodeFromSteam({
+      code,
+      steamId: sessionUser.steamId,
+      steamNick: sessionUser.nick || 'Jogador',
+    });
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+    try {
+      if (typeof discordBotManager?.applyLinkSideEffects === 'function') {
+        discordBotManager.applyLinkSideEffects(result.link.discordId, result.link.steamId);
+      } else {
+        linkLeaderboardIdentity(result.link.discordId, result.link.steamId);
+      }
+      if (io) io.emit('leaderboard_updated', getLeaderboard());
+    } catch {}
+    return res.json({ success: true, link: result.link });
+  });
+
+  app.delete('/api/account/link', sensitiveLimiter, (req, res) => {
+    const sessionUser = getSessionUser(req);
+    if (!sessionUser?.steamId) {
+      return res.status(401).json({ error: 'Faça login com a Steam para desvincular.' });
+    }
+    const removed = accountLinkService.unlinkBySteamId(sessionUser.steamId);
+    return res.json({ success: true, unlinked: removed });
+  });
+
+  app.get('/api/schedules', (req, res) => {
+    try {
+      const schedules = mixScheduler.listUpcomingSchedules();
+      return res.json({ success: true, count: schedules.length, schedules });
+    } catch (err) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
   });
 
   app.post('/api/leaderboard/record', sensitiveLimiter, requireAdmin, (req, res) => {

@@ -26,6 +26,7 @@ import {
   Film,
   Image as ImageIcon,
   RefreshCw,
+  Zap,
 } from 'lucide-react';
 import { GRENADE_LINEUPS, GRENADE_TYPES, WORKSHOP_PRACTICE_MAPS } from '../data/grenades';
 import { DEFAULT_PUBLIC_URL } from '../../shared/appConfig.js';
@@ -46,6 +47,9 @@ export default function GrenadePlaybookModal({
   initialMap = null,
   initialTab = 'lineups',
   soundEnabled = true,
+  serverIp = '',
+  rconPassword = '',
+  isSteamLogged = false,
 }) {
   const [activeTab, setActiveTab] = useState(initialTab || 'lineups'); // 'lineups' | 'workshop' | 'cfg'
   const [selectedMap, setSelectedMap] = useState(initialMap || 'all');
@@ -60,6 +64,60 @@ export default function GrenadePlaybookModal({
   const [isSyncing, setIsSyncing] = useState(false);
   const [treinoMapId, setTreinoMapId] = useState('mirage');
   const [treinoBinds, setTreinoBinds] = useState(() => ({ ...TREINO_DEFAULT_BINDS }));
+  const [rconServerInput, setRconServerInput] = useState(() => String(serverIp || '').replace(/^connect\s+/i, '').split(';')[0].trim());
+  const [rconPasswordInput, setRconPasswordInput] = useState(() => String(rconPassword || ''));
+  const [rconBusyPreset, setRconBusyPreset] = useState(null);
+  const [rconFeedback, setRconFeedback] = useState(null);
+
+  useEffect(() => {
+    if (serverIp && !rconServerInput) {
+      setRconServerInput(String(serverIp).replace(/^connect\s+/i, '').split(';')[0].trim());
+    }
+  }, [serverIp]);
+
+  useEffect(() => {
+    if (rconPassword && !rconPasswordInput) {
+      setRconPasswordInput(String(rconPassword));
+    }
+  }, [rconPassword]);
+
+  const handleRunPracticePreset = async (preset) => {
+    if (soundEnabled) playClickSound();
+    const cleaned = String(rconServerInput || '').replace(/^connect\s+/i, '').split(';')[0].trim();
+    if (!cleaned || !rconPasswordInput.trim()) {
+      setRconFeedback({ type: 'error', text: 'Preencha o IP:Porta e a Senha RCON do seu servidor privado.' });
+      return;
+    }
+    const colonIdx = cleaned.lastIndexOf(':');
+    const host = colonIdx !== -1 ? cleaned.slice(0, colonIdx).trim() : cleaned;
+    const port = colonIdx !== -1 ? parseInt(cleaned.slice(colonIdx + 1), 10) || 27015 : 27015;
+
+    setRconBusyPreset(preset);
+    setRconFeedback(null);
+    try {
+      const res = await fetch('/api/rcon/practice', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          host,
+          port,
+          password: rconPasswordInput,
+          preset,
+          map: treinoMapId,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Falha ao enviar comando RCON');
+      setRconFeedback({
+        type: 'success',
+        text: `✓ Comando RCON aplicado (${data.executed || 1} comando(s))!`,
+      });
+    } catch (err) {
+      setRconFeedback({ type: 'error', text: err.message });
+    } finally {
+      setRconBusyPreset(null);
+    }
+  };
 
   useEffect(() => {
     if (isOpen && initialTab) {
@@ -929,6 +987,71 @@ export default function GrenadePlaybookModal({
                   </label>
                 </div>
               </div>
+            </div>
+
+            {/* Quick Practice RCON Control Panel */}
+            <div className="p-4 rounded-2xl bg-gradient-to-br from-sky-950/40 via-slate-950 to-slate-950 border border-sky-500/35 space-y-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <h4 className="text-xs font-black uppercase tracking-wider text-sky-300 flex items-center gap-1.5">
+                  <Zap size={14} className="text-amber-400" />
+                  <span>Painel Rápido de Treino via RCON (Servidor Privado)</span>
+                </h4>
+                {!isSteamLogged && (
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                    Requer Login Steam ou Chave Admin
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <input
+                  type="text"
+                  value={rconServerInput}
+                  onChange={(e) => setRconServerInput(e.target.value)}
+                  placeholder="IP:Porta do Servidor (ex: 189.1.168.20:27015)"
+                  className="bg-slate-900 border border-slate-700 focus:border-sky-400 rounded-xl px-3 py-2 text-xs font-mono text-white outline-none"
+                />
+                <input
+                  type="password"
+                  value={rconPasswordInput}
+                  onChange={(e) => setRconPasswordInput(e.target.value)}
+                  placeholder="Senha RCON (rcon_password)"
+                  className="bg-slate-900 border border-slate-700 focus:border-sky-400 rounded-xl px-3 py-2 text-xs font-mono text-white outline-none"
+                />
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { id: 'enable_practice', label: '🎯 Ativar Modo Treino LXN', cls: 'bg-emerald-500/20 hover:bg-emerald-500/30 border-emerald-500/40 text-emerald-300' },
+                  { id: 'change_map', label: `🗺️ Trocar p/ ${treinoMapId.toUpperCase()}`, cls: 'bg-sky-500/20 hover:bg-sky-500/30 border-sky-500/40 text-sky-300' },
+                  { id: 'clear_grenades', label: '💨 Limpar Smokes/Granadas', cls: 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200' },
+                  { id: 'restart_round', label: '🔄 Reiniciar Round', cls: 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200' },
+                  { id: 'kick_bots', label: '🤖 Expulsar Bots', cls: 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200' },
+                  { id: 'restore_competitive', label: '🛡️ Restaurar Competitivo', cls: 'bg-amber-500/15 hover:bg-amber-500/25 border-amber-500/35 text-amber-300' },
+                ].map((btn) => (
+                  <button
+                    key={btn.id}
+                    type="button"
+                    disabled={Boolean(rconBusyPreset)}
+                    onClick={() => handleRunPracticePreset(btn.id)}
+                    className={`px-3 py-1.5 rounded-xl border text-xs font-bold cursor-pointer transition-all disabled:opacity-50 ${btn.cls}`}
+                  >
+                    {rconBusyPreset === btn.id ? 'Enviando...' : btn.label}
+                  </button>
+                ))}
+              </div>
+
+              {rconFeedback && (
+                <div
+                  className={`px-3 py-2 rounded-xl text-xs font-bold border ${
+                    rconFeedback.type === 'success'
+                      ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                      : 'bg-rose-500/15 border-rose-500/40 text-rose-300'
+                  }`}
+                >
+                  {rconFeedback.text}
+                </div>
+              )}
             </div>
 
             {/* Full Live Preview CFG Box */}

@@ -49,7 +49,16 @@ import { freeGamesRadar } from './freeGamesRadar.js';
 import { communityClips } from './communityClips.js';
 import { bagreVoteService } from './bagreVote.js';
 import { executeRconCommand } from './rcon.js';
-import { getLeaderboard, syncDiscordProfilesToLeaderboard } from './leaderboard.js';
+import {
+  getLeaderboard,
+  syncDiscordProfilesToLeaderboard,
+  recordMatch as recordUnifiedLeaderboardMatch,
+  linkLeaderboardIdentity,
+} from './leaderboard.js';
+import { accountLinkService } from './accountLinks.js';
+import { mixScheduler, parseScheduleTimePtBr } from './mixScheduler.js';
+import { renderMatchSummaryPng } from './utils/matchCardPng.js';
+import { normalizeDuos } from '../shared/balance.js';
 import { generateGsiConfig, installGsiLocally } from './gsi.js';
 import { sanitizeRconTextArg, isValidServerAddress, normalizeRoomId, parseServerConnect } from './utils/security.js';
 import { getBundledDataFilePath, getDataDir, getDataFilePath, resolveSeededDataFile } from './dataDir.js';
@@ -260,6 +269,7 @@ export class DiscordBotManager {
     // Active Live Match Discord message trackers for real-time round-by-round auto-editing
     this.liveTrackers = new Map();
     this.liveTrackersSyncInterval = null;
+    this.scheduleReminderInterval = null;
     this._isSyncingLiveTrackers = false;
     this._isDispatchingDeals = false;
     this._isCheckingCs2Updates = false;
@@ -282,6 +292,54 @@ export class DiscordBotManager {
       }
     }, 1000);
     this.liveTrackersSyncInterval.unref?.();
+  }
+
+  startScheduleReminderLoop() {
+    if (this.scheduleReminderInterval) {
+      clearInterval(this.scheduleReminderInterval);
+    }
+    this.processDueScheduledReminders().catch(() => {});
+    this.scheduleReminderInterval = setInterval(() => {
+      this.processDueScheduledReminders().catch(() => {});
+    }, 60 * 1000);
+    this.scheduleReminderInterval.unref?.();
+  }
+
+  async processDueScheduledReminders() {
+    mixScheduler.pruneExpired();
+    const due = mixScheduler.getDueReminders();
+    if (!due.length || !this.client) return;
+
+    for (const sched of due) {
+      mixScheduler.markReminded(sched.id);
+      try {
+        const channel = sched.channelId
+          ? this.client.channels?.cache?.get(sched.channelId) || (await this.client.channels?.fetch?.(sched.channelId).catch(() => null))
+          : null;
+        if (!channel || !channel.isTextBased()) continue;
+
+        const confirmed = Array.isArray(sched.confirmed) ? sched.confirmed : [];
+        const mentions = confirmed.length > 0 ? confirmed.map((u) => `<@${u.id}>`).join(' ') : '@here';
+        const unixTs = Math.floor(Number(sched.scheduledAt) / 1000);
+        const row = new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId('panel_create_mix')
+            .setLabel('Abrir Lobby Agora')
+            .setEmoji('🎮')
+            .setStyle(ButtonStyle.Success)
+        );
+        await channel.send({
+          content:
+            `🔔 **LEMBRETE: FALTAM MENOS DE 15 MINUTOS PARA O MIX AGENDADO!**\n` +
+            `📅 **${sched.title}** • <t:${unixTs}:R> (${confirmed.length}/10 confirmados)\n` +
+            `👥 **Convocados:** ${mentions}\n` +
+            `👉 Já vão entrando na call do Lobby ou cliquem em **Abrir Lobby Agora**!`,
+          components: [row],
+        });
+      } catch (err) {
+        console.warn('[SCHEDULER] Falha ao enviar lembrete:', err?.message);
+      }
+    }
   }
 
   getUniqueActiveMixes() {
@@ -817,6 +875,7 @@ export class DiscordBotManager {
                 content: `\ud83c\udfc6 **[FIM DO MIX DETECTADO NO CS2]** Partida finalizada automaticamente no mapa **${normalizeMapName(statsSnapshot.mapName || 'CS2')}** (\`${score}\`)!`,
                 embeds: res.embeds,
                 components: res.components,
+                ...(res.files?.length ? { files: res.files } : {}),
               });
             }
             this.stopMixNarration(activeMix, targetChannelId);
@@ -1693,6 +1752,7 @@ export class DiscordBotManager {
       this.status.startedAt = new Date().toISOString();
       this.status.lastError = null;
       this.startLiveTrackersSyncLoop();
+      this.startScheduleReminderLoop();
 
       // Register or update Slash Commands
       await this.registerSlashCommands();
@@ -1718,6 +1778,10 @@ export class DiscordBotManager {
     if (this.liveTrackersSyncInterval) {
       clearInterval(this.liveTrackersSyncInterval);
       this.liveTrackersSyncInterval = null;
+    }
+    if (this.scheduleReminderInterval) {
+      clearInterval(this.scheduleReminderInterval);
+      this.scheduleReminderInterval = null;
     }
     if (this._initialDealsTimeout) {
       clearTimeout(this._initialDealsTimeout);
@@ -1894,6 +1958,7 @@ export class DiscordBotManager {
       if (subArg === 'sortear' || subArg === 'times') return this.prefixDraw(message);
       if (subArg === 'veto' || subArg === 'ban') return this.prefixVeto(message);
       if (subArg === 'roleta' || subArg === 'mapa' || subArg === 'map') return this.prefixRoulette(message);
+      if (subArg === 'puxar' || subArg === 'call') return this.prefixPullVoice(message);
       if (subArg === 'cancelar') return this.prefixCancel(message);
       return this.prefixCreateMix(message, args.slice(1).join(' '));
     }
@@ -2033,6 +2098,10 @@ export class DiscordBotManager {
       return this.prefixVoiceCheck(message);
     }
     if (command === 'integracao' || command === 'integrar') return this.prefixServerIntegration(message);
+    if (command === 'puxar' || command === 'puxarcall') return this.prefixPullVoice(message);
+    if (command === 'vincular' || command === 'linksteam' || command === 'link') return this.prefixLinkAccount(message, args.slice(1));
+    if (command === 'dupla' || command === 'duo') return this.prefixDuo(message, args.slice(1));
+    if (command === 'agendar' || command === 'agenda-mix' || command === 'marcar') return this.prefixScheduleMix(message, args.slice(1));
     if (command === 'coach' || command === 'ia' || command === 'ai') {
       const q = args.slice(1).join(' ').trim();
       return q ? this.prefixCoachAi(message, q) : this.prefixHelp(message);
@@ -2335,6 +2404,7 @@ export class DiscordBotManager {
     const idx = mix.players.findIndex((p) => p.id === message.author.id);
     if (idx === -1) return message.reply('⚠️ Você não está no mix.');
     mix.players.splice(idx, 1);
+    this.removePlayerDuos(mix, message.author.id);
     if (mix.readyCheck?.confirmed) {
       mix.readyCheck.confirmed.delete(message.author.id);
     }
@@ -2847,7 +2917,11 @@ export class DiscordBotManager {
     const map = args.slice(2).join(' ').trim() || '';
     const res = await this.recordMatchResult(mix, winner, score, message.author, message.channel, map);
     if (!res.success) return message.reply(`⚠️ ${res.error}`);
-    return message.channel.send({ embeds: res.embeds, components: res.components });
+    return message.channel.send({
+      embeds: res.embeds,
+      components: res.components,
+      ...(res.files?.length ? { files: res.files } : {}),
+    });
   }
 
   async prefixSubstitute(message, args) {
@@ -3013,10 +3087,11 @@ export class DiscordBotManager {
           name: '🎮 Mix 5v5 & Draft',
           value:
             '`!painel` • Painel fixo oficial\n' +
-            '`!mix` / `!criar` • Abrir lobby 5v5\n' +
+            '`!mix` / `!puxar` • Abrir lobby ou puxar call\n' +
             '`!entrar` / `!sair` • Fila ou reserva (3/3)\n' +
-            '`!sortear` • Balanceamento Snake-Draft\n' +
-            '`!sub` / `!revanche` • Troca ou revanche',
+            '`!dupla @amigo` • Jogar no mesmo time\n' +
+            '`!agendar 21:00` • Agendar com lembrete\n' +
+            '`!sortear` / `!sub` • Times & substituição',
           inline: true,
         },
         {
@@ -3044,6 +3119,7 @@ export class DiscordBotManager {
             '`!calls` • Mover times ou voltar geral\n' +
             '`!chamada` • Ver quem falta na call\n' +
             '`!lvl <1-21>` • Definir seu nível GC\n' +
+            '`!vincular` • Ligar Discord ↔ Steam\n' +
             '`!stats` / `!cargo` • Perfil e tag @Mix',
           inline: true,
         },
@@ -3773,6 +3849,8 @@ export class DiscordBotManager {
       declaredById: declaredByUser.id,
       winnerPlayers: winnerTeam.players.map((p, idx) => ({
         id: p.id,
+        discordId: p.id,
+        steamId: p.steamId || accountLinkService.getLinkByDiscordId(p.id)?.steamId || '',
         nick: p.displayName || p.username || `Jogador ${idx + 1}`,
         level: p.level || 16,
         avatar: typeof p.displayAvatarURL === 'function' ? p.displayAvatarURL() : (p.avatar || ''),
@@ -3780,6 +3858,8 @@ export class DiscordBotManager {
       })),
       loserPlayers: loserTeam.players.map((p, idx) => ({
         id: p.id,
+        discordId: p.id,
+        steamId: p.steamId || accountLinkService.getLinkByDiscordId(p.id)?.steamId || '',
         nick: p.displayName || p.username || `Jogador ${idx + 1}`,
         level: p.level || 16,
         avatar: typeof p.displayAvatarURL === 'function' ? p.displayAvatarURL() : (p.avatar || ''),
@@ -3828,6 +3908,20 @@ export class DiscordBotManager {
 
     this.savePlayerProfiles(profiles);
     recordMatchHistoryEntry(matchRecord);
+    try {
+      recordUnifiedLeaderboardMatch({
+        winners: matchRecord.winnerPlayers,
+        losers: matchRecord.loserPlayers,
+        map: matchRecord.map,
+        scoreWinners: matchRecord.scoreWinner,
+        scoreLosers: matchRecord.scoreLoser,
+        mvpId: matchRecord.mvpId || null,
+        bagreId: matchRecord.bagreId || null,
+        timestamp: matchRecord.timestamp,
+      });
+    } catch (e) {
+      console.warn('[DISCORD BOT] Falha ao atualizar temporada do leaderboard:', e?.message);
+    }
     this.updateLeaderboardFile(profiles);
     if (typeof this.onMatchRecorded === 'function') {
       try { this.onMatchRecorded(matchRecord); } catch (e) {}
@@ -3939,6 +4033,17 @@ export class DiscordBotManager {
       victoryEmbed.setThumbnail(resolvedImage);
     }
 
+    const files = [];
+    try {
+      const pngBuffer = renderMatchSummaryPng(matchRecord);
+      if (Buffer.isBuffer(pngBuffer) && pngBuffer.length > 0) {
+        files.push(new AttachmentBuilder(pngBuffer, { name: 'resultado-mix.png' }));
+        victoryEmbed.setImage('attachment://resultado-mix.png');
+      }
+    } catch (pngErr) {
+      console.warn('[DISCORD BOT] Falha ao gerar card PNG pós-jogo:', pngErr?.message);
+    }
+
     const components = [];
     const finishBtn = new ActionRowBuilder().addComponents(
       new ButtonBuilder()
@@ -3964,7 +4069,7 @@ export class DiscordBotManager {
     );
     components.push(finishBtn);
 
-    return { success: true, embeds: [victoryEmbed], components };
+    return { success: true, embeds: [victoryEmbed], components, files };
   }
 
   async notifyMissingSlots(mix, guild, channel) {
@@ -4394,6 +4499,114 @@ export class DiscordBotManager {
     }
   }
 
+  removePlayerDuos(mix, userId) {
+    if (!mix || !Array.isArray(mix.duos) || !userId) return;
+    const uid = String(userId);
+    mix.duos = mix.duos.filter((pair) => {
+      const a = Array.isArray(pair) ? String(pair[0]) : String(pair?.a || '');
+      const b = Array.isArray(pair) ? String(pair[1]) : String(pair?.b || '');
+      return a !== uid && b !== uid;
+    });
+  }
+
+  setMixDuo(mix, userId, partnerId) {
+    if (!mix) return { success: false, error: 'Nenhum mix ativo neste canal.' };
+    const uid = String(userId || '').trim();
+    const pid = String(partnerId || '').trim();
+    if (!uid || !pid || uid === pid) {
+      return { success: false, error: 'Você precisa mencionar outro jogador válido para formar dupla.' };
+    }
+    const inLobby = (id) => (mix.players || []).some((p) => String(p.id) === id);
+    if (!inLobby(uid) || !inLobby(pid)) {
+      return { success: false, error: 'Ambos os jogadores precisam estar na fila do Mix para formar dupla fixa!' };
+    }
+    mix.duos = Array.isArray(mix.duos) ? mix.duos : [];
+    // Replace any previous duo involving either player (1 duo per player)
+    mix.duos = mix.duos.filter((pair) => {
+      const a = Array.isArray(pair) ? String(pair[0]) : String(pair?.a || '');
+      const b = Array.isArray(pair) ? String(pair[1]) : String(pair?.b || '');
+      return a !== uid && b !== uid && a !== pid && b !== pid;
+    });
+    mix.duos.push([uid, pid]);
+    this.syncToWebRoom(mix);
+    this.updateLobbyInChannels(mix);
+    return { success: true, duos: mix.duos };
+  }
+
+  clearMixDuo(mix, userId, clearAll = false) {
+    if (!mix) return { success: false, error: 'Nenhum mix ativo neste canal.' };
+    mix.duos = Array.isArray(mix.duos) ? mix.duos : [];
+    if (clearAll) {
+      mix.duos = [];
+    } else {
+      this.removePlayerDuos(mix, userId);
+    }
+    this.syncToWebRoom(mix);
+    this.updateLobbyInChannels(mix);
+    return { success: true, duos: mix.duos };
+  }
+
+  pullMembersIntoMix(mix, members = []) {
+    if (!mix) return { addedStarters: [], addedWaitlist: [], skipped: 0 };
+    mix.players = Array.isArray(mix.players) ? mix.players : [];
+    mix.waitlist = Array.isArray(mix.waitlist) ? mix.waitlist : [];
+    const addedStarters = [];
+    const addedWaitlist = [];
+    let skipped = 0;
+
+    for (const rawMember of members) {
+      if (!rawMember) continue;
+      const userObj = rawMember.user || rawMember;
+      const isBot = Boolean(userObj.bot || rawMember.bot);
+      const id = String(userObj.id || rawMember.id || '').trim();
+      if (!id || isBot) continue;
+
+      const alreadyIn =
+        mix.players.some((p) => String(p.id) === id) ||
+        mix.waitlist.some((p) => String(p.id) === id);
+      if (alreadyIn) {
+        skipped += 1;
+        continue;
+      }
+
+      if (mix.players.length >= 10 && mix.waitlist.length >= 3) {
+        break;
+      }
+
+      const username = userObj.username || rawMember.username || 'Jogador';
+      const displayName = rawMember.displayName || userObj.displayName || username;
+      const avatar =
+        typeof userObj.displayAvatarURL === 'function'
+          ? userObj.displayAvatarURL({ dynamic: true })
+          : typeof rawMember.displayAvatarURL === 'function'
+          ? rawMember.displayAvatarURL({ dynamic: true })
+          : rawMember.avatar || '';
+      const lvl = this.getPlayerLevel(id);
+      const linkedSteamId = accountLinkService.getLinkByDiscordId(id)?.steamId || '';
+
+      const entry = {
+        id,
+        discordId: id,
+        steamId: linkedSteamId,
+        username,
+        displayName,
+        avatar,
+        level: lvl,
+        ready: true,
+      };
+
+      if (mix.players.length < 10) {
+        mix.players.push(entry);
+        addedStarters.push(entry);
+      } else if (mix.waitlist.length < 3) {
+        mix.waitlist.push(entry);
+        addedWaitlist.push(entry);
+      }
+    }
+
+    return { addedStarters, addedWaitlist, skipped };
+  }
+
   balanceTeams(mix) {
     if (!mix.players || mix.players.length < 2) return;
 
@@ -4409,6 +4622,7 @@ export class DiscordBotManager {
     const players = [...mix.players];
     const n = players.length;
     const half = Math.floor(n / 2);
+    const validDuos = normalizeDuos(players, mix.duos || []);
 
     const combinations = [];
     const backtrack = (start, combo) => {
@@ -4424,11 +4638,20 @@ export class DiscordBotManager {
     };
     backtrack(0, []);
 
+    const matchesDuos = (idsA) =>
+      validDuos.every(([pA, pB]) => idsA.has(pA.id) === idsA.has(pB.id));
+
+    const duoCandidates =
+      validDuos.length > 0
+        ? combinations.filter((comboA) => matchesDuos(new Set(comboA.map((p) => p.id))))
+        : [];
+    const candidatePool = duoCandidates.length > 0 ? duoCandidates : combinations;
+
     let bestA = [];
     let bestB = [];
     let minPenalty = Infinity;
 
-    for (const comboA of combinations) {
+    for (const comboA of candidatePool) {
       const idsA = new Set(comboA.map((p) => p.id));
       const comboB = players.filter((p) => !idsA.has(p.id));
 
@@ -4468,6 +4691,7 @@ export class DiscordBotManager {
     mix.teamB.startingSide = mix.teamB.side || 'TR';
     mix.teamB.halftimeSwapped = false;
     mix.balancePct = balancePct;
+    mix.preservedDuos = validDuos.length > 0 && duoCandidates.length > 0 ? validDuos.length : 0;
     mix.phase = 'teams';
 
     this.syncToWebRoom(mix);
@@ -4691,8 +4915,11 @@ export class DiscordBotManager {
         sourceLabel: 'Via Discord',
         phase: nextPhase,
         balanceMode: mix.balanceMode || 'balanced',
+        duos: Array.isArray(mix.duos) ? mix.duos : [],
         players: (mix.players || []).map((p) => ({
           id: p.id,
+          discordId: p.id,
+          steamId: p.steamId || accountLinkService.getLinkByDiscordId(p.id)?.steamId || '',
           nick: p.displayName || p.username,
           avatar: p.avatar,
           level: p.level || 16,
@@ -5073,6 +5300,15 @@ export class DiscordBotManager {
       });
     }
 
+    const activeDuos = normalizeDuos(mix.players || [], mix.duos || []);
+    if (activeDuos.length > 0) {
+      fields.push({
+        name: `🤝 Duplas Fixas no Sorteio (${activeDuos.length})`,
+        value: activeDuos.map(([a, b]) => `<@${a.id}> + <@${b.id}>`).join(' • '),
+        inline: false,
+      });
+    }
+
     const conn = this.resolveMixDisplayConnect(mix);
     const modeLabel = mix.balanceMode === 'captains' ? '👑 Draft Capitães 1v1' : '⚖️ Snake-Draft Equilibrado';
     const webRoomUrl = this.getPublicWebUrl(`/?room=${encodeURIComponent(mix.id || 'MIX-PRO')}`);
@@ -5193,7 +5429,13 @@ export class DiscordBotManager {
         .setCustomId(`mix_treino:${mix.id}`)
         .setLabel('Treino LXN')
         .setEmoji('🎯')
-        .setStyle(ButtonStyle.Secondary)
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(`mix_pull_voice:${mix.id}`)
+        .setLabel('Puxar da Call')
+        .setEmoji('🎙️')
+        .setStyle(ButtonStyle.Success)
+        .setDisabled(isFull && isWaitlistFull)
     );
 
     return [row1, row2, row3];
@@ -5758,6 +6000,28 @@ export class DiscordBotManager {
       return interaction.reply({ content: 'Clipe não encontrado.', ephemeral: true });
     }
 
+    // Scheduled Mix RSVP Buttons (independent of active channel mix)
+    if (
+      customId.startsWith('sched_confirm:') ||
+      customId.startsWith('sched_maybe:') ||
+      customId.startsWith('sched_leave:')
+    ) {
+      const [prefixAction, scheduleId] = customId.split(':');
+      const rsvpType =
+        prefixAction === 'sched_confirm' ? 'confirm' : prefixAction === 'sched_maybe' ? 'maybe' : 'leave';
+      const updated = mixScheduler.rsvp(
+        scheduleId,
+        user.id,
+        interaction.member?.displayName || user.displayName || user.username,
+        rsvpType
+      );
+      if (!updated) {
+        return interaction.reply({ content: '⚠️ Este agendamento expirou ou foi encerrado.', ephemeral: true });
+      }
+      const payload = mixScheduler.buildScheduleMessagePayload(updated);
+      return interaction.update(payload);
+    }
+
     // Mix Set IP Modal Trigger
     if (customId.startsWith('mix_set_ip:') || customId === 'mix_set_ip') {
       const mixId = customId.includes(':') ? customId.split(':')[1] : '';
@@ -6251,6 +6515,7 @@ export class DiscordBotManager {
       }
 
       mix.players.splice(idx, 1);
+      this.removePlayerDuos(mix, user.id);
       if (mix.readyCheck?.confirmed) {
         mix.readyCheck.confirmed.delete(user.id);
       }
@@ -6521,6 +6786,27 @@ export class DiscordBotManager {
         content: `📢 **Chamada (${connected.length}/${totalDiscord} em call):** faltam ${missingTags} entrar em voz.`,
         ephemeral: false,
       });
+    }
+
+    if (action === 'mix_pull_voice') {
+      if (!interaction.guild) {
+        return interaction.reply({ content: '⚠️ Use em um servidor Discord.', ephemeral: true });
+      }
+      const pullRes = await this.executePullFromVoiceChannel(mix, interaction.guild, interaction.member, interaction.channel);
+      if (!pullRes.success) {
+        return interaction.reply({ content: `⚠️ ${pullRes.message}`, ephemeral: true });
+      }
+      if (mix.players.length >= 10 && mix.phase === 'lobby') {
+        this.startReadyCheck(mix, interaction.channel);
+        const rcEmbed = this.buildReadyCheckEmbed(mix);
+        const rcButtons = this.buildReadyCheckButtons(mix);
+        await interaction.update({ embeds: [rcEmbed], components: rcButtons });
+      } else {
+        const lobbyEmbed = this.buildLobbyEmbed(mix);
+        const lobbyButtons = this.buildLobbyButtons(mix);
+        await interaction.update({ embeds: [lobbyEmbed], components: lobbyButtons });
+      }
+      return interaction.followUp({ content: pullRes.message, ephemeral: false });
     }
 
     if (action === 'mix_voice_lobby') {
@@ -7063,8 +7349,13 @@ export class DiscordBotManager {
       if (sub === 'veto') return this.cmdStartVeto(interaction);
       if (sub === 'roleta') return this.cmdRoulette(interaction);
       if (sub === 'status') return this.cmdStatus(interaction);
+      if (sub === 'puxar') return this.cmdPullVoice(interaction);
       if (sub === 'cancelar') return this.cmdCancelMix(interaction);
     }
+
+    if (commandName === 'vincular') return this.cmdLinkAccount(interaction);
+    if (commandName === 'dupla') return this.cmdDuo(interaction);
+    if (commandName === 'agendar') return this.cmdScheduleMix(interaction);
 
     if (commandName === 'painel') return this.cmdSendPermanentPanel(interaction);
     if (commandName === 'roleta') return this.cmdRoulette(interaction);
@@ -7499,7 +7790,11 @@ export class DiscordBotManager {
       if (!result.success) {
         return interaction.reply({ content: `⚠️ ${result.error}`, ephemeral: true });
       }
-      return interaction.reply({ embeds: result.embeds, components: result.components });
+      return interaction.reply({
+        embeds: result.embeds,
+        components: result.components,
+        ...(result.files?.length ? { files: result.files } : {}),
+      });
     }
 
     if (customId.startsWith('modal_mix_sub')) {
@@ -7564,7 +7859,11 @@ export class DiscordBotManager {
     if (!res.success) {
       return interaction.reply({ content: `⚠️ ${res.error}`, ephemeral: true });
     }
-    return interaction.reply({ embeds: res.embeds, components: res.components });
+    return interaction.reply({
+      embeds: res.embeds,
+      components: res.components,
+      ...(res.files?.length ? { files: res.files } : {}),
+    });
   }
 
   async cmdSubstitute(interaction) {
@@ -7799,6 +8098,7 @@ export class DiscordBotManager {
     const idx = mix.players.findIndex((p) => p.id === interaction.user.id);
     if (idx === -1) return interaction.reply({ content: '⚠️ Você não está no mix.', ephemeral: true });
     mix.players.splice(idx, 1);
+    this.removePlayerDuos(mix, interaction.user.id);
     if (mix.readyCheck?.confirmed) {
       mix.readyCheck.confirmed.delete(interaction.user.id);
     }
@@ -7825,6 +8125,288 @@ export class DiscordBotManager {
     this.syncToWebRoom(mix);
     this.updateLobbyInChannels(mix);
     return interaction.reply({ content: `🚪 <@${interaction.user.id}> saiu do mix. (${mix.players.length}/10)${promotedMsg}` });
+  }
+
+  async executePullFromVoiceChannel(mix, guild, member, channel) {
+    if (!mix || !guild) {
+      return { success: false, message: 'Mix ou servidor Discord inválido.' };
+    }
+
+    const guildVoice = this.resolveVoiceChannels(guild.id);
+    let voiceChannel = member?.voice?.channel || null;
+    if (!voiceChannel && guildVoice.lobbyVoiceId) {
+      voiceChannel = await guild.channels?.fetch?.(guildVoice.lobbyVoiceId).catch(() => null);
+    }
+    if (!voiceChannel) {
+      return {
+        success: false,
+        message: 'Entre na call de voz do Lobby ou configure o Lobby Geral com `/calls lobby:#canal` primeiro!',
+      };
+    }
+
+    const voiceMembers = Array.from(voiceChannel.members?.values?.() || []);
+    if (voiceMembers.length === 0) {
+      return {
+        success: false,
+        message: `A call **${voiceChannel.name}** está vazia no momento.`,
+      };
+    }
+
+    const { addedStarters, addedWaitlist, skipped } = this.pullMembersIntoMix(mix, voiceMembers);
+    const totalAdded = addedStarters.length + addedWaitlist.length;
+    if (totalAdded === 0) {
+      return {
+        success: false,
+        message:
+          skipped > 0
+            ? `Todos os jogadores da call **${voiceChannel.name}** já estão no mix!`
+            : `Não foi possível adicionar ninguém da call **${voiceChannel.name}** (fila cheia).`,
+      };
+    }
+
+    this.syncToWebRoom(mix);
+    this.updateLobbyInChannels(mix);
+
+    if ((mix.players.length === 8 || mix.players.length === 9) && channel) {
+      this.notifyMissingSlots(mix, guild, channel).catch(() => {});
+    }
+
+    const addedMentions = [...addedStarters, ...addedWaitlist].map((p) => `<@${p.id}>`).join(', ');
+    const waitNote = addedWaitlist.length > 0 ? ` (+${addedWaitlist.length} na reserva)` : '';
+    return {
+      success: true,
+      addedStarters,
+      addedWaitlist,
+      voiceChannelName: voiceChannel.name,
+      message: `🎙️ **Puxados da call ${voiceChannel.name}:** ${addedStarters.length} titular(es)${waitNote} adicionados (${mix.players.length}/10)!\n👥 ${addedMentions}`,
+    };
+  }
+
+  async prefixPullVoice(message) {
+    const mix = this.resolveActiveMixForChannel(message.channelId);
+    if (!mix) return message.reply('⚠️ Nenhum mix ativo neste canal. Use `!mix` primeiro!');
+    const res = await this.executePullFromVoiceChannel(mix, message.guild, message.member, message.channel);
+    if (!res.success) return message.reply(`⚠️ ${res.message}`);
+    if (mix.players.length >= 10 && mix.phase === 'lobby') {
+      this.startReadyCheck(mix, message.channel);
+      return message.channel.send({
+        content: res.message,
+        embeds: [this.buildReadyCheckEmbed(mix)],
+        components: this.buildReadyCheckButtons(mix),
+      });
+    }
+    return message.reply(res.message);
+  }
+
+  async cmdPullVoice(interaction) {
+    const mix = this.resolveActiveMixForChannel(interaction.channelId);
+    if (!mix) return interaction.reply({ content: '⚠️ Nenhum mix ativo neste canal. Use `/mix criar` primeiro!', ephemeral: true });
+    const res = await this.executePullFromVoiceChannel(mix, interaction.guild, interaction.member, interaction.channel);
+    if (!res.success) return interaction.reply({ content: `⚠️ ${res.message}`, ephemeral: true });
+    if (mix.players.length >= 10 && mix.phase === 'lobby') {
+      this.startReadyCheck(mix, interaction.channel);
+      return interaction.reply({
+        content: res.message,
+        embeds: [this.buildReadyCheckEmbed(mix)],
+        components: this.buildReadyCheckButtons(mix),
+      });
+    }
+    return interaction.reply({ content: res.message });
+  }
+
+  applyLinkSideEffects(discordId, steamId) {
+    const profiles = this.loadPlayerProfiles();
+    profiles[discordId] = {
+      ...(profiles[discordId] || {}),
+      steamId,
+      updatedAt: Date.now(),
+    };
+    this.savePlayerProfiles(profiles);
+    try {
+      linkLeaderboardIdentity(discordId, steamId);
+      this.updateLeaderboardFile(profiles);
+    } catch {}
+  }
+
+  async executeLinkAccount(user, rawCode = '') {
+    const discordId = String(user.id);
+    const discordUsername = user.username || user.displayName || 'Jogador';
+    const cleanCode = String(rawCode || '').trim();
+
+    if (cleanCode) {
+      const result = accountLinkService.confirmCodeFromDiscord({
+        code: cleanCode,
+        discordId,
+        discordUsername,
+      });
+      if (!result.success) {
+        return { success: false, message: `⚠️ ${result.error}` };
+      }
+      this.applyLinkSideEffects(discordId, result.link.steamId);
+      return {
+        success: true,
+        message:
+          `✅ **Contas Vinculadas com Sucesso!**\n` +
+          `🎮 **Discord:** <@${discordId}> ↔️ **Steam:** \`${result.link.steamNick || result.link.steamId}\` (\`${result.link.steamId}\`)\n` +
+          `🏆 Seu histórico, Hall da Fama, patentes GC/FACEIT e conquistas agora estão **100% unificados** entre o Bot e o Site!`,
+      };
+    }
+
+    const existing = accountLinkService.getLinkByDiscordId(discordId);
+    const { code } = accountLinkService.createDiscordLinkCode({
+      discordId,
+      discordUsername,
+    });
+    const profileWebUrl = this.getPublicWebUrl('/?view=landing');
+    return {
+      success: true,
+      message:
+        `🔗 **Vincular Discord ↔ Steam no CS2 Mix Hub**\n` +
+        (existing
+          ? `ℹ️ Sua conta já está vinculada à Steam \`${existing.steamNick || existing.steamId}\`. Usar um novo código substituirá o vínculo atual.\n\n`
+          : '\n') +
+        `1️⃣ Copie seu código único (válido por 10 minutos): **\`${code}\`**\n` +
+        `2️⃣ Acesse o site **[CS2 Mix Hub](${profileWebUrl})**, faça login com a Steam, clique no seu **Perfil** e cole **\`${code}\`** em **Vincular Discord**!\n\n` +
+        `💡 *Ou, se preferir gerar o código pelo site, digite aqui: \`/vincular codigo:CODIGO\` ou \`!vincular CODIGO\`.*`,
+    };
+  }
+
+  async cmdLinkAccount(interaction) {
+    const code = interaction.options?.getString?.('codigo') || '';
+    const res = await this.executeLinkAccount(interaction.user, code);
+    return interaction.reply({ content: res.message, ephemeral: true });
+  }
+
+  async prefixLinkAccount(message, args = []) {
+    const code = args[0] || '';
+    const res = await this.executeLinkAccount(message.author, code);
+    return message.reply(res.message);
+  }
+
+  async cmdDuo(interaction) {
+    const mix = this.resolveActiveMixForChannel(interaction.channelId);
+    if (!mix) return interaction.reply({ content: '⚠️ Nenhum mix ativo neste canal.', ephemeral: true });
+    const acao = interaction.options?.getString?.('acao') || '';
+    const amigo = interaction.options?.getUser?.('amigo') || null;
+
+    if (acao === 'limpar') {
+      if (!this.isGuildModerator(interaction.member, interaction.guild, mix, interaction.user.id)) {
+        return interaction.reply({ content: '🚫 Apenas o criador do mix ou moderador pode limpar todas as duplas.', ephemeral: true });
+      }
+      this.clearMixDuo(mix, interaction.user.id, true);
+      return interaction.reply({ content: '🧹 Todas as duplas do lobby foram limpas.' });
+    }
+
+    if (acao === 'sair' || !amigo) {
+      this.clearMixDuo(mix, interaction.user.id, false);
+      return interaction.reply({ content: `🔓 <@${interaction.user.id}> saiu da sua dupla fixa neste lobby.` });
+    }
+
+    const res = this.setMixDuo(mix, interaction.user.id, amigo.id);
+    if (!res.success) return interaction.reply({ content: `⚠️ ${res.error}`, ephemeral: true });
+    return interaction.reply({
+      content: `🤝 **Dupla Fixa Confirmada!** <@${interaction.user.id}> + <@${amigo.id}> cairão no **mesmo time** no próximo sorteio equilibrado!`,
+    });
+  }
+
+  async prefixDuo(message, args = []) {
+    const mix = this.resolveActiveMixForChannel(message.channelId);
+    if (!mix) return message.reply('⚠️ Nenhum mix ativo neste canal.');
+    const sub = String(args[0] || '').toLowerCase();
+
+    if (sub === 'limpar' || sub === 'clear') {
+      if (!this.isGuildModerator(message.member, message.guild, mix, message.author.id)) {
+        return message.reply('🚫 Apenas o criador do mix ou moderador pode limpar todas as duplas.');
+      }
+      this.clearMixDuo(mix, message.author.id, true);
+      return message.reply('🧹 Todas as duplas do lobby foram limpas.');
+    }
+
+    if (sub === 'sair' || sub === 'remover') {
+      this.clearMixDuo(mix, message.author.id, false);
+      return message.reply(`🔓 <@${message.author.id}> saiu da sua dupla fixa neste lobby.`);
+    }
+
+    const mentioned = message.mentions?.users?.first?.() || null;
+    const rawId = mentioned?.id || (args[0] ? args[0].replace(/[<@!>]/g, '') : '');
+    if (!rawId || !/^\d{17,22}$/.test(rawId)) {
+      return message.reply('👉 Uso: `!dupla @amigo` (ambos na fila), `!dupla sair` ou `!dupla limpar`.');
+    }
+
+    const res = this.setMixDuo(mix, message.author.id, rawId);
+    if (!res.success) return message.reply(`⚠️ ${res.error}`);
+    return message.reply(`🤝 **Dupla Fixa Confirmada!** <@${message.author.id}> + <@${rawId}> cairão no **mesmo time** no sorteio!`);
+  }
+
+  async createAndPostSchedule({ guildId, channelId, creator, rawTime, title = '', format = 'MD1', sendFn }) {
+    const parsed = parseScheduleTimePtBr(rawTime);
+    if (!parsed.valid) {
+      return { success: false, message: `⚠️ ${parsed.error}` };
+    }
+
+    const sched = mixScheduler.createSchedule({
+      guildId,
+      channelId,
+      creatorId: creator.id,
+      creatorName: creator.displayName || creator.username || 'Organizador',
+      title: title || `Mix CS2 5v5 • ${parsed.formattedTime}`,
+      scheduledAt: parsed.timestamp,
+      format,
+    });
+
+    const payload = mixScheduler.buildScheduleMessagePayload(sched);
+    const sent = await sendFn(payload);
+    if (sent?.id) {
+      mixScheduler.updateMessageId(sched.id, sent.id);
+    }
+    return { success: true, schedule: sched };
+  }
+
+  async cmdScheduleMix(interaction) {
+    const rawTime = interaction.options.getString('horario');
+    const title = interaction.options.getString('nome') || '';
+    const format = interaction.options.getString('formato') || 'MD1';
+
+    const res = await this.createAndPostSchedule({
+      guildId: interaction.guildId || '',
+      channelId: interaction.channelId || '',
+      creator: interaction.member || interaction.user,
+      rawTime,
+      title,
+      format,
+      sendFn: async (payload) => {
+        await interaction.reply(payload);
+        return interaction.fetchReply?.().catch(() => null);
+      },
+    });
+    if (!res.success) {
+      return interaction.reply({ content: res.message, ephemeral: true });
+    }
+    return res;
+  }
+
+  async prefixScheduleMix(message, args = []) {
+    if (!args.length) {
+      return message.reply('👉 Uso: `!agendar 21:00 [Nome do Mix]` ou `!agendar amanha 20:30 Mix Noturno`');
+    }
+    const first = args[0] || '';
+    const consumeTwo = /^(amanha|amanhã|\d{1,2}\/\d{1,2}(?:\/\d{4})?)$/i.test(first) && args[1];
+    const rawTime = consumeTwo ? `${first} ${args[1]}` : first;
+    const title = args.slice(consumeTwo ? 2 : 1).join(' ').trim();
+
+    const res = await this.createAndPostSchedule({
+      guildId: message.guildId || '',
+      channelId: message.channelId || '',
+      creator: message.member || message.author,
+      rawTime,
+      title,
+      format: 'MD1',
+      sendFn: async (payload) => message.channel.send(payload),
+    });
+    if (!res.success) {
+      return message.reply(res.message);
+    }
+    return res;
   }
 
   async cmdDrawTeams(interaction) {

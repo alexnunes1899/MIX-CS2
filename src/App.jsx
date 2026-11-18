@@ -14,6 +14,7 @@ import { MOCK_PLAYERS } from './data/mockPlayers';
 import { useAppVersion } from './hooks/useAppVersion';
 import { useSteamSession, savePendingInvite } from './hooks/useSteamSession';
 import { useNavigationView } from './hooks/useNavigationView';
+import { usePwaNotifications } from './hooks/usePwaNotifications';
 import AppModalsHost from './components/AppModalsHost';
 
 const Lobby = lazy(() => import('./components/Lobby'));
@@ -24,6 +25,7 @@ const CaptainsDraftView = lazy(() => import('./components/CaptainsDraftView'));
 const LandingPage = lazy(() => import('./components/LandingPage'));
 const DedicatedServersHub = lazy(() => import('./components/DedicatedServersHub'));
 const CS2UpdatesPage = lazy(() => import('./components/CS2UpdatesPage'));
+const ClipsGalleryPage = lazy(() => import('./components/ClipsGalleryPage'));
 
 function PageFallback() {
   return (
@@ -77,6 +79,7 @@ export default function App() {
     setView,
     handleOpenServersPage,
     handleOpenUpdatesPage,
+    handleOpenClipsPage,
     handleGoHome,
   } = useNavigationView({ setRoomId, soundEnabled });
 
@@ -167,6 +170,16 @@ export default function App() {
   const [aimReflexModalOpen, setAimReflexModalOpen] = useState(false);
   const [tournamentModalOpen, setTournamentModalOpen] = useState(false);
   const [localHostModalOpen, setLocalHostModalOpen] = useState(false);
+  const [spectateRoom, setSpectateRoom] = useState(null);
+  const [publicProfile, setPublicProfile] = useState(() => {
+    try {
+      const pId = new URLSearchParams(window.location.search).get('perfil');
+      if (pId && pId.trim()) {
+        return { id: pId.trim(), nick: pId.trim() };
+      }
+    } catch {}
+    return null;
+  });
   const [roomNotice, setRoomNotice] = useState(null);
   const { updateAvailable, handleApplyUpdate } = useAppVersion(socket);
 
@@ -623,6 +636,20 @@ export default function App() {
     }
     handleSelectRoom(safeCode);
   };
+
+  const {
+    canInstallPwa,
+    promptInstallPwa,
+    notificationsEnabled,
+    toggleNotifications,
+    notifyCs2Update,
+  } = usePwaNotifications({ publicRooms, onEnterRoom: handleEnterRoom });
+
+  useEffect(() => {
+    const onCs2Update = (patch) => notifyCs2Update(patch);
+    socket.on('cs2_update_released', onCs2Update);
+    return () => socket.off('cs2_update_released', onCs2Update);
+  }, [notifyCs2Update]);
 
   // Change room ranking system (GC vs FACEIT)
   const handleChangeRankingSystem = (newSystem) => {
@@ -1711,6 +1738,7 @@ export default function App() {
             onOpenGrenades={() => setGrenadeModalOpen(true)}
             onOpenAimReflex={() => setAimReflexModalOpen(true)}
             onOpenUpdatesPage={handleOpenUpdatesPage}
+            onOpenClipsPage={handleOpenClipsPage}
             onOpenGsiSetup={() => setGsiModalOpen(true)}
             onOpenProfile={() => setProfileModalOpen(true)}
             activeRoomsCount={activeRoomsCount}
@@ -1735,6 +1763,30 @@ export default function App() {
             onOpenGrenades={() => setGrenadeModalOpen(true)}
             onOpenAimReflex={() => setAimReflexModalOpen(true)}
             onOpenServersPage={handleOpenServersPage}
+            onOpenClipsPage={handleOpenClipsPage}
+            activeRoomsCount={activeRoomsCount}
+            soundEnabled={soundEnabled}
+            onToggleSound={handleToggleSound}
+          />
+        </Suspense>
+      ) : view === 'clips' ? (
+        <Suspense fallback={<PageFallback />}>
+          <ClipsGalleryPage
+            roomId={roomId}
+            socket={socket}
+            myProfile={myProfile}
+            onGoHome={handleGoHome}
+            onGoToRoom={handleGoToRoom}
+            onOpenQuickVeto={() => setQuickVetoOpen(true)}
+            onOpenQuickMapRoll={() => setQuickMapRollOpen(true)}
+            onOpenRoomsHub={() => setRoomsHubOpen(true)}
+            onOpenLeaderboard={() => setLeaderboardOpen(true)}
+            onOpenDiscordModal={() => setDiscordModalOpen(true)}
+            onOpenTournament={() => setTournamentModalOpen(true)}
+            onOpenGrenades={() => setGrenadeModalOpen(true)}
+            onOpenAimReflex={() => setAimReflexModalOpen(true)}
+            onOpenServersPage={handleOpenServersPage}
+            onOpenUpdatesPage={handleOpenUpdatesPage}
             activeRoomsCount={activeRoomsCount}
             soundEnabled={soundEnabled}
             onToggleSound={handleToggleSound}
@@ -1756,8 +1808,14 @@ export default function App() {
             onOpenAimReflex={() => setAimReflexModalOpen(true)}
             onOpenServersPage={handleOpenServersPage}
             onOpenUpdatesPage={handleOpenUpdatesPage}
+            onOpenClipsPage={handleOpenClipsPage}
             onRequireSteamLogin={handleRequireSteamLogin}
             onOpenProfile={() => setProfileModalOpen(true)}
+            onSpectateRoom={(r) => setSpectateRoom(r)}
+            canInstallPwa={canInstallPwa}
+            onInstallPwa={promptInstallPwa}
+            notificationsEnabled={notificationsEnabled}
+            onToggleNotifications={toggleNotifications}
             myProfile={myProfile}
             soundEnabled={soundEnabled}
             onToggleSound={handleToggleSound}
@@ -1795,6 +1853,7 @@ export default function App() {
             onOpenAimReflex={() => setAimReflexModalOpen(true)}
             onOpenServersPage={handleOpenServersPage}
             onOpenUpdatesPage={handleOpenUpdatesPage}
+            onOpenClipsPage={handleOpenClipsPage}
             onGoHome={handleGoHome}
             roomPassword={roomPassword}
             hasPassword={Boolean(room.hasPassword)}
@@ -2014,6 +2073,10 @@ export default function App() {
         rouletteActive={rouletteActive}
         profileModalOpen={profileModalOpen}
         setProfileModalOpen={setProfileModalOpen}
+        publicProfile={publicProfile}
+        setPublicProfile={setPublicProfile}
+        spectateRoom={spectateRoom}
+        setSpectateRoom={setSpectateRoom}
         gsiModalOpen={gsiModalOpen}
         setGsiModalOpen={setGsiModalOpen}
         passwordModalOpen={passwordModalOpen}

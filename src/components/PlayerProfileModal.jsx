@@ -44,6 +44,8 @@ export default function PlayerProfileModal({
   soundEnabled,
   onSaveProfile,
   onOpenStoryCard,
+  readOnly = false,
+  initialTab = 'steam',
 }) {
   const [copiedId, setCopiedId] = useState(false);
   const [steamStats, setSteamStats] = useState(null);
@@ -58,12 +60,28 @@ export default function PlayerProfileModal({
   const [hoursInput, setHoursInput] = useState('');
   const [showHoursHelp, setShowHoursHelp] = useState(false);
   const [hoursSavedAlert, setHoursSavedAlert] = useState(false);
-  const [activeTab, setActiveTab] = useState('steam'); // 'steam' | 'ranks' | 'stats'
+  const [activeTab, setActiveTab] = useState(initialTab || 'steam'); // 'steam' | 'ranks' | 'stats'
 
-  const { nick = 'Jogador', steamId, avatar = '🎯', level = 12, faceitLevel = 5, faceitElo = 1200, side = 'ANY' } = profile || {};
+  // Advanced Player Analytics & Discord Link State
+  const [analytics, setAnalytics] = useState(null);
+  const [loadingAnalytics, setLoadingAnalytics] = useState(false);
+  const [discordLink, setDiscordLink] = useState(null);
+  const [discordCodeInput, setDiscordCodeInput] = useState('');
+  const [generatedWebCode, setGeneratedWebCode] = useState(null);
+  const [linkLoading, setLinkLoading] = useState(false);
+  const [linkStatusMsg, setLinkStatusMsg] = useState(null);
+  const [copiedPublicUrl, setCopiedPublicUrl] = useState(false);
+
+  const { nick = 'Jogador', steamId, discordId, avatar = '🎯', level = 12, faceitLevel = 5, faceitElo = 1200, side = 'ANY' } = profile || {};
   const isSteamUser = Boolean(steamId);
   const stats = getPlayerStats(steamId);
   const gcTier = getGCTier(level);
+
+  useEffect(() => {
+    if (isOpen) {
+      setActiveTab(initialTab || (readOnly ? 'stats' : 'steam'));
+    }
+  }, [isOpen, initialTab, readOnly]);
 
   const effectiveHours = profile?.cs2Hours || steamStats?.cs2Hours || null;
   const trust = calculateTrustFactor(profile, steamStats);
@@ -163,9 +181,93 @@ export default function PlayerProfileModal({
 
   // Auto-sync FACEIT on modal open
   useEffect(() => {
-    if (!isOpen || !steamId) return;
+    if (!isOpen || !steamId || readOnly) return;
     handleSyncFaceitAuto();
-  }, [isOpen, steamId]);
+  }, [isOpen, steamId, readOnly]);
+
+  // Fetch Unified Player Analytics & Discord Link Status
+  const analyticsQueryId = steamId || discordId || profile?.id || nick;
+  useEffect(() => {
+    if (!isOpen || !analyticsQueryId) return;
+    setLoadingAnalytics(true);
+    fetch(`/api/players/${encodeURIComponent(analyticsQueryId)}/analytics`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.analytics) setAnalytics(data.analytics);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingAnalytics(false));
+  }, [isOpen, analyticsQueryId]);
+
+  useEffect(() => {
+    if (!isOpen || readOnly || !isSteamUser) return;
+    fetch('/api/account/link')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => setDiscordLink(data?.linked ? data.link : null))
+      .catch(() => {});
+  }, [isOpen, readOnly, isSteamUser]);
+
+  const handleConfirmDiscordCode = async (e) => {
+    if (e) e.preventDefault();
+    if (!discordCodeInput.trim()) return;
+    setLinkLoading(true);
+    setLinkStatusMsg(null);
+    try {
+      const res = await fetch('/api/account/link/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: discordCodeInput.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Falha ao vincular');
+      setDiscordLink(data.link);
+      setDiscordCodeInput('');
+      setGeneratedWebCode(null);
+      setLinkStatusMsg({ type: 'success', text: 'Discord vinculado com sucesso! Estatísticas unificadas.' });
+    } catch (err) {
+      setLinkStatusMsg({ type: 'error', text: err.message });
+    } finally {
+      setLinkLoading(false);
+    }
+  };
+
+  const handleGenerateWebLinkCode = async () => {
+    if (soundEnabled) playClickSound();
+    setLinkLoading(true);
+    setLinkStatusMsg(null);
+    try {
+      const res = await fetch('/api/account/link/code', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erro ao gerar código');
+      setGeneratedWebCode(data.code);
+    } catch (err) {
+      setLinkStatusMsg({ type: 'error', text: err.message });
+    } finally {
+      setLinkLoading(false);
+    }
+  };
+
+  const handleUnlinkDiscord = async () => {
+    if (soundEnabled) playClickSound();
+    setLinkLoading(true);
+    try {
+      const res = await fetch('/api/account/link', { method: 'DELETE' });
+      if (res.ok) {
+        setDiscordLink(null);
+        setLinkStatusMsg({ type: 'success', text: 'Vínculo Discord ↔ Steam removido.' });
+      }
+    } catch {}
+    setLinkLoading(false);
+  };
+
+  const handleCopyPublicProfileUrl = () => {
+    if (soundEnabled) playClickSound();
+    const targetId = steamId || discordId || profile?.id || nick;
+    const shareUrl = `${window.location.origin}/?perfil=${encodeURIComponent(targetId)}`;
+    copyText(shareUrl);
+    setCopiedPublicUrl(true);
+    setTimeout(() => setCopiedPublicUrl(false), 2000);
+  };
 
   if (!isOpen || !profile) return null;
 
@@ -641,31 +743,120 @@ export default function PlayerProfileModal({
                 </div>
               </div>
 
-              {/* Steam Account Switcher & Logout Controls */}
-              <div className="space-y-2.5 pt-2 border-t border-slate-800">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5 font-heading">
-                  <ArrowRightLeft size={14} className="text-sky-400" />
-                  Gerenciamento da Conta
-                </h4>
+              {/* Discord <-> Steam Unified Account Linking */}
+              {!readOnly && isSteamUser && (
+                <div className="bg-slate-950/85 border border-indigo-500/35 rounded-2xl p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-indigo-300 flex items-center gap-1.5 font-heading">
+                      <Zap size={14} className="text-indigo-400" />
+                      Conta Unificada Discord ↔ Steam
+                    </h4>
+                    {discordLink && (
+                      <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/35">
+                        ✓ Vinculada ({discordLink.discordUsername || discordLink.discordId})
+                      </span>
+                    )}
+                  </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  <button
-                    onClick={handleSwitch}
-                    className="py-2.5 px-3.5 rounded-xl bg-gradient-to-r from-[#171a21] via-[#1b2838] to-[#2a475e] hover:from-[#1b2838] hover:to-[#2a475e] text-white border border-[#66c0f4]/50 shadow-md text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer group active:scale-95"
-                  >
-                    <SteamIcon className="w-4 h-4 text-[#66c0f4] group-hover:rotate-180 transition-transform duration-500" />
-                    <span>Entrar com Outra Conta</span>
-                  </button>
+                  {discordLink ? (
+                    <div className="flex items-center justify-between gap-3 bg-slate-900/90 border border-slate-800 rounded-xl p-3 text-xs">
+                      <div>
+                        <div className="font-bold text-white">Discord: {discordLink.discordUsername || discordLink.discordId}</div>
+                        <div className="text-[11px] text-slate-400 font-mono">ID: {discordLink.discordId} • Ranking & Mixes unificados</div>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={linkLoading}
+                        onClick={handleUnlinkDiscord}
+                        className="px-3 py-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/35 text-rose-300 font-bold text-[11px] cursor-pointer"
+                      >
+                        Desvincular
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5 text-xs">
+                      <p className="text-[11px] text-slate-400">
+                        Use <code className="text-indigo-300 font-mono">/vincular</code> no Bot do Discord para gerar um código e cole abaixo, ou gere um código aqui para usar no Discord:
+                      </p>
+                      <form onSubmit={handleConfirmDiscordCode} className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          maxLength={12}
+                          value={discordCodeInput}
+                          onChange={(e) => setDiscordCodeInput(e.target.value.toUpperCase())}
+                          placeholder="Código do /vincular (ex: A7K9M2)"
+                          className="flex-1 bg-slate-900 border border-indigo-500/40 rounded-lg px-3 py-1.5 text-xs font-mono text-white outline-none focus:border-indigo-400"
+                        />
+                        <button
+                          type="submit"
+                          disabled={linkLoading || !discordCodeInput.trim()}
+                          className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs cursor-pointer disabled:opacity-50"
+                        >
+                          Confirmar
+                        </button>
+                      </form>
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <button
+                          type="button"
+                          disabled={linkLoading}
+                          onClick={handleGenerateWebLinkCode}
+                          className="text-[11px] font-bold text-indigo-300 hover:text-indigo-200 underline cursor-pointer"
+                        >
+                          Gerar código para usar no Discord (/vincular codigo:...)
+                        </button>
+                        {generatedWebCode && (
+                          <button
+                            type="button"
+                            onClick={() => copyText(`/vincular codigo:${generatedWebCode}`)}
+                            className="px-2.5 py-1 rounded-lg bg-indigo-500/20 border border-indigo-400/40 text-indigo-200 font-mono text-[11px] font-bold cursor-pointer"
+                            title="Clique para copiar o comando completo"
+                          >
+                            /vincular codigo:{generatedWebCode}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
-                  <button
-                    onClick={handleLogoutClick}
-                    className="py-2.5 px-3.5 rounded-xl bg-slate-950 hover:bg-rose-950/40 text-slate-300 hover:text-rose-400 border border-slate-800 hover:border-rose-500/40 text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95"
-                  >
-                    <LogOut size={14} />
-                    <span>Sair desta Conta (Logout)</span>
-                  </button>
+                  {linkStatusMsg && (
+                    <div className={`text-[11px] font-bold px-3 py-1.5 rounded-lg border ${
+                      linkStatusMsg.type === 'success'
+                        ? 'bg-emerald-500/15 border-emerald-500/35 text-emerald-300'
+                        : 'bg-rose-500/15 border-rose-500/35 text-rose-300'
+                    }`}>
+                      {linkStatusMsg.text}
+                    </div>
+                  )}
                 </div>
-              </div>
+              )}
+
+              {/* Steam Account Switcher & Logout Controls */}
+              {!readOnly && (
+                <div className="space-y-2.5 pt-2 border-t border-slate-800">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5 font-heading">
+                    <ArrowRightLeft size={14} className="text-sky-400" />
+                    Gerenciamento da Conta
+                  </h4>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <button
+                      onClick={handleSwitch}
+                      className="py-2.5 px-3.5 rounded-xl bg-gradient-to-r from-[#171a21] via-[#1b2838] to-[#2a475e] hover:from-[#1b2838] hover:to-[#2a475e] text-white border border-[#66c0f4]/50 shadow-md text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer group active:scale-95"
+                    >
+                      <SteamIcon className="w-4 h-4 text-[#66c0f4] group-hover:rotate-180 transition-transform duration-500" />
+                      <span>Entrar com Outra Conta</span>
+                    </button>
+
+                    <button
+                      onClick={handleLogoutClick}
+                      className="py-2.5 px-3.5 rounded-xl bg-slate-950 hover:bg-rose-950/40 text-slate-300 hover:text-rose-400 border border-slate-800 hover:border-rose-500/40 text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95"
+                    >
+                      <LogOut size={14} />
+                      <span>Sair desta Conta (Logout)</span>
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -842,56 +1033,201 @@ export default function PlayerProfileModal({
             </div>
           )}
 
-          {/* TAB 3: ESTATÍSTICAS MIX */}
-          {activeTab === 'stats' && (
-            <div className="space-y-4 animate-fadeIn">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5 font-heading">
-                  <Sparkles size={14} className="text-emerald-400" />
-                  Estatísticas de Partidas no Mix Hub
-                </h3>
-                <span className="text-[10px] font-mono text-slate-500">Temporada 2026</span>
+          {/* TAB 3: ESTATÍSTICAS MIX AVANÇADAS */}
+          {activeTab === 'stats' && (() => {
+            const summary = analytics?.summary || {};
+            const totalPlayed = Math.max(Number(summary.matchesPlayed || 0), Number(stats.matchesPlayed || 0));
+            const totalWins = summary.matchesPlayed > 0 ? summary.wins : stats.wins;
+            const totalLosses = summary.matchesPlayed > 0 ? summary.losses : stats.losses;
+            const effWinRate = totalPlayed > 0 ? Math.round((totalWins / totalPlayed) * 100) : (stats.winRate || 0);
+            const effStreak = summary.matchesPlayed > 0 ? summary.bestStreak : stats.streak;
+            const recentForm = Array.isArray(analytics?.recentForm) ? analytics.recentForm : [];
+            const mapStats = Array.isArray(analytics?.mapStats) ? analytics.mapStats : [];
+            const badges = Array.isArray(analytics?.badges) ? analytics.badges : [];
+
+            return (
+              <div className="space-y-4 animate-fadeIn">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5 font-heading">
+                    <Sparkles size={14} className="text-emerald-400" />
+                    Estatísticas Unificadas • {analytics?.identity?.nick || nick}
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={handleCopyPublicProfileUrl}
+                    className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 flex items-center gap-1 cursor-pointer"
+                  >
+                    {copiedPublicUrl ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                    <span>{copiedPublicUrl ? 'Link Copiado!' : 'Copiar Perfil Público'}</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-3 text-center shadow-sm">
+                    <span className="text-[10px] uppercase font-mono text-slate-500 block mb-1">Partidas</span>
+                    <span className="text-xl font-black font-mono text-white">{totalPlayed}</span>
+                  </div>
+
+                  <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-3 text-center shadow-sm">
+                    <span className="text-[10px] uppercase font-mono text-slate-500 block mb-1">Vitórias</span>
+                    <span className="text-xl font-black font-mono text-emerald-400">{totalWins}V - {totalLosses}D</span>
+                  </div>
+
+                  <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-3 text-center shadow-sm">
+                    <span className="text-[10px] uppercase font-mono text-slate-500 block mb-1">Win Rate</span>
+                    <span className="text-xl font-black font-mono text-amber-400">{effWinRate}%</span>
+                  </div>
+
+                  <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-3 text-center shadow-sm">
+                    <span className="text-[10px] uppercase font-mono text-slate-500 block mb-1">Best Streak</span>
+                    <span className="text-xl font-black font-mono text-orange-400 flex items-center justify-center gap-1">
+                      🔥 {effStreak}
+                    </span>
+                  </div>
+                </div>
+
+                {(summary.mvpCount > 0 || summary.avgKd !== null || summary.avgRating !== null) && (
+                  <div className="grid grid-cols-3 gap-2.5 text-center">
+                    <div className="bg-slate-950/80 border border-amber-500/25 rounded-xl p-2.5">
+                      <span className="text-[10px] font-mono text-slate-400 block">MVPs</span>
+                      <span className="text-sm font-black font-mono text-amber-300">👑 {summary.mvpCount || 0}</span>
+                    </div>
+                    <div className="bg-slate-950/80 border border-sky-500/25 rounded-xl p-2.5">
+                      <span className="text-[10px] font-mono text-slate-400 block">K/D Médio</span>
+                      <span className="text-sm font-black font-mono text-sky-300">{summary.avgKd ?? '—'}</span>
+                    </div>
+                    <div className="bg-slate-950/80 border border-emerald-500/25 rounded-xl p-2.5">
+                      <span className="text-[10px] font-mono text-slate-400 block">Rating Médio</span>
+                      <span className="text-sm font-black font-mono text-emerald-300">{summary.avgRating ?? '—'}</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Recent Form & Trend Sparkline */}
+                {recentForm.length > 0 && (
+                  <div className="bg-slate-950/85 border border-slate-800 rounded-2xl p-4 space-y-2.5">
+                    <div className="flex items-center justify-between text-xs font-mono">
+                      <span className="font-bold uppercase tracking-wider text-slate-400 text-[11px]">
+                        📈 Forma Recente (Últimos {recentForm.length} jogos)
+                      </span>
+                      <div className="flex items-center gap-1">
+                        {recentForm.map((item, idx) => (
+                          <span
+                            key={`${item.matchId}-${idx}`}
+                            title={`${item.map} (${item.score})`}
+                            className={`w-5 h-5 rounded-md text-[10px] font-black flex items-center justify-center ${
+                              item.result === 'W'
+                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                                : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                            }`}
+                          >
+                            {item.result === 'W' ? 'V' : 'D'}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Best Duo Synergy & Biggest Rival */}
+                {(analytics?.bestPartner || analytics?.biggestRival) && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {analytics?.bestPartner && (
+                      <div className="bg-slate-950/85 border border-emerald-500/30 rounded-2xl p-3.5 space-y-1">
+                        <span className="text-[10px] font-mono uppercase text-emerald-400 font-bold block">
+                          🤝 Melhor Dupla (Sinergia)
+                        </span>
+                        <div className="text-sm font-black text-white truncate">{analytics.bestPartner.nick}</div>
+                        <div className="text-[11px] font-mono text-slate-300">
+                          {analytics.bestPartner.winRate}% Win Rate • {analytics.bestPartner.wins}V-{analytics.bestPartner.losses}D ({analytics.bestPartner.togetherMatches} juntos)
+                        </div>
+                      </div>
+                    )}
+                    {analytics?.biggestRival && (
+                      <div className="bg-slate-950/85 border border-rose-500/30 rounded-2xl p-3.5 space-y-1">
+                        <span className="text-[10px] font-mono uppercase text-rose-400 font-bold block">
+                          ⚔️ Maior Rival (X1)
+                        </span>
+                        <div className="text-sm font-black text-white truncate">{analytics.biggestRival.nick}</div>
+                        <div className="text-[11px] font-mono text-slate-300">
+                          Placar {analytics.biggestRival.wins}V - {analytics.biggestRival.losses}D ({analytics.biggestRival.vsMatches} confrontos)
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Win Rate by Map */}
+                {mapStats.length > 0 && (
+                  <div className="bg-slate-950/85 border border-slate-800 rounded-2xl p-4 space-y-2.5">
+                    <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-slate-400 block">
+                      🗺️ Desempenho por Mapa
+                    </span>
+                    <div className="space-y-2">
+                      {mapStats.slice(0, 6).map((ms) => (
+                        <div key={ms.map} className="space-y-1">
+                          <div className="flex items-center justify-between text-xs font-mono">
+                            <span className="font-bold text-white">{ms.map}</span>
+                            <span className="text-slate-300">
+                              <strong className={ms.winRate >= 50 ? 'text-emerald-400' : 'text-rose-400'}>{ms.winRate}%</strong>
+                              {' '}• {ms.wins}V-{ms.losses}D ({ms.played})
+                            </span>
+                          </div>
+                          <div className="w-full h-1.5 bg-slate-900 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full ${ms.winRate >= 50 ? 'bg-emerald-400' : 'bg-rose-400'}`}
+                              style={{ width: `${ms.winRate}%` }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Unlocked Badges */}
+                {badges.length > 0 && (
+                  <div className="bg-slate-950/85 border border-slate-800 rounded-2xl p-4 space-y-2">
+                    <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-slate-400 block">
+                      🏅 Conquistas & Badges ({badges.length})
+                    </span>
+                    <div className="flex flex-wrap gap-2">
+                      {badges.map((b) => (
+                        <div
+                          key={b.id}
+                          title={b.desc}
+                          className="px-2.5 py-1 rounded-xl bg-slate-900 border border-amber-500/30 text-xs flex items-center gap-1.5"
+                        >
+                          <span>{b.icon}</span>
+                          <span className="font-bold text-amber-300">{b.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {loadingAnalytics && (
+                  <div className="text-center text-[11px] font-mono text-slate-500">
+                    Atualizando histórico detalhado...
+                  </div>
+                )}
+
+                {/* Win Rate Progress Bar */}
+                <div className="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-4 shadow-sm">
+                  <div className="flex items-center justify-between text-xs mb-2 font-mono">
+                    <span className="text-slate-400 font-bold uppercase tracking-wider text-[11px]">Taxa de Eficiência Geral</span>
+                    <span className="font-bold text-emerald-400">{effWinRate}% de Vitórias</span>
+                  </div>
+                  <div className="w-full bg-slate-900 rounded-full h-2.5 overflow-hidden border border-slate-800">
+                    <div
+                      className="bg-gradient-to-r from-emerald-500 to-teal-400 h-full rounded-full transition-all duration-500"
+                      style={{ width: `${effWinRate}%` }}
+                    />
+                  </div>
+                </div>
               </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-3 text-center shadow-sm">
-                  <span className="text-[10px] uppercase font-mono text-slate-500 block mb-1">Partidas</span>
-                  <span className="text-xl font-black font-mono text-white">{stats.matchesPlayed}</span>
-                </div>
-
-                <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-3 text-center shadow-sm">
-                  <span className="text-[10px] uppercase font-mono text-slate-500 block mb-1">Vitórias</span>
-                  <span className="text-xl font-black font-mono text-emerald-400">{stats.wins}V - {stats.losses}D</span>
-                </div>
-
-                <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-3 text-center shadow-sm">
-                  <span className="text-[10px] uppercase font-mono text-slate-500 block mb-1">Win Rate</span>
-                  <span className="text-xl font-black font-mono text-amber-400">{stats.winRate}%</span>
-                </div>
-
-                <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-3 text-center shadow-sm">
-                  <span className="text-[10px] uppercase font-mono text-slate-500 block mb-1">Sequência</span>
-                  <span className="text-xl font-black font-mono text-orange-400 flex items-center justify-center gap-1">
-                    🔥 {stats.streak}
-                  </span>
-                </div>
-              </div>
-
-              {/* Win Rate Progress Bar */}
-              <div className="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-4 shadow-sm">
-                <div className="flex items-center justify-between text-xs mb-2 font-mono">
-                  <span className="text-slate-400 font-bold uppercase tracking-wider text-[11px]">Taxa de Eficiência</span>
-                  <span className="font-bold text-emerald-400">{stats.winRate}% de Vitórias</span>
-                </div>
-                <div className="w-full bg-slate-900 rounded-full h-2.5 overflow-hidden border border-slate-800">
-                  <div
-                    className="bg-gradient-to-r from-emerald-500 to-teal-400 h-full rounded-full transition-all duration-500"
-                    style={{ width: `${stats.winRate}%` }}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* FIXED BOTTOM ACTION BUTTON */}
           <div className="pt-2">

@@ -6,6 +6,7 @@ function resolveInitialView() {
   const viewParam = params.get('view');
   if (viewParam === 'servers') return 'servers';
   if (viewParam === 'updates') return 'updates';
+  if (viewParam === 'clips') return 'clips';
   if (params.get('steam_auth') === '1' || !params.get('room')) {
     return 'landing';
   }
@@ -13,7 +14,7 @@ function resolveInitialView() {
 }
 
 /**
- * Manages top-level view routing (?view=servers, ?view=updates, ?room=..., landing) and browser history sync.
+ * Manages top-level view routing (?view=servers, ?view=updates, ?view=clips, ?room=..., landing) and browser history sync.
  */
 export function useNavigationView({ setRoomId, soundEnabled = true } = {}) {
   const [view, setView] = useState(resolveInitialView);
@@ -26,6 +27,8 @@ export function useNavigationView({ setRoomId, soundEnabled = true } = {}) {
         setView('servers');
       } else if (viewParam === 'updates') {
         setView('updates');
+      } else if (viewParam === 'clips') {
+        setView('clips');
       } else if (p.get('room')) {
         if (setRoomId) setRoomId(p.get('room'));
         setView('mix');
@@ -64,6 +67,17 @@ export function useNavigationView({ setRoomId, soundEnabled = true } = {}) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [soundEnabled]);
 
+  const handleOpenClipsPage = useCallback(() => {
+    if (soundEnabled) playClickSound();
+    setView('clips');
+    const u = new URL(window.location);
+    u.searchParams.set('view', 'clips');
+    u.searchParams.delete('tab');
+    window.history.pushState({}, '', u);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [soundEnabled]);
+
   const handleGoHome = useCallback(() => {
     if (soundEnabled) playClickSound();
     setView('landing');
@@ -82,6 +96,7 @@ export function useNavigationView({ setRoomId, soundEnabled = true } = {}) {
     setView,
     handleOpenServersPage,
     handleOpenUpdatesPage,
+    handleOpenClipsPage,
     handleGoHome,
   };
 }

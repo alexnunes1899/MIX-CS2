@@ -29,7 +29,49 @@ export function buildSlashCommands({ officialMaps = [], treinoMaps = [] } = {}) 
       .addSubcommand((sub) => sub.setName('veto').setDescription('Inicia o Pick & Ban (Veto) oficial de mapas'))
       .addSubcommand((sub) => sub.setName('roleta').setDescription('Sorteia um mapa na roleta rápida do CS2'))
       .addSubcommand((sub) => sub.setName('status').setDescription('Exibe o status do mix atual'))
+      .addSubcommand((sub) => sub.setName('puxar').setDescription('Puxa todos os jogadores da call de voz do Lobby para a fila do Mix'))
       .addSubcommand((sub) => sub.setName('cancelar').setDescription('Cancela o mix atual do canal')),
+
+    new SlashCommandBuilder()
+      .setName('vincular')
+      .setDescription('Vincula sua conta do Discord com sua conta Steam do CS2 Mix Hub')
+      .addStringOption((opt) =>
+        opt
+          .setName('codigo')
+          .setDescription('Código de 6 dígitos gerado no site (deixe vazio para gerar um código aqui)')
+          .setRequired(false)
+      ),
+
+    new SlashCommandBuilder()
+      .setName('dupla')
+      .setDescription('Forma ou limpa sua dupla fixa para cair no mesmo time no sorteio')
+      .addUserOption((opt) => opt.setName('amigo').setDescription('Amigo para jogar no mesmo time que você').setRequired(false))
+      .addStringOption((opt) =>
+        opt
+          .setName('acao')
+          .setDescription('Opcional: sair da sua dupla atual ou limpar todas as duplas do lobby')
+          .setRequired(false)
+          .addChoices(
+            { name: 'Formar dupla com @amigo', value: 'formar' },
+            { name: 'Sair da minha dupla', value: 'sair' },
+            { name: 'Limpar todas as duplas (criador)', value: 'limpar' }
+          )
+      ),
+
+    new SlashCommandBuilder()
+      .setName('agendar')
+      .setDescription('Agenda um Mix CS2 com confirmação de presença e lembrete 15 min antes')
+      .addStringOption((opt) =>
+        opt.setName('horario').setDescription('Horário do mix (ex: 21:00, 21h30, amanha 20:00, 25/11 21:00)').setRequired(true)
+      )
+      .addStringOption((opt) => opt.setName('nome').setDescription('Título do Mix (ex: Mix dos Crias)').setRequired(false))
+      .addStringOption((opt) =>
+        opt
+          .setName('formato')
+          .setDescription('Formato da Partida')
+          .setRequired(false)
+          .addChoices({ name: 'Melhor de 1 (MD1)', value: 'MD1' }, { name: 'Melhor de 3 (MD3)', value: 'MD3' })
+      ),
 
     new SlashCommandBuilder()
       .setName('painel')

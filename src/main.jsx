@@ -4,13 +4,21 @@ import App from './App.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import './index.css';
 
-// Unregister any stale service workers from old browsers or caching proxies
+// Register lightweight PWA service worker (never caches HTML/API so deploys remain instant)
 if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
-  navigator.serviceWorker.getRegistrations().then((registrations) => {
-    for (const registration of registrations) {
-      registration.unregister();
-    }
-  }).catch(() => {});
+  window.addEventListener('load', () => {
+    navigator.serviceWorker
+      .getRegistrations()
+      .then((registrations) => {
+        for (const reg of registrations) {
+          if (reg.active?.scriptURL && !reg.active.scriptURL.endsWith('/sw.js')) {
+            reg.unregister().catch(() => {});
+          }
+        }
+        return navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' });
+      })
+      .catch(() => {});
+  });
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(

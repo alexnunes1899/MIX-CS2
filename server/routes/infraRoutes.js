@@ -22,7 +22,7 @@ import {
 import { sanitizeRconCommand, normalizeRoomId, resolveSafeBaseUrl } from '../utils/security.js';
 import { setBounded } from '../utils/boundedMap.js';
 import { DEFAULT_PUBLIC_URL } from '../../shared/appConfig.js';
-import { buildTreinoCfg, buildTreinoLeiaMeMd } from '../../shared/treinoCfg.js';
+import { buildTreinoCfg, buildTreinoLeiaMeMd, resolveTreinoMapKey, TREINO_MAPS } from '../../shared/treinoCfg.js';
 
 const ALLOWED_AVATAR_PROXY_HOSTS = new Set([
   'avatars.steamstatic.com',
@@ -170,12 +170,28 @@ export function registerInfraRoutes(app, { io, rooms, lifecycle, discordBotManag
     );
   }
 
+  const lastRoomListGsiBroadcast = new Map();
+
   function applyRoomGsiUpdate(roomId, liveState, req, { isAuthorizedGsi = false } = {}) {
     const room = lifecycle.getRoomAndTouch(roomId);
     if (!room) return;
+    const prev = room.liveMatch;
     room.liveMatch = liveState;
     io.to(roomId).emit('gsi_update', liveState);
     processGsiDiscordNotifications(room, liveState, req);
+
+    const scoreOrRoundChanged =
+      !prev ||
+      prev.scoreCT !== liveState.scoreCT ||
+      prev.scoreTR !== liveState.scoreTR ||
+      prev.roundNumber !== liveState.roundNumber ||
+      prev.mapName !== liveState.mapName ||
+      prev.phase !== liveState.phase;
+    const lastBcast = lastRoomListGsiBroadcast.get(roomId) || 0;
+    if (scoreOrRoundChanged || Date.now() - lastBcast > 3000) {
+      setBounded(lastRoomListGsiBroadcast, roomId, Date.now(), 200);
+      lifecycle.broadcastRoomsList();
+    }
 
     if (liveState.isGameOver && (liveState.phase === 'gameover' || (liveState.scoreCT || 0) >= 13 || (liveState.scoreTR || 0) >= 13)) {
       const winnerRes = determineMatchWinner({ teamA: room.teamA, teamB: room.teamB, ...room }, liveState);
@@ -444,6 +460,80 @@ export function registerInfraRoutes(app, { io, rooms, lifecycle, discordBotManag
       res.json({ success: true, ...result });
     } catch (err) {
       res.status(400).json({ error: err.message });
+    }
+  });
+
+  const RCON_PRACTICE_PRESETS = {
+    enable_practice: [
+      'sv_cheats 1',
+      'bot_kick',
+      'mp_limitteams 0',
+      'mp_autoteambalance 0',
+      'mp_roundtime 60',
+      'mp_roundtime_defuse 60',
+      'mp_roundtime_hostage 60',
+      'mp_maxmoney 60000',
+      'mp_startmoney 60000',
+      'mp_freezetime 0',
+      'mp_buytime 9999',
+      'mp_buy_anywhere 1',
+      'sv_infinite_ammo 1',
+      'ammo_grenade_limit_total 5',
+      'sv_grenade_trajectory_prac_pipreview 1',
+      'sv_showimpacts 1',
+      'mp_warmup_end',
+      'mp_restartgame 1',
+    ],
+    clear_grenades: [
+      'ent_fire smokegrenade_projectile kill',
+      'ent_fire molotov_projectile kill',
+      'ent_fire inferno kill',
+      'ent_fire flashbang_projectile kill',
+      'ent_fire hegrenade_projectile kill',
+    ],
+    restart_round: ['mp_restartgame 1'],
+    kick_bots: ['bot_kick'],
+    restore_competitive: [
+      'sv_cheats 0',
+      'sv_infinite_ammo 0',
+      'sv_showimpacts 0',
+      'sv_grenade_trajectory_prac_pipreview 0',
+      'mp_restartgame 1',
+    ],
+  };
+
+  app.post('/api/rcon/practice', sensitiveLimiter, requireSessionOrAdmin, async (req, res) => {
+    const { host, port, password, preset, map } = req.body || {};
+    let commands = null;
+    if (preset === 'change_map') {
+      const mapId = resolveTreinoMapKey(map || 'mirage') || 'mirage';
+      const mapEntry = TREINO_MAPS.find((m) => m.id === mapId);
+      const targetMap = mapEntry?.aliases?.[0] || `de_${mapId}`;
+      commands = [`changelevel ${targetMap}`];
+    } else if (preset && RCON_PRACTICE_PRESETS[preset]) {
+      commands = RCON_PRACTICE_PRESETS[preset];
+    }
+
+    if (!commands || commands.length === 0) {
+      return res.status(400).json({ error: 'Preset de treino RCON inválido.' });
+    }
+
+    try {
+      const outputs = [];
+      for (const cmd of commands) {
+        const cleanCmd = sanitizeRconCommand(cmd);
+        if (!cleanCmd) continue;
+        const r = await executeRconCommand({ host, port, password, command: cleanCmd });
+        if (r?.output) outputs.push(r.output);
+      }
+      return res.json({
+        success: true,
+        preset,
+        executed: commands.length,
+        output: outputs.join('\n').trim() || `Preset "${preset}" aplicado com sucesso.`,
+      });
+    } catch (err) {
+      return res.status(400).json({ error: err.message });
     }
   });
 

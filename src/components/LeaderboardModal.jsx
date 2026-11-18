@@ -53,11 +53,15 @@ export default function LeaderboardModal({
   onClose,
   socket,
   soundEnabled,
+  onInspectPlayer,
 }) {
   const [activeTab, setActiveTab] = useState('ranking'); // 'ranking' | 'matches'
   
-  // Players Ranking state
+  // Players Ranking & Monthly Seasons state
   const [players, setPlayers] = useState([]);
+  const [seasons, setSeasons] = useState([]);
+  const [currentSeasonKey, setCurrentSeasonKey] = useState('');
+  const [selectedSeason, setSelectedSeason] = useState('all'); // 'all' | 'YYYY-MM'
   const [loadingPlayers, setLoadingPlayers] = useState(true);
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState('wins'); // 'wins' | 'winRate' | 'matches' | 'level'
@@ -72,13 +76,27 @@ export default function LeaderboardModal({
   const [expandedMatchId, setExpandedMatchId] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
 
-  const fetchLeaderboard = async () => {
-    setLoadingPlayers(true);
+  const fetchSeasons = async () => {
     try {
-      const res = await fetch('/api/leaderboard');
+      const res = await fetch('/api/leaderboard/seasons');
       if (res.ok) {
         const data = await res.json();
-        setPlayers(data);
+        setSeasons(Array.isArray(data?.seasons) ? data.seasons : []);
+        if (data?.currentSeason) setCurrentSeasonKey(data.currentSeason);
+      }
+    } catch {}
+  };
+
+  const fetchLeaderboard = async (seasonParam = selectedSeason) => {
+    setLoadingPlayers(true);
+    try {
+      const url = seasonParam && seasonParam !== 'all'
+        ? `/api/leaderboard?season=${encodeURIComponent(seasonParam)}`
+        : '/api/leaderboard';
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        setPlayers(Array.isArray(data) ? data : []);
       }
     } catch (e) {
       console.warn('Falha ao carregar leaderboard via API:', e);
@@ -109,18 +127,22 @@ export default function LeaderboardModal({
 
   useEffect(() => {
     if (isOpen) {
-      fetchLeaderboard();
+      fetchSeasons();
+      fetchLeaderboard(selectedSeason);
       fetchMatches();
     }
-  }, [isOpen]);
+  }, [isOpen, selectedSeason]);
 
   useEffect(() => {
     if (!socket) return;
 
     const handleLeaderboardUpdate = (data) => {
-      if (Array.isArray(data)) {
+      if (selectedSeason === 'all' && Array.isArray(data)) {
         setPlayers(data);
+      } else {
+        fetchLeaderboard(selectedSeason);
       }
+      fetchSeasons();
     };
 
     const handleMatchUpdate = (data) => {
@@ -239,7 +261,8 @@ export default function LeaderboardModal({
             <button
               onClick={() => {
                 if (soundEnabled) playClickSound();
-                fetchLeaderboard();
+                fetchSeasons();
+                fetchLeaderboard(selectedSeason);
                 fetchMatches();
               }}
               disabled={loadingPlayers || loadingMatches}
@@ -310,6 +333,87 @@ export default function LeaderboardModal({
         {/* TAB 1: RANKING DE JOGADORES */}
         {activeTab === 'ranking' && (
           <div className="p-5 sm:p-7 overflow-y-auto space-y-6 flex-1 custom-scrollbar">
+            {/* Season Selector Pills */}
+            <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-950/80 border border-slate-800 rounded-2xl p-3">
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-300">
+                <Calendar size={14} className="text-amber-400" />
+                <span>Temporada:</span>
+              </div>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (soundEnabled) playClickSound();
+                    setSelectedSeason('all');
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-all ${
+                    selectedSeason === 'all'
+                      ? 'bg-amber-500 text-slate-950 font-black'
+                      : 'bg-slate-900 text-slate-300 hover:text-white border border-slate-800'
+                  }`}
+                >
+                  🏆 Geral (All-Time)
+                </button>
+                {seasons.map((s) => (
+                  <button
+                    key={s.seasonKey}
+                    type="button"
+                    onClick={() => {
+                      if (soundEnabled) playClickSound();
+                      setSelectedSeason(s.seasonKey);
+                    }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer transition-all flex items-center gap-1.5 ${
+                      selectedSeason === s.seasonKey
+                        ? 'bg-sky-500 text-slate-950 font-black'
+                        : 'bg-slate-900 text-slate-300 hover:text-white border border-slate-800'
+                    }`}
+                  >
+                    <span>📅 {s.label}</span>
+                    {s.isCurrent && (
+                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-black/25 uppercase">Atual</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {selectedSeason !== 'all' && (() => {
+              const activeSeasonMeta = seasons.find((s) => s.seasonKey === selectedSeason);
+              const pod = activeSeasonMeta?.podium;
+              if (!pod || (!pod.bestStreak && !pod.mostMvps && !pod.bagreKing)) return null;
+              return (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {pod.bestStreak && (
+                    <div className="p-3 rounded-2xl bg-slate-950/90 border border-amber-500/30 flex items-center justify-between">
+                      <div>
+                        <span className="text-[10px] font-mono uppercase text-amber-400 block">🔥 Maior Sequência</span>
+                        <span className="text-xs font-bold text-white">{pod.bestStreak.nick}</span>
+                      </div>
+                      <span className="text-sm font-black font-mono text-amber-300">{pod.bestStreak.value}x</span>
+                    </div>
+                  )}
+                  {pod.mostMvps && (
+                    <div className="p-3 rounded-2xl bg-slate-950/90 border border-emerald-500/30 flex items-center justify-between">
+                      <div>
+                        <span className="text-[10px] font-mono uppercase text-emerald-400 block">👑 Rei de MVPs</span>
+                        <span className="text-xs font-bold text-white">{pod.mostMvps.nick}</span>
+                      </div>
+                      <span className="text-sm font-black font-mono text-emerald-300">{pod.mostMvps.value}★</span>
+                    </div>
+                  )}
+                  {pod.bagreKing && (
+                    <div className="p-3 rounded-2xl bg-slate-950/90 border border-purple-500/30 flex items-center justify-between">
+                      <div>
+                        <span className="text-[10px] font-mono uppercase text-purple-400 block">🐟 Rei do Bagre</span>
+                        <span className="text-xs font-bold text-white">{pod.bagreKing.nick}</span>
+                      </div>
+                      <span className="text-sm font-black font-mono text-purple-300">{pod.bagreKing.value}x</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
             {loadingPlayers ? (
               <div className="py-16 text-center space-y-3 bg-slate-950/60 border border-slate-800 rounded-2xl">
                 <RefreshCw size={28} className="mx-auto text-amber-400 animate-spin" />
@@ -458,13 +562,18 @@ export default function LeaderboardModal({
                           sortedPlayers.map((p, index) => {
                             const isPodium = index < 3;
                             return (
-                              <tr key={p.id || index} className="hover:bg-slate-900/50 transition-colors">
+                              <tr
+                                key={p.id || index}
+                                onClick={() => onInspectPlayer && onInspectPlayer(p)}
+                                className={`hover:bg-slate-900/50 transition-colors ${onInspectPlayer ? 'cursor-pointer' : ''}`}
+                                title={onInspectPlayer ? 'Clique para abrir o perfil público avançado' : undefined}
+                              >
                                 <td className="py-3 px-3.5 text-center">
                                   {index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : index + 1}
                                 </td>
                                 <td className="py-3 px-3.5 flex items-center gap-2.5">
                                   <PlayerAvatar avatar={p.avatar} nick={p.nick} size="sm" />
-                                  <span className={`font-bold font-sans ${isPodium ? 'text-white' : 'text-slate-300'}`}>
+                                  <span className={`font-bold font-sans ${isPodium ? 'text-white' : 'text-slate-300'} ${onInspectPlayer ? 'hover:text-amber-300' : ''}`}>
                                     {p.nick}
                                   </span>
                                 </td>

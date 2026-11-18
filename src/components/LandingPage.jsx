@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Sparkles, Swords, Dices, Shield, Flame, Users, Layers, Zap, Trophy, ArrowRight, ExternalLink, Hash, CheckCircle2, Monitor, RefreshCw, Globe, Laptop, Server, Home, Bell, Bot, ShieldCheck, Check, Volume2, VolumeX, MessageCircle, Plug, Newspaper } from 'lucide-react';
+import { Play, Sparkles, Swords, Dices, Shield, Flame, Users, Layers, Zap, Trophy, ArrowRight, ExternalLink, Hash, CheckCircle2, Monitor, RefreshCw, Globe, Laptop, Server, Home, Bell, Bot, ShieldCheck, Check, Volume2, VolumeX, MessageCircle, Plug, Newspaper, Eye, Download } from 'lucide-react';
 import { ACTIVE_DUTY_MAPS, EXTRA_CS2_MAPS } from '../data/maps';
 import PlayerAvatar from './PlayerAvatar';
 import SteamIcon from './SteamIcon';
@@ -20,11 +20,17 @@ export default function LandingPage({
   onOpenLocalHost,
   onOpenServersPage,
   onOpenUpdatesPage,
+  onOpenClipsPage,
   onOpenTournament,
   onOpenGrenades,
   onOpenAimReflex,
   onRequireSteamLogin,
   onOpenProfile,
+  onSpectateRoom,
+  canInstallPwa = false,
+  onInstallPwa,
+  notificationsEnabled = false,
+  onToggleNotifications,
   myProfile,
   soundEnabled,
   onToggleSound,
@@ -160,6 +166,7 @@ export default function LandingPage({
               onOpenQuickVeto={onOpenQuickVeto}
               onOpenServersPage={onOpenServersPage || onOpenLocalHost}
               onOpenUpdatesPage={onOpenUpdatesPage}
+              onOpenClipsPage={onOpenClipsPage}
               onOpenRoomsHub={onOpenRoomsHub}
               onOpenTournament={onOpenTournament}
               onOpenGrenades={onOpenGrenades}
@@ -185,6 +192,42 @@ export default function LandingPage({
               <span className="hidden xl:inline">Discord</span>
               <span className="w-1.5 h-1.5 rounded-full bg-[#5865F2] animate-pulse shrink-0" />
             </button>
+
+            {/* Browser Alerts Toggle */}
+            {onToggleNotifications && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (soundEnabled) playClickSound();
+                  onToggleNotifications();
+                }}
+                title={notificationsEnabled ? 'Alertas no navegador ativos (salas 8-9/10 e updates CS2)' : 'Ativar alertas no navegador para filas quase fechando e updates CS2'}
+                className={`p-1.5 xl:px-2.5 xl:py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer hidden sm:flex items-center gap-1 border active:scale-95 shrink-0 ${
+                  notificationsEnabled
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                    : 'bg-slate-900/90 hover:bg-slate-800 text-slate-400 hover:text-white border-slate-700/60'
+                }`}
+              >
+                <Bell size={14} className={notificationsEnabled ? 'text-amber-300' : 'text-slate-400'} />
+                <span className="hidden 2xl:inline">{notificationsEnabled ? 'Alertas ON' : 'Alertas'}</span>
+              </button>
+            )}
+
+            {/* PWA Install Button */}
+            {canInstallPwa && onInstallPwa && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (soundEnabled) playClickSound();
+                  onInstallPwa();
+                }}
+                title="Instalar CS2 Mix Hub como aplicativo (PWA)"
+                className="p-1.5 xl:px-2.5 xl:py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer hidden sm:flex items-center gap-1 bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/40 active:scale-95 shrink-0"
+              >
+                <Download size={13} />
+                <span className="hidden 2xl:inline">Instalar App</span>
+              </button>
+            )}
 
             {/* Hairline Divider */}
             <div className="h-4 w-px bg-slate-800 hidden sm:block mx-0.5 shrink-0" />
@@ -263,6 +306,7 @@ export default function LandingPage({
             onOpenQuickVeto={onOpenQuickVeto}
             onOpenServersPage={onOpenServersPage || onOpenLocalHost}
             onOpenUpdatesPage={onOpenUpdatesPage}
+            onOpenClipsPage={onOpenClipsPage}
             onOpenRoomsHub={onOpenRoomsHub}
             onOpenTournament={onOpenTournament}
             onOpenGrenades={onOpenGrenades}
@@ -446,17 +490,24 @@ export default function LandingPage({
                   {displayedRooms.slice(0, 3).map((r) => {
                     const c = Math.min(10, Math.max(0, Number(r.playerCount) || 0));
                     const pct = Math.round((c / 10) * 100);
+                    const live = r.liveMatch?.connected ? r.liveMatch : null;
                     return (
                       <div
                         key={r.id}
                         className="p-3 rounded-2xl bg-slate-950/75 border border-slate-800/90 hover:border-amber-500/40 transition-all flex items-center justify-between gap-3"
                       >
                         <div className="min-w-0 flex-1 space-y-1.5">
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="text-xs font-bold text-white truncate">{r.name || r.id}</span>
                             <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-slate-900 text-slate-400 border border-slate-800 shrink-0">
                               #{r.id}
                             </span>
+                            {live && (
+                              <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 shrink-0 flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+                                {live.mapName} • CT {live.scoreCT}×{live.scoreTR} TR • R{live.roundNumber}
+                              </span>
+                            )}
                           </div>
                           <div className="flex items-center gap-2">
                             <div className="flex-1 h-1.5 bg-slate-900 rounded-full overflow-hidden">
@@ -468,13 +519,29 @@ export default function LandingPage({
                             <span className="text-[10px] font-mono font-bold text-slate-300 shrink-0">{c}/10</span>
                           </div>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => handleCreateMix(r.id)}
-                          className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[11px] uppercase tracking-wider cursor-pointer shrink-0 transition-colors"
-                        >
-                          Entrar
-                        </button>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {live && onSpectateRoom && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (soundEnabled) playClickSound();
+                                onSpectateRoom(r);
+                              }}
+                              title="Abrir Espectador Ao Vivo (GSI)"
+                              className="px-2.5 py-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-300 font-bold text-[11px] flex items-center gap-1 cursor-pointer transition-colors"
+                            >
+                              <Eye size={12} />
+                              <span className="hidden sm:inline">Assistir</span>
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleCreateMix(r.id)}
+                            className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[11px] uppercase tracking-wider cursor-pointer shrink-0 transition-colors"
+                          >
+                            Entrar
+                          </button>
+                        </div>
                       </div>
                     );
                   })}
@@ -642,8 +709,17 @@ export default function LandingPage({
                     </div>
                   </div>
 
-                  {/* Slot Progress Bar */}
-                  <div className="space-y-1">
+                  {/* Slot Progress Bar + Live GSI Banner */}
+                  <div className="space-y-1.5">
+                    {r.liveMatch?.connected && (
+                      <div className="px-2.5 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/35 flex items-center justify-between gap-2 text-[11px] font-mono text-emerald-300">
+                        <span className="flex items-center gap-1.5 font-bold truncate">
+                          <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse shrink-0" />
+                          <span>{r.liveMatch.mapName} • CT {r.liveMatch.scoreCT} × {r.liveMatch.scoreTR} TR</span>
+                        </span>
+                        <span className="text-amber-300 shrink-0">R{r.liveMatch.roundNumber}</span>
+                      </div>
+                    )}
                     <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800/80">
                       <div
                         className={`h-full rounded-full transition-all duration-500 ${
@@ -656,19 +732,34 @@ export default function LandingPage({
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-800/80 gap-2">
                     <div className="flex items-center gap-1.5 text-xs font-mono text-slate-300">
                       <Users size={13} className="text-sky-400" />
                       <strong>{count}</strong>/10 jogadores
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => handleCreateMix(r.id)}
-                      className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[11px] uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-colors"
-                    >
-                      <span>Entrar</span>
-                      <ArrowRight size={12} />
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      {r.liveMatch?.connected && onSpectateRoom && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (soundEnabled) playClickSound();
+                            onSpectateRoom(r);
+                          }}
+                          className="px-2.5 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-300 font-bold text-[11px] flex items-center gap-1 cursor-pointer transition-colors"
+                        >
+                          <Eye size={12} />
+                          <span>Assistir</span>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleCreateMix(r.id)}
+                        className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[11px] uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-colors"
+                      >
+                        <span>Entrar</span>
+                        <ArrowRight size={12} />
+                      </button>
+                    </div>
                   </div>
                 </div>
               );

@@ -3,8 +3,51 @@ import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'disc
 import { resolveSeededDataFile } from './dataDir.js';
 import { writeJsonAtomic } from './utils/atomicJson.js';
 import { logger } from './utils/logger.js';
+import { sanitizeInput } from './utils/security.js';
+import { sqliteStore } from './storage/sqliteStore.js';
 
 const CLIPS_FILE = resolveSeededDataFile('communityClips.json');
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+export function getClipEmbedInfo(rawUrl = '') {
+  try {
+    const parsed = new URL(String(rawUrl || '').trim());
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+      return { type: 'link', embedUrl: null };
+    }
+    const host = parsed.hostname.toLowerCase().replace(/^www\./, '');
+
+    if (host === 'youtu.be') {
+      const id = parsed.pathname.split('/').filter(Boolean)[0];
+      if (id && /^[a-zA-Z0-9_-]{6,20}$/.test(id)) {
+        return { type: 'youtube', embedUrl: `https://www.youtube-nocookie.com/embed/${id}` };
+      }
+    }
+    if (host === 'youtube.com' || host === 'm.youtube.com') {
+      const vParam = parsed.searchParams.get('v');
+      const pathParts = parsed.pathname.split('/').filter(Boolean);
+      const id =
+        vParam ||
+        (pathParts[0] === 'shorts' || pathParts[0] === 'embed' ? pathParts[1] : null);
+      if (id && /^[a-zA-Z0-9_-]{6,20}$/.test(id)) {
+        return { type: 'youtube', embedUrl: `https://www.youtube-nocookie.com/embed/${id}` };
+      }
+    }
+    if (host === 'streamable.com') {
+      const id = parsed.pathname.split('/').filter(Boolean)[0];
+      if (id && /^[a-zA-Z0-9]{4,16}$/.test(id)) {
+        return { type: 'streamable', embedUrl: `https://streamable.com/e/${id}` };
+      }
+    }
+    if (host.includes('medal.tv')) {
+      return { type: 'medal', embedUrl: null };
+    }
+    if (host.includes('twitch.tv')) {
+      return { type: 'twitch', embedUrl: null };
+    }
+  } catch {}
+  return { type: 'link', embedUrl: null };
+}
 
 export class CommunityClipsService {
   constructor() {
@@ -31,6 +74,9 @@ export class CommunityClipsService {
       const obj = {};
       for (const [id, clip] of this.clips.entries()) {
         obj[id] = clip;
+        if (sqliteStore) {
+          sqliteStore.setJson('community_clips', id, clip);
+        }
       }
       writeJsonAtomic(CLIPS_FILE, obj);
     } catch (e) {
@@ -48,22 +94,35 @@ export class CommunityClipsService {
     return { platform: 'Link de Vídeo', icon: '🎬' };
   }
 
-  submitClip(user, clipUrl, title = '') {
-    if (!clipUrl || !/^https?:\/\//i.test(clipUrl.trim())) {
-      throw new Error('Link de clipe inválido! Envie um link válido (Medal.tv, Twitch, YouTube, etc).');
+  submitClip(user, clipUrl, title = '', map = '') {
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(String(clipUrl || '').trim());
+    } catch {
+      throw new Error('Link de clipe inválido! Envie um link HTTP/HTTPS válido (Medal.tv, Twitch, YouTube, etc).');
+    }
+    if (parsedUrl.protocol !== 'https:' && parsedUrl.protocol !== 'http:') {
+      throw new Error('Protocolo de clipe inválido! Use apenas links https:// ou http://.');
     }
 
-    const cleanUrl = clipUrl.trim();
+    const cleanUrl = parsedUrl.toString();
     const clipId = `clip_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     const platformInfo = this.detectPlatform(cleanUrl);
+    const embedInfo = getClipEmbedInfo(cleanUrl);
+    const cleanTitle = sanitizeInput(String(title || ''), 90) || 'Jogada Histórica no Mix CS2';
+    const cleanAuthorName = sanitizeInput(String(user?.username || user?.nick || 'Jogador'), 40) || 'Jogador';
+    const cleanMap = sanitizeInput(String(map || ''), 24);
 
     const clip = {
       id: clipId,
       url: cleanUrl,
-      title: title && title.trim() ? title.trim() : 'Jogada Histórica no Mix CS2',
-      authorId: user.id,
-      authorName: user.username,
-      authorAvatar: typeof user.displayAvatarURL === 'function' ? user.displayAvatarURL() : null,
+      embedType: embedInfo.type,
+      embedUrl: embedInfo.embedUrl,
+      title: cleanTitle,
+      map: cleanMap || '',
+      authorId: String(user?.id || 'web-guest'),
+      authorName: cleanAuthorName,
+      authorAvatar: typeof user?.displayAvatarURL === 'function' ? user.displayAvatarURL() : (user?.avatar || null),
       platform: platformInfo.platform,
       platformIcon: platformInfo.icon,
       createdAt: new Date().toISOString(),
@@ -76,6 +135,52 @@ export class CommunityClipsService {
     this.clips.set(clipId, clip);
     this.saveClips();
     return clip;
+  }
+
+  listClips({ sort = 'recent', platform = 'all' } = {}) {
+    const all = Array.from(this.clips.values()).map((c) => {
+      const fireCount = Array.isArray(c.votes?.fire) ? c.votes.fire.length : 0;
+      const bagreCount = Array.isArray(c.votes?.bagre) ? c.votes.bagre.length : 0;
+      const embedInfo = c.embedUrl ? { type: c.embedType, embedUrl: c.embedUrl } : getClipEmbedInfo(c.url);
+      return {
+        ...c,
+        embedType: embedInfo.type,
+        embedUrl: embedInfo.embedUrl,
+        fireCount,
+        bagreCount,
+        score: fireCount - bagreCount,
+      };
+    });
+
+    const now = Date.now();
+    const weeklyPool = all.filter((c) => {
+      const ts = Date.parse(c.createdAt || '');
+      return !Number.isNaN(ts) && now - ts <= WEEK_MS;
+    });
+    const highlightSource = weeklyPool.length > 0 ? weeklyPool : all;
+    const clipOfTheWeek =
+      [...highlightSource].sort(
+        (a, b) => b.fireCount - a.fireCount || b.score - a.score || Date.parse(b.createdAt || 0) - Date.parse(a.createdAt || 0)
+      )[0] || null;
+
+    let filtered = all;
+    if (platform && platform !== 'all') {
+      const pLower = String(platform).toLowerCase();
+      filtered = filtered.filter((c) => String(c.platform || '').toLowerCase().includes(pLower));
+    }
+
+    if (sort === 'top') {
+      filtered.sort(
+        (a, b) => b.fireCount - a.fireCount || b.score - a.score || Date.parse(b.createdAt || 0) - Date.parse(a.createdAt || 0)
+      );
+    } else {
+      filtered.sort((a, b) => Date.parse(b.createdAt || 0) - Date.parse(a.createdAt || 0));
+    }
+
+    return {
+      clips: filtered,
+      clipOfTheWeek,
+    };
   }
 
   voteClip(clipId, userId, voteType = 'fire') {

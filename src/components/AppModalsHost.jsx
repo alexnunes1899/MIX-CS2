@@ -19,6 +19,7 @@ const GrenadePlaybookModal = lazy(() => import('./GrenadePlaybookModal'));
 const AimReflexModal = lazy(() => import('./AimReflexModal'));
 const TournamentBracketModal = lazy(() => import('./TournamentBracketModal'));
 const LocalHostModal = lazy(() => import('./LocalHostModal'));
+const LiveSpectatorModal = lazy(() => import('./LiveSpectatorModal'));
 
 /**
  * Shared Suspense tree hosting all secondary modals and drawers.
@@ -50,6 +51,10 @@ export default function AppModalsHost({
   rouletteActive,
   profileModalOpen,
   setProfileModalOpen,
+  publicProfile = null,
+  setPublicProfile,
+  spectateRoom = null,
+  setSpectateRoom,
   gsiModalOpen,
   setGsiModalOpen,
   passwordModalOpen,
@@ -210,6 +215,38 @@ export default function AppModalsHost({
         />
       )}
 
+      {publicProfile && (
+        <PlayerProfileModal
+          isOpen={Boolean(publicProfile)}
+          onClose={() => {
+            if (setPublicProfile) setPublicProfile(null);
+            try {
+              const u = new URL(window.location);
+              if (u.searchParams.has('perfil')) {
+                u.searchParams.delete('perfil');
+                window.history.replaceState({}, '', u);
+              }
+            } catch {}
+          }}
+          profile={publicProfile}
+          rankingSystem={room.rankingSystem || 'gc'}
+          soundEnabled={soundEnabled}
+          readOnly={true}
+          initialTab="stats"
+        />
+      )}
+
+      {spectateRoom && (
+        <LiveSpectatorModal
+          isOpen={Boolean(spectateRoom)}
+          onClose={() => setSpectateRoom && setSpectateRoom(null)}
+          roomId={spectateRoom.id}
+          roomName={spectateRoom.name || spectateRoom.id}
+          socket={socket}
+          soundEnabled={soundEnabled}
+        />
+      )}
+
       {gsiModalOpen && (
         <GsiSetupModal
           isOpen={gsiModalOpen}
@@ -244,6 +281,22 @@ export default function AppModalsHost({
           onClose={() => setLeaderboardOpen(false)}
           socket={socket}
           soundEnabled={soundEnabled}
+          onInspectPlayer={
+            setPublicProfile
+              ? (p) => {
+                  setLeaderboardOpen(false);
+                  setPublicProfile({
+                    id: p.id,
+                    steamId: p.steamId || '',
+                    discordId: p.discordId || '',
+                    nick: p.nick || 'Jogador',
+                    avatar: p.avatar || '',
+                    level: p.level || 12,
+                    faceitLevel: p.faceitLevel || 5,
+                  });
+                }
+              : undefined
+          }
         />
       )}
 
@@ -293,6 +346,9 @@ export default function AppModalsHost({
           initialMap={room.finalMap?.id}
           initialTab={grenadeInitialTab}
           soundEnabled={soundEnabled}
+          serverIp={room.serverIp || ''}
+          rconPassword={room.rconPassword || ''}
+          isSteamLogged={isSteamLogged}
         />
       )}
 

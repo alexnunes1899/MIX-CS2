@@ -132,8 +132,26 @@ export function getSafeRoomState(room) {
 
 export function buildPublicRoomsList(rooms) {
   const list = [];
+  const now = Date.now();
   rooms.forEach((r) => {
     if (r.isPrivate) return;
+    const rawLive = r.liveMatch;
+    const isFreshLive = Boolean(rawLive && rawLive.lastUpdate && now - Number(rawLive.lastUpdate) < 60000);
+    const liveSummary = isFreshLive
+      ? {
+          connected: true,
+          mapName: rawLive.mapName || 'CS2',
+          scoreCT: Number(rawLive.scoreCT || 0),
+          scoreTR: Number(rawLive.scoreTR || 0),
+          roundNumber: Number(rawLive.roundNumber || 0),
+          phase: rawLive.phase || 'live',
+          bomb: rawLive.bomb || 'none',
+          aliveCountCT: Number(rawLive.aliveCountCT || 0),
+          aliveCountTR: Number(rawLive.aliveCountTR || 0),
+          lastUpdate: Number(rawLive.lastUpdate),
+        }
+      : null;
+
     list.push({
       id: r.id,
       name: r.name,
@@ -147,6 +165,7 @@ export function buildPublicRoomsList(rooms) {
       creatorNick: r.creatorNick || null,
       createdAt: r.createdAt,
       lastActivity: r.lastActivity || r.createdAt,
+      liveMatch: liveSummary,
     });
   });
   list.sort((a, b) => (b.lastActivity || b.createdAt || 0) - (a.lastActivity || a.createdAt || 0));
