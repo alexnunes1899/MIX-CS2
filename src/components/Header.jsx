@@ -30,6 +30,7 @@ export default function Header({
   onOpenDiscordModal,
   onOpenLocalHost,
   onOpenServersPage,
+  onOpenUpdatesPage,
   onOpenTournament,
   onOpenGrenades,
   onOpenAimReflex,
@@ -265,6 +266,7 @@ export default function Header({
           onOpenQuickMapRoll={onOpenQuickMapRoll}
           onOpenQuickVeto={onOpenQuickVeto}
           onOpenServersPage={onOpenServersPage || onOpenLocalHost}
+          onOpenUpdatesPage={onOpenUpdatesPage}
           onOpenRoomsHub={onOpenRoomsHub}
           onOpenTournament={onOpenTournament}
           onOpenGrenades={onOpenGrenades}

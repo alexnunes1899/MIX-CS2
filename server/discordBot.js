@@ -479,6 +479,8 @@ export class DiscordBotManager {
     this._isCheckingCs2Updates = false;
     this._initialDealsTimeout = null;
     this._initialUpdatesTimeout = null;
+    this.onCs2UpdateReleased = null;
+    cs2NewsRadar.setGeminiApiKeyProvider(() => this.config?.geminiApiKey || process.env.GEMINI_API_KEY || '');
 
     this.startLiveTrackersSyncLoop();
   }
@@ -9030,14 +9032,18 @@ export class DiscordBotManager {
       }
 
       cs2NewsRadar.saveState(patch.gid);
-      const { embeds, components } = cs2NewsRadar.buildEmbed(patch);
+      if (typeof this.onCs2UpdateReleased === 'function') {
+        try { this.onCs2UpdateReleased(patch); } catch (_) {}
+      }
+      const updatesPageUrl = this.getPublicWebUrl('/?view=updates');
+      const { embeds, components } = cs2NewsRadar.buildEmbed(patch, updatesPageUrl);
 
       for (const [, guild] of this.client.guilds.cache) {
         const channel = await this.resolveGeneralChatChannel(guild);
         if (channel) {
           await channel
             .send({
-              content: `\ud83d\udea8 \ud83c\udfae **NOVA ATUALIZA\u00c7\u00c3O OFICIAL DO COUNTER-STRIKE 2 LAN\u00c7ADA PELA VALVE!**\nConfira abaixo todos os detalhes traduzidos para Portugu\u00eas (PT-BR):`,
+              content: `\ud83d\udea8 \ud83c\udfae **NOVA ATUALIZA\u00c7\u00c3O OFICIAL DO COUNTER-STRIKE 2 LAN\u00c7ADA PELA VALVE!**\nConfira abaixo as notas traduzidas para Portugu\u00eas (PT-BR):`,
               embeds,
               components,
             })
@@ -9107,7 +9113,7 @@ export class DiscordBotManager {
       if (patchData.isFirstBoot && patchData.gid) {
         cs2NewsRadar.saveState(patchData.gid);
       }
-      const { embeds, components } = cs2NewsRadar.buildEmbed(patchData);
+      const { embeds, components } = cs2NewsRadar.buildEmbed(patchData, this.getPublicWebUrl('/?view=updates'));
       return message.reply({ embeds, components });
     } catch (err) {
       return message.reply(`\u274c Erro ao consultar notas de atualiza\u00e7\u00e3o: ${err.message}`);
@@ -9122,7 +9128,7 @@ export class DiscordBotManager {
       if (patchData.isFirstBoot && patchData.gid) {
         cs2NewsRadar.saveState(patchData.gid);
       }
-      const { embeds, components } = cs2NewsRadar.buildEmbed(patchData);
+      const { embeds, components } = cs2NewsRadar.buildEmbed(patchData, this.getPublicWebUrl('/?view=updates'));
       return interaction.editReply({ embeds, components });
     } catch (err) {
       return interaction.editReply({ content: `\u274c Erro ao consultar notas de atualiza\u00e7\u00e3o: ${err.message}` });

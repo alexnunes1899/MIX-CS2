@@ -832,3 +832,96 @@ test('Pack Treino Completo LXN: shared/treinoCfg, AI Q&A e anexos do Discord (!t
   assert.equal(btnCalls[1].payload.files[0].name, 'treino.cfg');
   assert.equal(btnCalls[1].payload.files[1].name, 'LEIA-ME-Treino.txt');
 });
+
+test('CS2NewsRadar: detecta ingles disfarcado, conserva termos do CS2 e inclui botao para pagina no site', async () => {
+  const { CS2NewsRadarService } = await import('../server/cs2NewsRadar.js');
+  const radar = new CS2NewsRadarService();
+
+  // Nunca considerar ingles misto com poucas palavras PT como traduzido
+  const mixedPartial =
+    'Corrigido a bug where players could drop weapons outside Bombsite A on Mirage.\n' +
+    'Adicionado various fixes for Smoke and Flashbang when clipping.';
+  assert.equal(radar.isAlreadyPortuguese(mixedPartial), false);
+
+  const realPtBr =
+    'Corrigido um problema onde os jogadores podiam ver através da Smoke na Mirage.\n' +
+    'Adicionado suporte para gravação de demos no modo Premier.';
+  assert.equal(radar.isAlreadyPortuguese(realPtBr), true);
+
+  // Proteção e restauração de termos do jogo
+  const rawEn = 'Fixed Sub-tick timing on Mirage when throwing Smoke or Flashbang with AK-47.';
+  const masked = radar.protectCs2Terms(rawEn);
+  assert.equal(masked.includes('Mirage'), false);
+  assert.equal(masked.includes('Sub-tick'), false);
+  assert.equal(masked.includes('AK-47'), false);
+  assert.equal(radar.restoreCs2Terms(masked), rawEn);
+
+  // Tradução via Gemini (mock fetch) preservando termos técnicos + geração de embed com link do site
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    if (String(url).includes('generativelanguage.googleapis.com')) {
+      return {
+        ok: true,
+        json: async () => ({
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    text: JSON.stringify({
+                      title: 'Notas de Atualização do CS2 (18/11/2026)',
+                      lines: [
+                        'Corrigido um problema de colisão com Smoke no Bombsite A da Mirage.',
+                        'Melhorado o registro de tiros com AK-47 no sistema Sub-tick em partidas Premier.',
+                      ],
+                    }),
+                  },
+                ],
+              },
+            },
+          ],
+        }),
+      };
+    }
+    throw new Error(`Unexpected fetch in test: ${url}`);
+  };
+
+  try {
+    radar.setGeminiApiKeyProvider(() => 'fake-test-gemini-key');
+    const translated = await radar.formatAndTranslatePatch(
+      'gid-test-gemini-999',
+      'Release Notes for 11/18/2026',
+      '[ GAMEPLAY ]\n[*]Fixed Smoke collision at Mirage Bombsite A.[/*]\n[*]Improved AK-47 hit registration on Sub-tick Premier servers.[/*]'
+    );
+
+    assert.equal(translated.translationSource, 'gemini');
+    assert.match(translated.translatedTitle, /Notas de Atualização do CS2/);
+    assert.match(translated.formattedNotes, /JOGABILIDADE/);
+    assert.match(translated.formattedNotes, /Mirage/);
+    assert.match(translated.formattedNotes, /Smoke/);
+    assert.match(translated.formattedNotes, /AK-47/);
+    assert.match(translated.formattedNotes, /Sub-tick/);
+    assert.match(translated.formattedNotes, /Premier/);
+    assert.equal(translated.sections.length, 1);
+    assert.equal(translated.sections[0].items.length, 2);
+
+    const { embeds, components } = radar.buildEmbed(
+      {
+        gid: 'gid-test-gemini-999',
+        title: translated.translatedTitle,
+        url: 'https://store.steampowered.com/news/app/730',
+        date: 1763480000,
+        formattedDate: '18/11/2026, 11:00',
+        formattedNotes: translated.formattedNotes,
+        translationSource: 'gemini',
+      },
+      'https://cs2mixhub.example/?view=updates'
+    );
+    assert.equal(embeds.length, 1);
+    const embedButtons = components[0].components.map((c) => c.toJSON());
+    assert.ok(embedButtons.some((b) => String(b.url || '').includes('?view=updates')));
+    assert.ok(embedButtons.some((b) => b.label === 'Ler no Site (PT-BR)'));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

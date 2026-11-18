@@ -14,6 +14,7 @@ import {
   ChevronDown,
   Sparkles,
   MoreHorizontal,
+  Newspaper,
 } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
 
@@ -25,6 +26,7 @@ export default function MainNavigationMenu({
   onOpenQuickMapRoll,
   onOpenQuickVeto,
   onOpenServersPage,
+  onOpenUpdatesPage,
   onOpenRoomsHub,
   onOpenTournament,
   onOpenGrenades,
@@ -121,6 +123,20 @@ export default function MainNavigationMenu({
       iconColor: 'text-emerald-400',
       visibility: 'xl', // visible on xl (>= 1280px), in Mais ▾ on < 1280px
     },
+    ...(onOpenUpdatesPage
+      ? [
+          {
+            id: 'updates',
+            label: 'Atualizações',
+            shortLabel: 'Updates',
+            icon: Newspaper,
+            action: onOpenUpdatesPage,
+            title: 'Notas de Atualização Oficiais do CS2 (PT-BR)',
+            iconColor: 'text-orange-400',
+            visibility: 'xl',
+          },
+        ]
+      : []),
     {
       id: 'hall',
       label: 'Ranking',
@@ -319,6 +335,18 @@ export default function MainNavigationMenu({
                   <Server size={14} className="text-emerald-400" />
                   <span>Servidores & LAN 0ms</span>
                 </button>
+
+                {/* Atualizações CS2 (hidden on < 1280px) */}
+                {onOpenUpdatesPage && (
+                  <button
+                    type="button"
+                    onClick={() => handleClick(onOpenUpdatesPage)}
+                    className="w-full p-2 rounded-xl text-left text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-800/80 flex items-center gap-2 cursor-pointer"
+                  >
+                    <Newspaper size={14} className="text-orange-400" />
+                    <span>Atualizações CS2 (PT-BR)</span>
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -429,6 +457,17 @@ export default function MainNavigationMenu({
                   <Server size={14} className="text-emerald-400" />
                   <span>Servidores & LAN 0ms</span>
                 </button>
+
+                {onOpenUpdatesPage && (
+                  <button
+                    type="button"
+                    onClick={() => handleClick(onOpenUpdatesPage)}
+                    className="w-full p-2 rounded-xl text-left text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-800 flex items-center gap-2"
+                  >
+                    <Newspaper size={14} className="text-orange-400" />
+                    <span>Atualizações CS2 (PT-BR)</span>
+                  </button>
+                )}
 
                 <button
                   type="button"

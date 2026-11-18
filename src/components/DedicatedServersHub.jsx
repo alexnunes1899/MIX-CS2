@@ -61,6 +61,7 @@ export default function DedicatedServersHub({
   onOpenTournament,
   onOpenGrenades,
   onOpenAimReflex,
+  onOpenUpdatesPage,
   onOpenGsiSetup,
   onOpenProfile,
   activeRoomsCount = 0,
@@ -459,6 +460,7 @@ pause
               onOpenQuickMapRoll={onOpenQuickMapRoll}
               onOpenQuickVeto={onOpenQuickVeto}
               onOpenServersPage={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+              onOpenUpdatesPage={onOpenUpdatesPage}
               onOpenRoomsHub={onOpenRoomsHub}
               onOpenTournament={onOpenTournament}
               onOpenGrenades={onOpenGrenades}
@@ -511,6 +513,7 @@ pause
             onOpenQuickMapRoll={onOpenQuickMapRoll}
             onOpenQuickVeto={onOpenQuickVeto}
             onOpenServersPage={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+            onOpenUpdatesPage={onOpenUpdatesPage}
             onOpenRoomsHub={onOpenRoomsHub}
             onOpenTournament={onOpenTournament}
             onOpenGrenades={onOpenGrenades}

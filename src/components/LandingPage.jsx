@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Sparkles, Swords, Dices, Shield, Flame, Users, Layers, Zap, Trophy, ArrowRight, ExternalLink, Hash, CheckCircle2, Monitor, RefreshCw, Globe, Laptop, Server, Home, Bell, Bot, ShieldCheck, Check, Volume2, VolumeX, MessageCircle, Plug } from 'lucide-react';
+import { Play, Sparkles, Swords, Dices, Shield, Flame, Users, Layers, Zap, Trophy, ArrowRight, ExternalLink, Hash, CheckCircle2, Monitor, RefreshCw, Globe, Laptop, Server, Home, Bell, Bot, ShieldCheck, Check, Volume2, VolumeX, MessageCircle, Plug, Newspaper } from 'lucide-react';
 import { ACTIVE_DUTY_MAPS, EXTRA_CS2_MAPS } from '../data/maps';
 import PlayerAvatar from './PlayerAvatar';
 import SteamIcon from './SteamIcon';
@@ -18,6 +18,7 @@ export default function LandingPage({
   onOpenDiscordModal,
   onOpenLocalHost,
   onOpenServersPage,
+  onOpenUpdatesPage,
   onOpenTournament,
   onOpenGrenades,
   onOpenAimReflex,
@@ -34,6 +35,7 @@ export default function LandingPage({
   const [roomCodeInput, setRoomCodeInput] = useState('');
   const [activeRooms, setActiveRooms] = useState([]);
   const [mapTab, setMapTab] = useState('active');
+  const [latestPatch, setLatestPatch] = useState(null);
 
   const activeDutyMaps = officialRotation?.activeDutyMaps && officialRotation.activeDutyMaps.length > 0
     ? officialRotation.activeDutyMaps
@@ -45,6 +47,15 @@ export default function LandingPage({
 
   const currentDisplayMaps = mapTab === 'active' ? activeDutyMaps : extraMaps;
   const displayedRooms = Array.isArray(publicRooms) ? publicRooms : activeRooms;
+
+  useEffect(() => {
+    fetch('/api/cs2/updates?limit=1')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.latest) setLatestPatch(data.latest);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (Array.isArray(publicRooms)) return;
@@ -147,6 +158,7 @@ export default function LandingPage({
               onOpenQuickMapRoll={onOpenQuickMapRoll}
               onOpenQuickVeto={onOpenQuickVeto}
               onOpenServersPage={onOpenServersPage || onOpenLocalHost}
+              onOpenUpdatesPage={onOpenUpdatesPage}
               onOpenRoomsHub={onOpenRoomsHub}
               onOpenTournament={onOpenTournament}
               onOpenGrenades={onOpenGrenades}
@@ -249,6 +261,7 @@ export default function LandingPage({
             onOpenQuickMapRoll={onOpenQuickMapRoll}
             onOpenQuickVeto={onOpenQuickVeto}
             onOpenServersPage={onOpenServersPage || onOpenLocalHost}
+            onOpenUpdatesPage={onOpenUpdatesPage}
             onOpenRoomsHub={onOpenRoomsHub}
             onOpenTournament={onOpenTournament}
             onOpenGrenades={onOpenGrenades}
@@ -390,6 +403,23 @@ export default function LandingPage({
                     <span className="text-xs font-black uppercase text-emerald-300 group-hover:text-white transition-colors">Integração Servidor Privado</span>
                   </div>
                   <p className="text-[11px] text-slate-300 leading-snug">Passo a passo p/ Bot Integrador</p>
+                </button>
+              )}
+              {onOpenUpdatesPage && (
+                <button
+                  onClick={() => {
+                    if (soundEnabled) playClickSound();
+                    onOpenUpdatesPage();
+                  }}
+                  className="p-3 rounded-2xl bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/35 hover:border-orange-400 transition-all shadow-lg group cursor-pointer active:scale-95 text-left"
+                >
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <div className="w-6 h-6 rounded-lg bg-orange-500/20 text-orange-300 flex items-center justify-center border border-orange-500/40">
+                      <Newspaper size={13} />
+                    </div>
+                    <span className="text-xs font-black uppercase text-orange-300 group-hover:text-white transition-colors">Atualizações CS2</span>
+                  </div>
+                  <p className="text-[11px] text-slate-300 leading-snug">Notas oficiais Valve em PT-BR</p>
                 </button>
               )}
             </div>
@@ -844,6 +874,47 @@ export default function LandingPage({
         </div>
       </section>
 
+      {/* LATEST CS2 UPDATE SHOWCASE (PT-BR) */}
+      {onOpenUpdatesPage && (
+        <section className="max-w-6xl mx-auto px-4 pt-4">
+          <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-orange-950/50 via-slate-900 to-amber-950/40 border border-orange-500/30 p-6 sm:p-8 shadow-2xl">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+              <div className="space-y-2.5 max-w-3xl">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-orange-500/15 border border-orange-500/40 text-orange-300 text-xs font-bold uppercase tracking-wider">
+                  <Newspaper size={14} />
+                  <span>Radar Valve PT-BR • Última Atualização CS2</span>
+                </div>
+                <h2 className="text-xl sm:text-2xl font-black font-heading text-white leading-snug">
+                  {latestPatch?.title || 'Notas Oficiais de Atualização do Counter-Strike 2 em Português'}
+                </h2>
+                <p className="text-xs sm:text-sm text-slate-300 line-clamp-2 leading-relaxed">
+                  {latestPatch?.formattedNotes
+                    ? String(latestPatch.formattedNotes).replace(/__\*\*(.+?)\*\*__/g, '$1 — ')
+                    : 'Acompanhe todas as notas de atualização lançadas pela Valve traduzidas automaticamente para PT-BR, preservando nomes de mapas, armas e termos competitivos.'}
+                </p>
+                {latestPatch?.formattedDate && (
+                  <p className="text-[11px] font-mono text-amber-300/90">
+                    📅 Publicado em {latestPatch.formattedDate} (Horário de Brasília)
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (soundEnabled) playClickSound();
+                  onOpenUpdatesPage();
+                }}
+                className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-xl shadow-orange-500/25 transition-all cursor-pointer active:scale-95 shrink-0"
+              >
+                <Newspaper size={16} />
+                <span>Ver Atualizações em PT-BR</span>
+                <ArrowRight size={14} />
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* DISCORD BOT BANNER & INVITE SHOWCASE */}
       <section className="max-w-6xl mx-auto px-4 py-8">
         <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-indigo-950/80 via-slate-900 to-purple-950/80 border border-indigo-500/30 p-6 sm:p-10 shadow-2xl">
@@ -961,6 +1032,15 @@ export default function LandingPage({
                 className="hover:text-amber-400 transition-colors cursor-pointer"
               >
                 Servidores & LAN
+              </button>
+            )}
+            {onOpenUpdatesPage && (
+              <button
+                type="button"
+                onClick={onOpenUpdatesPage}
+                className="hover:text-amber-400 transition-colors cursor-pointer"
+              >
+                Atualizações CS2
               </button>
             )}
           </div>

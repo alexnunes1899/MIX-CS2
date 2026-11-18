@@ -490,6 +490,24 @@ export function createMixServer({ startBackgroundTasks = true, buildVersion = Da
     }
   });
 
+  app.get('/api/cs2/updates', async (req, res) => {
+    try {
+      const limit = Math.min(12, Math.max(1, parseInt(req.query.limit, 10) || 8));
+      const forceRefresh = req.query.force === '1' || req.query.force === 'true';
+      const data = await cs2NewsRadar.fetchRecentUpdates({ limit, forceRefresh });
+      res.json({
+        success: true,
+        count: data.updates.length,
+        latest: data.updates[0] || null,
+        updates: data.updates,
+        lastCheckedAt: data.lastCheckedAt,
+        fromCache: Boolean(data.fromCache),
+      });
+    } catch (err) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
   app.get('/api/esports/pro-matches', async (req, res) => {
     try {
       const matches = await proMatchesAgenda.getUpcomingMatches();
@@ -576,6 +594,22 @@ export function createMixServer({ startBackgroundTasks = true, buildVersion = Da
       .then((state) => console.log(`[SERVER] 🇧🇷 Feed de vídeos PT-BR pronto (${state.totalLineups} lineups validados).`))
       .catch((err) => console.warn('[SERVER] Erro na validação de vídeos PT-BR:', err.message));
     intervals.push(setInterval(() => syncGrenadesPtBr().catch(() => {}), 6 * 60 * 60 * 1000));
+
+    let lastWebKnownUpdateGid = cs2NewsRadar.updatesHistory[0]?.gid || null;
+    const syncCs2UpdatesFeed = async (forceRefresh = false) => {
+      try {
+        const data = await cs2NewsRadar.fetchRecentUpdates({ limit: 8, forceRefresh });
+        const newest = data?.updates?.[0];
+        if (newest?.gid && lastWebKnownUpdateGid && String(newest.gid) !== String(lastWebKnownUpdateGid)) {
+          io.emit('cs2_update_released', newest);
+        }
+        if (newest?.gid) {
+          lastWebKnownUpdateGid = String(newest.gid);
+        }
+      } catch {}
+    };
+    syncCs2UpdatesFeed(false);
+    intervals.push(setInterval(() => syncCs2UpdatesFeed(true), 10 * 60 * 1000));
 
     let lastCloudGsiSync = 0;
     const gsiSyncInterval = setInterval(async () => {
@@ -682,6 +716,9 @@ if (isMainModule) {
     discordBotManager.onMatchRecorded = () => {
       io.emit('match_history_updated', getMatchHistoryState());
       io.emit('leaderboard_updated', getLeaderboard());
+    };
+    discordBotManager.onCs2UpdateReleased = (patch) => {
+      if (patch) io.emit('cs2_update_released', patch);
     };
     onMatchHistoryUpdated(() => {
       io.emit('match_history_updated', getMatchHistoryState());

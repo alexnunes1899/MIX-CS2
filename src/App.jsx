@@ -21,6 +21,7 @@ const FinalSummary = lazy(() => import('./components/FinalSummary'));
 const CaptainsDraftView = lazy(() => import('./components/CaptainsDraftView'));
 const LandingPage = lazy(() => import('./components/LandingPage'));
 const DedicatedServersHub = lazy(() => import('./components/DedicatedServersHub'));
+const CS2UpdatesPage = lazy(() => import('./components/CS2UpdatesPage'));
 
 const RoomsHubModal = lazy(() => import('./components/RoomsHubModal'));
 const MatchHistoryModal = lazy(() => import('./components/MatchHistoryModal'));
@@ -91,6 +92,9 @@ export default function App() {
     if (params.get('view') === 'servers') {
       return 'servers';
     }
+    if (params.get('view') === 'updates') {
+      return 'updates';
+    }
     // Ao fazer login (steam_auth=1) ou quando não há parâmetro room, SEMPRE abre a tela inicial
     if (params.get('steam_auth') === '1' || !params.get('room')) {
       return 'landing';
@@ -130,6 +134,8 @@ export default function App() {
       const p = new URLSearchParams(window.location.search);
       if (p.get('view') === 'servers') {
         setView('servers');
+      } else if (p.get('view') === 'updates') {
+        setView('updates');
       } else if (p.get('room')) {
         setRoomId(p.get('room'));
         setView('mix');
@@ -1192,6 +1198,17 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const handleOpenUpdatesPage = () => {
+    if (soundEnabled) playClickSound();
+    setView('updates');
+    const u = new URL(window.location);
+    u.searchParams.set('view', 'updates');
+    u.searchParams.delete('tab');
+    window.history.pushState({}, '', u);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const handleGoHome = () => {
     if (soundEnabled) playClickSound();
     setView('landing');
@@ -1774,12 +1791,34 @@ export default function App() {
             onOpenTournament={() => setTournamentModalOpen(true)}
             onOpenGrenades={() => setGrenadeModalOpen(true)}
             onOpenAimReflex={() => setAimReflexModalOpen(true)}
+            onOpenUpdatesPage={handleOpenUpdatesPage}
             onOpenGsiSetup={() => setGsiModalOpen(true)}
             onOpenProfile={() => setProfileModalOpen(true)}
             activeRoomsCount={activeRoomsCount}
             soundEnabled={soundEnabled}
             onToggleSound={handleToggleSound}
             myProfile={myProfile}
+          />
+        </Suspense>
+      ) : view === 'updates' ? (
+        <Suspense fallback={<PageFallback />}>
+          <CS2UpdatesPage
+            roomId={roomId}
+            socket={socket}
+            onGoHome={handleGoHome}
+            onGoToRoom={handleGoToRoom}
+            onOpenQuickVeto={() => setQuickVetoOpen(true)}
+            onOpenQuickMapRoll={() => setQuickMapRollOpen(true)}
+            onOpenRoomsHub={() => setRoomsHubOpen(true)}
+            onOpenLeaderboard={() => setLeaderboardOpen(true)}
+            onOpenDiscordModal={() => setDiscordModalOpen(true)}
+            onOpenTournament={() => setTournamentModalOpen(true)}
+            onOpenGrenades={() => setGrenadeModalOpen(true)}
+            onOpenAimReflex={() => setAimReflexModalOpen(true)}
+            onOpenServersPage={handleOpenServersPage}
+            activeRoomsCount={activeRoomsCount}
+            soundEnabled={soundEnabled}
+            onToggleSound={handleToggleSound}
           />
         </Suspense>
       ) : view === 'landing' ? (
@@ -1797,6 +1836,7 @@ export default function App() {
             onOpenGrenades={() => setGrenadeModalOpen(true)}
             onOpenAimReflex={() => setAimReflexModalOpen(true)}
             onOpenServersPage={handleOpenServersPage}
+            onOpenUpdatesPage={handleOpenUpdatesPage}
             onRequireSteamLogin={handleRequireSteamLogin}
             onOpenProfile={() => setProfileModalOpen(true)}
             myProfile={myProfile}
@@ -1835,6 +1875,7 @@ export default function App() {
             onOpenGrenades={() => setGrenadeModalOpen(true)}
             onOpenAimReflex={() => setAimReflexModalOpen(true)}
             onOpenServersPage={handleOpenServersPage}
+            onOpenUpdatesPage={handleOpenUpdatesPage}
             onGoHome={handleGoHome}
             roomPassword={roomPassword}
             hasPassword={Boolean(room.hasPassword)}
