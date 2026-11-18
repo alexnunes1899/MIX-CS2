@@ -4,7 +4,7 @@ import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'disc
 import { resolveSeededDataFile } from './dataDir.js';
 
 const STATE_FILE = resolveSeededDataFile('cs2NewsState.json');
-const CACHE_SCHEMA_VERSION = 2;
+const CACHE_SCHEMA_VERSION = 3;
 
 const STEAM_PAGEABLE_EVENTS_URL =
   'https://store.steampowered.com/events/ajaxgetpartnereventspageable/?clan_accountid=0&appid=730&offset=0&count=12&l=brazilian&origin=https://store.steampowered.com';
@@ -759,7 +759,7 @@ export class CS2NewsRadarService {
       .replace(/<h[123][^>]*>(.*?)<\/h[123]>/gi, '\n[[HEADER:$1]]\n')
       .replace(/(?:^|\n)###?\s+([^\n]+)/g, '\n[[HEADER:$1]]\n')
       .replace(new RegExp(`\\\\?\\[\\s*(${HEADER_PATTERN_LIST})\\s*\\\\?\\]`, 'gi'), '\n[[HEADER:$1]]\n')
-      .replace(/(?:^|\n)\[\s*([A-Za-zÀ-ÿ0-9\s_&-]{2,40})\s*\](?=\s*(?:\[list\]|\n|$))/gi, '\n[[HEADER:$1]]\n')
+      .replace(/(?:^|\n)\[\s*(?!\/?(?:list|p|b|i|u|url|img|video|quote|code|strike|h[123]|\*)\b)([A-Za-zÀ-ÿ0-9\s_&-]{2,40})\s*\](?=\s*(?:\[list\]|\n|$))/gi, '\n[[HEADER:$1]]\n')
       // Convert Valve BBCode lists cleanly (handles nested [list] safely!)
       .replace(/\[\*\]\[p\](.*?)\[\/p\]/gi, '\n• $1\n')
       .replace(/\[\*\]/gi, '\n• ')

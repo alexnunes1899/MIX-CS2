@@ -938,7 +938,7 @@ test('CS2NewsRadar: detecta ingles disfarcado, conserva termos do CS2 e inclui b
                   language: 22,
                   posttime: 1794958807,
                   headline: 'Detalhes da atualização de 17/11/2026',
-                  body: '[video poster="https://cdn.example/poster.png" autoplay="true"][/video]\n[b][Mapas][/b][list]\n[*] Adição do mapa Cobblestone aos servidores oficiais.[/list]\n[b][Diversos][/b][list]\n[*] Correção de problema de navegação dos bots.[/list]',
+                  body: '[video poster="https://cdn.example/poster.png" autoplay="true"][/video]\n[b][Mundial Singapura 2026][/b][list]\n[*] Central disponível.[/list]\n[b][Mapas][/b][list]\n[*] Adição do mapa Cobblestone aos servidores oficiais.[/list]\n[b][Diversos][/b][list]\n[*] Correção de problema de navegação dos bots.[/list]',
                 },
               },
             ],
@@ -956,7 +956,8 @@ test('CS2NewsRadar: detecta ingles disfarcado, conserva termos do CS2 e inclui b
     assert.match(ev.url, /store\.steampowered\.com\/news\/app\/730\/view\/687522235410286587/);
     assert.match(ev.formattedNotes, /Cobblestone/);
     assert.equal(ev.formattedNotes.includes('[video'), false);
-    assert.equal(ev.sections.length, 2);
+    assert.equal(ev.formattedNotes.includes('[LIST]'), false);
+    assert.equal(ev.sections.length, 3);
   } finally {
     globalThis.fetch = originalFetch;
   }
