@@ -4,26 +4,34 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
+import { io as ioClient } from 'socket.io-client';
+
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cs2mix-features-test-'));
 process.env.DATA_DIR = tempDir;
 process.env.ADMIN_API_KEY = 'features-test-admin-key';
 process.env.SESSION_SECRET = 'features_test_secret_0123456789';
 
 const { createSqliteStore } = await import('../server/storage/sqliteStore.js');
-const { createAccountLinkService } = await import('../server/accountLinks.js');
+const { createAccountLinkService, normalizeLinkCode } = await import('../server/accountLinks.js');
 const { balanceTeams } = await import('../shared/balance.js');
 const { renderMatchSummaryPng } = await import('../server/utils/matchCardPng.js');
 const { createMixScheduler, parseScheduleTimePtBr } = await import('../server/mixScheduler.js');
 const { buildSlashCommands } = await import('../server/discord/slashCommands.js');
 const { DiscordBotManager } = await import('../server/discordBot.js');
+const { discordBotManager } = await import('../server/discordBot.js');
+const { serializeMix, deserializeMix } = await import('../server/mixPersistence.js');
+const { communityClips } = await import('../server/communityClips.js');
+const { renderProfileHtml } = await import('../server/profileHtml.js');
 const {
   recordMatch,
+  getLeaderboard,
   getSeasonLeaderboard,
   getCurrentSeasonKey,
   formatSeasonLabel,
   computeSeasonPodium,
   getSeasonsSummary,
   linkLeaderboardIdentity,
+  syncDiscordProfilesToLeaderboard,
 } = await import('../server/leaderboard.js');
 const { computePlayerAnalytics } = await import('../server/playerAnalytics.js');
 const { createMixServer } = await import('../server/index.js');
@@ -419,4 +427,189 @@ test('PWA manifest and service worker assets are valid and avoid API/HTML lock-i
   assert.ok(swContent.includes('/api/'));
   assert.ok(swContent.includes('/socket.io/'));
   assert.ok(swContent.includes("req.mode === 'navigate'"));
+});
+
+test('Regression fixes: SteamID64 vs Discord ID separation, nick collision, streak preservation & code normalization', () => {
+  // 1. normalizeLinkCode preserves valid 6-char codes starting with CS while stripping prefixed CS-
+  assert.equal(normalizeLinkCode('CS9K2M'), 'CS9K2M');
+  assert.equal(normalizeLinkCode('cs-a7k9m2'), 'A7K9M2');
+  assert.equal(normalizeLinkCode('cs a7k9m2'), 'A7K9M2');
+
+  // 2. 17-digit SteamID64 passed as `id` must never populate `discordId` or trigger fake unified badge
+  const unlinkedSteam = '76561198777777777';
+  const lb = recordMatch({
+    winners: [{ id: unlinkedSteam, nick: 'PureSteamUser', level: 17 }],
+    losers: [{ id: '76561198777777778', nick: 'PureLoserUser', level: 15 }],
+    map: 'Mirage',
+    scoreWinners: 13,
+    scoreLosers: 6,
+  });
+  const steamEntry = lb.find((e) => e.steamId === unlinkedSteam);
+  assert.ok(steamEntry);
+  assert.equal(steamEntry.discordId, '');
+
+  const analytics = computePlayerAnalytics(unlinkedSteam, { matches: [], leaderboard: lb });
+  assert.equal(analytics.identity.discordId, '');
+  assert.equal(analytics.badges.some((b) => b.id === 'unified_account'), false);
+
+  // 3. Two distinct Discord IDs sharing the exact same nick stay separate entries
+  recordMatch({
+    winners: [{ id: 'discord-888000000000000001', discordId: '888000000000000001', nick: 'SameNick', level: 16 }],
+    losers: [{ id: 'discord-888000000000000002', discordId: '888000000000000002', nick: 'SameNick', level: 14 }],
+    map: 'Dust II',
+    scoreWinners: 13,
+    scoreLosers: 10,
+  });
+  const afterSameNick = getLeaderboard();
+  const sameNickRows = afterSameNick.filter((e) => e.nick === 'SameNick');
+  assert.equal(sameNickRows.length, 2);
+
+  // 4. syncDiscordProfilesToLeaderboard must not clobber higher streak from Web/unified history
+  const dcId = '999000000000000001';
+  const stId = '76561198999000001';
+  for (let i = 0; i < 3; i++) {
+    recordMatch({
+      winners: [{ id: stId, steamId: stId, discordId: dcId, nick: 'UnifiedStreaker', level: 18 }],
+      losers: [{ id: '76561198999000002', nick: 'Sparring', level: 15 }],
+      map: 'Inferno',
+      scoreWinners: 13,
+      scoreLosers: 7,
+    });
+  }
+  const synced = syncDiscordProfilesToLeaderboard({
+    [dcId]: { username: 'UnifiedStreaker', wins: 1, losses: 1, streak: 0, steamId: stId, level: 18 },
+  });
+  const unifiedEntry = synced.find((e) => e.steamId === stId);
+  assert.ok(unifiedEntry);
+  assert.equal(unifiedEntry.streak, 3);
+});
+
+test('Regression fixes: schedule timezone BRT/calendar validation, mix notifiedMissing Set, clips validation, profile XSS', () => {
+  // 1. parseScheduleTimePtBr uses BRT (UTC-03:00) consistently & rejects invalid dates like 31/02
+  const refUtc = new Date('2026-11-18T21:00:00.000Z'); // 18:00 BRT on 18/11/2026
+  const sched = parseScheduleTimePtBr('21:30', refUtc);
+  assert.equal(sched.valid, true);
+  assert.equal(new Date(sched.timestamp).toISOString(), '2026-11-19T00:30:00.000Z');
+  assert.equal(sched.formattedDate, '18/11/2026');
+
+  const badDate = parseScheduleTimePtBr('31/02 21:00', refUtc);
+  assert.equal(badDate.valid, false);
+
+  const pastYearDate = parseScheduleTimePtBr('01/01 21:00', refUtc);
+  assert.equal(pastYearDate.valid, true);
+  assert.equal(pastYearDate.formattedDate, '01/01/2027');
+
+  // 2. serializeMix / deserializeMix preserves notifiedMissing as Set
+  const serialized = serializeMix({
+    id: 'MIX-SET',
+    notifiedMissing: new Set([1, 2]),
+    readyCheck: { confirmed: new Set(['u1']), active: true },
+  });
+  assert.ok(Array.isArray(serialized.notifiedMissing));
+  const deserialized = deserializeMix(JSON.parse(JSON.stringify(serialized)));
+  assert.ok(deserialized.notifiedMissing instanceof Set);
+  assert.equal(deserialized.notifiedMissing.has(2), true);
+
+  // 3. communityClips rejects invalid voteType without clearing vote, and omits broken <@web:...> mention
+  const clip = communityClips.submitClip({ id: 'web:1.2.3.4', username: 'WebGuy' }, 'https://youtu.be/dQw4w9WgXcQ', 'Test Clutch');
+  const fireRes = communityClips.voteClip(clip.id, 'voter1', 'fire');
+  assert.equal(fireRes.votes.fire.length, 1);
+  const invalidVoteRes = communityClips.voteClip(clip.id, 'voter1', 'invalid_type');
+  assert.equal(invalidVoteRes, null);
+  assert.equal(communityClips.voteClip(clip.id, 'voter1', 'fire')?.votes.fire.length, 0); // toggle still works after preserving
+
+  const embedPayload = communityClips.buildEmbed(clip);
+  const desc = embedPayload.embeds[0].toJSON().description;
+  assert.equal(desc.includes('<@web:'), false);
+
+  // 4. renderProfileHtml escapes XSS in query parameters
+  const xssHtml = renderProfileHtml({
+    query: {
+      nick: '"><script>alert(1)</script>',
+      room: '";alert(2);//',
+      phone: '5511999999999',
+    },
+  });
+  assert.equal(xssHtml.includes('<script>alert(1)</script>'), false);
+  assert.ok(xssHtml.includes('&lt;script&gt;alert(1)&lt;/script&gt;'));
+  assert.equal(xssHtml.includes('";alert(2);//"'), false);
+  assert.ok(xssHtml.includes('\\u0022;alert(2);//'));
+});
+
+test('Regression fixes: GSI room isolation, socket send_discord_webhook auth, draw_teams duos & back_to_lobby', async (t) => {
+  const { server, rooms, lifecycle, close } = createMixServer({ startBackgroundTasks: false });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address();
+  const baseUrl = `http://127.0.0.1:${port}`;
+  t.after(async () => {
+    discordBotManager.lastGsiState = null;
+    await close();
+  });
+
+  // 1. GET /api/gsi/status/:otherRoom must NOT leak lastGsiState from MIX-ALPHA
+  discordBotManager.lastGsiState = {
+    roomId: 'MIX-ALPHA',
+    mapName: 'de_nuke',
+    scoreCT: 9,
+    scoreTR: 4,
+    receivedAt: Date.now(),
+  };
+  const otherStatusRes = await fetch(`${baseUrl}/api/gsi/status/MIX-BETA`);
+  assert.equal(otherStatusRes.status, 200);
+  const otherStatus = await otherStatusRes.json();
+  assert.equal(otherStatus.connected, false);
+  assert.equal(otherStatus.roomId, 'MIX-BETA');
+
+  // 2. Socket tests: send_discord_webhook auth, draw_teams respecting duos, back_to_lobby
+  const client = await new Promise((resolve, reject) => {
+    const c = ioClient(baseUrl, { transports: ['websocket'], forceNew: true, reconnection: false });
+    c.once('connect', () => resolve(c));
+    c.once('connect_error', reject);
+  });
+  t.after(() => client.close());
+
+  const webhookErr = await new Promise((resolve) => {
+    client.emit(
+      'send_discord_webhook',
+      { roomId: 'NON-EXISTENT', eventType: 'test', data: { webhookUrl: 'https://discord.com/api/webhooks/1/abc' } },
+      (res) => resolve(res)
+    );
+  });
+  assert.ok(webhookErr?.error);
+
+  // Create room with 10 players and fixed duo, verify draw_teams honors duos & back_to_lobby works
+  const duoRoom = lifecycle.getOrCreateRoom('DUO-WEB');
+  duoRoom.creatorId = 'p1';
+  duoRoom.adminId = 'p1';
+  duoRoom.players = Array.from({ length: 10 }, (_, idx) => ({
+    id: `p${idx + 1}`,
+    nick: `Player${idx + 1}`,
+    level: idx % 2 === 0 ? 20 : 10,
+    side: 'ANY',
+    ready: true,
+  }));
+  duoRoom.duos = [['p1', 'p3'], ['p2', 'p4']];
+  rooms.set('DUO-WEB', duoRoom);
+
+  const joined = new Promise((resolve) => client.once('room_state', resolve));
+  client.emit('join_room', { roomId: 'DUO-WEB', player: duoRoom.players[0] });
+  await joined;
+
+  const afterDraw = await new Promise((resolve) => {
+    client.once('room_state', resolve);
+    client.emit('draw_teams', { roomId: 'DUO-WEB', mode: 'balanced' });
+  });
+  assert.equal(afterDraw.phase, 'teams');
+  assert.equal(afterDraw.teamA.length, 5);
+  assert.equal(afterDraw.teamB.length, 5);
+  const setA = new Set(afterDraw.teamA.map((p) => p.id));
+  assert.equal(setA.has('p1'), setA.has('p3'));
+  assert.equal(setA.has('p2'), setA.has('p4'));
+
+  const afterBack = await new Promise((resolve) => {
+    client.once('room_state', resolve);
+    client.emit('back_to_lobby', { roomId: 'DUO-WEB' });
+  });
+  assert.equal(afterBack.phase, 'lobby');
+  assert.equal(afterBack.players.length, 10);
 });

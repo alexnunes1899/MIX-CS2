@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Trophy,
   Medal,
@@ -76,6 +76,17 @@ export default function LeaderboardModal({
   const [expandedMatchId, setExpandedMatchId] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
 
+  const selectedSeasonRef = useRef(selectedSeason);
+  const isOpenRef = useRef(isOpen);
+
+  useEffect(() => {
+    selectedSeasonRef.current = selectedSeason;
+  }, [selectedSeason]);
+
+  useEffect(() => {
+    isOpenRef.current = isOpen;
+  }, [isOpen]);
+
   const fetchSeasons = async () => {
     try {
       const res = await fetch('/api/leaderboard/seasons');
@@ -137,10 +148,12 @@ export default function LeaderboardModal({
     if (!socket) return;
 
     const handleLeaderboardUpdate = (data) => {
-      if (selectedSeason === 'all' && Array.isArray(data)) {
+      if (!isOpenRef.current) return;
+      const activeSeason = selectedSeasonRef.current;
+      if (activeSeason === 'all' && Array.isArray(data)) {
         setPlayers(data);
       } else {
-        fetchLeaderboard(selectedSeason);
+        fetchLeaderboard(activeSeason);
       }
       fetchSeasons();
     };
@@ -443,7 +456,10 @@ export default function LeaderboardModal({
                     
                     {/* 2nd Place */}
                     {top3[1] && (
-                      <div className="order-2 sm:order-1 bg-slate-950/80 border border-slate-700/60 rounded-2xl p-4 text-center relative overflow-hidden flex flex-col items-center justify-between shadow-lg">
+                      <div
+                        onClick={() => onInspectPlayer && onInspectPlayer(top3[1])}
+                        className={`order-2 sm:order-1 bg-slate-950/80 border border-slate-700/60 hover:border-slate-500 rounded-2xl p-4 text-center relative overflow-hidden flex flex-col items-center justify-between shadow-lg ${onInspectPlayer ? 'cursor-pointer transition-colors' : ''}`}
+                      >
                         <div className="w-8 h-8 rounded-full bg-slate-300 text-slate-950 font-black text-xs flex items-center justify-center shadow mb-2">
                           2º
                         </div>
@@ -461,7 +477,10 @@ export default function LeaderboardModal({
 
                     {/* 1st Place */}
                     {top3[0] && (
-                      <div className="order-1 sm:order-2 bg-gradient-to-b from-amber-500/15 via-slate-950 to-slate-950 border-2 border-amber-400 rounded-3xl p-5 text-center relative overflow-hidden flex flex-col items-center justify-between shadow-2xl shadow-amber-500/15 scale-105 z-10">
+                      <div
+                        onClick={() => onInspectPlayer && onInspectPlayer(top3[0])}
+                        className={`order-1 sm:order-2 bg-gradient-to-b from-amber-500/15 via-slate-950 to-slate-950 border-2 border-amber-400 rounded-3xl p-5 text-center relative overflow-hidden flex flex-col items-center justify-between shadow-2xl shadow-amber-500/15 scale-105 z-10 ${onInspectPlayer ? 'cursor-pointer hover:border-amber-300 transition-colors' : ''}`}
+                      >
                         <div className="w-9 h-9 rounded-full bg-amber-400 text-slate-950 font-black text-sm flex items-center justify-center shadow-lg shadow-amber-400/40 mb-2 animate-bounce">
                           👑 1º
                         </div>
@@ -480,7 +499,10 @@ export default function LeaderboardModal({
 
                     {/* 3rd Place */}
                     {top3[2] && (
-                      <div className="order-3 sm:order-3 bg-slate-950/80 border border-amber-700/40 rounded-2xl p-4 text-center relative overflow-hidden flex flex-col items-center justify-between shadow-lg">
+                      <div
+                        onClick={() => onInspectPlayer && onInspectPlayer(top3[2])}
+                        className={`order-3 sm:order-3 bg-slate-950/80 border border-amber-700/40 hover:border-amber-500/60 rounded-2xl p-4 text-center relative overflow-hidden flex flex-col items-center justify-between shadow-lg ${onInspectPlayer ? 'cursor-pointer transition-colors' : ''}`}
+                      >
                         <div className="w-8 h-8 rounded-full bg-amber-700 text-white font-black text-xs flex items-center justify-center shadow mb-2">
                           3º
                         </div>

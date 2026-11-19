@@ -134,6 +134,7 @@ export default function LiveSpectatorModal({
 
   useEffect(() => {
     if (!isOpen || !roomId) return;
+    setGsiState(null);
     setLoading(true);
     fetchStatus();
     const timer = setInterval(fetchStatus, 2500);
@@ -141,16 +142,20 @@ export default function LiveSpectatorModal({
   }, [isOpen, roomId, fetchStatus]);
 
   useEffect(() => {
-    if (!isOpen || !socket) return;
+    if (!isOpen || !socket || !roomId) return;
     const handleGsiUpdate = (payload) => {
-      if (payload && typeof payload === 'object') {
-        setGsiState(payload);
-        setLoading(false);
-      }
+      if (!payload || typeof payload !== 'object') return;
+      if (payload.roomId && String(payload.roomId).toUpperCase() !== String(roomId).toUpperCase()) return;
+      setGsiState(payload);
+      setLoading(false);
     };
+    socket.emit('spectate_gsi', { roomId });
     socket.on('gsi_update', handleGsiUpdate);
-    return () => socket.off('gsi_update', handleGsiUpdate);
-  }, [isOpen, socket]);
+    return () => {
+      socket.emit('leave_spectate_gsi', { roomId });
+      socket.off('gsi_update', handleGsiUpdate);
+    };
+  }, [isOpen, socket, roomId]);
 
   useEffect(() => {
     if (!isOpen) return;

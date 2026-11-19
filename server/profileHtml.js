@@ -1,7 +1,31 @@
+function escapeHtml(str = '') {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function escapeJsString(str = '') {
+  return JSON.stringify(String(str || ''))
+    .replace(/\\"/g, '\\u0022')
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+}
+
 export function renderProfileHtml({ query = {} } = {}) {
-  const initialPhone = (query.phone || '').replace(/\D/g, '');
-  const initialNick = (query.nick || '').trim();
-  const initialRoom = (query.room || '').trim();
+  const initialPhone = String(query.phone || '').replace(/\D/g, '').slice(0, 20);
+  const initialNick = String(query.nick || '').trim().slice(0, 40);
+  const initialRoom = String(query.room || '').trim().slice(0, 24);
+
+  const safePhoneHtml = escapeHtml(initialPhone);
+  const safeNickHtml = escapeHtml(initialNick);
+  const safeRoomHtml = escapeHtml(initialRoom || '5v5 Atual');
+  const safePhoneJs = escapeJsString(initialPhone);
+  const safeRoomJs = escapeJsString(initialRoom);
 
   return `<!DOCTYPE html>
 <html lang="pt-BR" class="dark">
@@ -135,7 +159,7 @@ export function renderProfileHtml({ query = {} } = {}) {
             type="text"
             required
             placeholder="Ex: FalleN, zex, coldzera..."
-            value="${initialNick}"
+            value="${safeNickHtml}"
             class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 transition"
           />
         </div>
@@ -149,7 +173,7 @@ export function renderProfileHtml({ query = {} } = {}) {
             type="tel"
             required
             placeholder="Ex: 5534999998888"
-            value="${initialPhone}"
+            value="${safePhoneHtml}"
             class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 transition"
           />
           <span class="text-[10px] text-slate-500 block mt-1">
@@ -184,7 +208,7 @@ export function renderProfileHtml({ query = {} } = {}) {
 
       <!-- Action Footer Links -->
       <div class="mt-5 pt-4 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
-        <span>Mix Ativo: <strong class="text-amber-400" id="mix-active-label">${initialRoom || '5v5 Atual'}</strong></span>
+        <span>Mix Ativo: <strong class="text-amber-400" id="mix-active-label">${safeRoomHtml}</strong></span>
         <button type="button" id="btn-back-zap" class="text-emerald-400 hover:text-emerald-300 font-bold flex items-center gap-1 transition">
           💬 Abrir WhatsApp
         </button>
@@ -194,8 +218,8 @@ export function renderProfileHtml({ query = {} } = {}) {
 
   <script>
     let selectedLevel = 16;
-    const initialPhone = "${initialPhone}";
-    const initialRoom = "${initialRoom}";
+    const initialPhone = ${safePhoneJs};
+    const initialRoom = ${safeRoomJs};
 
     const tiers = {
       bronze: { label: 'Bronze', color: 'border-slate-700 bg-slate-800 text-slate-300', iconBg: 'from-slate-600 to-slate-500' },

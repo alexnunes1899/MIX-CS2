@@ -63,6 +63,15 @@ export class CommunityClipsService {
         for (const [id, clip] of Object.entries(data)) {
           this.clips.set(id, clip);
         }
+        return;
+      }
+      if (sqliteStore) {
+        const rows = sqliteStore.listNamespace('community_clips');
+        for (const row of rows) {
+          if (row && row.key && row.value) {
+            this.clips.set(row.key, row.value);
+          }
+        }
       }
     } catch (e) {
       logger.warn('CLIPS', 'Falha ao ler communityClips.json', e);
@@ -184,6 +193,7 @@ export class CommunityClipsService {
   }
 
   voteClip(clipId, userId, voteType = 'fire') {
+    if (voteType !== 'fire' && voteType !== 'bagre') return null;
     const clip = this.clips.get(clipId);
     if (!clip) return null;
 
@@ -209,13 +219,16 @@ export class CommunityClipsService {
   buildEmbed(clip) {
     const fireCount = clip.votes?.fire?.length || 0;
     const bagreCount = clip.votes?.bagre?.length || 0;
+    const authorIdStr = String(clip.authorId || '').trim();
+    const isDiscordSnowflake = /^\d{17,20}$/.test(authorIdStr) && !/^7656119\d{10}$/.test(authorIdStr);
+    const authorLine = isDiscordSnowflake ? `<@${authorIdStr}> (**${clip.authorName}**)` : `**${clip.authorName}**`;
 
     const embed = new EmbedBuilder()
       .setTitle(`${clip.platformIcon} CLIPE DA COMUNIDADE: ${clip.title.toUpperCase()}`)
       .setURL(clip.url)
       .setColor(0x8b5cf6) // Purple
       .setDescription(
-        `🎬 Enviado por <@${clip.authorId}> (**${clip.authorName}**)\n` +
+        `🎬 Enviado por ${authorLine}\n` +
         `🌐 Plataforma: **${clip.platform}**\n` +
         `━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
         `Assista ao clipe e vote se foi **skill pura** ou **puro milagre de bagre**!\n\n` +

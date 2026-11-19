@@ -172,37 +172,46 @@ export function registerInfraRoutes(app, { io, rooms, lifecycle, discordBotManag
 
   const lastRoomListGsiBroadcast = new Map();
 
+  function emitRoomGsi(roomId, liveState) {
+    const cleanId = normalizeRoomId(roomId, 'MIX-PRO');
+    const payload = { ...liveState, roomId: cleanId };
+    io.to(cleanId).emit('gsi_update', payload);
+    io.to(`gsi:${cleanId}`).emit('gsi_update', payload);
+  }
+
   function applyRoomGsiUpdate(roomId, liveState, req, { isAuthorizedGsi = false } = {}) {
-    const room = lifecycle.getRoomAndTouch(roomId);
+    const cleanId = normalizeRoomId(roomId, 'MIX-PRO');
+    const room = lifecycle.getRoomAndTouch(cleanId);
     if (!room) return;
     const prev = room.liveMatch;
-    room.liveMatch = liveState;
-    io.to(roomId).emit('gsi_update', liveState);
-    processGsiDiscordNotifications(room, liveState, req);
+    const payload = { ...liveState, roomId: cleanId };
+    room.liveMatch = payload;
+    emitRoomGsi(cleanId, payload);
+    processGsiDiscordNotifications(room, payload, req);
 
     const scoreOrRoundChanged =
       !prev ||
-      prev.scoreCT !== liveState.scoreCT ||
-      prev.scoreTR !== liveState.scoreTR ||
-      prev.roundNumber !== liveState.roundNumber ||
-      prev.mapName !== liveState.mapName ||
-      prev.phase !== liveState.phase;
-    const lastBcast = lastRoomListGsiBroadcast.get(roomId) || 0;
+      prev.scoreCT !== payload.scoreCT ||
+      prev.scoreTR !== payload.scoreTR ||
+      prev.roundNumber !== payload.roundNumber ||
+      prev.mapName !== payload.mapName ||
+      prev.phase !== payload.phase;
+    const lastBcast = lastRoomListGsiBroadcast.get(cleanId) || 0;
     if (scoreOrRoundChanged || Date.now() - lastBcast > 3000) {
-      setBounded(lastRoomListGsiBroadcast, roomId, Date.now(), 200);
+      setBounded(lastRoomListGsiBroadcast, cleanId, Date.now(), 200);
       lifecycle.broadcastRoomsList();
     }
 
-    if (liveState.isGameOver && (liveState.phase === 'gameover' || (liveState.scoreCT || 0) >= 13 || (liveState.scoreTR || 0) >= 13)) {
-      const winnerRes = determineMatchWinner({ teamA: room.teamA, teamB: room.teamB, ...room }, liveState);
+    if (payload.isGameOver && (payload.phase === 'gameover' || (payload.scoreCT || 0) >= 13 || (payload.scoreTR || 0) >= 13)) {
+      const winnerRes = determineMatchWinner({ teamA: room.teamA, teamB: room.teamB, ...room }, payload);
       const isWinnerA = winnerRes.winnerLetter === 'A';
       const winnerName = isWinnerA ? (room.nameA || 'Time A') : (room.nameB || 'Time B');
       const loserName = isWinnerA ? (room.nameB || 'Time B') : (room.nameA || 'Time A');
       const winners = isWinnerA ? (room.teamA || []) : (room.teamB || []);
       const losers = isWinnerA ? (room.teamB || []) : (room.teamA || []);
-      const scoreWinner = Math.max(liveState.scoreCT || 0, liveState.scoreTR || 0);
-      const scoreLoser = Math.min(liveState.scoreCT || 0, liveState.scoreTR || 0);
-      const matchKey = `${liveState.mapName}-${scoreWinner}-${scoreLoser}`;
+      const scoreWinner = Math.max(payload.scoreCT || 0, payload.scoreTR || 0);
+      const scoreLoser = Math.min(payload.scoreCT || 0, payload.scoreTR || 0);
+      const matchKey = `${payload.mapName}-${scoreWinner}-${scoreLoser}`;
       const lastMatch = room.history[0];
       if (!lastMatch || lastMatch.key !== matchKey) {
         room.history.unshift({
@@ -210,7 +219,7 @@ export function registerInfraRoutes(app, { io, rooms, lifecycle, discordBotManag
           key: matchKey,
           date: new Date().toLocaleDateString('pt-BR'),
           time: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-          map: liveState.mapName,
+          map: payload.mapName,
           scoreA: isWinnerA ? scoreWinner : scoreLoser,
           scoreB: isWinnerA ? scoreLoser : scoreWinner,
           winner: winnerName,
@@ -223,15 +232,17 @@ export function registerInfraRoutes(app, { io, rooms, lifecycle, discordBotManag
             recordMatch({
               winners,
               losers,
-              map: liveState.mapName,
+              map: payload.mapName,
               scoreWinners: scoreWinner,
               scoreLosers: scoreLoser,
+              mvpId: payload.matchMvp?.steamId || null,
+              timestamp: Date.now(),
             });
           } catch (err) {
             console.warn('[LEADERBOARD GSI RECORD ERROR]:', err.message);
           }
         }
-        lifecycle.emitRoomState(roomId, room);
+        lifecycle.emitRoomState(cleanId, room);
       }
     }
   }
@@ -278,7 +289,7 @@ export function registerInfraRoutes(app, { io, rooms, lifecycle, discordBotManag
       if (room) {
         applyRoomGsiUpdate(roomId, liveState, req, { isAuthorizedGsi });
       } else {
-        io.to(roomId).emit('gsi_update', liveState);
+        emitRoomGsi(roomId, liveState);
       }
     }
     res.json({ success: true });
@@ -300,7 +311,7 @@ export function registerInfraRoutes(app, { io, rooms, lifecycle, discordBotManag
       if (room) {
         applyRoomGsiUpdate(token, liveState, req, { isAuthorizedGsi });
       } else {
-        io.to(token).emit('gsi_update', liveState);
+        emitRoomGsi(token, liveState);
       }
     }
     res.json({ success: true });
@@ -333,15 +344,31 @@ export function registerInfraRoutes(app, { io, rooms, lifecycle, discordBotManag
   });
 
   app.get('/api/gsi/status/:roomId', (req, res) => {
-    const state = getGsiState(req.params.roomId);
-    if (!state.connected && discordBotManager.lastGsiState && Date.now() - (discordBotManager.lastGsiState.receivedAt || 0) < 60000) {
+    const reqRoomId = normalizeRoomId(req.params.roomId, 'MIX-PRO');
+    const state = getGsiState(reqRoomId);
+    const botLast = discordBotManager.lastGsiState;
+    const botLastRoom = botLast?.roomId ? normalizeRoomId(botLast.roomId, 'MIX-PRO') : '';
+    if (
+      !state.connected &&
+      botLast &&
+      Date.now() - (botLast.receivedAt || 0) < 60000 &&
+      (!botLastRoom || botLastRoom === reqRoomId)
+    ) {
       return res.json({
         connected: true,
-        lastUpdate: discordBotManager.lastGsiState.receivedAt || Date.now(),
-        ...discordBotManager.lastGsiState,
+        roomId: reqRoomId,
+        lastUpdate: botLast.receivedAt || Date.now(),
+        ...botLast,
       });
     }
-    res.json(state);
+    const room = rooms.get(reqRoomId);
+    if (!state.connected && room?.liveMatch?.connected && room.liveMatch.lastUpdate && Date.now() - Number(room.liveMatch.lastUpdate) < 60000) {
+      return res.json({
+        roomId: reqRoomId,
+        ...room.liveMatch,
+      });
+    }
+    res.json({ roomId: reqRoomId, ...state });
   });
 
   app.get('/api/matchzy/config/:roomId', (req, res) => {
@@ -524,7 +551,8 @@ export function registerInfraRoutes(app, { io, rooms, lifecycle, discordBotManag
         const cleanCmd = sanitizeRconCommand(cmd);
         if (!cleanCmd) continue;
         const r = await executeRconCommand({ host, port, password, command: cleanCmd });
-        if (r?.output) outputs.push(r.output);
+        const text = r?.response || r?.output || r?.message;
+        if (text) outputs.push(text);
       }
       return res.json({
         success: true,

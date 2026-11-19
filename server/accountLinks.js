@@ -20,7 +20,7 @@ function generateLinkCode(length = 6) {
 export function normalizeLinkCode(raw = '') {
   return String(raw || '')
     .toUpperCase()
-    .replace(/^CS[-_\s]*/i, '')
+    .replace(/^CS[-_\s]+/i, '')
     .replace(/[^A-Z0-9]/g, '')
     .trim();
 }

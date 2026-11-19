@@ -171,7 +171,7 @@ export default function LandingPage({
               onOpenTournament={onOpenTournament}
               onOpenGrenades={onOpenGrenades}
               onOpenAimReflex={onOpenAimReflex}
-              activeRoomsCount={activeRooms.length}
+              activeRoomsCount={displayedRooms.length}
               soundEnabled={soundEnabled}
             />
           </div>
@@ -311,7 +311,7 @@ export default function LandingPage({
             onOpenTournament={onOpenTournament}
             onOpenGrenades={onOpenGrenades}
             onOpenAimReflex={onOpenAimReflex}
-            activeRoomsCount={activeRooms.length}
+            activeRoomsCount={displayedRooms.length}
             soundEnabled={soundEnabled}
           />
         </div>

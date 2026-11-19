@@ -29,6 +29,7 @@ import {
   getMatchHistoryState,
   recordMatchHistoryEntry,
   computeMatchMvp,
+  computeMatchPerformers,
   onMatchHistoryUpdated,
   getMapImageUrl,
   normalizeMapName,
@@ -182,6 +183,7 @@ export function createMixServer({ startBackgroundTasks = true, buildVersion = Da
     getMatchHistoryState,
     recordMatchHistoryEntry,
     computeMatchMvp,
+    computeMatchPerformers,
     getMapImageUrl,
     normalizeMapName,
     getGsiState,
@@ -673,10 +675,11 @@ export function createMixServer({ startBackgroundTasks = true, buildVersion = Da
           const localLast = discordBotManager.lastGsiState?.lastUpdate || 0;
           if (data && data.connected && data.lastUpdate && data.lastUpdate > lastCloudGsiSync && data.lastUpdate > localLast) {
             lastCloudGsiSync = data.lastUpdate;
-            const liveState = { ...data, receivedAt: Date.now() };
+            const liveState = { ...data, roomId: 'MIX-PRO', receivedAt: Date.now() };
             setGsiState('MIX-PRO', liveState);
             discordBotManager.handleGsiEvent('MIX-PRO', liveState);
             io.to('MIX-PRO').emit('gsi_update', liveState);
+            io.to('gsi:MIX-PRO').emit('gsi_update', liveState);
           }
         }
       } catch {}

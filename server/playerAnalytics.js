@@ -55,20 +55,28 @@ export function computePlayerAnalytics(playerQuery, { matches = null, leaderboar
 
   if (matchedLb) {
     if (matchedLb.steamId) candidateIds.add(String(matchedLb.steamId));
-    if (matchedLb.discordId) {
+    if (matchedLb.discordId && matchedLb.discordId !== matchedLb.steamId) {
       candidateIds.add(String(matchedLb.discordId));
       candidateIds.add(`discord-${matchedLb.discordId}`);
     }
-    if (matchedLb.id) candidateIds.add(String(matchedLb.id));
+    if (matchedLb.id) {
+      candidateIds.add(String(matchedLb.id));
+      candidateIds.add(cleanIdentifier(matchedLb.id));
+    }
     const unifiedFromLb = accountLinkService.resolveUnifiedIds({
-      discordId: matchedLb.discordId || '',
+      discordId: matchedLb.discordId && matchedLb.discordId !== matchedLb.steamId ? matchedLb.discordId : '',
       steamId: matchedLb.steamId || '',
     });
     if (unifiedFromLb.steamId) candidateIds.add(unifiedFromLb.steamId);
     if (unifiedFromLb.discordId) candidateIds.add(unifiedFromLb.discordId);
   }
 
-  const targetNormNick = normalizePlayerName(matchedLb?.nick || resolvedLink?.steamNick || resolvedLink?.discordUsername || rawQuery);
+  let targetNormNick = normalizePlayerName(
+    matchedLb?.nick ||
+      resolvedLink?.steamNick ||
+      resolvedLink?.discordUsername ||
+      (rawQuery && !/^\d{15,22}$/.test(cleanQuery) ? rawQuery : '')
+  );
 
   const matchesTargetPlayer = (p) => {
     if (!p) return false;
@@ -112,6 +120,7 @@ export function computePlayerAnalytics(playerQuery, { matches = null, leaderboar
     const didWin = Boolean(inWinners);
     const selfEntry = inWinners || inLosers;
     if (selfEntry?.nick && displayNick === rawQuery) displayNick = selfEntry.nick;
+    if (selfEntry?.nick && !targetNormNick) targetNormNick = normalizePlayerName(selfEntry.nick);
     if (selfEntry?.avatar && !displayAvatar) displayAvatar = selfEntry.avatar;
     if (selfEntry?.level && !matchedLb?.level) displayLevel = selfEntry.level;
 
@@ -248,7 +257,7 @@ export function computePlayerAnalytics(playerQuery, { matches = null, leaderboar
   const recentForm = formChronological.slice(-10).reverse();
 
   const badges = [];
-  if (resolvedLink || (matchedLb?.discordId && matchedLb?.steamId)) {
+  if (resolvedLink || (matchedLb?.discordId && matchedLb?.steamId && matchedLb.discordId !== matchedLb.steamId)) {
     badges.push({
       id: 'unified_account',
       icon: '🔗',

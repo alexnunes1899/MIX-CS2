@@ -2425,7 +2425,7 @@ export class DiscordBotManager {
       mix.phase = 'lobby';
     }
 
-    if (mix.players.length <= 7 && mix.notifiedMissing) {
+    if (mix.players.length <= 7 && mix.notifiedMissing instanceof Set) {
       mix.notifiedMissing.clear();
     }
     this.syncToWebRoom(mix);
@@ -4077,8 +4077,8 @@ export class DiscordBotManager {
     const missing = 10 - (mix.players?.length || 0);
     if (missing !== 1 && missing !== 2) return;
 
-    if (!mix.notifiedMissing) {
-      mix.notifiedMissing = new Set();
+    if (!(mix.notifiedMissing instanceof Set)) {
+      mix.notifiedMissing = new Set(Array.isArray(mix.notifiedMissing) ? mix.notifiedMissing : []);
     }
     if (mix.notifiedMissing.has(missing)) return;
     mix.notifiedMissing.add(missing);
@@ -4934,6 +4934,8 @@ export class DiscordBotManager {
         })),
         teamA: (mix.teamA?.players || []).map((p) => ({
           id: p.id,
+          discordId: p.id,
+          steamId: p.steamId || accountLinkService.getLinkByDiscordId(p.id)?.steamId || '',
           nick: p.displayName || p.username,
           avatar: p.avatar,
           level: p.level || 16,
@@ -4942,6 +4944,8 @@ export class DiscordBotManager {
         })),
         teamB: (mix.teamB?.players || []).map((p) => ({
           id: p.id,
+          discordId: p.id,
+          steamId: p.steamId || accountLinkService.getLinkByDiscordId(p.id)?.steamId || '',
           nick: p.displayName || p.username,
           avatar: p.avatar,
           level: p.level || 16,
@@ -6527,7 +6531,7 @@ export class DiscordBotManager {
         promotedMsg = `🔄 <@${nextSub.id}> foi promovido automaticamente da **Fila de Reserva** para titular!`;
       }
 
-      if (mix.players.length <= 7 && mix.notifiedMissing) {
+      if (mix.players.length <= 7 && mix.notifiedMissing instanceof Set) {
         mix.notifiedMissing.clear();
       }
 
@@ -8119,7 +8123,7 @@ export class DiscordBotManager {
       mix.phase = 'lobby';
     }
 
-    if (mix.players.length <= 7 && mix.notifiedMissing) {
+    if (mix.players.length <= 7 && mix.notifiedMissing instanceof Set) {
       mix.notifiedMissing.clear();
     }
     this.syncToWebRoom(mix);
@@ -8130,6 +8134,12 @@ export class DiscordBotManager {
   async executePullFromVoiceChannel(mix, guild, member, channel) {
     if (!mix || !guild) {
       return { success: false, message: 'Mix ou servidor Discord inválido.' };
+    }
+    if (mix.phase && mix.phase !== 'lobby') {
+      return {
+        success: false,
+        message: 'Não é possível puxar jogadores da call após o início do sorteio ou da partida.',
+      };
     }
 
     const guildVoice = this.resolveVoiceChannels(guild.id);
@@ -8257,7 +8267,7 @@ export class DiscordBotManager {
       discordId,
       discordUsername,
     });
-    const profileWebUrl = this.getPublicWebUrl('/?view=landing');
+    const profileWebUrl = this.getPublicWebUrl('/?open_profile=1');
     return {
       success: true,
       message:
@@ -8280,6 +8290,14 @@ export class DiscordBotManager {
   async prefixLinkAccount(message, args = []) {
     const code = args[0] || '';
     const res = await this.executeLinkAccount(message.author, code);
+    if (!code && res.success) {
+      try {
+        await message.author.send(res.message);
+        return message.reply('🔒 Enviei seu código único de vinculação por **mensagem privada (DM)**! Se preferir, use `/vincular` aqui mesmo.');
+      } catch {
+        return message.reply('🔒 Suas DMs estão fechadas. Por segurança, use o comando `/vincular` (resposta privada só para você) para gerar ou confirmar o código!');
+      }
+    }
     return message.reply(res.message);
   }
 
@@ -8327,7 +8345,8 @@ export class DiscordBotManager {
       return message.reply(`🔓 <@${message.author.id}> saiu da sua dupla fixa neste lobby.`);
     }
 
-    const mentioned = message.mentions?.users?.first?.() || null;
+    const botId = this.client?.user?.id;
+    const mentioned = message.mentions?.users?.find?.((u) => u.id !== botId) || null;
     const rawId = mentioned?.id || (args[0] ? args[0].replace(/[<@!>]/g, '') : '');
     if (!rawId || !/^\d{17,22}$/.test(rawId)) {
       return message.reply('👉 Uso: `!dupla @amigo` (ambos na fila), `!dupla sair` ou `!dupla limpar`.');
@@ -8390,7 +8409,7 @@ export class DiscordBotManager {
       return message.reply('👉 Uso: `!agendar 21:00 [Nome do Mix]` ou `!agendar amanha 20:30 Mix Noturno`');
     }
     const first = args[0] || '';
-    const consumeTwo = /^(amanha|amanhã|\d{1,2}\/\d{1,2}(?:\/\d{4})?)$/i.test(first) && args[1];
+    const consumeTwo = /^(hoje|amanha|amanhã|\d{1,2}\/\d{1,2}(?:\/\d{4})?)$/i.test(first) && args[1];
     const rawTime = consumeTwo ? `${first} ${args[1]}` : first;
     const title = args.slice(consumeTwo ? 2 : 1).join(' ').trim();
 

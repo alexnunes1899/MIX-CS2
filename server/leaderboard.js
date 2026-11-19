@@ -33,13 +33,39 @@ let memorySeasons = {};
 
 function filterValidEntries(list) {
   if (!Array.isArray(list)) return [];
-  return list.filter(
-    (item) =>
-      item &&
-      !String(item.id || '').startsWith('seed-') &&
-      !String(item.id || '').startsWith('bot-') &&
-      !String(item.id || '').startsWith('user_test_')
-  );
+  return list
+    .filter(
+      (item) =>
+        item &&
+        !String(item.id || '').startsWith('seed-') &&
+        !String(item.id || '').startsWith('bot-') &&
+        !String(item.id || '').startsWith('user_test_')
+    )
+    .map((item) => {
+      const steamStr = String(item.steamId || '').trim();
+      const discordStr = String(item.discordId || '').trim();
+      const idStr = String(item.id || '').trim();
+      let cleanSteam = steamStr;
+      let cleanDiscord = discordStr;
+
+      if (!cleanSteam && /^7656119\d{10}$/.test(discordStr)) {
+        cleanSteam = discordStr;
+        cleanDiscord = '';
+      } else if (!cleanSteam && /^7656119\d{10}$/.test(idStr)) {
+        cleanSteam = idStr;
+      }
+
+      if (cleanDiscord && (cleanDiscord === cleanSteam || /^7656119\d{10}$/.test(cleanDiscord))) {
+        cleanDiscord = '';
+      }
+
+      if (cleanSteam === steamStr && cleanDiscord === discordStr) return item;
+      return {
+        ...item,
+        steamId: cleanSteam,
+        discordId: cleanDiscord,
+      };
+    });
 }
 
 function loadFromFile() {
@@ -66,6 +92,21 @@ function loadSeasonsFromFile() {
     }
     memorySeasons = clean;
     return;
+  }
+  if (sqliteStore) {
+    const sqlRows = sqliteStore.listNamespace(SQLITE_SEASONS_NS);
+    if (sqlRows.length > 0) {
+      const clean = {};
+      for (const row of sqlRows) {
+        if (row && /^\d{4}-\d{2}$/.test(row.key) && Array.isArray(row.value)) {
+          clean[row.key] = filterValidEntries(row.value);
+        }
+      }
+      if (Object.keys(clean).length > 0) {
+        memorySeasons = clean;
+        return;
+      }
+    }
   }
   memorySeasons = {};
 }
@@ -100,14 +141,29 @@ export function formatSeasonLabel(seasonKey = '') {
 }
 
 function resolvePlayerIdentities(p = {}) {
-  const rawDiscordId = p.discordId || (String(p.id || '').startsWith('discord-') ? String(p.id).replace(/^discord-/, '') : /^\d{17,22}$/.test(String(p.id || '')) ? String(p.id) : '');
-  const rawSteamId = p.steamId || (/^7656119\d{10}$/.test(String(p.id || '')) ? String(p.id) : '');
+  const idStr = String(p.id || '').trim();
+  const isSteam64Id = /^7656119\d{10}$/.test(idStr);
+  const explicitSteamId = String(p.steamId || '').trim();
+  const rawSteamId = explicitSteamId || (isSteam64Id ? idStr : '');
+
+  let rawDiscordId = '';
+  if (p.discordId) {
+    const cand = String(p.discordId).trim().replace(/^discord-/, '');
+    if (cand && cand !== rawSteamId && !/^7656119\d{10}$/.test(cand)) {
+      rawDiscordId = cand;
+    }
+  } else if (idStr.startsWith('discord-')) {
+    rawDiscordId = idStr.replace(/^discord-/, '');
+  } else if (!isSteam64Id && (!rawSteamId || idStr !== rawSteamId) && /^\d{17,22}$/.test(idStr)) {
+    rawDiscordId = idStr;
+  }
+
   const unified = accountLinkService.resolveUnifiedIds({
     discordId: rawDiscordId,
     steamId: rawSteamId,
   });
   return {
-    id: p.id || (unified.steamId || (unified.discordId ? `discord-${unified.discordId}` : '')),
+    id: idStr || (unified.steamId || (unified.discordId ? `discord-${unified.discordId}` : '')),
     discordId: unified.discordId || '',
     steamId: unified.steamId || '',
     nick: p.nick || p.displayName || p.username || p.name || 'Jogador',
@@ -124,7 +180,10 @@ function findOrCreateEntryInList(list, p, now) {
       (ids.discordId && item.discordId && item.discordId === ids.discordId) ||
       (ids.id && item.id && item.id === ids.id) ||
       (!ids.steamId && !ids.discordId && pNickLower && String(item.nick || '').toLowerCase() === pNickLower) ||
-      (pNickLower && String(item.nick || '').toLowerCase() === pNickLower && (!item.steamId || !ids.steamId || item.steamId === ids.steamId))
+      (pNickLower &&
+        String(item.nick || '').toLowerCase() === pNickLower &&
+        (!item.steamId || !ids.steamId || item.steamId === ids.steamId) &&
+        (!item.discordId || !ids.discordId || item.discordId === ids.discordId))
   );
 
   if (!entry) {
@@ -439,7 +498,9 @@ export function syncDiscordProfilesToLeaderboard(profiles = {}) {
     entry.matchesPlayed = Math.max(entry.matchesPlayed || 0, entry.wins + entry.losses);
     entry.mvpCount = Math.max(entry.mvpCount || 0, mvps);
     entry.bagreCount = Math.max(entry.bagreCount || 0, bagres);
-    entry.streak = Number(p.streak ?? entry.streak ?? 0);
+    if ((entry.matchesPlayed || 0) <= total) {
+      entry.streak = Number(p.streak ?? entry.streak ?? 0);
+    }
     entry.bestStreak = Math.max(entry.bestStreak || 0, entry.streak);
     entry.winRate = entry.matchesPlayed > 0 ? Math.round((entry.wins / entry.matchesPlayed) * 100) : 0;
     entry.lastPlayed = entry.lastPlayed || now;

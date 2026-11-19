@@ -351,7 +351,7 @@ export default function App() {
 
   // Setup Socket listener
   useEffect(() => {
-    socket.on('connect', () => {
+    const handleConnect = () => {
       // Ingressa na sala via socket apenas se o usuário estiver ativamente na visão de mix e a sala já existir no servidor
       const params = new URLSearchParams(window.location.search);
       const urlKey = params.get('key') || params.get('token') || inviteKey || '';
@@ -368,9 +368,9 @@ export default function App() {
           createIfMissing: true,
         });
       }
-    });
+    };
 
-    socket.on('room_not_found', ({ roomId: missingId, message }) => {
+    const handleRoomNotFound = ({ roomId: missingId, message }) => {
       setRoomNotice({
         title: 'Sala Encerrada ou Inexistente',
         message: message || `A sala ${missingId || ''} não está mais ativa. Crie uma nova sala ou escolha uma sala aberta.`,
@@ -383,45 +383,49 @@ export default function App() {
       u.searchParams.delete('pwd');
       u.searchParams.delete('key');
       window.history.replaceState({}, '', u.pathname || '/');
-    });
+    };
 
-    socket.on('room_state', (updatedRoom) => {
+    const handleRoomState = (updatedRoom) => {
       if (updatedRoom && String(updatedRoom.id).toUpperCase() === String(roomId).toUpperCase()) {
         setRoom(updatedRoom);
       }
-    });
+    };
 
-    socket.on('active_rotation_updated', (updatedRotation) => {
+    const handleRotationUpdated = (updatedRotation) => {
       if (updatedRotation && Array.isArray(updatedRotation.activeDutyMaps)) {
         setOfficialRotation(updatedRotation);
       }
-    });
+    };
 
-    socket.on('gsi_update', (liveMatch) => {
+    const handleGsiUpdate = (liveMatch) => {
+      if (!liveMatch) return;
+      if (liveMatch.roomId && roomId && String(liveMatch.roomId).toUpperCase() !== String(roomId).toUpperCase()) {
+        return;
+      }
       setRoom((prev) => ({ ...prev, liveMatch }));
-    });
+    };
 
-    socket.on('chat_message', (msg) => {
+    const handleChatMessage = (msg) => {
       setRoom((prev) => {
         if (prev.chat.some((m) => m.id === msg.id)) return prev;
         return { ...prev, chat: [...prev.chat, msg] };
       });
-    });
+    };
 
-    socket.on('rooms_list', (list) => {
+    const handleRoomsList = (list) => {
       if (Array.isArray(list)) {
         setPublicRooms(list);
         setActiveRoomsCount(list.length);
       }
-    });
+    };
 
-    socket.on('commendations_updated', (updated) => {
+    const handleCommendationsUpdated = (updated) => {
       if (updated && typeof updated === 'object') {
         setCommendations(updated);
       }
-    });
+    };
 
-    socket.on('room_authenticated', ({ roomId: authRoomId, password: authPassword, inviteKey: authKey, isPrivate: authIsPrivate }) => {
+    const handleRoomAuthenticated = ({ roomId: authRoomId, password: authPassword, inviteKey: authKey, isPrivate: authIsPrivate }) => {
       if (authRoomId === roomId) {
         if (authPassword) setRoomPassword(authPassword);
         if (authKey) setInviteKey(authKey);
@@ -440,16 +444,16 @@ export default function App() {
         }
         window.history.replaceState({}, '', u);
       }
-    });
+    };
 
-    socket.on('room_auth_error', ({ roomId: authRoomId, roomName: authRoomName, error, message }) => {
+    const handleRoomAuthError = ({ roomId: authRoomId, roomName: authRoomName, error, message }) => {
       setPendingRoomAuth({ roomId: authRoomId, roomName: authRoomName });
       setAuthErrorType(error || 'wrong_password');
       setPasswordError(message || (error === 'private_room' ? 'Esta sala é privada. O acesso é exclusivo via link direto de convite.' : 'Esta sala requer uma senha para entrar.'));
       setPasswordModalOpen(true);
-    });
+    };
 
-    socket.on('room_deleted', ({ roomId: deletedId, message, reason }) => {
+    const handleRoomDeleted = ({ roomId: deletedId, message, reason }) => {
       if (deletedId === roomId) {
         setRoomNotice({
           title: reason === 'inactivity' ? 'Sala Encerrada por Inatividade' : 'Sala Excluída',
@@ -462,9 +466,9 @@ export default function App() {
         u.searchParams.delete('pwd');
         window.history.pushState({}, '', u);
       }
-    });
+    };
 
-    socket.on('kicked_from_room', ({ roomId: kickedRoomId, targetPlayerId, reason }) => {
+    const handleKickedFromRoom = ({ targetPlayerId, reason }) => {
       // If a specific targetPlayerId was kicked, only act if it matches myProfile.id
       if (targetPlayerId && myProfile?.id && myProfile.id !== targetPlayerId) {
         return;
@@ -479,30 +483,44 @@ export default function App() {
       u.searchParams.delete('room');
       u.searchParams.delete('pwd');
       window.history.pushState({}, '', u);
-    });
+    };
 
-    socket.on('admin_error', ({ message }) => {
+    const handleAdminError = ({ message }) => {
       setRoomNotice({
         title: 'Aviso de Administrador',
         message: message || 'Ação restrita ao administrador da sala.',
         type: 'warning',
       });
-    });
+    };
+
+    socket.on('connect', handleConnect);
+    socket.on('room_not_found', handleRoomNotFound);
+    socket.on('room_state', handleRoomState);
+    socket.on('active_rotation_updated', handleRotationUpdated);
+    socket.on('gsi_update', handleGsiUpdate);
+    socket.on('chat_message', handleChatMessage);
+    socket.on('rooms_list', handleRoomsList);
+    socket.on('commendations_updated', handleCommendationsUpdated);
+    socket.on('room_authenticated', handleRoomAuthenticated);
+    socket.on('room_auth_error', handleRoomAuthError);
+    socket.on('room_deleted', handleRoomDeleted);
+    socket.on('kicked_from_room', handleKickedFromRoom);
+    socket.on('admin_error', handleAdminError);
 
     return () => {
-      socket.off('connect');
-      socket.off('room_not_found');
-      socket.off('room_state');
-      socket.off('active_rotation_updated');
-      socket.off('gsi_update');
-      socket.off('chat_message');
-      socket.off('rooms_list');
-      socket.off('commendations_updated');
-      socket.off('room_authenticated');
-      socket.off('room_auth_error');
-      socket.off('kicked_from_room');
-      socket.off('admin_error');
-      socket.off('room_deleted');
+      socket.off('connect', handleConnect);
+      socket.off('room_not_found', handleRoomNotFound);
+      socket.off('room_state', handleRoomState);
+      socket.off('active_rotation_updated', handleRotationUpdated);
+      socket.off('gsi_update', handleGsiUpdate);
+      socket.off('chat_message', handleChatMessage);
+      socket.off('rooms_list', handleRoomsList);
+      socket.off('commendations_updated', handleCommendationsUpdated);
+      socket.off('room_authenticated', handleRoomAuthenticated);
+      socket.off('room_auth_error', handleRoomAuthError);
+      socket.off('kicked_from_room', handleKickedFromRoom);
+      socket.off('admin_error', handleAdminError);
+      socket.off('room_deleted', handleRoomDeleted);
     };
   }, [roomId, myProfile, roomPassword, inviteKey, view]);
 
@@ -1664,6 +1682,25 @@ export default function App() {
     }
   };
 
+  // Back to Lobby (keeping players in the room, clearing drawn teams)
+  const handleBackToLobby = () => {
+    if (socket.connected && roomId) {
+      socket.emit('back_to_lobby', { roomId });
+    } else {
+      setRoom((prev) => ({
+        ...prev,
+        phase: 'lobby',
+        teamA: [],
+        teamB: [],
+        metrics: null,
+        captainA: null,
+        captainB: null,
+        unassignedPlayers: [],
+        coin: null,
+      }));
+    }
+  };
+
   // Reset Mix
   const handleResetMix = () => {
     if (socket.connected) {
@@ -1931,7 +1968,7 @@ export default function App() {
                 <CaptainsDraftView
                   room={room}
                   onPickPlayer={handleCaptainPick}
-                  onCancel={() => setRoom((prev) => ({ ...prev, phase: 'lobby' }))}
+                  onCancel={handleBackToLobby}
                   onSetTurnTimer={handleSetTurnTimer}
                   myProfile={myProfile}
                   isAdmin={isAdmin}
@@ -1951,7 +1988,7 @@ export default function App() {
                   onReDraw={() => handleTriggerDraw('balanced')}
                   onStartCoinFlip={handleStartCoinFlip}
                   onStartVeto={handleStartVeto}
-                  onBackToLobby={() => setRoom((prev) => ({ ...prev, phase: 'lobby' }))}
+                  onBackToLobby={handleBackToLobby}
                   serverIp={room.serverIp || ''}
                   onUpdateServerIp={handleUpdateServerIp}
                   rconPassword={room.rconPassword || ''}

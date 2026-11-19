@@ -9,8 +9,11 @@ const SQLITE_NS = 'scheduled_mixes';
 const FIFTEEN_MINUTES_MS = 15 * 60 * 1000;
 const EXPIRED_GRACE_MS = 2 * 60 * 60 * 1000;
 
+const BRT_OFFSET_MS = -3 * 60 * 60 * 1000;
+
 /**
- * Parses PT-BR schedule strings such as "21:00", "21h30", "21h", "amanha 20:30", or "25/11 21:00".
+ * Parses PT-BR schedule strings such as "21:00", "21h30", "21h", "amanha 20:30", or "25/11 21:00"
+ * using America/Sao_Paulo (UTC-03:00) consistently across local Windows and UTC cloud servers.
  */
 export function parseScheduleTimePtBr(rawInput = '', referenceDate = new Date()) {
   const cleaned = String(rawInput || '')
@@ -39,32 +42,68 @@ export function parseScheduleTimePtBr(rawInput = '', referenceDate = new Date())
     return { valid: false, error: 'Horário fora do intervalo permitido (00:00 a 23:59).' };
   }
 
-  const target = new Date(ref.getTime());
-  target.setSeconds(0, 0);
+  const brtNow = new Date(ref.getTime() + BRT_OFFSET_MS);
+  let targetYear = brtNow.getUTCFullYear();
+  let targetMonth = brtNow.getUTCMonth(); // 0-indexed
+  let targetDay = brtNow.getUTCDate();
 
   if (dateMatch) {
     const day = parseInt(dateMatch[1], 10);
-    const month = parseInt(dateMatch[2], 10) - 1;
-    const year = dateMatch[3] ? parseInt(dateMatch[3], 10) : ref.getFullYear();
-    target.setFullYear(year, month, day);
-    target.setHours(hours, minutes, 0, 0);
+    const month = parseInt(dateMatch[2], 10);
+    const hasExplicitYear = Boolean(dateMatch[3]);
+    let year = hasExplicitYear ? parseInt(dateMatch[3], 10) : brtNow.getUTCFullYear();
+
+    if (month < 1 || month > 12 || day < 1 || day > 31) {
+      return { valid: false, error: 'Data inválida no calendário.' };
+    }
+
+    const validateDay = (y, mZero, d) => {
+      const check = new Date(Date.UTC(y, mZero, d, 12, 0, 0, 0));
+      return check.getUTCFullYear() === y && check.getUTCMonth() === mZero && check.getUTCDate() === d;
+    };
+
+    if (!validateDay(year, month - 1, day)) {
+      return { valid: false, error: 'Data inválida no calendário.' };
+    }
+
+    let candidateMs = Date.UTC(year, month - 1, day, hours, minutes, 0, 0) - BRT_OFFSET_MS;
+    if (candidateMs < ref.getTime() - 2 * 60 * 1000) {
+      if (!hasExplicitYear) {
+        year += 1;
+        if (!validateDay(year, month - 1, day)) {
+          return { valid: false, error: 'Data inválida no calendário.' };
+        }
+        candidateMs = Date.UTC(year, month - 1, day, hours, minutes, 0, 0) - BRT_OFFSET_MS;
+      } else {
+        return { valid: false, error: 'Esta data/horário já passou.' };
+      }
+    }
+
+    targetYear = year;
+    targetMonth = month - 1;
+    targetDay = day;
   } else {
-    target.setHours(hours, minutes, 0, 0);
-    if (hasTomorrow) {
-      target.setDate(target.getDate() + 1);
-    } else if (target.getTime() < ref.getTime() - 2 * 60 * 1000) {
-      target.setDate(target.getDate() + 1);
+    let candidateMs = Date.UTC(targetYear, targetMonth, targetDay, hours, minutes, 0, 0) - BRT_OFFSET_MS;
+    if (hasTomorrow || candidateMs < ref.getTime() - 2 * 60 * 1000) {
+      const nextDayUtc = new Date(Date.UTC(targetYear, targetMonth, targetDay + 1, hours, minutes, 0, 0));
+      targetYear = nextDayUtc.getUTCFullYear();
+      targetMonth = nextDayUtc.getUTCMonth();
+      targetDay = nextDayUtc.getUTCDate();
     }
   }
 
-  if (Number.isNaN(target.getTime())) {
+  const timestamp = Date.UTC(targetYear, targetMonth, targetDay, hours, minutes, 0, 0) - BRT_OFFSET_MS;
+  if (!Number.isFinite(timestamp)) {
     return { valid: false, error: 'Data/horário inválido.' };
   }
 
+  const brtTarget = new Date(timestamp + BRT_OFFSET_MS);
+  const formattedDate = `${String(brtTarget.getUTCDate()).padStart(2, '0')}/${String(brtTarget.getUTCMonth() + 1).padStart(2, '0')}/${brtTarget.getUTCFullYear()}`;
+
   return {
     valid: true,
-    timestamp: target.getTime(),
-    formattedDate: target.toLocaleDateString('pt-BR'),
+    timestamp,
+    formattedDate,
     formattedTime: `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`,
   };
 }

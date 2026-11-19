@@ -72,9 +72,29 @@ export default function PlayerProfileModal({
   const [linkStatusMsg, setLinkStatusMsg] = useState(null);
   const [copiedPublicUrl, setCopiedPublicUrl] = useState(false);
 
-  const { nick = 'Jogador', steamId, discordId, avatar = '🎯', level = 12, faceitLevel = 5, faceitElo = 1200, side = 'ANY' } = profile || {};
+  const {
+    nick: propNick = 'Jogador',
+    steamId: propSteamId = '',
+    discordId: propDiscordId = '',
+    avatar: propAvatar = '🎯',
+    level: propLevel = 12,
+    faceitLevel: propFaceitLevel = 5,
+    faceitElo: propFaceitElo = 1200,
+  } = profile || {};
+
+  const identity = analytics?.identity || null;
+  const nick = (readOnly && identity?.nick) || propNick || identity?.nick || 'Jogador';
+  const steamId = propSteamId || identity?.steamId || '';
+  const discordId = propDiscordId || identity?.discordId || '';
+  const avatar = (readOnly && identity?.avatar) || propAvatar || identity?.avatar || '🎯';
+  const level = readOnly ? (identity?.level || propLevel || 12) : propLevel;
+  const faceitLevel = readOnly ? (identity?.faceitLevel || propFaceitLevel || 5) : propFaceitLevel;
+  const faceitElo = propFaceitElo || 1200;
+
   const isSteamUser = Boolean(steamId);
-  const stats = getPlayerStats(steamId);
+  const stats = readOnly
+    ? { matchesPlayed: 0, wins: 0, losses: 0, winRate: 0, streak: 0 }
+    : getPlayerStats(steamId);
   const gcTier = getGCTier(level);
 
   useEffect(() => {
@@ -84,10 +104,14 @@ export default function PlayerProfileModal({
   }, [isOpen, initialTab, readOnly]);
 
   const effectiveHours = profile?.cs2Hours || steamStats?.cs2Hours || null;
-  const trust = calculateTrustFactor(profile, steamStats);
+  const trust = calculateTrustFactor(
+    { ...profile, nick, steamId, discordId, level, faceitLevel, faceitElo },
+    steamStats
+  );
 
-  // Auto-sync Steam hours when detected via API
+  // Auto-sync Steam hours when detected via API (only on own editable profile)
   useEffect(() => {
+    if (readOnly) return;
     if (steamStats?.cs2Hours && (!profile?.cs2Hours || profile.cs2Hours !== steamStats.cs2Hours)) {
       if (onSaveProfile) {
         onSaveProfile({
@@ -96,7 +120,7 @@ export default function PlayerProfileModal({
         });
       }
     }
-  }, [steamStats?.cs2Hours]);
+  }, [steamStats?.cs2Hours, readOnly]);
 
   const handleOpenEditHours = () => {
     if (soundEnabled) playClickSound();
@@ -137,7 +161,10 @@ export default function PlayerProfileModal({
 
   // Fetch Steam Stats
   useEffect(() => {
-    if (!isOpen || !steamId) return;
+    if (!isOpen || !steamId) {
+      setSteamStats(null);
+      return;
+    }
     setLoadingSteam(true);
     fetch(`/api/steam/player-stats/${steamId}`)
       .then((res) => res.json())
@@ -186,9 +213,10 @@ export default function PlayerProfileModal({
   }, [isOpen, steamId, readOnly]);
 
   // Fetch Unified Player Analytics & Discord Link Status
-  const analyticsQueryId = steamId || discordId || profile?.id || nick;
+  const analyticsQueryId = propSteamId || propDiscordId || profile?.id || propNick;
   useEffect(() => {
     if (!isOpen || !analyticsQueryId) return;
+    setAnalytics(null);
     setLoadingAnalytics(true);
     fetch(`/api/players/${encodeURIComponent(analyticsQueryId)}/analytics`)
       .then((res) => (res.ok ? res.json() : null))
@@ -453,6 +481,10 @@ export default function PlayerProfileModal({
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
                         Steam Verificada
                       </span>
+                    ) : discordId ? (
+                      <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded-full bg-indigo-500/15 border border-indigo-500/35 text-indigo-300">
+                        Discord Verificado
+                      </span>
                     ) : (
                       <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
                         Não Autenticado
@@ -485,8 +517,12 @@ export default function PlayerProfileModal({
                         <ExternalLink size={10} />
                       </a>
                     </div>
+                  ) : discordId ? (
+                    <p className="text-xs text-indigo-300/90 font-mono mt-1">Discord ID: {discordId}</p>
                   ) : (
-                    <p className="text-xs text-slate-400 mt-1">Conecte sua conta Steam para ver estatísticas oficiais</p>
+                    <p className="text-xs text-slate-400 mt-1">
+                      {readOnly ? 'Perfil público de estatísticas no CS2 Mix Hub' : 'Conecte sua conta Steam para ver estatísticas oficiais'}
+                    </p>
                   )}
                 </div>
               </div>
@@ -530,34 +566,36 @@ export default function PlayerProfileModal({
                     </div>
                   </div>
 
-                  {/* Action Controls for Hours */}
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <button
-                      type="button"
-                      onClick={handleOpenEditHours}
-                      className="text-xs font-bold text-amber-300 hover:text-amber-200 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95"
-                      title="Editar ou definir manualmente suas horas de CS2"
-                    >
-                      <Pencil size={12} />
-                      <span className="hidden sm:inline">{effectiveHours ? 'Editar' : 'Definir'}</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (soundEnabled) playClickSound();
-                        setShowHoursHelp(!showHoursHelp);
-                        setEditingHours(false);
-                      }}
-                      className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-sky-400 border border-slate-800 transition-colors cursor-pointer"
-                      title="Ajuda sobre privacidade da Steam"
-                    >
-                      <HelpCircle size={14} />
-                    </button>
-                  </div>
+                  {/* Action Controls for Hours (own profile only) */}
+                  {!readOnly && (
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={handleOpenEditHours}
+                        className="text-xs font-bold text-amber-300 hover:text-amber-200 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95"
+                        title="Editar ou definir manualmente suas horas de CS2"
+                      >
+                        <Pencil size={12} />
+                        <span className="hidden sm:inline">{effectiveHours ? 'Editar' : 'Definir'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (soundEnabled) playClickSound();
+                          setShowHoursHelp(!showHoursHelp);
+                          setEditingHours(false);
+                        }}
+                        className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-sky-400 border border-slate-800 transition-colors cursor-pointer"
+                        title="Ajuda sobre privacidade da Steam"
+                      >
+                        <HelpCircle size={14} />
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Inline Editing Form for CS2 Hours */}
-                {editingHours && (
+                {!readOnly && editingHours && (
                   <form onSubmit={handleSaveHours} className="p-3.5 bg-slate-950/95 border border-amber-500/50 rounded-xl space-y-2.5 animate-fadeIn shadow-xl">
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-amber-400 font-bold flex items-center gap-1.5 font-heading uppercase tracking-wide">
@@ -896,53 +934,56 @@ export default function PlayerProfileModal({
                     </div>
                     <FaceitBadge level={faceitLevel} elo={faceitElo} size="lg" />
                   </div>
-                  <div className="pt-2 border-t border-slate-900 flex flex-col gap-1.5">
-                    <div className="flex items-center justify-between gap-1.5 flex-wrap">
-                      <button
-                        type="button"
-                        onClick={() => handleSyncFaceitAuto()}
-                        disabled={syncingFaceit}
-                        className="flex-1 flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 hover:text-orange-300 border border-orange-500/40 text-[10px] font-bold transition-all cursor-pointer disabled:opacity-50 active:scale-95"
-                      >
-                        <RefreshCw size={11} className={syncingFaceit ? 'animate-spin' : ''} />
-                        <span>{syncingFaceit ? 'Buscando...' : 'Puxar Automático da FACEIT'}</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setShowNickInput(!showNickInput)}
-                        className="text-[10px] text-slate-400 hover:text-slate-200 underline cursor-pointer"
-                      >
-                        {showNickInput ? 'Fechar' : 'Nick diferente?'}
-                      </button>
-                    </div>
-                    {showNickInput && (
-                      <div className="flex items-center gap-1.5 pt-1">
-                        <input
-                          type="text"
-                          placeholder="Ex: Lxn1899"
-                          value={customFaceitNick}
-                          onChange={(e) => setCustomFaceitNick(e.target.value)}
-                          className="bg-slate-900 border border-orange-500/40 rounded-lg px-2.5 py-1 text-xs text-white placeholder-slate-500 outline-none flex-1 font-mono"
-                        />
+                  {!readOnly && (
+                    <div className="pt-2 border-t border-slate-900 flex flex-col gap-1.5">
+                      <div className="flex items-center justify-between gap-1.5 flex-wrap">
                         <button
                           type="button"
-                          onClick={() => handleSyncFaceitAuto(customFaceitNick)}
-                          className="px-2.5 py-1 bg-orange-600 hover:bg-orange-500 text-white rounded-lg text-xs font-bold cursor-pointer"
+                          onClick={() => handleSyncFaceitAuto()}
+                          disabled={syncingFaceit}
+                          className="flex-1 flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 hover:text-orange-300 border border-orange-500/40 text-[10px] font-bold transition-all cursor-pointer disabled:opacity-50 active:scale-95"
                         >
-                          Buscar
+                          <RefreshCw size={11} className={syncingFaceit ? 'animate-spin' : ''} />
+                          <span>{syncingFaceit ? 'Buscando...' : 'Puxar Automático da FACEIT'}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowNickInput(!showNickInput)}
+                          className="text-[10px] text-slate-400 hover:text-slate-200 underline cursor-pointer"
+                        >
+                          {showNickInput ? 'Fechar' : 'Nick diferente?'}
                         </button>
                       </div>
-                    )}
-                    {faceitSyncMessage && (
-                      <span className="text-[10px] text-emerald-400 font-bold block animate-pulse">
-                        {faceitSyncMessage}
-                      </span>
-                    )}
-                  </div>
+                      {showNickInput && (
+                        <div className="flex items-center gap-1.5 pt-1">
+                          <input
+                            type="text"
+                            placeholder="Ex: Lxn1899"
+                            value={customFaceitNick}
+                            onChange={(e) => setCustomFaceitNick(e.target.value)}
+                            className="bg-slate-900 border border-orange-500/40 rounded-lg px-2.5 py-1 text-xs text-white placeholder-slate-500 outline-none flex-1 font-mono"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleSyncFaceitAuto(customFaceitNick)}
+                            className="px-2.5 py-1 bg-orange-600 hover:bg-orange-500 text-white rounded-lg text-xs font-bold cursor-pointer"
+                          >
+                            Buscar
+                          </button>
+                        </div>
+                      )}
+                      {faceitSyncMessage && (
+                        <span className="text-[10px] text-emerald-400 font-bold block animate-pulse">
+                          {faceitSyncMessage}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* Adjusters Box */}
+              {/* Adjusters Box (own editable profile only) */}
+              {!readOnly && (
               <div className="bg-slate-950/90 border border-slate-800 rounded-2xl p-4 space-y-4 shadow-inner">
                 {/* FACEIT Level Selector (1 a 10) */}
                 <div>
@@ -1030,6 +1071,7 @@ export default function PlayerProfileModal({
                   />
                 </div>
               </div>
+              )}
             </div>
           )}
 
@@ -1237,7 +1279,7 @@ export default function PlayerProfileModal({
               className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 border border-amber-400/50 shadow-lg shadow-amber-500/20 active:scale-95"
             >
               <Check size={16} />
-              <span>Salvar e Fechar (Voltar ao Mix)</span>
+              <span>{readOnly ? 'Fechar Perfil' : 'Salvar e Fechar (Voltar ao Mix)'}</span>
             </button>
           </div>
         </div>

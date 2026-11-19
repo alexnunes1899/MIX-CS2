@@ -32,6 +32,13 @@ export function serializeMix(mix) {
       active: false,
     };
   }
+  if (cloned.notifiedMissing instanceof Set) {
+    cloned.notifiedMissing = Array.from(cloned.notifiedMissing);
+  } else if (Array.isArray(cloned.notifiedMissing)) {
+    cloned.notifiedMissing = [...cloned.notifiedMissing];
+  } else if (cloned.notifiedMissing && typeof cloned.notifiedMissing === 'object') {
+    cloned.notifiedMissing = [];
+  }
   return cloned;
 }
 
@@ -48,6 +55,7 @@ export function deserializeMix(data) {
     mix.readyCheck.timer = null;
     mix.readyCheck.active = false;
   }
+  mix.notifiedMissing = new Set(Array.isArray(mix.notifiedMissing) ? mix.notifiedMissing : []);
   return mix;
 }
 

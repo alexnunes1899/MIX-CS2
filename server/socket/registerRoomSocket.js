@@ -6,6 +6,7 @@ import {
 } from '../authSession.js';
 import { economyDb } from '../db.js';
 import { getVetoSchedule } from '../../shared/proVeto.js';
+import { shuffleTeams } from '../../shared/balance.js';
 import {
   MOCK_BOTS,
   buildPublicRoomsList,
@@ -264,6 +265,16 @@ function executeCaptainPick(room, playerId, { lifecycle }) {
   return true;
 }
 
+function removeRoomPlayerDuo(room, playerId) {
+  if (!room || !Array.isArray(room.duos) || !playerId) return;
+  const uid = String(playerId);
+  room.duos = room.duos.filter((pair) => {
+    const a = Array.isArray(pair) ? String(pair[0]) : String(pair?.a || '');
+    const b = Array.isArray(pair) ? String(pair[1]) : String(pair?.b || '');
+    return a !== uid && b !== uid;
+  });
+}
+
 function pushSystemChat(io, room, text) {
   const chatMsg = {
     id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
@@ -331,6 +342,7 @@ export function registerRoomSocket({
   getMatchHistoryState,
   recordMatchHistoryEntry,
   computeMatchMvp,
+  computeMatchPerformers,
   getMapImageUrl,
   normalizeMapName,
   getGsiState,
@@ -361,6 +373,23 @@ export function registerRoomSocket({
 
     socket.on('get_rooms_list', () => {
       socket.emit('rooms_list', buildPublicRoomsList(rooms));
+    });
+
+    socket.on('spectate_gsi', ({ roomId }) => {
+      const cleanId = sanitizeInput(roomId || '', 20).toUpperCase();
+      if (!cleanId) return;
+      const room = rooms.get(cleanId);
+      if (!room || room.isPrivate) return;
+      socket.join(`gsi:${cleanId}`);
+      if (room.liveMatch) {
+        socket.emit('gsi_update', { ...room.liveMatch, roomId: cleanId });
+      }
+    });
+
+    socket.on('leave_spectate_gsi', ({ roomId }) => {
+      const cleanId = sanitizeInput(roomId || '', 20).toUpperCase();
+      if (!cleanId) return;
+      socket.leave(`gsi:${cleanId}`);
     });
 
     socket.on('join_room', async ({ roomId, player, roomName, rankingSystem, serverIp, password, isPrivate, inviteKey, createIfMissing }) => {
@@ -832,6 +861,7 @@ export function registerRoomSocket({
       room.players = room.players.filter((p) => p.id !== playerId);
       room.teamA = room.teamA.filter((p) => p.id !== playerId);
       room.teamB = room.teamB.filter((p) => p.id !== playerId);
+      removeRoomPlayerDuo(room, playerId);
       lifecycle.emitRoomState(room.id, room);
       lifecycle.broadcastRoomsList();
     });
@@ -856,6 +886,7 @@ export function registerRoomSocket({
       room.players = room.players.filter((p) => p.id !== targetPlayerId);
       room.teamA = room.teamA.filter((p) => p.id !== targetPlayerId);
       room.teamB = room.teamB.filter((p) => p.id !== targetPlayerId);
+      removeRoomPlayerDuo(room, targetPlayerId);
       if (room.unassignedPlayers) {
         room.unassignedPlayers = room.unassignedPlayers.filter((p) => p.id !== targetPlayerId);
       }
@@ -982,6 +1013,7 @@ export function registerRoomSocket({
         return;
       }
       room.players = [];
+      room.duos = [];
       room.phase = 'lobby';
       room.teamA = [];
       room.teamB = [];
@@ -992,6 +1024,27 @@ export function registerRoomSocket({
       room.drawnSeries = [];
       room.finalMap = null;
       room.startingSideTeamB = null;
+      room.readyCheck = null;
+      room.turnDeadline = null;
+      lifecycle.emitRoomState(room.id, room);
+      lifecycle.broadcastRoomsList();
+    });
+
+    socket.on('back_to_lobby', ({ roomId }) => {
+      const room = lifecycle.getRoomAndTouch(roomId);
+      if (!room) return;
+      if (!isRoomAdmin(room, socket)) {
+        socket.emit('admin_error', { message: 'Apenas o administrador da sala pode voltar ao Lobby.' });
+        return;
+      }
+      room.phase = 'lobby';
+      room.teamA = [];
+      room.teamB = [];
+      room.metrics = null;
+      room.captainA = null;
+      room.captainB = null;
+      room.unassignedPlayers = [];
+      room.coin = null;
       room.readyCheck = null;
       room.turnDeadline = null;
       lifecycle.emitRoomState(room.id, room);
@@ -1009,16 +1062,19 @@ export function registerRoomSocket({
       const rankingSys = room.rankingSystem || 'gc';
 
       if (mode === 'balanced') {
-        const { teamA, teamB, metrics } = lifecycle.calculateBalance(room.players, rankingSys);
+        const { teamA, teamB, metrics, preservedDuos } = lifecycle.calculateBalance(room.players, rankingSys, {
+          duos: room.duos || [],
+        });
         room.teamA = teamA;
         room.teamB = teamB;
         room.metrics = metrics;
+        room.preservedDuos = preservedDuos || 0;
       } else {
-        const shuffled = [...room.players].sort(() => Math.random() - 0.5);
-        const half = Math.floor(shuffled.length / 2);
-        room.teamA = shuffled.slice(0, half);
-        room.teamB = shuffled.slice(half);
-        room.metrics = lifecycle.calculateMetricsForTeams(room.teamA, room.teamB, rankingSys);
+        const { teamA, teamB, metrics } = shuffleTeams(room.players, rankingSys);
+        room.teamA = teamA;
+        room.teamB = teamB;
+        room.metrics = metrics;
+        room.preservedDuos = 0;
       }
 
       room.readyCheck = null;
@@ -1303,25 +1359,9 @@ export function registerRoomSocket({
 
       if (room.history.length > 20) room.history.pop();
 
-      if (numA > numB && room.teamA.length > 0) {
-        const updated = recordMatch({
-          winners: room.teamA,
-          losers: room.teamB,
-          map: resolvedMap,
-          scoreWinners: numA,
-          scoreLosers: numB,
-        });
-        io.emit('leaderboard_updated', updated);
-      } else if (numB > numA && room.teamB.length > 0) {
-        const updated = recordMatch({
-          winners: room.teamB,
-          losers: room.teamA,
-          map: resolvedMap,
-          scoreWinners: numB,
-          scoreLosers: numA,
-        });
-        io.emit('leaderboard_updated', updated);
-      }
+      const hasWinner = numA !== numB && (numA > numB ? room.teamA.length > 0 : room.teamB.length > 0);
+      const rawWinners = numA >= numB ? room.teamA : room.teamB;
+      const rawLosers = numA >= numB ? room.teamB : room.teamA;
 
       const webMatchRecord = {
         id: `WEB-${room.id}-${Date.now().toString(36).slice(-4).toUpperCase()}`,
@@ -1340,26 +1380,39 @@ export function registerRoomSocket({
         scoreLoser: Math.min(numA, numB),
         declaredBy: 'Capitão da Sala',
         serverConnect: room.serverIp || '',
-        winnerPlayers: (numA > numB ? room.teamA : room.teamB).map((p, idx) => ({
+        winnerPlayers: rawWinners.map((p, idx) => ({
           id: p.id || `p-win-${idx}`,
           nick: p.nick || `Jogador ${idx + 1}`,
           level: p.level || 16,
           avatar: p.avatar || '',
           steamId: p.steamId || '',
+          discordId: p.discordId || '',
           role: idx === 0 ? 'Capitão' : 'Jogador',
         })),
-        loserPlayers: (numA > numB ? room.teamB : room.teamA).map((p, idx) => ({
+        loserPlayers: rawLosers.map((p, idx) => ({
           id: p.id || `p-lose-${idx}`,
           nick: p.nick || `Jogador ${idx + 1}`,
           level: p.level || 16,
           avatar: p.avatar || '',
           steamId: p.steamId || '',
+          discordId: p.discordId || '',
           role: idx === 0 ? 'Capitão' : 'Jogador',
         })),
       };
 
       const currentGsi = getGsiState(room.id) || room.gsiState || room.liveMatch || null;
-      const computedMvp = computeMatchMvp(webMatchRecord, currentGsi);
+      const performerResult =
+        typeof computeMatchPerformers === 'function'
+          ? computeMatchPerformers(webMatchRecord, currentGsi)
+          : {
+              mvp: computeMatchMvp(webMatchRecord, currentGsi),
+              bagre: null,
+              evaluatedPlayers: [],
+              hasRealGsiStats: false,
+            };
+      const computedMvp = performerResult?.mvp || null;
+      const computedBagre = performerResult?.bagre || null;
+
       if (computedMvp) {
         webMatchRecord.mvpId = computedMvp.id;
         webMatchRecord.mvpNick = computedMvp.nick;
@@ -1369,6 +1422,28 @@ export function registerRoomSocket({
         if (room.liveMatch) {
           room.liveMatch.matchMvp = computedMvp;
         }
+      }
+      if (computedBagre) {
+        webMatchRecord.bagreId = computedBagre.id;
+        webMatchRecord.bagreNick = computedBagre.nick;
+        webMatchRecord.bagre = computedBagre;
+        webMatchRecord.bagreStats = computedBagre;
+      }
+      webMatchRecord.hasRealGsiStats = Boolean(performerResult?.hasRealGsiStats);
+      webMatchRecord.evaluatedPlayers = performerResult?.hasRealGsiStats ? performerResult.evaluatedPlayers : [];
+
+      if (hasWinner) {
+        const updated = recordMatch({
+          winners: numA > numB ? room.teamA : room.teamB,
+          losers: numA > numB ? room.teamB : room.teamA,
+          map: resolvedMap,
+          scoreWinners: Math.max(numA, numB),
+          scoreLosers: Math.min(numA, numB),
+          mvpId: webMatchRecord.mvpId || null,
+          bagreId: webMatchRecord.bagreId || null,
+          timestamp: webMatchRecord.timestamp,
+        });
+        io.emit('leaderboard_updated', updated);
       }
 
       if (room.teamA?.length === 5 && room.teamB?.length === 5) {
@@ -1627,8 +1702,9 @@ export function registerRoomSocket({
 
     socket.on('send_discord_webhook', async ({ roomId, eventType, data }, callback) => {
       const room = lifecycle.getRoomAndTouch(roomId);
-      if (room && !isRoomAdmin(room, socket)) {
-        if (typeof callback === 'function') callback({ error: 'Apenas o administrador da sala pode disparar notificações do Mix.' });
+      const isAllowed = socket.isSiteAdmin || (room ? isRoomAdmin(room, socket) : Boolean(socket.sessionUser?.steamId));
+      if (!isAllowed) {
+        if (typeof callback === 'function') callback({ error: 'Permissão insuficiente para disparar notificações do Mix.' });
         return;
       }
       const targetUrl = String(data?.webhookUrl || room?.discordWebhook || '').trim();
