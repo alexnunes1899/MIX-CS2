@@ -286,12 +286,12 @@ export function buildSlashCommands({ officialMaps = [], treinoMaps = [] } = {}) 
       .addStringOption((opt) =>
         opt
           .setName('loja')
-          .setDescription('Filtrar por loja confiável')
+          .setDescription('Filtrar por loja confiável verificada')
           .setRequired(false)
           .addChoices(
-            { name: '🟠 KaBuM!', value: 'kabum' },
-            { name: '🔴 Pichau Informática', value: 'pichau' },
-            { name: '🟢 TerabyteShop', value: 'terabyte' }
+            { name: '🟠 KaBuM! (Ao vivo verificado)', value: 'kabum' },
+            { name: '🔴 Pichau (Abrir busca direta)', value: 'pichau' },
+            { name: '🟢 TerabyteShop (Abrir busca direta)', value: 'terabyte' }
           )
       ),
 

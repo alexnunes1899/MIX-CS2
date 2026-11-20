@@ -13,6 +13,21 @@ export const DEFAULT_REGULAR_SLOTS_BRT = [12, 19];
 export const MIN_DROP_PCT = 5;
 export const MIN_DROP_BRL = 30;
 export const BLACK_FRIDAY_FLASH_MIN_DISCOUNT_PCT = 30;
+export const VERIFIED_PRODUCT_CACHE_TTL_MS = 60 * 1000;
+
+export const TRUSTED_PRODUCT_HOSTS = new Set(['www.kabum.com.br', 'kabum.com.br']);
+
+const CATEGORY_LIVE_QUERIES = {
+  gpu: 'placa de video rtx',
+  cpu: 'processador amd ryzen',
+  ram_ssd: 'ssd nvme 1tb',
+  placa_mae_fonte: 'placa mae b550',
+  monitor: 'monitor gamer 144hz 240hz',
+  mouse_teclado: 'mouse gamer sem fio',
+  audio: 'headset gamer',
+  cadeira: 'cadeira gamer',
+  mesa: 'mesa gamer',
+};
 
 const BRT_FORMATTER = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'America/Sao_Paulo',
@@ -88,6 +103,36 @@ export class HardwareDealsManager {
     this.lastLoadTime = 0;
     this._state = null;
     this._loadedStatePath = null;
+    this._verifiedProductCache = new Map();
+  }
+
+  /**
+   * Ensures a deal points to an HTTPS direct product URL on a trusted retailer,
+   * has a valid positive price, and is actively in stock (> 0).
+   */
+  isValidTrustedDeal(deal) {
+    if (!deal || typeof deal !== 'object') return false;
+    const price = Number(deal.price || 0);
+    if (!Number.isFinite(price) || price <= 0) return false;
+    if (deal.inStock === false) return false;
+    if (deal.stock !== undefined && Number(deal.stock) <= 0) return false;
+    if (!deal.link) return false;
+
+    try {
+      const url = new URL(String(deal.link).trim());
+      if (url.protocol !== 'https:') return false;
+      const host = url.hostname.toLowerCase();
+      if (!TRUSTED_PRODUCT_HOSTS.has(host)) return false;
+
+      const pathname = url.pathname.toLowerCase();
+      if (pathname.includes('/busca') || pathname.includes('/search')) return false;
+      if (url.searchParams.has('q') || url.searchParams.has('busca')) return false;
+      if (!/\/produto\/[a-z0-9_-]+/i.test(url.pathname)) return false;
+
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   getStateFilePath() {
@@ -190,11 +235,129 @@ export class HardwareDealsManager {
     return c;
   }
 
+  parseKabumProductItem(item, fallbackCategoryQuery = '') {
+    const attr = item?.attributes || item;
+    if (!attr || typeof attr !== 'object') return null;
+
+    const productId = item?.id || attr?.code || attr?.id;
+    if (!productId) return null;
+
+    const stock = attr.stock !== undefined ? Number(attr.stock) : 1;
+    if (attr.available !== true || !Number.isFinite(stock) || stock <= 0) return null;
+    if (attr.is_pre_order === true || attr.is_openbox === true) return null;
+
+    const hasActiveOffer =
+      attr.offer &&
+      typeof attr.offer === 'object' &&
+      Number(attr.offer.price_with_discount) > 0 &&
+      (attr.offer.quantity_available === undefined || Number(attr.offer.quantity_available) > 0);
+
+    const discountPrice = hasActiveOffer
+      ? Number(attr.offer.price_with_discount)
+      : Number(attr.price_with_discount || 0);
+    const listPrice = Number(attr.price || 0);
+    const oldCandidate = Number(attr.old_price || 0);
+    const price = discountPrice > 0 ? discountPrice : listPrice;
+    if (!Number.isFinite(price) || price <= 0) return null;
+
+    const oldPrice = oldCandidate > price
+      ? oldCandidate
+      : (listPrice > price ? listPrice : 0);
+    const rawDiscountPct = hasActiveOffer && Number(attr.offer.discount_percentage) > 0
+      ? Number(attr.offer.discount_percentage)
+      : Number(attr.discount_percentage || 0);
+    const discountPct = rawDiscountPct > 0
+      ? Math.round(rawDiscountPct)
+      : (oldPrice > price ? Math.round(((oldPrice - price) / oldPrice) * 100) : 0);
+
+    const slug = String(attr.product_link || '').replace(/^\/+/, '');
+    const link = slug
+      ? `https://www.kabum.com.br/produto/${productId}/${slug}`
+      : `https://www.kabum.com.br/produto/${productId}`;
+
+    const image =
+      attr.photos?.g?.[0] ||
+      attr.photos?.m?.[0] ||
+      attr.images?.[0] ||
+      'https://images.kabum.com.br/produtos/fotos/fallback.jpg';
+
+    const stampsList = Array.isArray(attr.stamps) ? attr.stamps : (attr.stamps ? [attr.stamps] : []);
+    const stampsText = stampsList
+      .map((s) => `${s?.title || ''} ${s?.name || ''} ${s?.description || ''}`)
+      .join(' ');
+    const couponMatch = stampsText.match(/cupom\s*:?\s*([A-Z0-9_-]{3,20})/i);
+    const coupon = couponMatch ? couponMatch[1].toUpperCase() : null;
+
+    const isOfficialSeller = attr.is_marketplace !== true;
+    const sellerLabel = isOfficialSeller
+      ? 'Vendido e entregue por KaBuM!'
+      : 'Marketplace KaBuM! Verificado';
+
+    const deal = {
+      id: `kabum-${productId}`,
+      title: attr.title,
+      category: this.normalizeCategory(attr.menu || fallbackCategoryQuery) || 'hardware',
+      categoryLabel: 'Hardware & Setup PC Gamer',
+      store: 'kabum',
+      storeName: 'KaBuM!',
+      storeBadge: '🟠 KaBuM!',
+      oldPrice,
+      price,
+      discountPct,
+      installment: attr.max_installment || '',
+      coupon,
+      link,
+      image,
+      highlight: `⚡ Preço oficial verificado • ${sellerLabel}`,
+      stock,
+      isOfficialSeller,
+      inStock: true,
+      isLive: true,
+      verifiedAt: Date.now(),
+    };
+
+    return this.isValidTrustedDeal(deal) ? deal : null;
+  }
+
+  async verifyKabumProductById(productId) {
+    const cleanId = String(productId || '').trim();
+    if (!/^\d+$/.test(cleanId)) return null;
+
+    const now = Date.now();
+    const cached = this._verifiedProductCache.get(cleanId);
+    if (cached && (now - cached.cachedAt) < VERIFIED_PRODUCT_CACHE_TTL_MS) {
+      return cached.deal;
+    }
+
+    try {
+      const url = `https://servicespub.prod.api.aws.grupokabum.com.br/catalog/v2/products/${cleanId}`;
+      const res = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          Accept: 'application/json',
+        },
+        signal: AbortSignal.timeout(3500),
+      });
+      if (!res.ok) {
+        this._verifiedProductCache.set(cleanId, { deal: null, cachedAt: now });
+        return null;
+      }
+      const json = await res.json();
+      const deal = this.parseKabumProductItem(json?.data || json);
+      this._verifiedProductCache.set(cleanId, { deal, cachedAt: now });
+      return deal;
+    } catch (e) {
+      console.warn(`[HARDWARE DEALS] Falha ao verificar produto KaBuM #${cleanId}:`, e.message);
+      return null;
+    }
+  }
+
   async searchKabumLive(query, limit = 4) {
     if (!query || !query.trim()) return [];
     try {
       const clean = encodeURIComponent(query.trim());
-      const url = `https://servicespub.prod.api.aws.grupokabum.com.br/catalog/v2/products?query=${clean}&page_size=${limit}&sort=-discount`;
+      const pageSize = Math.max(Number(limit) * 3, 12);
+      const url = `https://servicespub.prod.api.aws.grupokabum.com.br/catalog/v2/products?query=${clean}&page_size=${pageSize}&sort=-discount`;
       const res = await fetch(url, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -208,56 +371,15 @@ export class HardwareDealsManager {
       const list = json.data || [];
 
       return list
-        .map((item) => {
-          const attr = item?.attributes;
-          if (!attr?.available) return null;
-          const discountPrice = Number(attr.price_with_discount || 0);
-          const listPrice = Number(attr.price || 0);
-          const oldCandidate = Number(attr.old_price || 0);
-          const price = discountPrice > 0 ? discountPrice : listPrice;
-          if (!Number.isFinite(price) || price <= 0) return null;
-
-          const oldPrice = oldCandidate > price
-            ? oldCandidate
-            : (listPrice > price ? listPrice : 0);
-          const discountPct = Number(attr.discount_percentage) > 0
-            ? Math.round(Number(attr.discount_percentage))
-            : (oldPrice > price ? Math.round(((oldPrice - price) / oldPrice) * 100) : 0);
-
-          const slug = (attr.product_link || '').replace(/^\/+/, '');
-          const link = item.id && slug
-            ? `https://www.kabum.com.br/produto/${item.id}/${slug}`
-            : item.id
-            ? `https://www.kabum.com.br/produto/${item.id}`
-            : `https://www.kabum.com.br/busca?q=${clean}`;
-
-          const image =
-            attr.photos?.g?.[0] ||
-            attr.photos?.m?.[0] ||
-            attr.images?.[0] ||
-            'https://images.kabum.com.br/produtos/fotos/fallback.jpg';
-
-          return {
-            id: `kabum-${item.id}`,
-            title: attr.title,
-            category: this.normalizeCategory(attr.menu || query) || 'hardware',
-            categoryLabel: 'Hardware & Setup PC Gamer',
-            store: 'kabum',
-            storeName: 'KaBuM!',
-            storeBadge: '🟠 KaBuM!',
-            oldPrice,
-            price,
-            discountPct,
-            installment: attr.max_installment || '',
-            coupon: null,
-            link,
-            image,
-            highlight: '⚡ Preço ao vivo oficial da KaBuM!',
-            inStock: true,
-            isLive: true,
-          };
-        })
-        .filter(Boolean);
+        .map((item) => this.parseKabumProductItem(item, query))
+        .filter(Boolean)
+        .sort(
+          (a, b) =>
+            (Number(b.isOfficialSeller) - Number(a.isOfficialSeller)) ||
+            (Number(b.discountPct || 0) - Number(a.discountPct || 0)) ||
+            (a.price - b.price)
+        )
+        .slice(0, limit);
     } catch (e) {
       console.warn('[HARDWARE DEALS] Erro na busca ao vivo KaBuM:', e.message);
       return [];
@@ -294,7 +416,7 @@ export class HardwareDealsManager {
     for (const outcome of settled) {
       if (outcome.status !== 'fulfilled' || !Array.isArray(outcome.value)) continue;
       for (const deal of outcome.value) {
-        if (!deal || !(Number(deal.price) > 0) || deal.inStock === false) continue;
+        if (!this.isValidTrustedDeal(deal)) continue;
         const key = this.getDealKey(deal);
         if (!key) continue;
         const existing = byKey.get(key);
@@ -305,7 +427,10 @@ export class HardwareDealsManager {
     }
 
     return Array.from(byKey.values()).sort(
-      (a, b) => (Number(b.discountPct || 0) - Number(a.discountPct || 0)) || (a.price - b.price)
+      (a, b) =>
+        (Number(b.isOfficialSeller !== false) - Number(a.isOfficialSeller !== false)) ||
+        (Number(b.discountPct || 0) - Number(a.discountPct || 0)) ||
+        (a.price - b.price)
     );
   }
 
@@ -380,8 +505,8 @@ export class HardwareDealsManager {
 
     const uniqueByKey = new Map();
     for (const deal of candidateDeals || []) {
-      const price = Number(deal?.price || 0);
-      if (!deal || !Number.isFinite(price) || price <= 0 || deal.inStock === false) continue;
+      if (!this.isValidTrustedDeal(deal)) continue;
+      const price = Number(deal.price);
       const key = this.getDealKey(deal);
       if (!key) continue;
       const existing = uniqueByKey.get(key);
@@ -443,10 +568,11 @@ export class HardwareDealsManager {
     }
 
     const scoreDeal = (d) => {
-      if (d.isPriceDrop) return 4000 + Number(d.dropPct || 0) * 10 + Math.min(100, Number(d.dropBrl || 0) / 10);
-      if (d.isFlashDeal) return 3000 + Number(d.discountPct || 0);
-      if (d.isLive) return 2000 + Number(d.discountPct || 0);
-      return 1000 + Number(d.discountPct || 0);
+      const officialBonus = d.isOfficialSeller !== false ? 200 : 0;
+      if (d.isPriceDrop) return 4000 + officialBonus + Number(d.dropPct || 0) * 10 + Math.min(100, Number(d.dropBrl || 0) / 10);
+      if (d.isFlashDeal) return 3000 + officialBonus + Number(d.discountPct || 0);
+      if (d.isLive) return 2000 + officialBonus + Number(d.discountPct || 0);
+      return 1000 + officialBonus + Number(d.discountPct || 0);
     };
 
     return selected.sort((a, b) => scoreDeal(b) - scoreDeal(a)).slice(0, limit);
@@ -504,99 +630,95 @@ export class HardwareDealsManager {
 
   async getDeals(options = {}) {
     const { category, store, query, limit = 5 } = options;
-    const curated = this.loadCuratedData();
-    let results = [...(curated.deals || [])];
-
     const normCat = this.normalizeCategory(category);
 
-    if (store) {
-      results = results.filter((d) => d.store?.toLowerCase() === store.toLowerCase());
+    // Only stores with live stock/price API verification are returned automatically
+    if (store && store.toLowerCase() !== 'kabum') {
+      return [];
     }
 
-    if (normCat) {
-      results = results.filter((d) => this.normalizeCategory(d.category) === normCat);
-    }
-
+    let liveResults = [];
     if (query && query.trim()) {
-      const q = query.trim().toLowerCase();
-      const terms = q.split(/\s+/).filter(Boolean);
+      liveResults = await this.searchKabumLive(query.trim(), limit);
+    } else if (normCat) {
+      const catQuery = CATEGORY_LIVE_QUERIES[normCat] || normCat;
+      liveResults = (await this.searchKabumLive(catQuery, limit)).map((item) => ({
+        ...item,
+        category: normCat,
+        categoryLabel: CATEGORY_LABELS[normCat] || item.categoryLabel,
+      }));
+    } else {
+      liveResults = await this.fetchLiveDealsPool({ categoryType: 'all', limitPerQuery: 3 });
+    }
 
-      const curatedMatches = results
-        .map((d) => {
-          const titleLower = d.title.toLowerCase();
-          const fullText = `${d.title} ${d.category} ${d.categoryLabel} ${d.highlight || ''}`.toLowerCase();
-          let score = 0;
-          if (terms.every((t) => titleLower.includes(t))) score += 100;
-          else if (terms.every((t) => fullText.includes(t))) score += 50;
-          else if (terms.some((t) => titleLower.includes(t))) score += 20;
-          return { deal: d, score };
-        })
-        .filter((item) => item.score >= 50)
-        .sort((a, b) => b.score - a.score)
-        .map((item) => item.deal);
+    const byKey = new Map();
+    for (const item of liveResults) {
+      if (!this.isValidTrustedDeal(item)) continue;
+      const key = this.getDealKey(item);
+      if (key && !byKey.has(key)) byKey.set(key, item);
+    }
 
-      // Also search live on KaBuM!
-      const liveKabum = await this.searchKabumLive(query, Math.min(4, limit));
-
-      // Combine, prioritize curated matches if any, then live
-      const combined = [...curatedMatches, ...liveKabum];
-      const seen = new Set();
-      results = combined.filter((item) => {
-        const key = item.link || item.id;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-    } else if (normCat && results.length < 3) {
-      // If category has few curated items, supplement with live search
-      const queryMap = {
-        cadeira: 'cadeira gamer',
-        mesa: 'mesa gamer',
-        mouse_teclado: 'mouse gamer',
-        audio: 'headset gamer',
-        gpu: 'placa de video rtx',
-        cpu: 'processador ryzen',
-        ram_ssd: 'ssd nvme',
-        monitor: 'monitor gamer',
-        placa_mae_fonte: 'placa mae b550',
-      };
-      const extraQuery = queryMap[normCat];
-      if (extraQuery) {
-        const liveKabum = await this.searchKabumLive(extraQuery, 3);
-        const seen = new Set(results.map((r) => r.link || r.id));
-        liveKabum.forEach((item) => {
-          if (!seen.has(item.link || item.id)) {
-            item.category = normCat;
-            results.push(item);
-            seen.add(item.link || item.id);
-          }
+    // Supplement with verified curated seeds ONLY after confirming real live stock & price
+    if (byKey.size < limit) {
+      const curated = this.loadCuratedData();
+      let seeds = (curated.deals || []).filter((d) => this.isValidTrustedDeal(d));
+      if (normCat) {
+        seeds = seeds.filter((d) => this.normalizeCategory(d.category) === normCat);
+      }
+      if (query && query.trim()) {
+        const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+        seeds = seeds.filter((d) => {
+          const haystack = `${d.title} ${d.category} ${d.categoryLabel || ''}`.toLowerCase();
+          return terms.every((t) => haystack.includes(t));
         });
+      }
+
+      const toVerify = seeds.slice(0, Math.max(limit * 2, 6));
+      const verifiedSeeds = await Promise.all(
+        toVerify.map(async (seed) => {
+          const match = String(seed.link || '').match(/\/produto\/(\d+)/i);
+          if (!match) return null;
+          const verified = await this.verifyKabumProductById(match[1]);
+          if (!verified) return null;
+          return {
+            ...verified,
+            category: seed.category || verified.category,
+            categoryLabel: seed.categoryLabel || verified.categoryLabel,
+          };
+        })
+      );
+
+      for (const verified of verifiedSeeds) {
+        if (!verified || !this.isValidTrustedDeal(verified)) continue;
+        const key = this.getDealKey(verified);
+        if (key && !byKey.has(key)) byKey.set(key, verified);
+        if (byKey.size >= limit) break;
       }
     }
 
-    return results.slice(0, limit);
+    return Array.from(byKey.values()).slice(0, limit);
   }
 
   buildDealsEmbed(deals, options = {}) {
-    const title = options.title || '🔥 PROMOÇÕES & OFERTAS DE HARDWARE • PC GAMER & SETUP';
+    const title = options.title || '🔥 PROMOÇÕES REAIS & VERIFICADAS • HARDWARE GAMER';
     const description =
       options.description ||
-      `Busca **ao vivo na KaBuM!** combinada com **catálogo curado de Pichau e TerabyteShop**:\n` +
-      `🟠 **KaBuM!** (API ao vivo) • 🔴 **Pichau** & 🟢 **TerabyteShop** (Curadoria)\n\n` +
-      `*Aumente seu FPS e renove seu setup (confira o preço final e estoque no link da loja):*`;
+      `Ofertas **100% verificadas em tempo real na API oficial da KaBuM!** com **link direto do produto e estoque ativo confirmado**:\n` +
+      `🟠 **KaBuM!** (Estoque e preço conferidos na hora) • 🔴 **Pichau** & 🟢 **TerabyteShop** (Busca direta nos botões abaixo)\n\n` +
+      `*Sem links genéricos ou itens esgotados — confira sempre no botão da oferta:*`;
 
     const embed = new EmbedBuilder()
       .setTitle(title)
       .setDescription(description)
       .setColor(options.color ?? 0x38bdf8)
       .setThumbnail('https://images.unsplash.com/photo-1587202372775-e229f172b9d7?auto=format&fit=crop&w=256&q=80')
-      .setFooter({ text: 'CS2 Mix Hub • KaBuM! ao vivo + Catálogo curado Pichau/Terabyte • Confira no link' })
+      .setFooter({ text: 'CS2 Mix Hub • KaBuM! Verificado Ao Vivo (estoque > 0 e link direto)' })
       .setTimestamp();
 
     if (!deals || deals.length === 0) {
       embed.addFields({
-        name: '🔍 Nenhuma oferta específica encontrada',
-        value: 'Tente buscar por termos como: `cadeira`, `mesa`, `mouse`, `teclado`, `rtx 4060`, `ryzen`, `monitor` ou selecione uma categoria abaixo.',
+        name: '🔍 Nenhuma oferta em estoque encontrada agora',
+        value: 'Não encontramos produtos disponíveis para esse filtro no momento (itens esgotados são ocultados automaticamente). Tente outro termo como `rtx 4060`, `ryzen`, `ssd nvme`, `monitor` ou `cadeira`.',
       });
       return embed;
     }
@@ -609,7 +731,8 @@ export class HardwareDealsManager {
       const newStr = `**R$ ${formatBrl(d.price)}**`;
       const discStr = d.discountPct > 0 ? ` \`[${d.discountPct}% OFF]\`` : '';
       const couponStr = d.coupon ? ` • Cupom: \`${d.coupon}\`` : '';
-      const sourceBadge = d.isLive ? ' `🟢 Ao vivo`' : ' `📋 Catálogo curado`';
+      const stockBadge = Number(d.stock) > 0 ? ` \`📦 ${d.stock} em estoque\`` : ' `🟢 Estoque verificado`';
+      const sourceBadge = d.isLive ? ' `🟢 Ao vivo`' : ' `✅ Verificado`';
       const freshnessBadge = d.isNew && !d.isPriceDrop && !d.isFlashDeal ? ' `🆕 Nova`' : '';
       const priceDropStr = d.isPriceDrop
         ? `\n📉 **CAIU MAIS!** Era ~~R$ ${formatBrl(d.previousPrice)}~~ → **R$ ${formatBrl(d.price)}** (**-R$ ${formatBrl(d.dropBrl)} / -${d.dropPct}%**)${d.isNewLowest ? ' 🏆 *Menor preço registrado*' : ''}`
@@ -622,7 +745,7 @@ export class HardwareDealsManager {
 
       embed.addFields({
         name: `${idx + 1}. ${d.storeBadge || '🛒'} • ${d.title.slice(0, 75)}`,
-        value: `💰 ${oldStr}${newStr}${discStr}${couponStr}${sourceBadge}${freshnessBadge}${priceDropStr}${flashStr}${installStr}${highlightStr}\n👉 [Clique aqui para conferir preço e estoque na loja](${d.link})\n`,
+        value: `💰 ${oldStr}${newStr}${discStr}${couponStr}${sourceBadge}${stockBadge}${freshnessBadge}${priceDropStr}${flashStr}${installStr}${highlightStr}\n👉 [Abrir produto verificado na loja](${d.link})\n`,
       });
     });
 
@@ -636,7 +759,7 @@ export class HardwareDealsManager {
       .addOptions([
         {
           label: '🔥 Melhores Ofertas (Geral)',
-          description: 'Top promoções quentes de KaBuM, Pichau e Terabyte',
+          description: 'Melhores promoções verificadas em tempo real (estoque ativo)',
           value: 'all',
           emoji: '🔥',
         },

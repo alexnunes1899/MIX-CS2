@@ -1431,4 +1431,82 @@ test('HardwareDealsManager deduplicates, detects price drops/Black Friday and en
   assert.equal(r3.sentGuilds, 1);
   assert.equal(sentPayloads.length, 2);
   assert.match(sentPayloads[1].embeds[0].toJSON().title, /QUEDA DE PREÇO|BLACK FRIDAY/);
+
+  // 7. Strict link/store/stock trust validation (blocks search links, untrusted domains & sold-out items)
+  assert.equal(manager.isValidTrustedDeal({
+    id: 'fake-search-pichau',
+    price: 1899,
+    inStock: true,
+    link: 'https://www.pichau.com.br/search?q=rtx-4060',
+  }), false);
+  assert.equal(manager.isValidTrustedDeal({
+    id: 'fake-search-terabyte',
+    price: 399,
+    inStock: true,
+    link: 'https://www.terabyteshop.com.br/busca?busca=ssd',
+  }), false);
+  assert.equal(manager.isValidTrustedDeal({
+    id: 'untrusted-host',
+    price: 500,
+    inStock: true,
+    link: 'https://loja-suspeita.xyz/produto/123',
+  }), false);
+  assert.equal(manager.isValidTrustedDeal({
+    id: 'sold-out-kabum',
+    price: 719.9,
+    inStock: false,
+    stock: 0,
+    link: 'https://www.kabum.com.br/produto/470024/cadeira-esgotada',
+  }), false);
+  assert.equal(manager.isValidTrustedDeal({
+    id: 'kabum-zero-stock',
+    price: 719.9,
+    inStock: true,
+    stock: 0,
+    link: 'https://www.kabum.com.br/produto/470024/cadeira-esgotada',
+  }), false);
+
+  const rejectedByFilter = manager.filterFreshAndPriceDropDeals('g-trust-check', [
+    { id: 's1', title: 'Busca Pichau', price: 1899, inStock: true, isLive: true, link: 'https://www.pichau.com.br/search?q=rtx' },
+    { id: 's2', title: 'Esgotado', price: 999, inStock: false, stock: 0, isLive: true, link: 'https://www.kabum.com.br/produto/470024/x' },
+    { id: 's3', title: 'Fake site', price: 999, inStock: true, isLive: true, link: 'https://loja-suspeita.xyz/produto/123' },
+  ], { now: t1210 });
+  assert.equal(rejectedByFilter.length, 0);
+
+  // parseKabumProductItem validates stock/flags, builds direct URL and extracts real stamp coupon
+  assert.equal(manager.parseKabumProductItem({ id: 1, attributes: { available: false, stock: 5, price: 100, title: 'Off' } }), null);
+  assert.equal(manager.parseKabumProductItem({ id: 2, attributes: { available: true, stock: 0, price: 100, title: 'Zero' } }), null);
+  assert.equal(manager.parseKabumProductItem({ id: 3, attributes: { available: true, stock: 5, is_openbox: true, price: 100, title: 'OB' } }), null);
+  assert.equal(manager.parseKabumProductItem({ id: 4, attributes: { available: true, stock: 5, is_pre_order: true, price: 100, title: 'PO' } }), null);
+
+  const parsedReal = manager.parseKabumProductItem({
+    id: 475651,
+    attributes: {
+      title: 'Placa de Vídeo RTX 3060',
+      available: true,
+      stock: 18,
+      is_marketplace: false,
+      price: 3529.4,
+      price_with_discount: 2999.99,
+      discount_percentage: 15,
+      product_link: 'placa-de-video-rtx-3060',
+      stamps: { title: 'CUPOM ZAFADINHO13', description: 'Use o cupom ZAFADINHO13' },
+    },
+  });
+  assert.ok(parsedReal);
+  assert.equal(parsedReal.coupon, 'ZAFADINHO13');
+  assert.equal(parsedReal.stock, 18);
+  assert.equal(parsedReal.isOfficialSeller, true);
+  assert.equal(parsedReal.link, 'https://www.kabum.com.br/produto/475651/placa-de-video-rtx-3060');
+
+  // Curated catalog file must contain ONLY verified direct /produto/ links & active stock (0 search URLs)
+  const seededJson = JSON.parse(
+    fs.readFileSync(path.join(process.cwd(), 'server', 'data', 'hardwareDeals.json'), 'utf8')
+  );
+  assert.ok(Array.isArray(seededJson.deals) && seededJson.deals.length >= 9);
+  for (const deal of seededJson.deals) {
+    assert.equal(deal.link.includes('/search?'), false, `Search link forbidden: ${deal.link}`);
+    assert.equal(deal.link.includes('/busca?'), false, `Search link forbidden: ${deal.link}`);
+    assert.equal(manager.isValidTrustedDeal(deal), true, `Untrusted/invalid deal in hardwareDeals.json: ${deal.id}`);
+  }
 });

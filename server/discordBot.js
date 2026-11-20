@@ -9051,7 +9051,7 @@ export class DiscordBotManager {
           const created = await guild.channels.create({
             name: '🏷️・ofertas-gamer',
             type: ChannelType.GuildText,
-            topic: '🔥 Radar automático de promoções de hardware, periféricos, cadeiras e mesas gamer (KaBuM! ao vivo + Pichau/Terabyte curado)',
+            topic: '🔥 Radar anti-spam (1-2x/dia) de promoções verificadas ao vivo na KaBuM! com link direto e estoque real confirmado',
             reason: 'Canal automático para promoções de computadores gamers e setup',
           });
           console.log(`[DISCORD BOT] Canal #${created.name} criado com sucesso no servidor "${guild.name}"!`);
@@ -9119,35 +9119,11 @@ export class DiscordBotManager {
 
       let pool = Array.isArray(candidateDeals) ? [...candidateDeals] : null;
       if (!pool) {
-        const liveDeals = await hardwareDealsManager.fetchLiveDealsPool({ categoryType, limitPerQuery: 6, now });
-        pool = [...liveDeals];
-
-        // Only supplement with static curated items in regular mode when live results are scarce
-        if (mode !== 'price_drop' && pool.length < 4) {
-          const curatedCategoryMap = {
-            cadeira_mesa: ['cadeira', 'mesa'],
-            gpu_cpu: ['gpu', 'cpu'],
-            mouse_teclado: ['mouse_teclado'],
-            monitor_audio: ['monitor', 'audio'],
-            ram_ssd: ['ram_ssd'],
-            all: [null],
-          };
-          const cats = curatedCategoryMap[categoryType] || [null];
-          const seenKeys = new Set(pool.map((d) => hardwareDealsManager.getDealKey(d)));
-          for (const cat of cats) {
-            const extra = await hardwareDealsManager.getDeals({ ...(cat ? { category: cat } : {}), limit: 3 });
-            for (const item of extra) {
-              const key = hardwareDealsManager.getDealKey(item);
-              if (key && !seenKeys.has(key)) {
-                seenKeys.add(key);
-                pool.push(item);
-              }
-            }
-          }
-        }
+        pool = await hardwareDealsManager.fetchLiveDealsPool({ categoryType, limitPerQuery: 6, now });
       }
+      pool = (pool || []).filter((d) => hardwareDealsManager.isValidTrustedDeal(d));
 
-      if (!pool || pool.length === 0) {
+      if (pool.length === 0) {
         return { sentGuilds: 0, skippedGuilds: skippedGuilds + eligibleGuilds.length, totalDealsSent: 0, reason: 'empty_pool' };
       }
 
@@ -9171,7 +9147,7 @@ export class DiscordBotManager {
           });
 
           if (dealsToPost.length === 0 && allowRepeatFallback) {
-            dealsToPost = pool.filter((d) => Number(d?.price) > 0 && d?.inStock !== false).slice(0, 4);
+            dealsToPost = pool.filter((d) => hardwareDealsManager.isValidTrustedDeal(d)).slice(0, 4);
           }
 
           if (dealsToPost.length === 0) {
@@ -9182,8 +9158,8 @@ export class DiscordBotManager {
           const hasPriceDrops = dealsToPost.some((d) => d.isPriceDrop);
           const allPriceDrops = dealsToPost.every((d) => d.isPriceDrop);
 
-          let title = '🔥 RESUMO DIÁRIO DE OFERTAS GAMER • SOMENTE NOVIDADES';
-          let desc = '⚡ **CURADORIA ANTI-SPAM (1–2x/dia):** Apenas ofertas novas ou que caíram ainda mais de preço na **KaBuM!** (ao vivo) + catálogo **Pichau/Terabyte**:';
+          let title = '🔥 RESUMO DIÁRIO DE OFERTAS VERIFICADAS • HARDWARE GAMER';
+          let desc = '⚡ **CURADORIA ANTI-SPAM (1–2x/dia):** Apenas ofertas inéditas ou com queda de preço **verificadas agora na KaBuM!** (link direto do produto + estoque ativo confirmado):';
           let color = 0x38bdf8;
 
           if (mode === 'price_drop' || allPriceDrops) {
@@ -9322,8 +9298,8 @@ export class DiscordBotManager {
       const query = args.join(' ');
       const deals = await hardwareDealsManager.getDeals({ query, limit: 5 });
       const embed = hardwareDealsManager.buildDealsEmbed(deals, {
-        title: `🔍 BUSCA DE HARDWARE: "${query.toUpperCase()}"`,
-        description: `Resultados na **KaBuM!** (ao vivo) + catálogo curado (**Pichau** e **TerabyteShop**):`,
+        title: `🔍 BUSCA DE HARDWARE VERIFICADA: "${query.toUpperCase()}"`,
+        description: `Produtos **em estoque e com link direto conferidos agora na KaBuM!** (use os botões abaixo para abrir a busca direta na Pichau ou TerabyteShop):`,
       });
       const selectMenu = hardwareDealsManager.buildCategorySelectMenu();
       const actionButtons = hardwareDealsManager.buildActionButtons(deals, { query });
@@ -9344,11 +9320,20 @@ export class DiscordBotManager {
     const category = interaction.options?.getString('categoria');
     const store = interaction.options?.getString('loja');
 
+    if (store && store !== 'kabum') {
+      const storeName = store === 'pichau' ? 'Pichau Informática' : 'TerabyteShop';
+      const actionButtons = hardwareDealsManager.buildActionButtons([], { query, category });
+      return interaction.editReply({
+        content: `ℹ️ Para garantir **preço verdadeiro, link direto e estoque real**, só exibimos ofertas verificadas automaticamente pela API oficial (atualmente **KaBuM!**). Você pode pesquisar diretamente na **${storeName}** pelos botões abaixo:`,
+        components: actionButtons,
+      });
+    }
+
     const deals = await hardwareDealsManager.getDeals({ query, category, store, limit: 5 });
     const title = query
-      ? `🔍 BUSCA DE HARDWARE: "${query.toUpperCase()}"`
+      ? `🔍 BUSCA DE HARDWARE VERIFICADA: "${query.toUpperCase()}"`
       : category
-      ? `🔥 OFERTAS DE HARDWARE • ${category.toUpperCase()}`
+      ? `🔥 OFERTAS VERIFICADAS • ${category.toUpperCase()}`
       : undefined;
 
     const embed = hardwareDealsManager.buildDealsEmbed(deals, { title });
