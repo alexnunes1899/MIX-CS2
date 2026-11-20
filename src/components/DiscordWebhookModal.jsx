@@ -702,7 +702,7 @@ export default function DiscordWebhookModal({
                           🛡️ Hierarquia de Cargos (Para Patentes Automáticas)
                         </strong>
                         <span className="text-slate-400 block mt-0.5">
-                          Após o bot entrar no servidor, vá em <em>Configurações do Servidor &gt; Cargos</em> e arraste o cargo do bot (<code>cs hub</code>) para <strong>cima dos membros comuns</strong>. A hierarquia do Discord exige que o bot esteja acima para poder entregar as patentes automáticas (<code>@Competidor</code>, <code>@Veterano</code>, <code>@Major Champion</code> e <code>@Rei do Servidor</code>).
+                          Após o bot entrar no servidor, vá em <em>Configurações do Servidor &gt; Cargos</em> e arraste o cargo do bot (<code>cs hub</code>) para <strong>cima dos membros comuns</strong>. A hierarquia do Discord exige que o bot esteja acima para poder entregar as patentes automáticas (<code>@Competidor</code>, <code>@Veterano do Mix</code>, <code>@Major Champion</code> e <code>@Rei do Servidor</code>).
                         </span>
                       </div>
                     </div>

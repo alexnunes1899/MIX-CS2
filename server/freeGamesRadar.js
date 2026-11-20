@@ -117,80 +117,64 @@ export class FreeGamesRadarService {
         }
       }
 
-      return { activeFree, upcomingFree };
+      return { activeFree, upcomingFree, unavailable: false };
     } catch (err) {
       console.warn('[FREE GAMES] Falha ao consultar Epic Games:', err.message);
-      // Fallback
       return {
-        activeFree: [
-          {
-            id: 'fallback-epic-1',
-            title: 'Idle Champions of the Forgotten Realms',
-            desc: 'Resgate o pacote de campeões e baús lendários gratuitamente.',
-            originalPrice: 'R$ 180,00',
-            deadline: 'Quinta-feira às 13:00 (BRT)',
-            storeUrl: 'https://store.epicgames.com/pt-BR/free-games',
-            imageUrl: 'https://cdn1.epicgames.com/offer/idlechampions/Diesel_FreeGames_Hero_1920x1080.jpg',
-            platform: 'Epic Games Store',
-            isAvailableNow: true,
-          },
-        ],
-        upcomingFree: [
-          {
-            id: 'fallback-epic-2',
-            title: 'Próximo Jogo Misterioso da Semana',
-            desc: 'Novo jogo gratuito liberado toda quinta-feira às 13:00 BRT.',
-            originalPrice: 'R$ 150,00',
-            startDate: 'Próxima Quinta-feira',
-            storeUrl: 'https://store.epicgames.com/pt-BR/free-games',
-            imageUrl: null,
-            platform: 'Epic Games Store',
-            isAvailableNow: false,
-          },
-        ],
+        activeFree: [],
+        upcomingFree: [],
+        unavailable: true,
       };
     }
   }
 
   async getAllFreeGames() {
     const now = Date.now();
-    if (this.cachedGames && now - this.lastFetch < 300000) {
+    if (this.cachedGames && !this.cachedGames.unavailable && now - this.lastFetch < 300000) {
       return this.cachedGames;
     }
 
-    const { activeFree, upcomingFree } = await this.fetchEpicFreeGames();
+    const { activeFree, upcomingFree, unavailable } = await this.fetchEpicFreeGames();
+    const data = {
+      activeFree,
+      upcomingFree,
+      unavailable: Boolean(unavailable),
+    };
 
-    // Add Steam free highlights
-    const steamFree = [
-      {
-        id: 'steam-cs2',
-        title: 'Counter-Strike 2',
-        desc: 'O maior FPS tático do mundo com física renovada e sub-tick oficial da Valve.',
-        originalPrice: 'Gratuito para Jogar',
-        deadline: 'Permanente',
-        storeUrl: 'https://store.steampowered.com/app/730/CounterStrike_2/',
-        imageUrl: 'https://cdn.cloudflare.steamstatic.com/steam/apps/730/header.jpg',
-        platform: 'Steam',
-        isAvailableNow: true,
-      },
-    ];
-
-    this.cachedGames = { activeFree, upcomingFree, steamFree };
-    this.lastFetch = now;
-    return this.cachedGames;
+    if (!data.unavailable) {
+      this.cachedGames = data;
+      this.lastFetch = now;
+    }
+    return data;
   }
 
-  buildEmbed(data) {
+  buildEmbed(data = {}) {
     const embed = new EmbedBuilder()
-      .setTitle('🎁 RADAR DE JOGOS GRÁTIS PARA PC — EPIC GAMES & STEAM')
-      .setColor(0x10b981) // Emerald Green
+      .setTitle('🎁 RADAR DE JOGOS GRÁTIS — EPIC GAMES STORE')
+      .setColor(data.unavailable ? 0xf59e0b : 0x10b981)
       .setDescription(
-        'Nunca perca um jogo grátis! Resgate agora e guarde para sempre na sua biblioteca.\n' +
-        'Novos jogos gratuitos são liberados toda quinta-feira às **12:00 / 13:00 (BRT)**!\n' +
+        'Consulta ao vivo na API oficial da **Epic Games Store** para você resgatar jogos grátis por tempo limitado.\n' +
+        'Novas promoções semanais costumam entrar toda quinta-feira às **12:00 / 13:00 (BRT)**!\n' +
         '━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
       );
 
     const actionButtons = [];
+
+    if (data.unavailable) {
+      embed.addFields({
+        name: '⚠️ API da Epic Games Store temporariamente indisponível',
+        value:
+          'Não foi possível consultar as promoções ao vivo neste instante. Nenhum jogo fictício foi exibido — tente novamente em alguns minutos ou confira diretamente na loja oficial:\n' +
+          '🔗 [Abrir Jogos Grátis na Epic Games Store](https://store.epicgames.com/pt-BR/free-games)',
+        inline: false,
+      });
+    } else if ((!data.activeFree || data.activeFree.length === 0) && (!data.upcomingFree || data.upcomingFree.length === 0)) {
+      embed.addFields({
+        name: 'ℹ️ Nenhum jogo grátis listado agora',
+        value: 'A API oficial não retornou jogos promocionais neste momento. Confira diretamente em [store.epicgames.com](https://store.epicgames.com/pt-BR/free-games).',
+        inline: false,
+      });
+    }
 
     // Active Free Games
     if (data.activeFree?.length > 0) {
@@ -230,7 +214,7 @@ export class FreeGamesRadarService {
     }
 
     embed.setFooter({
-      text: 'Radar de Jogos Grátis • CS2 Mix Hub • Economize na sua biblioteca gamer',
+      text: 'Radar de Jogos Grátis • Dados ao vivo via API Epic Games Store',
       iconURL: 'https://cdn2.unrealengine.com/Epic+Games+Node%2Fxlarge_whitetext_blackback_epiclogo_504x512_1529964470588-504x512-ac791e237819038908845d6e65514f6822d2f48f.jpg',
     });
     embed.setTimestamp();

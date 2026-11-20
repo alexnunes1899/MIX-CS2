@@ -6,10 +6,10 @@ export const DEFAULT_PUBLIC_URL = 'https://mix-cs2.onrender.com';
 export const DEFAULT_DISCORD_CLIENT_ID = '1569029813518336030';
 
 // Minimal bot permission bitmask:
-// ViewChannel (1024) + SendMessages (2048) + ManageMessages (8192) + EmbedLinks (16384)
-// + AttachFiles (32768) + ReadMessageHistory (65536) + MentionEveryone (131072)
-// + MoveMembers (16777216) + ManageRoles (268435456)
-export const DISCORD_BOT_PERMISSIONS = '285477888';
+// ManageChannels (16) + ViewChannel (1024) + SendMessages (2048) + ManageMessages (8192)
+// + EmbedLinks (16384) + AttachFiles (32768) + ReadMessageHistory (65536)
+// + MentionEveryone (131072) + MoveMembers (16777216) + ManageRoles (268435456)
+export const DISCORD_BOT_PERMISSIONS = '285477904';
 
 /**
  * Builds the Discord OAuth2 bot invite URL using least-privilege permissions.

@@ -202,16 +202,16 @@ class HardwareDealsManager {
     const title = options.title || '🔥 PROMOÇÕES & OFERTAS DE HARDWARE • PC GAMER & SETUP';
     const description =
       options.description ||
-      `Monitoramento completo de peças e setup nas lojas confiáveis do Brasil:\n` +
-      `🟠 **KaBuM!** • 🔴 **Pichau Informática** • 🟢 **TerabyteShop**\n\n` +
-      `*Aumente seu FPS e renove seu setup (Cadeiras, Mesas, Mouses, GPUs, CPUs e RAM):*`;
+      `Busca **ao vivo na KaBuM!** combinada com **catálogo curado de Pichau e TerabyteShop**:\n` +
+      `🟠 **KaBuM!** (API ao vivo) • 🔴 **Pichau** & 🟢 **TerabyteShop** (Curadoria)\n\n` +
+      `*Aumente seu FPS e renove seu setup (confira o preço final e estoque no link da loja):*`;
 
     const embed = new EmbedBuilder()
       .setTitle(title)
       .setDescription(description)
       .setColor(0x38bdf8)
       .setThumbnail('https://images.unsplash.com/photo-1587202372775-e229f172b9d7?auto=format&fit=crop&w=256&q=80')
-      .setFooter({ text: 'CS2 Mix Hub • Radar Completo de Hardware & Setup' })
+      .setFooter({ text: 'CS2 Mix Hub • KaBuM! ao vivo + Catálogo curado Pichau/Terabyte • Confira no link' })
       .setTimestamp();
 
     if (!deals || deals.length === 0) {
@@ -227,12 +227,13 @@ class HardwareDealsManager {
       const newStr = `**R$ ${d.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}**`;
       const discStr = d.discountPct > 0 ? ` \`[${d.discountPct}% OFF]\`` : '';
       const couponStr = d.coupon ? ` • Cupom: \`${d.coupon}\`` : '';
+      const sourceBadge = d.isLive ? ' `🟢 Ao vivo`' : ' `📋 Catálogo curado`';
       const installStr = d.installment ? `\n💳 *${d.installment}*` : '';
       const highlightStr = d.highlight ? `\n> ${d.highlight}` : '';
 
       embed.addFields({
         name: `${idx + 1}. ${d.storeBadge || '🛒'} • ${d.title.slice(0, 75)}`,
-        value: `💰 ${oldStr}${newStr}${discStr}${couponStr}${installStr}${highlightStr}\n👉 [Clique aqui para ver a oferta na loja](${d.link})\n`,
+        value: `💰 ${oldStr}${newStr}${discStr}${couponStr}${sourceBadge}${installStr}${highlightStr}\n👉 [Clique aqui para conferir preço e estoque na loja](${d.link})\n`,
       });
     });
 

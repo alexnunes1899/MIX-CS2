@@ -847,7 +847,7 @@ export default function LandingPage({
                   <Check size={16} /> 100% Gratuito
                 </div>
                 <div className="flex items-center gap-1.5 text-indigo-400 font-semibold">
-                  <Check size={16} /> 20 Slash Commands
+                  <Check size={16} /> 39 Slash Commands
                 </div>
                 <div className="flex items-center gap-1.5 text-purple-400 font-semibold">
                   <Check size={16} /> Valve GSI Integrado

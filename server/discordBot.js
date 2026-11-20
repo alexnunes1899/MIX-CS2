@@ -59,6 +59,7 @@ import { accountLinkService } from './accountLinks.js';
 import { mixScheduler, parseScheduleTimePtBr } from './mixScheduler.js';
 import { renderMatchSummaryPng } from './utils/matchCardPng.js';
 import { normalizeDuos } from '../shared/balance.js';
+import { getVetoSchedule } from '../shared/proVeto.js';
 import { generateGsiConfig, installGsiLocally } from './gsi.js';
 import { sanitizeRconTextArg, isValidServerAddress, normalizeRoomId, parseServerConnect } from './utils/security.js';
 import { getBundledDataFilePath, getDataDir, getDataFilePath, resolveSeededDataFile } from './dataDir.js';
@@ -364,6 +365,59 @@ export class DiscordBotManager {
       }
     }
     return false;
+  }
+
+  isMixParticipantOrMod(member, guild, mix = null, userId = null) {
+    const uid = userId || member?.id || member?.user?.id;
+    if (this.isGuildModerator(member, guild, mix, uid)) return true;
+    if (!mix || !uid) return false;
+    if (uid === mix.teamA?.captain?.id || uid === mix.teamB?.captain?.id) return true;
+    return (mix.players || []).some((p) => p?.id === uid);
+  }
+
+  canDeclareMatchResult(member, guild, mix = null, userId = null) {
+    const uid = userId || member?.id || member?.user?.id;
+    if (this.isGuildModerator(member, guild, mix, uid)) return true;
+    if (!mix || !uid) return false;
+    return uid === mix.teamA?.captain?.id || uid === mix.teamB?.captain?.id;
+  }
+
+  canSubstitutePlayer(member, guild, mix = null, userId = null, targetOutId = null) {
+    const uid = userId || member?.id || member?.user?.id;
+    if (this.canDeclareMatchResult(member, guild, mix, uid)) return true;
+    if (!uid || !targetOutId) return false;
+    const cleanOut = String(targetOutId).replace(/[<@!>]/g, '').trim();
+    return Boolean(cleanOut && cleanOut === String(uid).trim());
+  }
+
+  getGuildServerConnect(guildId = null) {
+    if (guildId && this.config.guildServerConnects?.[guildId]) {
+      return this.config.guildServerConnects[guildId];
+    }
+    return this.config.serverConnect || '';
+  }
+
+  setGuildServerConnect(guildId = null, normalized = '') {
+    if (guildId) {
+      this.config.guildServerConnects = this.config.guildServerConnects || {};
+      this.config.guildServerConnects[guildId] = normalized;
+      this.saveConfig({ guildServerConnects: this.config.guildServerConnects });
+      return;
+    }
+    this.config.serverConnect = normalized;
+    this.saveConfig({ serverConnect: normalized });
+  }
+
+  isDealsEnabledForGuild(guildId) {
+    if (!guildId) return false;
+    const perGuildFlag = this.config.dealsEnabledGuilds?.[guildId];
+    if (typeof perGuildFlag === 'boolean') return perGuildFlag;
+    if (this.config.autoPostDeals === false) return false;
+    const hasConfiguredChannel = Boolean(
+      this.config.dealsChannels?.[guildId] ||
+      (this.config.guildId === guildId && this.config.dealsChannelId)
+    );
+    return hasConfiguredChannel;
   }
 
   setWebRoomsReference(roomsRef) {
@@ -1612,8 +1666,10 @@ export class DiscordBotManager {
       autoMoveVoice: true,
       autoStartVetoOnFull: false,
       serverConnect: process.env.DEFAULT_SERVER_CONNECT || '',
+      guildServerConnects: {},
       dealsChannelId: process.env.DISCORD_DEALS_CHANNEL || '',
       dealsChannels: {},
+      dealsEnabledGuilds: {},
       autoPostDeals: true,
       dealsIntervalMinutes: 60,
       geminiApiKey: process.env.GEMINI_API_KEY || '',
@@ -1855,7 +1911,7 @@ export class DiscordBotManager {
   setupEventHandlers() {
     const readyEvent = Events.ClientReady || 'clientReady';
     this.client.on(readyEvent, () => {
-      this.client.user?.setActivity('CS2 Mix 5v5 \u2022 /mix ou @cs hub', { type: 0 });
+      this.client.user?.setActivity('CS2 Mix 5v5 \u2022 /mix ou @mencione', { type: 0 });
       this.registerSlashCommands().catch(() => {});
       this.startScheduledDealsMonitor();
       if (typeof this.startCs2UpdateRadarMonitor === 'function') {
@@ -2036,8 +2092,7 @@ export class DiscordBotManager {
         if (!parsed.valid) {
           return message.reply(`⚠️ ${parsed.error || 'Endereço de servidor inválido.'} Use o formato \`ip:porta\` (ex: \`189.1.168.20:27015\` ou \`connect 189.1.168.20:27015; password mix\`).`);
         }
-        this.config.serverConnect = parsed.normalized;
-        this.saveConfig({ serverConnect: parsed.normalized });
+        this.setGuildServerConnect(message.guild?.id, parsed.normalized);
         if (mix) {
           mix.serverIp = parsed.normalized;
           this.syncToWebRoom(mix);
@@ -2148,7 +2203,7 @@ export class DiscordBotManager {
       }
 
       const name = customName || `Mix 5v5 de ${user.username}`;
-      const mix = this.getOrCreateMix(message.channelId, user, { name, forceNew: true });
+      const mix = this.getOrCreateMix(message.channelId, user, { name, forceNew: true, guildId: message.guild?.id || '' });
 
       if (mix.players.length === 0 && this.hasSavedLevel(user.id)) {
         mix.players.push({
@@ -2273,6 +2328,9 @@ export class DiscordBotManager {
   }
 
   async prefixPainel(message) {
+    if (!this.isGuildModerator(message.member, message.guild, null, message.author?.id)) {
+      return message.reply('🚫 Apenas administradores do servidor podem publicar o painel permanente.');
+    }
     return message.channel.send(this.buildOfficialPanelPayload());
   }
 
@@ -2436,6 +2494,9 @@ export class DiscordBotManager {
   async prefixDraw(message) {
     const mix = this.resolveActiveMixForChannel(message.channelId);
     if (!mix) return message.reply('⚠️ Nenhum mix ativo neste canal. Use `!mix` para abrir uma fila!');
+    if (!this.isMixParticipantOrMod(message.member, message.guild, mix, message.author?.id)) {
+      return message.reply('🚫 Apenas participantes deste mix, o criador ou administradores podem executar esta ação.');
+    }
     if (mix.players.length < 2) return message.reply('⚠️ É necessário pelo menos 2 jogadores para sortear os times!');
 
     if (mix.readyCheck?.timer) {
@@ -2455,6 +2516,9 @@ export class DiscordBotManager {
   async prefixVeto(message) {
     const mix = this.resolveActiveMixForChannel(message.channelId);
     if (!mix) return message.reply('⚠️ Nenhum mix ativo neste canal. Use `!mix` para abrir uma fila!');
+    if (!this.isMixParticipantOrMod(message.member, message.guild, mix, message.author?.id)) {
+      return message.reply('🚫 Apenas participantes deste mix, o criador ou administradores podem executar esta ação.');
+    }
     if (mix.teamA.players.length === 0 || mix.teamB.players.length === 0) {
       this.balanceTeams(mix);
     }
@@ -2585,8 +2649,8 @@ export class DiscordBotManager {
     return (mix.players || []).some((p) => p.id === userId);
   }
 
-  resolveMixDisplayConnect(mix, rawOverride = null) {
-    const raw = rawOverride || mix?.serverIp || this.config?.serverConnect || '';
+  resolveMixDisplayConnect(mix, rawOverride = null, guildId = null) {
+    const raw = rawOverride || mix?.serverIp || this.getGuildServerConnect(guildId || mix?.guildId);
     if (!String(raw).trim()) return null;
     const parsed = parseServerConnect(raw);
     if (parsed.valid) {
@@ -2853,7 +2917,7 @@ export class DiscordBotManager {
 
   async prefixServerStatus(message, args) {
     const mix = this.resolveActiveMixForChannel(message.channelId);
-    const rawAddress = (args && args.length > 0 ? args.join(' ') : '') || mix?.serverIp || this.config.serverConnect || '';
+    const rawAddress = (args && args.length > 0 ? args.join(' ') : '') || mix?.serverIp || this.getGuildServerConnect(message.guild?.id || mix?.guildId);
     if (!rawAddress.trim()) {
       return message.reply('⚠️ Nenhum servidor configurado. Use `!servidor <ip:porta>` ou `!status-server <ip:porta>`.');
     }
@@ -2909,6 +2973,9 @@ export class DiscordBotManager {
     if (!mix) {
       return message.reply('⚠️ Nenhum mix ativo encontrado neste canal para registrar vitória.');
     }
+    if (!this.canDeclareMatchResult(message.member, message.guild, mix, message.author?.id)) {
+      return message.reply('🚫 Apenas administradores do servidor, o criador do mix ou um dos capitães podem declarar o placar oficial.');
+    }
     const winner = (args[0] || '').toUpperCase();
     if (winner !== 'A' && winner !== 'B') {
       return message.reply('👉 Uso correto: `!vitoria A 13-9 [mapa]` ou `!vitoria B 13-11 [mapa]` (ex: `!vitoria A 13-9 Dust II`).');
@@ -2934,6 +3001,9 @@ export class DiscordBotManager {
     }
     const outArg = args.length >= 2 ? args[0] : message.author.id;
     const inArg = args.length >= 2 ? args[1] : args[0];
+    if (!this.canSubstitutePlayer(message.member, message.guild, mix, message.author?.id, outArg)) {
+      return message.reply('🚫 Apenas administradores, o criador, os capitães ou o próprio jogador saindo podem executar esta substituição.');
+    }
     const res = await this.executeSubstitute(mix, outArg, inArg, message.guild, message.channel);
     return message.channel.send(res.message);
   }
@@ -3038,7 +3108,7 @@ export class DiscordBotManager {
   }
 
   async prefixCoinflip(message) {
-    const isHeads = Math.random() < 0.5;
+    const isHeads = crypto.randomInt(0, 2) === 0;
     const result = isHeads ? '🦅 CARA' : '👑 COROA';
     const color = isHeads ? 0x38bdf8 : 0xf59e0b;
 
@@ -3046,7 +3116,7 @@ export class DiscordBotManager {
       .setTitle('🪙 CARA OU COROA')
       .setDescription(`A moeda girou no ar e caiu em...\n\n# **${result}**!`)
       .setColor(color)
-      .setFooter({ text: 'CS2 Mix Hub • Randomizer' })
+      .setFooter({ text: 'CS2 Mix Hub • CSPRNG (crypto.randomInt)' })
       .setTimestamp();
 
     return message.reply({ embeds: [embed] });
@@ -3178,6 +3248,22 @@ export class DiscordBotManager {
     const tierColor = level >= 20 ? 0xf59e0b : level >= 18 ? 0x10b981 : 0x38bdf8;
     const winBar = this.buildVisualBar(winRate, 100, { length: 10, filledChar: '🟩', emptyChar: '🟥' });
     const faceitApprox = Math.min(10, Math.max(1, Math.round(level / 2.1)));
+    const linkedAcc = accountLinkService.getLinkByDiscordId(targetUser.id);
+    const lbEntries = typeof getLeaderboard === 'function' ? getLeaderboard() : [];
+    const matchedLb = lbEntries.find(
+      (e) =>
+        e &&
+        (String(e.discordId || '') === String(targetUser.id) ||
+          (linkedAcc?.steamId && String(e.steamId || '') === String(linkedAcc.steamId)))
+    );
+    const realFaceitLevel = Number(prof.faceitLevel || matchedLb?.faceitLevel || 0);
+    const realFaceitElo = Number(prof.faceitElo || matchedLb?.faceitElo || 0);
+    const faceitLine = realFaceitLevel > 0
+      ? `⚡ **FACEIT (Real):** **Lvl ${realFaceitLevel}/10**${realFaceitElo > 0 ? ` (\`${realFaceitElo} ELO\`)` : ''}`
+      : `⚡ **FACEIT (estimativa pelo GC):** **~Lvl ${faceitApprox}/10**${linkedAcc?.steamId ? '' : ' • *Vincule sua Steam com `/vincular`*'}`;
+    const steamLine = linkedAcc?.steamId
+      ? `\n🔗 **Steam Vinculada:** \`${linkedAcc.steamNick || linkedAcc.steamId}\``
+      : '';
     const matchHistory = typeof loadUnifiedMatchHistory === 'function' ? loadUnifiedMatchHistory() : [];
     const achievements = computePlayerAchievements(prof, matchHistory, targetUser.id);
     const achievementsText = achievements.length > 0
@@ -3199,7 +3285,7 @@ export class DiscordBotManager {
       .setThumbnail(avatarUrl || null)
       .setDescription(
         `🛡️ **Gamers Club:** **Lvl ${level}** (\`${gcBadge}\`)\n` +
-        `⚡ **FACEIT Est.:** **Lvl ${faceitApprox}/10**\n\n` +
+        `${faceitLine}${steamLine}\n\n` +
         `📈 **Aproveitamento:** \`${winBar}\` **${winRate}%** (${wins}V / ${losses}D)`
       )
       .addFields(
@@ -3293,35 +3379,36 @@ export class DiscordBotManager {
 
   buildMatchHistoryEmbed(limit = 6) {
     const rawHistory = this.loadMatchHistory() || [];
-    // Only matches with 10 players (5v5) that were finalized
     const history = rawHistory.filter(
-      (m) => (m.winnerPlayers?.length || 0) + (m.loserPlayers?.length || 0) === 10
+      (m) => (m.winnerPlayers?.length || 0) + (m.loserPlayers?.length || 0) >= 2
     );
 
     const embed = new EmbedBuilder()
-      .setTitle('📜 HISTÓRICO DE PARTIDAS 5v5 • CS2 MIX HUB')
+      .setTitle('📜 HISTÓRICO DE PARTIDAS • CS2 MIX HUB')
       .setColor(0x3b82f6)
-      .setFooter({ text: 'CS2 Mix Hub • Apenas Partidas Oficiais 5v5 (10 Jogadores)' })
+      .setFooter({ text: 'CS2 Mix Hub • Partidas Finalizadas (mesma base do /ranking)' })
       .setTimestamp();
 
     if (!history || history.length === 0) {
       embed.setDescription(
-        '🛡️ **Nenhuma partida oficial de 10 jogadores finalizada ainda!**\n\n' +
-        'O histórico de partidas do servidor mantém **exclusivamente** partidas completas (5v5 com 10 jogadores) que foram concluídas.\n' +
-        'Lobbies incompletos ou partidas sem estatísticas foram descartados para não lotar o histórico.\n\n' +
-        '👉 Para registrar o placar de um mix 5v5 finalizado, use o botão **`[🏆 Declarar Placar]`** no lobby ou digite no chat:\n' +
+        '🛡️ **Nenhuma partida finalizada registrada ainda!**\n\n' +
+        'O histórico guarda todas as partidas finalizadas que pontuam no `/ranking`.\n\n' +
+        '👉 Para registrar o placar de um mix finalizado, use o botão **`[🏆 Declarar Placar]`** no lobby ou digite no chat:\n' +
         '`!vitoria A 13-9` ou `!vitoria B 13-11`.'
       );
       return embed;
     }
 
     const recent = history.slice(0, limit);
-    embed.setDescription(`Exibindo as últimas **${recent.length}** partidas 5v5 completas (10 jogadores) finalizadas com mapas oficiais:`);
+    embed.setDescription(`Exibindo as últimas **${recent.length}** partidas finalizadas no Hub:`);
 
     recent.forEach((m, idx) => {
       const dateStr = m.timestamp
         ? new Date(m.timestamp).toLocaleDateString('pt-BR', { hour: '2-digit', minute: '2-digit' })
         : 'Recente';
+      const wCount = m.winnerPlayers?.length || 0;
+      const lCount = m.loserPlayers?.length || 0;
+      const teamFmt = `${wCount}v${lCount}`;
       const winNames = (m.winnerPlayers || []).map((p) => p.nick || p.username).join(', ') || 'Equipe';
       const loseNames = (m.loserPlayers || []).map((p) => p.nick || p.username).join(', ') || 'Equipe';
       const mvpBadge = m.mvpNick ? ` • ⭐ MVP: **${m.mvpNick}**` : '';
@@ -3336,11 +3423,11 @@ export class DiscordBotManager {
         m.map === 'Cache' ? '☣️' : '🎯';
 
       embed.addFields({
-        name: `#${idx + 1} • ${mapEmoji} **${m.map || 'Mirage'}** [${m.score || '13-9'}] • 🏆 ${m.winner || 'Time A'}`,
+        name: `#${idx + 1} • ${mapEmoji} **${m.map || 'Mirage'}** (${teamFmt}) [${m.score || '13-9'}] • 🏆 ${m.winner || 'Time A'}`,
         value:
           `📅 *${dateStr}*${mvpBadge}\n` +
-          `👑 **Vencedores (5):** \`${winNames}\`\n` +
-          `💀 **Derrotados (5):** \`${loseNames}\`\n` +
+          `👑 **Vencedores (${wCount}):** \`${winNames}\`\n` +
+          `💀 **Derrotados (${lCount}):** \`${loseNames}\`\n` +
           `👤 *Declarado por: **${m.declaredBy || 'Admin'}***`,
         inline: false,
       });
@@ -3505,14 +3592,17 @@ export class DiscordBotManager {
     if (!guild || !players || !Array.isArray(players)) return [];
     const awarded = [];
 
+    const rankedKingEntries = Object.entries(profiles || {})
+      .filter(([, prof]) => prof && (prof.wins || 0) >= 10)
+      .sort(([, a], [, b]) => (b.wins || 0) - (a.wins || 0) || (b.mvps || 0) - (a.mvps || 0));
+    const kingUserId = rankedKingEntries[0]?.[0] || null;
+
     const TIERS = [
       {
         name: 'Rei do Servidor',
         color: 0xffd700,
-        check: (p, all) => {
-          const list = Object.values(all).sort((a, b) => (b.wins || 0) - (a.wins || 0));
-          return list[0] && list[0].username === p.username && (p.wins || 0) >= 10;
-        },
+        exclusive: true,
+        check: (_p, _all, userId) => Boolean(kingUserId && String(userId) === String(kingUserId)),
       },
       { name: 'Major Champion', minWins: 30, color: 0xf59e0b },
       { name: 'Veterano do Mix', minWins: 15, color: 0x8b5cf6 },
@@ -3523,6 +3613,16 @@ export class DiscordBotManager {
       const me = guild.members.me;
       const canManageRoles = me && me.permissions && me.permissions.has(PermissionsBitField.Flags.ManageRoles);
       if (!canManageRoles) return [];
+
+      let kingRole = guild.roles.cache.find((r) => r.name.toLowerCase() === 'rei do servidor') || null;
+      if (kingRole && kingUserId && guild.members.cache) {
+        const prevKings = guild.members.cache.filter(
+          (m) => m.roles?.cache?.has(kingRole.id) && String(m.id) !== String(kingUserId)
+        );
+        for (const [, prevKing] of prevKings) {
+          await prevKing.roles.remove(kingRole).catch(() => {});
+        }
+      }
 
       for (const p of players) {
         if (!p || !p.id || !isSnowflake(p.id)) continue;
@@ -3536,7 +3636,7 @@ export class DiscordBotManager {
         for (const tier of TIERS) {
           let qualifies = false;
           if (tier.check) {
-            qualifies = tier.check(prof, profiles);
+            qualifies = tier.check(prof, profiles, p.id);
           } else if (wins >= tier.minWins) {
             qualifies = true;
           }
@@ -3553,6 +3653,15 @@ export class DiscordBotManager {
                   reason: 'Cargo automático por conquistas competitivas no CS2 Mix Hub',
                 })
                 .catch(() => null);
+              if (role && tier.exclusive) kingRole = role;
+            }
+            if (role && tier.exclusive && guild.members.cache) {
+              const prevHolders = guild.members.cache.filter(
+                (m) => m.roles?.cache?.has(role.id) && String(m.id) !== String(p.id)
+              );
+              for (const [, prevHolder] of prevHolders) {
+                await prevHolder.roles.remove(role).catch(() => {});
+              }
             }
             if (role && !member.roles.cache.has(role.id)) {
               await member.roles.add(role).catch(() => {});
@@ -3644,7 +3753,10 @@ export class DiscordBotManager {
     }
     mix.veto = {
       currentTurn: 'teamA',
+      stepIndex: 0,
       bannedMaps: [],
+      pickedMaps: [],
+      seriesMaps: [],
       remainingMaps: [...OFFICIAL_MAPS],
       deciderMap: null,
       history: [],
@@ -4329,6 +4441,7 @@ export class DiscordBotManager {
       mix = {
         id: mixId,
         channelId,
+        guildId: options.guildId || '',
         name: options.name || `Mix CS2 #${mixId}`,
         format: options.format || 'MD1',
         balanceMode: options.balanceMode || 'balanced',
@@ -4348,12 +4461,15 @@ export class DiscordBotManager {
         balancePct: 95,
         veto: {
           currentTurn: 'teamA',
+          stepIndex: 0,
           bannedMaps: [],
+          pickedMaps: [],
+          seriesMaps: [],
           remainingMaps: [...OFFICIAL_MAPS],
           deciderMap: null,
           history: [],
         },
-        serverIp: extractHostAndPort(this.config.serverConnect || '').normalized || '',
+        serverIp: extractHostAndPort(this.getGuildServerConnect(options.guildId)).normalized || '',
         messageId: null,
         createdAt: Date.now(),
       };
@@ -4362,8 +4478,20 @@ export class DiscordBotManager {
       this.syncToWebRoom(mix);
       this.updateLobbyInChannels(mix);
       scheduleSave(100);
+    } else if (options.guildId && !mix.guildId) {
+      mix.guildId = options.guildId;
     }
     return mix;
+  }
+
+  getCurrentVetoStep(mix) {
+    const format = String(mix?.format || 'MD1').toUpperCase() === 'MD3' ? 'MD3' : 'MD1';
+    const schedule = getVetoSchedule(format, 'teamA');
+    const veto = mix?.veto || {};
+    const doneCount = typeof veto.stepIndex === 'number'
+      ? veto.stepIndex
+      : ((veto.bannedMaps?.length || 0) + (veto.pickedMaps?.length || 0));
+    return schedule[doneCount] || null;
   }
 
   recoverMixFromMessage(interaction, mixId) {
@@ -4787,7 +4915,7 @@ export class DiscordBotManager {
 
   async applyCs2TeamNamesRcon(mix) {
     try {
-      const rawServer = mix.serverIp || this.config.serverConnect || '';
+      const rawServer = mix.serverIp || this.getGuildServerConnect(mix?.guildId);
       const rconPwd = (mix.rconPassword || this.config.rconPassword || process.env.CS2_RCON_PASSWORD || '').trim();
       const { host, port } = extractHostAndPort(rawServer);
       if (!host || !rconPwd) return false;
@@ -4815,7 +4943,7 @@ export class DiscordBotManager {
 
   async triggerAutoRconMapChange(mix, mapObj, channel) {
     try {
-      const rawServer = mix.serverIp || this.config.serverConnect || '';
+      const rawServer = mix.serverIp || this.getGuildServerConnect(mix?.guildId || channel?.guildId);
       const rconPwd = (mix.rconPassword || this.config.rconPassword || process.env.CS2_RCON_PASSWORD || '').trim();
       const { host, port, hostPort } = extractHostAndPort(rawServer);
       if (!host || !rconPwd || !mapObj?.id) return false;
@@ -4885,12 +5013,28 @@ export class DiscordBotManager {
         bannedBy: b.team || (b.by === mix.teamB?.captain?.id ? 'teamB' : 'teamA'),
       }));
 
-      const vetoLog = bannedMaps.map((b) => ({
-        type: 'ban',
-        team: b.bannedBy === 'teamB' ? (mix.teamB?.name || 'Time B') : (mix.teamA?.name || 'Time A'),
-        mapName: b.mapName || b.mapId || 'Mapa',
-        mapId: b.mapId || '',
+      const pickedMaps = (mix.veto?.pickedMaps || []).map((p) => ({
+        mapId: p.map?.id,
+        mapName: p.map?.name,
+        by: p.by,
+        pickedBy: p.team || 'teamA',
+        role: p.role || 'Pick',
       }));
+
+      const vetoLog = [
+        ...bannedMaps.map((b) => ({
+          type: 'ban',
+          team: b.bannedBy === 'teamB' ? (mix.teamB?.name || 'Time B') : (mix.teamA?.name || 'Time A'),
+          mapName: b.mapName || b.mapId || 'Mapa',
+          mapId: b.mapId || '',
+        })),
+        ...pickedMaps.map((p) => ({
+          type: 'pick',
+          team: p.pickedBy === 'teamB' ? (mix.teamB?.name || 'Time B') : (mix.teamA?.name || 'Time A'),
+          mapName: p.mapName || p.mapId || 'Mapa',
+          mapId: p.mapId || '',
+        })),
+      ];
       if (mix.veto?.deciderMap) {
         vetoLog.push({
           type: 'decider',
@@ -4986,17 +5130,18 @@ export class DiscordBotManager {
         },
         maps: OFFICIAL_MAPS.map((m) => ({ id: m.id, name: m.name, file: m.id, image: m.image })),
         bannedMaps,
+        pickedMaps,
         vetoLog,
         currentTurn: mix.veto?.currentTurn || 'teamA',
         startingSideTeamB: (mix.teamB?.startingSide || mix.teamB?.side || 'TR').toUpperCase(),
-        finalMap: mix.veto?.deciderMap
+        finalMap: mix.finalMap || (mix.veto?.deciderMap
           ? {
               id: mix.veto.deciderMap.id,
               name: mix.veto.deciderMap.name,
               file: mix.veto.deciderMap.id,
               image: mix.veto.deciderMap.image,
             }
-          : (mix.finalMap || null),
+          : null),
         serverIp: displayConn?.normalized || '',
         matchFormat: mix.format || 'MD1',
       };
@@ -5183,7 +5328,7 @@ export class DiscordBotManager {
   async startAutomaticLiveMonitoring(mix, channel, guild) {
     if (!channel || !mix) return;
     try {
-      const currentIp = (mix.serverIp || this.config.serverConnect || '').trim();
+      const currentIp = (mix.serverIp || this.getGuildServerConnect(guild?.id || mix?.guildId)).trim();
       if (!currentIp) {
         const ipEmbed = new EmbedBuilder()
           .setColor(0xeab308)
@@ -5281,7 +5426,7 @@ export class DiscordBotManager {
       }
     }
 
-    const creatorDisplay = mix.creatorNick || (String(mix.creatorId).startsWith('wa_') ? '💬 WhatsApp' : `<@${mix.creatorId}>`);
+    const creatorDisplay = mix.creatorNick || (String(mix.creatorId).startsWith('wa_') ? '🌐 Web Hub' : `<@${mix.creatorId}>`);
 
     const fields = [
       {

@@ -90,7 +90,7 @@ export function buildSlashCommands({ officialMaps = [], treinoMaps = [] } = {}) 
 
     new SlashCommandBuilder()
       .setName('stats')
-      .setDescription('Consulta as estatísticas competitivas e nível GC/FACEIT de um jogador')
+      .setDescription('Consulta suas estatísticas do Mix Hub, nível GC e vínculo Steam/FACEIT')
       .addUserOption((opt) => opt.setName('jogador').setDescription('Jogador a consultar').setRequired(false)),
 
     new SlashCommandBuilder()
@@ -334,7 +334,7 @@ export function buildSlashCommands({ officialMaps = [], treinoMaps = [] } = {}) 
 
     new SlashCommandBuilder()
       .setName('jogosgratis')
-      .setDescription('Radar de jogos para PC gratuitos para resgatar na Epic Games Store e Steam'),
+      .setDescription('Radar ao vivo de jogos grátis para resgatar na Epic Games Store'),
 
     new SlashCommandBuilder()
       .setName('clip')
