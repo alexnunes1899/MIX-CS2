@@ -93,9 +93,36 @@ export function consumePendingInvite() {
   }
 }
 
-export function useSteamSession({ onRestorePendingInvite } = {}) {
+const POST_AUTH_ACTION_KEY = 'cs2_post_auth_action';
+
+export function savePostAuthAction(action) {
+  if (!action || typeof action !== 'object') return;
+  try {
+    const payload = JSON.stringify(action);
+    sessionStorage.setItem(POST_AUTH_ACTION_KEY, payload);
+    localStorage.setItem(POST_AUTH_ACTION_KEY, payload);
+  } catch {}
+}
+
+export function consumePostAuthAction() {
+  try {
+    const raw =
+      sessionStorage.getItem(POST_AUTH_ACTION_KEY) ||
+      localStorage.getItem(POST_AUTH_ACTION_KEY);
+    sessionStorage.removeItem(POST_AUTH_ACTION_KEY);
+    localStorage.removeItem(POST_AUTH_ACTION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export function useSteamSession({ onRestorePendingInvite, onPostAuthAction } = {}) {
   const [myProfile, setMyProfile] = useState(loadInitialProfile);
   const [isSiteAdmin, setIsSiteAdmin] = useState(false);
+  const [sessionStatus, setSessionStatus] = useState('checking');
 
   // Clean Steam OpenID callback params, hydrate HttpOnly session, and restore pending invite if any
   useEffect(() => {
@@ -123,6 +150,11 @@ export function useSteamSession({ onRestorePendingInvite } = {}) {
         onRestorePendingInvite(pending, cleanUrl);
       } else {
         window.history.replaceState({}, '', cleanUrl.pathname || '/');
+      }
+
+      const postAction = consumePostAuthAction();
+      if (postAction && onPostAuthAction) {
+        onPostAuthAction(postAction);
       }
     };
 
@@ -152,13 +184,15 @@ export function useSteamSession({ onRestorePendingInvite } = {}) {
       finalizeAuthRedirect();
     }
 
-    fetch('/api/auth/me')
+    fetch('/api/auth/me', { credentials: 'same-origin' })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (!active) return;
         if (data) {
+          const isAuthed = Boolean(data.authenticated && data.user?.steamId);
+          setSessionStatus(isAuthed ? 'authenticated' : 'unauthenticated');
           setIsSiteAdmin(Boolean(data.isAdmin));
-          if (data.authenticated && data.user?.steamId) {
+          if (isAuthed) {
             setMyProfile((prev) => {
               const merged = {
                 ...prev,
@@ -194,14 +228,17 @@ export function useSteamSession({ onRestorePendingInvite } = {}) {
       localStorage.removeItem('cs2_mix_profile');
     } catch {}
     setIsSiteAdmin(false);
+    setSessionStatus('unauthenticated');
     setMyProfile(createFreshProfile());
-    fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+    fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }).catch(() => {});
   }, []);
 
   return {
     myProfile,
     setMyProfile,
     isSteamLogged: Boolean(myProfile?.steamId),
+    isServerSessionActive: sessionStatus === 'authenticated',
+    isSessionExpired: Boolean(myProfile?.steamId) && sessionStatus === 'unauthenticated',
     isSiteAdmin,
     clearSessionProfile,
   };

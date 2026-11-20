@@ -35,6 +35,11 @@ const {
 } = await import('../server/leaderboard.js');
 const { computePlayerAnalytics } = await import('../server/playerAnalytics.js');
 const { createMixServer } = await import('../server/index.js');
+const {
+  deriveStableFallbackSecret,
+  signSessionToken,
+  SESSION_COOKIE_NAME,
+} = await import('../server/authSession.js');
 
 after(() => {
   try {
@@ -585,4 +590,61 @@ test('Regression fixes: GSI room isolation, socket send_discord_webhook auth, dr
   });
   assert.equal(afterBack.phase, 'lobby');
   assert.equal(afterBack.players.length, 10);
+});
+
+test('Regression fixes: deriveStableFallbackSecret & /api/account/link session flow', async (t) => {
+  // 1. deriveStableFallbackSecret returns null without strong secrets and deterministic 64-hex with secrets
+  assert.equal(deriveStableFallbackSecret({}), null);
+  assert.equal(deriveStableFallbackSecret({ ADMIN_API_KEY: 'too-short' }), null);
+
+  const envA = { ADMIN_API_KEY: 'render-admin-secret-1234', DISCORD_BOT_TOKEN: 'discord-bot-secret-5678' };
+  const s1 = deriveStableFallbackSecret(envA);
+  const s2 = deriveStableFallbackSecret({ ...envA });
+  const s3 = deriveStableFallbackSecret({ ...envA, DISCORD_BOT_TOKEN: 'discord-bot-secret-changed' });
+  assert.match(s1, /^[0-9a-f]{64}$/);
+  assert.equal(s1, s2);
+  assert.notEqual(s1, s3);
+
+  // 2. HTTP flow for GET /api/account/link and POST /api/account/link/code
+  const { server, close } = createMixServer({ startBackgroundTasks: false });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address();
+  const baseUrl = `http://127.0.0.1:${port}`;
+  t.after(async () => {
+    await close();
+  });
+
+  // Unauthenticated GET & POST
+  const unauthGet = await fetch(`${baseUrl}/api/account/link`);
+  assert.equal(unauthGet.status, 200);
+  const unauthGetJson = await unauthGet.json();
+  assert.equal(unauthGetJson.authenticated, false);
+  assert.equal(unauthGetJson.linked, false);
+
+  const unauthCode = await fetch(`${baseUrl}/api/account/link/code`, { method: 'POST' });
+  assert.equal(unauthCode.status, 401);
+  const unauthCodeJson = await unauthCode.json();
+  assert.equal(unauthCodeJson.requiresSteamReauth, true);
+
+  // Authenticated GET & POST with signed mixhub_session cookie
+  const token = signSessionToken({ steamId: '76561198000000123', nick: 'LxnSessionTest' });
+  const cookieHeader = `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}`;
+
+  const authGet = await fetch(`${baseUrl}/api/account/link`, {
+    headers: { Cookie: cookieHeader },
+  });
+  assert.equal(authGet.status, 200);
+  const authGetJson = await authGet.json();
+  assert.equal(authGetJson.authenticated, true);
+  assert.equal(authGetJson.linked, false);
+
+  const authCode = await fetch(`${baseUrl}/api/account/link/code`, {
+    method: 'POST',
+    headers: { Cookie: cookieHeader },
+  });
+  assert.equal(authCode.status, 200);
+  const authCodeJson = await authCode.json();
+  assert.equal(authCodeJson.success, true);
+  assert.equal(typeof authCodeJson.code, 'string');
+  assert.equal(authCodeJson.code.length, 6);
 });

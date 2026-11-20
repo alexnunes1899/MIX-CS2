@@ -107,16 +107,19 @@ export function registerAdminAndSocialRoutes(app, { io, rooms, discordBotManager
   app.get('/api/account/link', (req, res) => {
     const sessionUser = getSessionUser(req);
     if (!sessionUser?.steamId) {
-      return res.json({ linked: false, link: null });
+      return res.json({ authenticated: false, linked: false, link: null });
     }
     const link = accountLinkService.getLinkBySteamId(sessionUser.steamId);
-    return res.json({ linked: Boolean(link), link });
+    return res.json({ authenticated: true, linked: Boolean(link), link });
   });
 
   app.post('/api/account/link/code', sensitiveLimiter, (req, res) => {
     const sessionUser = getSessionUser(req);
     if (!sessionUser?.steamId) {
-      return res.status(401).json({ error: 'Faça login com a Steam para gerar um código de vinculação.' });
+      return res.status(401).json({
+        error: 'Sua sessão Steam no servidor expirou. Clique em "Reconfirmar Sessão Steam" para renovar em 1 clique.',
+        requiresSteamReauth: true,
+      });
     }
     try {
       const result = accountLinkService.createSteamLinkCode({
@@ -132,7 +135,10 @@ export function registerAdminAndSocialRoutes(app, { io, rooms, discordBotManager
   app.post('/api/account/link/confirm', sensitiveLimiter, (req, res) => {
     const sessionUser = getSessionUser(req);
     if (!sessionUser?.steamId) {
-      return res.status(401).json({ error: 'Faça login com a Steam para vincular sua conta Discord.' });
+      return res.status(401).json({
+        error: 'Sua sessão Steam no servidor expirou. Clique em "Reconfirmar Sessão Steam" para vincular sua conta Discord.',
+        requiresSteamReauth: true,
+      });
     }
     const code = String(req.body?.code || '').trim();
     if (!code) {
@@ -160,7 +166,10 @@ export function registerAdminAndSocialRoutes(app, { io, rooms, discordBotManager
   app.delete('/api/account/link', sensitiveLimiter, (req, res) => {
     const sessionUser = getSessionUser(req);
     if (!sessionUser?.steamId) {
-      return res.status(401).json({ error: 'Faça login com a Steam para desvincular.' });
+      return res.status(401).json({
+        error: 'Sua sessão Steam no servidor expirou. Clique em "Reconfirmar Sessão Steam" para desvincular.',
+        requiresSteamReauth: true,
+      });
     }
     const removed = accountLinkService.unlinkBySteamId(sessionUser.steamId);
     return res.json({ success: true, unlinked: removed });

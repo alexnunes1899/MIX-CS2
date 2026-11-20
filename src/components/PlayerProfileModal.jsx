@@ -33,6 +33,7 @@ import { getGCTier } from '../data/gcLevels';
 import { playClickSound } from '../utils/audio';
 import { copyText } from '../utils/clipboard';
 import { calculateTrustFactor } from '../utils/trustFactor';
+import { savePostAuthAction, savePendingInvite } from '../hooks/useSteamSession';
 
 export default function PlayerProfileModal({
   isOpen,
@@ -46,6 +47,7 @@ export default function PlayerProfileModal({
   onOpenStoryCard,
   readOnly = false,
   initialTab = 'steam',
+  isSessionExpired = false,
 }) {
   const [copiedId, setCopiedId] = useState(false);
   const [steamStats, setSteamStats] = useState(null);
@@ -71,6 +73,8 @@ export default function PlayerProfileModal({
   const [linkLoading, setLinkLoading] = useState(false);
   const [linkStatusMsg, setLinkStatusMsg] = useState(null);
   const [copiedPublicUrl, setCopiedPublicUrl] = useState(false);
+  const [sessionNeedsReauth, setSessionNeedsReauth] = useState(Boolean(isSessionExpired));
+  const [copiedLinkCode, setCopiedLinkCode] = useState(false);
 
   const {
     nick: propNick = 'Jogador',
@@ -228,12 +232,33 @@ export default function PlayerProfileModal({
   }, [isOpen, analyticsQueryId]);
 
   useEffect(() => {
+    setSessionNeedsReauth(Boolean(isSessionExpired));
+  }, [isSessionExpired]);
+
+  useEffect(() => {
     if (!isOpen || readOnly || !isSteamUser) return;
-    fetch('/api/account/link')
+    fetch('/api/account/link', { credentials: 'same-origin' })
       .then((res) => (res.ok ? res.json() : null))
-      .then((data) => setDiscordLink(data?.linked ? data.link : null))
+      .then((data) => {
+        if (!data) return;
+        setDiscordLink(data.linked ? data.link : null);
+        if (data.authenticated === false) setSessionNeedsReauth(true);
+        else if (data.authenticated === true) setSessionNeedsReauth(false);
+      })
       .catch(() => {});
   }, [isOpen, readOnly, isSteamUser]);
+
+  const handleRenewSteamSession = () => {
+    if (soundEnabled) playClickSound();
+    savePostAuthAction({ openProfile: true });
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const currentRoom = params.get('room');
+      const currentKey = params.get('key') || '';
+      if (currentRoom) savePendingInvite(currentRoom, currentKey);
+    } catch {}
+    window.location.href = '/api/auth/steam';
+  };
 
   const handleConfirmDiscordCode = async (e) => {
     if (e) e.preventDefault();
@@ -243,14 +268,19 @@ export default function PlayerProfileModal({
     try {
       const res = await fetch('/api/account/link/confirm', {
         method: 'POST',
+        credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code: discordCodeInput.trim() }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401 || data?.requiresSteamReauth) {
+        setSessionNeedsReauth(true);
+      }
       if (!res.ok) throw new Error(data.error || 'Falha ao vincular');
       setDiscordLink(data.link);
       setDiscordCodeInput('');
       setGeneratedWebCode(null);
+      setSessionNeedsReauth(false);
       setLinkStatusMsg({ type: 'success', text: 'Discord vinculado com sucesso! Estatísticas unificadas.' });
     } catch (err) {
       setLinkStatusMsg({ type: 'error', text: err.message });
@@ -264,10 +294,14 @@ export default function PlayerProfileModal({
     setLinkLoading(true);
     setLinkStatusMsg(null);
     try {
-      const res = await fetch('/api/account/link/code', { method: 'POST' });
-      const data = await res.json();
+      const res = await fetch('/api/account/link/code', { method: 'POST', credentials: 'same-origin' });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401 || data?.requiresSteamReauth) {
+        setSessionNeedsReauth(true);
+      }
       if (!res.ok) throw new Error(data.error || 'Erro ao gerar código');
       setGeneratedWebCode(data.code);
+      setSessionNeedsReauth(false);
     } catch (err) {
       setLinkStatusMsg({ type: 'error', text: err.message });
     } finally {
@@ -278,14 +312,23 @@ export default function PlayerProfileModal({
   const handleUnlinkDiscord = async () => {
     if (soundEnabled) playClickSound();
     setLinkLoading(true);
+    setLinkStatusMsg(null);
     try {
-      const res = await fetch('/api/account/link', { method: 'DELETE' });
-      if (res.ok) {
-        setDiscordLink(null);
-        setLinkStatusMsg({ type: 'success', text: 'Vínculo Discord ↔ Steam removido.' });
+      const res = await fetch('/api/account/link', { method: 'DELETE', credentials: 'same-origin' });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401 || data?.requiresSteamReauth) {
+        setSessionNeedsReauth(true);
       }
-    } catch {}
-    setLinkLoading(false);
+      if (!res.ok) {
+        throw new Error(data?.error || 'Falha ao desvincular conta');
+      }
+      setDiscordLink(null);
+      setLinkStatusMsg({ type: 'success', text: 'Vínculo Discord ↔ Steam removido.' });
+    } catch (err) {
+      setLinkStatusMsg({ type: 'error', text: err.message });
+    } finally {
+      setLinkLoading(false);
+    }
   };
 
   const handleCopyPublicProfileUrl = () => {
@@ -813,6 +856,21 @@ export default function PlayerProfileModal({
                     </div>
                   ) : (
                     <div className="space-y-2.5 text-xs">
+                      {sessionNeedsReauth && (
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3 rounded-xl bg-amber-500/10 border border-amber-500/35 text-amber-200">
+                          <span className="text-[11px] leading-snug">
+                            Sua sessão Steam no servidor expirou (ex: após atualização ou reinício do servidor). Reconfirme para liberar a vinculação.
+                          </span>
+                          <button
+                            type="button"
+                            onClick={handleRenewSteamSession}
+                            className="shrink-0 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[11px] uppercase tracking-wide flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                          >
+                            <RefreshCw size={12} />
+                            <span>Reconfirmar Sessão Steam</span>
+                          </button>
+                        </div>
+                      )}
                       <p className="text-[11px] text-slate-400">
                         Use <code className="text-indigo-300 font-mono">/vincular</code> no Bot do Discord para gerar um código e cole abaixo, ou gere um código aqui para usar no Discord:
                       </p>
@@ -845,11 +903,17 @@ export default function PlayerProfileModal({
                         {generatedWebCode && (
                           <button
                             type="button"
-                            onClick={() => copyText(`/vincular codigo:${generatedWebCode}`)}
-                            className="px-2.5 py-1 rounded-lg bg-indigo-500/20 border border-indigo-400/40 text-indigo-200 font-mono text-[11px] font-bold cursor-pointer"
+                            onClick={() => {
+                              if (soundEnabled) playClickSound();
+                              copyText(`/vincular codigo:${generatedWebCode}`);
+                              setCopiedLinkCode(true);
+                              setTimeout(() => setCopiedLinkCode(false), 2500);
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 border border-indigo-400/40 text-indigo-200 font-mono text-[11px] font-bold cursor-pointer flex items-center gap-1.5"
                             title="Clique para copiar o comando completo"
                           >
-                            /vincular codigo:{generatedWebCode}
+                            <span>/vincular codigo:{generatedWebCode}</span>
+                            {copiedLinkCode && <span className="text-emerald-300 font-sans">✓ Copiado!</span>}
                           </button>
                         )}
                       </div>
@@ -857,12 +921,22 @@ export default function PlayerProfileModal({
                   )}
 
                   {linkStatusMsg && (
-                    <div className={`text-[11px] font-bold px-3 py-1.5 rounded-lg border ${
+                    <div className={`text-[11px] font-bold px-3 py-2 rounded-lg border flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${
                       linkStatusMsg.type === 'success'
                         ? 'bg-emerald-500/15 border-emerald-500/35 text-emerald-300'
                         : 'bg-rose-500/15 border-rose-500/35 text-rose-300'
                     }`}>
-                      {linkStatusMsg.text}
+                      <span>{linkStatusMsg.text}</span>
+                      {linkStatusMsg.type !== 'success' && sessionNeedsReauth && (
+                        <button
+                          type="button"
+                          onClick={handleRenewSteamSession}
+                          className="shrink-0 px-2.5 py-1 rounded-md bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[10px] uppercase tracking-wide flex items-center justify-center gap-1 cursor-pointer"
+                        >
+                          <RefreshCw size={11} />
+                          <span>Reconfirmar Sessão Steam</span>
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>

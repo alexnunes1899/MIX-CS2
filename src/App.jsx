@@ -194,6 +194,7 @@ export default function App() {
     myProfile,
     setMyProfile,
     isSteamLogged,
+    isSessionExpired,
     isSiteAdmin,
     clearSessionProfile,
   } = useSteamSession({
@@ -205,6 +206,9 @@ export default function App() {
       cleanUrl.searchParams.set('room', pending.room);
       if (pending.key) cleanUrl.searchParams.set('key', pending.key);
       window.history.replaceState({}, '', cleanUrl.toString());
+    },
+    onPostAuthAction: (action) => {
+      if (action?.openProfile) setProfileModalOpen(true);
     },
   });
 
@@ -2205,6 +2209,7 @@ export default function App() {
         room={room}
         myProfile={myProfile}
         isSteamLogged={isSteamLogged}
+        isSessionExpired={isSessionExpired}
         isAdmin={isAdmin}
         isSiteAdmin={isSiteAdmin}
         soundEnabled={soundEnabled}

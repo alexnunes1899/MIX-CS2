@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { AlertTriangle, Trash2, X } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
 
@@ -10,6 +11,17 @@ export default function DeleteRoomModal({
   roomName,
   soundEnabled,
 }) {
+  useEffect(() => {
+    if (!isOpen) return undefined;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const handleConfirm = () => {
@@ -18,9 +30,14 @@ export default function DeleteRoomModal({
     onClose();
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm animate-fadeIn">
-      <div className="relative w-full max-w-md bg-[#0d131f] border-2 border-red-500/60 rounded-3xl p-6 text-center shadow-2xl">
+  const modalContent = (
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm animate-fadeIn"
+    >
+      <div className="relative w-full max-w-md max-h-[90vh] overflow-y-auto custom-scrollbar bg-[#0d131f] border-2 border-red-500/60 rounded-3xl p-6 text-center shadow-2xl">
         {/* Glow */}
         <div className="absolute top-0 right-0 w-40 h-40 bg-red-500/15 rounded-full blur-3xl pointer-events-none" />
 
@@ -44,9 +61,9 @@ export default function DeleteRoomModal({
 
         {/* Body Description */}
         <div className="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-3.5 mb-5 text-left text-xs space-y-2">
-          <div className="flex items-center justify-between text-slate-300">
-            <span className="text-slate-500 font-semibold uppercase text-[10px]">SALA SELECIONADA:</span>
-            <span className="font-bold text-white">{roomName || roomId}</span>
+          <div className="flex items-center justify-between gap-2 text-slate-300">
+            <span className="text-slate-500 font-semibold uppercase text-[10px] shrink-0">SALA SELECIONADA:</span>
+            <span className="font-bold text-white truncate ml-2">{roomName || roomId}</span>
           </div>
           <div className="flex items-center justify-between text-slate-300">
             <span className="text-slate-500 font-semibold uppercase text-[10px]">CÓDIGO:</span>
@@ -81,4 +98,6 @@ export default function DeleteRoomModal({
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent;
 }

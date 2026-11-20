@@ -8,6 +8,24 @@ const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 let cachedSecret = null;
 
+export function deriveStableFallbackSecret(env = process.env) {
+  const candidates = [
+    env?.ADMIN_API_KEY,
+    env?.DISCORD_BOT_TOKEN,
+    env?.STEAM_API_KEY,
+    env?.MATCHZY_WEBHOOK_SECRET,
+    env?.GEMINI_API_KEY,
+  ]
+    .map((val) => String(val || '').trim())
+    .filter((val) => val.length >= 12);
+
+  if (candidates.length === 0) return null;
+  return crypto
+    .createHmac('sha256', candidates.join('|'))
+    .update('cs2-mix-hub:session-secret:v1')
+    .digest('hex');
+}
+
 export function getSessionSecret() {
   if (cachedSecret) return cachedSecret;
   if (process.env.SESSION_SECRET && process.env.SESSION_SECRET.trim().length >= 16) {
@@ -24,6 +42,20 @@ export function getSessionSecret() {
         return cachedSecret;
       }
     }
+  } catch (err) {
+    console.warn('[AUTH] Falha ao ler .session-secret:', err.message);
+  }
+
+  const derived = deriveStableFallbackSecret(process.env);
+  if (derived) {
+    console.warn(
+      '[AUTH] SESSION_SECRET não definido — usando chave derivada estável das credenciais do ambiente (defina SESSION_SECRET em produção).'
+    );
+    cachedSecret = derived;
+    return cachedSecret;
+  }
+
+  try {
     const generated = crypto.randomBytes(32).toString('hex');
     fs.writeFileSync(secretPath, generated, { encoding: 'utf8', mode: 0o600 });
     cachedSecret = generated;
@@ -154,7 +186,11 @@ export function getSessionUser(reqOrHandshake) {
 }
 
 export function isRequestSecure(req) {
-  return Boolean(req?.secure || req?.headers?.['x-forwarded-proto'] === 'https');
+  const forwardedProto = String(req?.headers?.['x-forwarded-proto'] || '')
+    .split(',')[0]
+    .trim()
+    .toLowerCase();
+  return Boolean(req?.secure || forwardedProto === 'https');
 }
 
 export function setSessionCookie(req, res, userPayload) {

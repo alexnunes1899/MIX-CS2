@@ -30,6 +30,7 @@ export default function AppModalsHost({
   room,
   myProfile,
   isSteamLogged,
+  isSessionExpired = false,
   isAdmin = false,
   isSiteAdmin = false,
   soundEnabled,
@@ -208,6 +209,7 @@ export default function AppModalsHost({
           soundEnabled={soundEnabled}
           onSaveProfile={onSaveProfile}
           onOpenStoryCard={() => setStoryCardOpen(true)}
+          isSessionExpired={isSessionExpired}
         />
       )}
 

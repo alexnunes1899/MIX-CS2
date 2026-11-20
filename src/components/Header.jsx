@@ -95,6 +95,7 @@ export default function Header({
   };
 
   return (
+    <>
     <header className="border-b border-slate-800 bg-[#0c1220]/95 backdrop-blur-xl sticky top-0 z-40 shadow-xl">
       <div className="max-w-[1400px] mx-auto px-3 sm:px-5 py-2 space-y-1.5">
         
@@ -358,21 +359,22 @@ export default function Header({
           })}
         </div>
       </div>
-
-      {/* Delete Room Confirmation Modal */}
-      {isAdmin && (
-        <DeleteRoomModal
-          isOpen={deleteConfirmOpen}
-          onClose={() => setDeleteConfirmOpen(false)}
-          onConfirm={(targetId) => {
-            if (onDeleteRoom) onDeleteRoom(targetId);
-            setDeleteConfirmOpen(false);
-          }}
-          roomId={roomId}
-          roomName={roomName}
-          soundEnabled={soundEnabled}
-        />
-      )}
     </header>
+
+    {/* Delete Room Confirmation Modal */}
+    {isAdmin && (
+      <DeleteRoomModal
+        isOpen={deleteConfirmOpen}
+        onClose={() => setDeleteConfirmOpen(false)}
+        onConfirm={(targetId) => {
+          if (onDeleteRoom) onDeleteRoom(targetId);
+          setDeleteConfirmOpen(false);
+        }}
+        roomId={roomId}
+        roomName={roomName}
+        soundEnabled={soundEnabled}
+      />
+    )}
+    </>
   );
 }
