@@ -31,7 +31,11 @@ const {
   buildPostMatchCoachInsight,
 } = await import('../server/discordAiRouter.js');
 const { BagreVoteService } = await import('../server/bagreVote.js');
-const { ProMatchesAgendaService } = await import('../server/proMatchesAgenda.js');
+import { PermissionsBitField } from 'discord.js';
+import { DISCORD_BOT_PERMISSIONS } from '../shared/appConfig.js';
+import { OFFICIAL_MAPS } from '../server/discord/constants.js';
+import { freeGamesRadar } from '../server/freeGamesRadar.js';
+import { ProMatchesAgendaService } from '../server/proMatchesAgenda.js';
 
 after(() => {
   fs.rmSync(tmpDataDir, { recursive: true, force: true });
@@ -961,4 +965,231 @@ test('CS2NewsRadar: detecta ingles disfarcado, conserva termos do CS2 e inclui b
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test('Auditoria Bot Prioridade 1-3: permissoes, pull voice, isolamento multi-guild, MD3 veto, Rei do Servidor, historico e freeGames', async (t) => {
+  // 1. DISCORD_BOT_PERMISSIONS includes ManageChannels (16)
+  assert.equal(DISCORD_BOT_PERMISSIONS, '285477904');
+  assert.equal((BigInt(DISCORD_BOT_PERMISSIONS) & PermissionsBitField.Flags.ManageChannels) === PermissionsBitField.Flags.ManageChannels, true);
+
+  const bot = createBot(t);
+
+  // 2. executePullFromVoiceChannel works with member voice channel and configured lobbyVoiceId, and resolveVoiceChannelsForGuild preserves lobbyVoiceId
+  const mixPull = bot.getOrCreateMix('ch-pull-fix', { id: '100000000000000001', username: 'Creator' }, { id: 'MIX-PULLFIX', guildId: 'g-pull' });
+  mixPull.players = [];
+  const vcMembers = new Map([
+    ['100000000000000001', { id: '100000000000000001', displayName: 'Creator', user: { id: '100000000000000001', username: 'Creator' } }],
+    ['100000000000000002', { id: '100000000000000002', displayName: 'Friend', user: { id: '100000000000000002', username: 'Friend' } }],
+  ]);
+  bot.config.guildVoiceChannels = {
+    'g-pull': { lobbyVoiceId: 'vc-lobby', teamAVoiceId: 'vc-a', teamBVoiceId: 'vc-b' },
+  };
+  const pullGuild = {
+    id: 'g-pull',
+    name: 'Guild Pull',
+    members: { fetchMe: async () => ({ permissions: new PermissionsBitField([PermissionsBitField.Flags.ManageChannels]) }) },
+    channels: {
+      cache: new Map([
+        ['vc-lobby', { id: 'vc-lobby', name: 'Lobby Geral', members: vcMembers }],
+        ['vc-a', { id: 'vc-a', name: 'Time A', parentId: 'cat-1' }],
+        ['vc-b', { id: 'vc-b', name: 'Time B', parentId: 'cat-1' }],
+      ]),
+      fetch: async (id) => pullGuild.channels.cache.get(id) || null,
+    },
+  };
+  const resolvedVc = await bot.resolveVoiceChannelsForGuild(pullGuild);
+  assert.equal(resolvedVc.lobbyVoiceId, 'vc-lobby');
+  assert.equal(bot.config.guildVoiceChannels['g-pull'].lobbyVoiceId, 'vc-lobby');
+
+  const pullRes = await bot.executePullFromVoiceChannel(mixPull, pullGuild, { voice: { channel: null } }, { id: 'ch-pull-fix' });
+  assert.equal(pullRes.success, true);
+  assert.equal(mixPull.players.length, 2);
+
+  // 3. Permission guards & multi-guild isolation
+  const randomUser = { id: '777777777777777771', username: 'Random' };
+  const adminMember = { id: '888888888888888881', permissions: new PermissionsBitField([PermissionsBitField.Flags.Administrator]) };
+  const plainMember = { id: randomUser.id, permissions: new PermissionsBitField([]) };
+
+  let callsDenied = null;
+  await bot.cmdCalls({
+    guild: { id: 'g-perm' },
+    guildId: 'g-perm',
+    user: randomUser,
+    member: plainMember,
+    options: { getChannel: (n) => (n === 'lobby' ? { id: 'vc-x' } : null) },
+    reply: async (p) => { callsDenied = p; },
+  });
+  assert.match(callsDenied.content, /Apenas administradores/);
+
+  let ipDenied = null;
+  await bot.handleButtonInteraction({
+    customId: 'mix_set_ip:MIX-PULLFIX',
+    channelId: 'ch-pull-fix',
+    guild: { id: 'g-pull' },
+    user: randomUser,
+    member: plainMember,
+    reply: async (p) => { ipDenied = p; },
+  });
+  assert.match(ipDenied.content, /Apenas administradores/);
+
+  let panelDenied = null;
+  await bot.cmdSendPermanentPanel({
+    guild: { id: 'g-perm' },
+    user: randomUser,
+    member: plainMember,
+    reply: async (p) => { panelDenied = p; },
+  });
+  assert.match(panelDenied.content, /Apenas administradores/);
+
+  let winDenied = null;
+  await bot.cmdMatchResult({
+    channelId: 'ch-pull-fix',
+    guild: { id: 'g-pull' },
+    user: randomUser,
+    member: plainMember,
+    options: { getString: () => 'A' },
+    reply: async (p) => { winDenied = p; },
+  });
+  assert.match(winDenied.content, /Apenas administradores/);
+
+  // Guild serverConnect isolation & deals never falling back to #geral
+  bot.config.serverConnect = '';
+  bot.setGuildServerConnect('g-A', '10.0.0.1:27015');
+  bot.setGuildServerConnect('g-B', '10.0.0.2:27016');
+  assert.equal(bot.getGuildServerConnect('g-A'), '10.0.0.1:27015');
+  assert.equal(bot.getGuildServerConnect('g-B'), '10.0.0.2:27016');
+
+  const noDealsCache = new Map([['ch-gen', { id: 'ch-gen', name: 'geral', isTextBased: () => true }]]);
+  noDealsCache.find = (fn) => {
+    for (const v of noDealsCache.values()) {
+      if (fn(v)) return v;
+    }
+    return undefined;
+  };
+  const noDealsChannel = await bot.getOrCreateDealsChannel({
+    id: 'g-nodeals',
+    name: 'No Deals',
+    members: { fetchMe: async () => ({ permissions: new PermissionsBitField([]) }) },
+    channels: { cache: noDealsCache },
+  });
+  assert.equal(noDealsChannel, null);
+
+  // 4. Full MD3 Pick & Ban flow in Discord
+  const md3Mix = bot.getOrCreateMix('ch-md3', { id: '100000000000000001', username: 'CapA' }, { id: 'MIX-MD3TEST', format: 'MD3', guildId: 'g-pull' });
+  md3Mix.players = Array.from({ length: 10 }, (_, idx) => ({
+    id: `10000000000000000${idx + 1}`.slice(0, 18),
+    username: `P${idx + 1}`,
+    displayName: `P${idx + 1}`,
+    level: 20 - idx,
+  }));
+  bot.balanceTeams(md3Mix);
+  md3Mix.phase = 'veto';
+  md3Mix.veto.remainingMaps = [...OFFICIAL_MAPS.slice(0, 7)];
+
+  const clickVeto = async (actorUser, mapId) => {
+    let out = null;
+    await bot.handleButtonInteraction({
+      customId: `veto_ban:MIX-MD3TEST:${mapId}`,
+      channelId: 'ch-md3',
+      guild: { id: 'g-pull' },
+      user: actorUser,
+      member: { id: actorUser.id, permissions: new PermissionsBitField([]) },
+      update: async (p) => { out = p; },
+      reply: async (p) => { out = p; },
+    });
+    return out;
+  };
+  const capAUser = { id: md3Mix.teamA.captain.id, username: md3Mix.teamA.captain.username };
+  const capBUser = { id: md3Mix.teamB.captain.id, username: md3Mix.teamB.captain.username };
+  const poolIds = md3Mix.veto.remainingMaps.map((m) => m.id);
+
+  await clickVeto(capAUser, poolIds[0]); // Ban 1 (A)
+  await clickVeto(capBUser, poolIds[1]); // Ban 2 (B)
+  // Step 3 is Pick 1 -> buildVetoButtons should show green Success "Escolher ..."
+  const pickButtons = bot.buildVetoButtons(md3Mix)[0].components.map((c) => c.toJSON());
+  assert.match(pickButtons[0].label, /^Escolher /);
+  await clickVeto(capAUser, poolIds[2]); // Pick 1 (A)
+  await clickVeto(capBUser, poolIds[3]); // Pick 2 (B)
+  await clickVeto(capAUser, poolIds[4]); // Ban 3 (A)
+  await clickVeto(capBUser, poolIds[5]); // Ban 4 (B) -> leaves poolIds[6] as Decider (Mapa 3)!
+
+  assert.equal(md3Mix.phase, 'side_pick');
+  assert.equal(md3Mix.veto.pickedMaps.length, 2);
+  assert.equal(md3Mix.veto.deciderMap.id, poolIds[6]);
+  assert.equal(md3Mix.veto.seriesMaps.length, 3);
+  assert.equal(md3Mix.finalMap.id, poolIds[2]);
+
+  // 5. Rei do Servidor exclusive by userId (removes role from previous king)
+  const makeRoleMember = (id, initialRoles = []) => {
+    const roleSet = new Set(initialRoles);
+    return {
+      id,
+      roles: {
+        cache: { has: (rid) => roleSet.has(rid) },
+        add: async (role) => roleSet.add(role.id),
+        remove: async (role) => roleSet.delete(role.id),
+      },
+    };
+  };
+  const kingRole = { id: 'role-king', name: 'Rei do Servidor' };
+  const oldKingId = '100000000000000011';
+  const newKingId = '100000000000000012';
+  const oldKingMember = makeRoleMember(oldKingId, ['role-king']);
+  const newKingMember = makeRoleMember(newKingId, []);
+  const kingGuild = {
+    members: {
+      me: adminMember,
+      cache: new Map([[oldKingId, oldKingMember], [newKingId, newKingMember]]),
+      fetch: async (id) => kingGuild.members.cache.get(id) || null,
+    },
+    roles: {
+      cache: [kingRole],
+      create: async ({ name }) => ({ id: `role-${name}`, name }),
+    },
+  };
+  // Note Map.prototype needs .filter for cache; wrap Map with filter helper like Discord Collection
+  kingGuild.members.cache.filter = (fn) => {
+    const out = [];
+    for (const [k, v] of kingGuild.members.cache.entries()) {
+      if (fn(v, k)) out.push([k, v]);
+    }
+    return out;
+  };
+  await bot.checkAndAwardTierRoles(
+    kingGuild,
+    [{ id: newKingId, username: 'SameName' }, { id: oldKingId, username: 'SameName' }],
+    {
+      [oldKingId]: { username: 'SameName', wins: 12, mvps: 1 },
+      [newKingId]: { username: 'SameName', wins: 18, mvps: 2 },
+    }
+  );
+  assert.equal(newKingMember.roles.cache.has('role-king'), true);
+  assert.equal(oldKingMember.roles.cache.has('role-king'), false);
+
+  // 6. buildMatchHistoryEmbed includes matches with >= 2 players (e.g. 2v2) consistently with /ranking
+  const sampleHistory = [
+    {
+      id: 'HIST-2V2',
+      timestamp: Date.now(),
+      map: 'Mirage',
+      score: '13-8',
+      winner: 'Time A',
+      winnerPlayers: [{ id: '1', nick: 'A1' }, { id: '2', nick: 'A2' }],
+      loserPlayers: [{ id: '3', nick: 'B1' }, { id: '4', nick: 'B2' }],
+      declaredBy: 'CapA',
+    },
+  ];
+  const origLoad = bot.loadMatchHistory;
+  bot.loadMatchHistory = () => sampleHistory;
+  const histEmbed = bot.buildMatchHistoryEmbed(6).toJSON();
+  bot.loadMatchHistory = origLoad;
+  assert.equal(histEmbed.fields.length, 1);
+  assert.match(histEmbed.fields[0].name, /2v2/);
+
+  // 7. freeGamesRadar.buildEmbed shows honest unavailable message with no fake games
+  const unavailEmbed = freeGamesRadar.buildEmbed({ activeFree: [], upcomingFree: [], unavailable: true }).embeds[0].toJSON();
+  assert.match(unavailEmbed.title, /EPIC GAMES STORE/);
+  assert.equal(unavailEmbed.title.includes('STEAM'), false);
+  assert.equal(unavailEmbed.fields.some((f) => f.name.includes('Idle Champions')), false);
+  assert.equal(unavailEmbed.fields.some((f) => f.name.includes('indisponível')), true);
 });

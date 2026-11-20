@@ -2100,7 +2100,7 @@ export class DiscordBotManager {
         }
         return message.reply(`✅ Servidor CS2 configurado com sucesso para os mixes: \`${parsed.consoleCommand}\``);
       }
-      const conn = this.resolveMixDisplayConnect(mix);
+      const conn = this.resolveMixDisplayConnect(mix, null, message.guild?.id);
       return message.reply(
         conn
           ? `💻 **Servidor Atual:** \`${conn.normalized}\`\n👉 Para conectar: \`${conn.consoleCommand}\``
@@ -2726,7 +2726,7 @@ export class DiscordBotManager {
     readyEmbed.setImage(drawn.image);
     const components = this.buildMatchReadyButtons(mix);
 
-    const conn = this.resolveMixDisplayConnect(mix);
+    const conn = this.resolveMixDisplayConnect(mix, null, guild?.id);
     const tag = (cap, fallback) =>
       isSnowflake(cap?.id) ? `<@${cap.id}>` : `**${cap?.displayName || cap?.username || cap?.nick || fallback}**`;
 
@@ -2882,7 +2882,7 @@ export class DiscordBotManager {
 
   async prefixIp(message) {
     const mix = this.resolveActiveMixForChannel(message.channelId);
-    const conn = this.resolveMixDisplayConnect(mix);
+    const conn = this.resolveMixDisplayConnect(mix, null, message.guild?.id);
     if (!conn) {
       const setupRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
@@ -3552,8 +3552,8 @@ export class DiscordBotManager {
     return embed;
   }
 
-  buildServerStatusEmbed(queryResult, serverAddress) {
-    const address = serverAddress || this.config.serverConnect || 'Não configurado';
+  buildServerStatusEmbed(queryResult, serverAddress, guildId = null) {
+    const address = serverAddress || this.getGuildServerConnect(guildId) || 'Não configurado';
     const embed = new EmbedBuilder().setTimestamp();
 
     if (queryResult.online) {
@@ -5606,7 +5606,7 @@ export class DiscordBotManager {
       const isWa = p.source === 'whatsapp' || String(p.id).startsWith('wa_') || Boolean(p.phone);
       const name = p.displayName || p.nick || p.name || p.username || 'Jogador';
       if (isWa) {
-        return `${capTag}💬 **${name}** \`[WhatsApp • Lvl ${lvl} GC]\``;
+        return `${capTag}🌐 **${name}** \`[Web Hub • Lvl ${lvl} GC]\``;
       }
       return `${capTag}🎮 <@${p.id}> \`[Discord • Lvl ${lvl} GC]\``;
     };
@@ -5649,65 +5649,88 @@ export class DiscordBotManager {
           inline: false,
         }
       )
-      .setFooter({ text: 'Sincronizado em tempo real entre Discord, WhatsApp e Web Hub' })
+      .setFooter({ text: 'Sincronizado em tempo real entre Discord e Web Hub' })
       .setTimestamp();
 
     return embed;
   }
 
   buildVetoEmbed(mix) {
-    const veto = mix.veto;
+    const veto = mix.veto || {};
+    const currentStep = this.getCurrentVetoStep(mix);
     const isFinished = Boolean(veto.deciderMap);
-    const turnCaptain = veto.currentTurn === 'teamA' ? mix.teamA.captain : mix.teamB.captain;
-    const turnTeamName = veto.currentTurn === 'teamA' ? mix.teamA.name : mix.teamB.name;
+    const activeTeamKey = currentStep?.team === 'teamB' ? 'teamB' : currentStep?.team === 'teamA' ? 'teamA' : veto.currentTurn;
+    const turnCaptain = activeTeamKey === 'teamA' ? mix.teamA.captain : mix.teamB.captain;
+    const turnTeamName = activeTeamKey === 'teamA' ? mix.teamA.name : mix.teamB.name;
+    const isPickStep = currentStep?.type === 'pick';
 
-    const remainingList = veto.remainingMaps
+    const remainingList = (veto.remainingMaps || [])
       .map((m) => `${m.emoji} **${m.name}** (\`${m.id}\`)`)
       .join('\n') || '*Nenhum*';
 
-    const bannedList = veto.bannedMaps
-      .map((b) => `❌ ~~${b.map.name}~~ (Banido por ${isSnowflake(b.by) ? `<@${b.by}>` : '💬 **WhatsApp**'})`)
+    const bannedList = (veto.bannedMaps || [])
+      .map((b) => `❌ ~~${b.map.name}~~ (${isSnowflake(b.by) ? `<@${b.by}>` : '🌐 **Web Hub**'})`)
       .join('\n') || '*Nenhum mapa banido ainda*';
 
+    const pickedList = (veto.pickedMaps || [])
+      .map((p, i) => `🎯 **Mapa ${i + 1}: ${p.map.name}** (${p.team === 'teamB' ? mix.teamB.name : mix.teamA.name})`)
+      .join('\n');
+
     const embed = new EmbedBuilder()
-      .setTitle(`🗳️ PICK & BAN DE MAPAS • ${mix.name.toUpperCase()}`)
-      .setColor(isFinished ? 0x10b981 : 0x38bdf8);
+      .setTitle(`🗳️ PICK & BAN DE MAPAS (${mix.format || 'MD1'}) • ${mix.name.toUpperCase()}`)
+      .setColor(isFinished ? 0x10b981 : isPickStep ? 0x22c55e : 0x38bdf8);
 
     if (isFinished) {
       const conn = this.resolveMixDisplayConnect(mix);
+      const seriesLines =
+        String(mix.format || '').toUpperCase() === 'MD3' && Array.isArray(veto.seriesMaps) && veto.seriesMaps.length === 3
+          ? `🎯 **Série Melhor de 3 (MD3):**\n` +
+            veto.seriesMaps.map((m, idx) => `**${idx + 1}.** ${m.emoji || '🗺️'} **${m.name}** — *${m.role}*`).join('\n') +
+            `\n\n`
+          : `🗺️ **Mapa:** \`${veto.deciderMap.name}\` (${veto.deciderMap.id})\n`;
       embed.setDescription(
-        `🏆 **MAPA DEFINIDO COM SUCESSO!**\n\n` +
-          `🗺️ **Mapa:** \`${veto.deciderMap.name}\` (${veto.deciderMap.id})\n` +
+        `🏆 **MAPA(S) DEFINIDO(S) COM SUCESSO!**\n\n` +
+          seriesLines +
           `🛡️ **${mix.teamA.name}:** Inicia de **${mix.teamA.side}**\n` +
           `🔥 **${mix.teamB.name}:** Inicia de **${mix.teamB.side}**\n\n` +
           (conn ? `💻 **Conectar no CS2:**\n\`${conn.consoleCommand}\`\n\n` : '') +
           `GL & HF! Bom jogo a todos!`
       );
-      if (veto.deciderMap.image) embed.setImage(veto.deciderMap.image);
+      const primaryImg = mix.finalMap?.image || veto.deciderMap.image;
+      if (primaryImg) embed.setImage(primaryImg);
     } else {
       const turnCapTag = isSnowflake(turnCaptain?.id)
         ? `<@${turnCaptain?.id}>`
-        : (turnCaptain ? `💬 **${turnCaptain.displayName || turnCaptain.nick || turnCaptain.name || turnCaptain.username || 'Capitão'}**` : (isSnowflake(mix.creatorId) ? `<@${mix.creatorId}>` : '💬 **Capitão**'));
+        : (turnCaptain ? `🌐 **${turnCaptain.displayName || turnCaptain.nick || turnCaptain.name || turnCaptain.username || 'Capitão'}**` : (isSnowflake(mix.creatorId) ? `<@${mix.creatorId}>` : '👑 **Capitão**'));
 
       embed.setDescription(
-        `Formato: **${mix.format}** • Rotação Oficial Valve\n\n` +
-          `👉 **Vez de Banir:** ${turnCapTag} (${turnTeamName})`
+        `Formato: **${mix.format || 'MD1'}** • Rotação Oficial Valve\n\n` +
+          `👉 **Vez de ${isPickStep ? 'ESCOLHER (Pick)' : 'BANIR'}:** ${turnCapTag} (${turnTeamName})${currentStep?.label ? ` • *${currentStep.label}*` : ''}`
       );
     }
 
-    embed.addFields(
+    const fields = [
       {
-        name: `🗺️ Mapas no Pool (${veto.remainingMaps.length})`,
+        name: `🗺️ Mapas no Pool (${(veto.remainingMaps || []).length})`,
         value: remainingList,
         inline: true,
       },
       {
-        name: `🚫 Mapas Banidos (${veto.bannedMaps.length})`,
+        name: `🚫 Mapas Banidos (${(veto.bannedMaps || []).length})`,
         value: bannedList,
         inline: true,
-      }
-    );
+      },
+    ];
 
+    if (String(mix.format || '').toUpperCase() === 'MD3' || (veto.pickedMaps || []).length > 0) {
+      fields.push({
+        name: `🎯 Série MD3 (Picks: ${(veto.pickedMaps || []).length}/2)`,
+        value: pickedList || '*Os picks serão escolhidos após os 2 primeiros bans*',
+        inline: false,
+      });
+    }
+
+    embed.addFields(fields);
     return embed;
   }
 
@@ -5717,6 +5740,8 @@ export class DiscordBotManager {
       return [];
     }
 
+    const currentStep = this.getCurrentVetoStep(mix);
+    const isPickStep = currentStep?.type === 'pick';
     const rows = [];
     let currentRow = new ActionRowBuilder();
 
@@ -5728,9 +5753,9 @@ export class DiscordBotManager {
       currentRow.addComponents(
         new ButtonBuilder()
           .setCustomId(`veto_ban:${mix.id}:${map.id}`)
-          .setLabel(`Banir ${map.name}`)
-          .setEmoji(map.emoji || '❌')
-          .setStyle(ButtonStyle.Danger)
+          .setLabel(isPickStep ? `Escolher ${map.name}` : `Banir ${map.name}`)
+          .setEmoji(isPickStep ? '🎯' : (map.emoji || '❌'))
+          .setStyle(isPickStep ? ButtonStyle.Success : ButtonStyle.Danger)
       );
     });
 
@@ -5743,23 +5768,33 @@ export class DiscordBotManager {
 
   buildSidePickPayload(mix) {
     const decider = mix.veto?.deciderMap || mix.finalMap || OFFICIAL_MAPS[0];
+    const opener = mix.finalMap || mix.veto?.seriesMaps?.[0] || decider;
+    const isMd3Series = String(mix.format || '').toUpperCase() === 'MD3' && Array.isArray(mix.veto?.seriesMaps) && mix.veto.seriesMaps.length === 3;
     const captainB = mix.teamB?.captain || mix.players?.[1] || mix.players?.[0];
     const capBTag = isSnowflake(captainB?.id)
       ? `<@${captainB.id}>`
       : `**${captainB?.displayName || captainB?.nick || captainB?.name || captainB?.username || 'Capitão B'}**`;
 
+    const md3Header = isMd3Series
+      ? `🎯 **Série MD3 Definida:**\n` +
+        mix.veto.seriesMaps.map((m, idx) => `**${idx + 1}.** ${m.emoji || '🗺️'} **${m.name}** (*${m.role}*)`).join('\n') +
+        `\n\n🗺️ **Mapa de Abertura (Mapa 1):** ${opener?.emoji || '🎯'} **${(opener?.name || 'Mirage').toUpperCase()}**\n\n`
+      : `🗺️ **Mapa Definido (Decider):** ${decider?.emoji || '🎯'} **${(decider?.name || 'Mirage').toUpperCase()}** (\`${decider?.id || 'de_mirage'}\`)\n\n`;
+
     const embed = new EmbedBuilder()
       .setTitle(`🪙 ESCOLHA DE LADO (CT / TR) • ${(mix.name || 'Mix CS2').toUpperCase()}`)
       .setColor(0xf59e0b)
       .setDescription(
-        `🗺️ **Mapa Definido (Decider):** ${decider?.emoji || '🎯'} **${(decider?.name || 'Mirage').toUpperCase()}** (\`${decider?.id || 'de_mirage'}\`)\n\n` +
+        md3Header +
         `👑 **Vez do ${mix.teamB?.name || 'Time B'} escolher o lado inicial!**\n` +
         `👉 Capitão ${capBTag}, clique abaixo para começar de **CT (Contra-Terrorista)** ou **TR (Terrorista)**:`
       )
       .setFooter({ text: 'O lado oposto será atribuído automaticamente ao Time A' })
       .setTimestamp();
 
-    if (decider?.image) {
+    if (opener?.image) {
+      embed.setImage(opener.image);
+    } else if (decider?.image) {
       embed.setImage(decider.image);
     }
 
@@ -5777,7 +5812,7 @@ export class DiscordBotManager {
     );
 
     return {
-      content: `🪙 **Pick & Ban finalizado!** ${capBTag}, escolha o lado do **${mix.teamB?.name || 'Time B'}** no mapa **${decider?.name || 'Mirage'}**!`,
+      content: `🪙 **Pick & Ban finalizado!** ${capBTag}, escolha o lado do **${mix.teamB?.name || 'Time B'}** no mapa **${opener?.name || decider?.name || 'Mirage'}**!`,
       embeds: [embed],
       components: [row],
     };
@@ -5834,7 +5869,11 @@ export class DiscordBotManager {
 
   buildMatchReadyEmbed(mix) {
     const veto = mix.veto || {};
-    const map = veto.deciderMap || { name: 'Mirage', id: 'de_mirage', emoji: '🏜️', image: OFFICIAL_MAPS[0].image };
+    const map = (mix.finalMap && mix.finalMap.id ? mix.finalMap : null) || veto.seriesMaps?.[0] || veto.deciderMap || { name: 'Mirage', id: 'de_mirage', emoji: '🏜️', image: OFFICIAL_MAPS[0].image };
+    const isMd3Series = String(mix.format || '').toUpperCase() === 'MD3' && Array.isArray(veto.seriesMaps) && veto.seriesMaps.length === 3;
+    const seriesSummary = isMd3Series
+      ? `🎯 **Série MD3:** ${veto.seriesMaps.map((m, idx) => `${idx + 1}º **${m.name}**`).join(' → ')}\n`
+      : '';
     const conn = this.resolveMixDisplayConnect(mix);
     const connectCmd = conn ? conn.consoleCommand : null;
 
@@ -5843,6 +5882,7 @@ export class DiscordBotManager {
       .setTitle(`🏆 PARTIDA CONFIRMADA • ${mix.name.toUpperCase()}`)
       .setDescription(
         `Pick & Ban e lados definidos — bom jogo a todos!\n\n` +
+        seriesSummary +
         `🗺️ **MAPA OFICIAL:** ${map.emoji || '🎯'} **${map.name.toUpperCase()}** (\`${map.id}\`)\n` +
         `🛡️ **${mix.teamA.name}:** Inicia de **${mix.teamA.side || 'CT'}**  |  🔥 **${mix.teamB.name}:** Inicia de **${mix.teamB.side || 'TR'}**\n\n` +
         (connectCmd
@@ -6016,7 +6056,7 @@ export class DiscordBotManager {
           ephemeral: true,
         });
       }
-      const rawServer = mix?.serverIp || this.config.serverConnect || '';
+      const rawServer = mix?.serverIp || this.getGuildServerConnect(interaction.guildId || mix?.guildId);
       const rconPwd = (mix?.rconPassword || this.config.rconPassword || process.env.CS2_RCON_PASSWORD || '').trim();
       const { host, port } = extractHostAndPort(rawServer);
       if (!host || !rconPwd) {
@@ -6082,7 +6122,7 @@ export class DiscordBotManager {
         return interaction.showModal(modal);
       }
 
-      const rawServer = mix?.serverIp || this.config.serverConnect || '';
+      const rawServer = mix?.serverIp || this.getGuildServerConnect(interaction.guildId || mix?.guildId);
       const rconPwd = (mix?.rconPassword || this.config.rconPassword || process.env.CS2_RCON_PASSWORD || '').trim();
       const { host, port } = extractHostAndPort(rawServer);
       if (!host || !rconPwd) {
@@ -6123,7 +6163,7 @@ export class DiscordBotManager {
           return interaction.reply({ content: `🔥 <@${user.id}> encerrou o aquecimento e puxou **LIVE (\`mp_restartgame 1\`)** no CS2!` });
         }
         if (rconAct === 'rcon_changemap') {
-          const rawMapId = mix?.veto?.deciderMap?.id || mix?.finalMap?.id || OFFICIAL_MAPS[0].id;
+          const rawMapId = mix?.finalMap?.id || mix?.veto?.deciderMap?.id || OFFICIAL_MAPS[0].id;
           const targetMap = isValidMapName(rawMapId) ? rawMapId : 'de_mirage';
           await executeRconCommand({
             host,
@@ -6173,7 +6213,14 @@ export class DiscordBotManager {
 
     // Mix Set IP Modal Trigger
     if (customId.startsWith('mix_set_ip:') || customId === 'mix_set_ip') {
-      const mixId = customId.includes(':') ? customId.split(':')[1] : '';
+      const mix = this.resolveMixFromInteraction(interaction, customId);
+      if (!this.isGuildModerator(interaction.member, interaction.guild, mix, user?.id)) {
+        return interaction.reply({
+          content: '🚫 Apenas administradores do servidor ou o criador do mix podem alterar o IP do servidor.',
+          ephemeral: true,
+        });
+      }
+      const mixId = mix?.id || (customId.includes(':') ? customId.split(':')[1] : '');
       const modal = new ModalBuilder()
         .setCustomId(`modal_set_ip:${mixId}`)
         .setTitle('⚙️ Definir IP do Servidor CS2');
@@ -6231,7 +6278,10 @@ export class DiscordBotManager {
 
     // Permanent Panel Trigger
     if (customId === 'panel_create_mix') {
-      const mix = this.getOrCreateMix(interaction.channelId, user, { name: `Mix 5v5 de ${user.username}` });
+      const mix = this.getOrCreateMix(interaction.channelId, user, {
+        name: `Mix 5v5 de ${user.username}`,
+        guildId: interaction.guildId || interaction.guild?.id || '',
+      });
       const tutorialEmbed = this.buildMixTutorialEmbed();
       const embed = this.buildLobbyEmbed(mix);
       const components = this.buildLobbyButtons(mix);
@@ -6700,6 +6750,12 @@ export class DiscordBotManager {
 
     // 4. DRAW TEAMS (COMBINATORIO EXATO) & CAPTAIN DRAFT 1V1
     if (action === 'mix_captain_draft') {
+      if (!this.isMixParticipantOrMod(interaction.member, interaction.guild, mix, user?.id)) {
+        return interaction.reply({
+          content: '🚫 Apenas participantes deste mix, o criador ou administradores podem executar esta ação.',
+          ephemeral: true,
+        });
+      }
       if (mix.players.length < 4) {
         return interaction.reply({
           content: '⚠️ São necessários pelo menos 4 jogadores no lobby para iniciar o Draft 1v1 de Capitães!',
@@ -6724,6 +6780,12 @@ export class DiscordBotManager {
     }
 
     if (action === 'mix_teams') {
+      if (!this.isMixParticipantOrMod(interaction.member, interaction.guild, mix, user?.id)) {
+        return interaction.reply({
+          content: '🚫 Apenas participantes deste mix, o criador ou administradores podem executar esta ação.',
+          ephemeral: true,
+        });
+      }
       if (mix.players.length < 2) {
         return interaction.reply({
           content: '⚠️ É necessário pelo menos 2 jogadores para formar times!',
@@ -6746,6 +6808,12 @@ export class DiscordBotManager {
 
     // 5. START VETO
     if (action === 'mix_veto') {
+      if (!this.isMixParticipantOrMod(interaction.member, interaction.guild, mix, user?.id)) {
+        return interaction.reply({
+          content: '🚫 Apenas participantes deste mix, o criador ou administradores podem executar esta ação.',
+          ephemeral: true,
+        });
+      }
       if (mix.teamA.players.length === 0 || mix.teamB.players.length === 0) {
         this.balanceTeams(mix);
       }
@@ -6762,22 +6830,26 @@ export class DiscordBotManager {
       });
     }
 
-    // 6. BAN MAP (DURING VETO)
-    if (action === 'veto_ban') {
+    // 6. BAN / PICK MAP (DURING VETO)
+    if (action === 'veto_ban' || action === 'veto_pick') {
       const mapId = param;
       const veto = mix.veto;
+      veto.pickedMaps = Array.isArray(veto.pickedMaps) ? veto.pickedMaps : [];
+      veto.seriesMaps = Array.isArray(veto.seriesMaps) ? veto.seriesMaps : [];
 
-      const currentCaptain = veto.currentTurn === 'teamA' ? mix.teamA.captain : mix.teamB.captain;
+      const currentStep = this.getCurrentVetoStep(mix);
+      const expectedTeam = currentStep?.team === 'teamB' ? 'teamB' : currentStep?.team === 'teamA' ? 'teamA' : veto.currentTurn;
+      const currentCaptain = expectedTeam === 'teamA' ? mix.teamA.captain : mix.teamB.captain;
       const isWaCaptain = String(currentCaptain?.id).startsWith('wa_');
-      const isCurrentTeam = (veto.currentTurn === 'teamA' ? mix.teamA.players : mix.teamB.players).some((p) => p.id === user.id);
+      const isCurrentTeam = (expectedTeam === 'teamA' ? mix.teamA.players : mix.teamB.players).some((p) => p.id === user.id);
       const isAllowed = user.id === currentCaptain?.id || user.id === mix.creatorId || (isWaCaptain && isCurrentTeam);
 
       if (!isAllowed) {
         const capTag = isSnowflake(currentCaptain?.id)
           ? `<@${currentCaptain?.id}>`
-          : `**${currentCaptain?.displayName || currentCaptain?.nick || currentCaptain?.name || currentCaptain?.username || 'Capitão'}** (WhatsApp)`;
+          : `**${currentCaptain?.displayName || currentCaptain?.nick || currentCaptain?.name || currentCaptain?.username || 'Capitão'}** (Web Hub)`;
         return interaction.reply({
-          content: `🚫 Não é a sua vez! Apenas o Capitão ${capTag} pode banir agora.`,
+          content: `🚫 Não é a sua vez! Apenas o Capitão ${capTag} pode ${currentStep?.type === 'pick' ? 'escolher' : 'banir'} agora.`,
           ephemeral: true,
         });
       }
@@ -6785,28 +6857,64 @@ export class DiscordBotManager {
       const mapIndex = veto.remainingMaps.findIndex((m) => m.id === mapId);
       if (mapIndex === -1) {
         return interaction.reply({
-          content: '⚠️ Este mapa já foi banido!',
+          content: '⚠️ Este mapa já foi removido do pool!',
           ephemeral: true,
         });
       }
 
-      const [banned] = veto.remainingMaps.splice(mapIndex, 1);
-      veto.bannedMaps.push({ map: banned, by: user.id, team: veto.currentTurn });
+      const previousStepsCount =
+        typeof veto.stepIndex === 'number'
+          ? veto.stepIndex
+          : (veto.bannedMaps.length + veto.pickedMaps.length);
 
-      // Alternate turn
-      veto.currentTurn = veto.currentTurn === 'teamA' ? 'teamB' : 'teamA';
+      const [selectedMap] = veto.remainingMaps.splice(mapIndex, 1);
+      if (currentStep?.type === 'pick') {
+        veto.pickedMaps.push({
+          map: selectedMap,
+          by: user.id,
+          team: expectedTeam,
+          role: currentStep.role || `Mapa ${veto.pickedMaps.length + 1} (Pick)`,
+        });
+      } else {
+        veto.bannedMaps.push({ map: selectedMap, by: user.id, team: expectedTeam });
+      }
+
+      veto.stepIndex = previousStepsCount + 1;
+      const nextStep = this.getCurrentVetoStep(mix);
+      veto.currentTurn =
+        nextStep && (nextStep.team === 'teamA' || nextStep.team === 'teamB')
+          ? nextStep.team
+          : (expectedTeam === 'teamA' ? 'teamB' : 'teamA');
 
       // Check if 1 map left (decider) -> Trigger Side Pick!
       if (veto.remainingMaps.length === 1) {
         veto.deciderMap = veto.remainingMaps[0];
-        this.registerMapPlayed(interaction.guild?.id || interaction.channelId, veto.deciderMap?.id);
-        mix.finalMap = {
-          id: veto.deciderMap.id,
-          name: veto.deciderMap.name,
-          file: veto.deciderMap.id,
-          image: veto.deciderMap.image,
-        };
-        mix.matchMap = veto.deciderMap.name;
+        const isMd3 = String(mix.format || '').toUpperCase() === 'MD3' && veto.pickedMaps.length >= 2;
+        if (isMd3) {
+          veto.seriesMaps = [
+            { ...veto.pickedMaps[0].map, role: 'Mapa 1 (Pick)', pickedBy: veto.pickedMaps[0].team },
+            { ...veto.pickedMaps[1].map, role: 'Mapa 2 (Pick)', pickedBy: veto.pickedMaps[1].team },
+            { ...veto.deciderMap, role: 'Mapa 3 (Decider)', pickedBy: 'decider' },
+          ];
+          const opener = veto.seriesMaps[0];
+          this.registerMapPlayed(interaction.guild?.id || interaction.channelId, opener?.id);
+          mix.finalMap = {
+            id: opener.id,
+            name: opener.name,
+            file: opener.id,
+            image: opener.image,
+          };
+          mix.matchMap = opener.name;
+        } else {
+          this.registerMapPlayed(interaction.guild?.id || interaction.channelId, veto.deciderMap?.id);
+          mix.finalMap = {
+            id: veto.deciderMap.id,
+            name: veto.deciderMap.name,
+            file: veto.deciderMap.id,
+            image: veto.deciderMap.image,
+          };
+          mix.matchMap = veto.deciderMap.name;
+        }
         mix.phase = 'side_pick';
         this.syncToWebRoom(mix);
         this.updateLobbyInChannels(mix);
@@ -6836,7 +6944,7 @@ export class DiscordBotManager {
       if (!isAllowed) {
         const capTag = isSnowflake(captainB?.id)
           ? `<@${captainB?.id}>`
-          : `**${captainB?.displayName || captainB?.nick || captainB?.name || 'Capitão'}** (WhatsApp)`;
+          : `**${captainB?.displayName || captainB?.nick || captainB?.name || 'Capitão'}** (Web Hub)`;
         return interaction.reply({
           content: `🚫 Apenas o Capitão ${capTag} pode escolher o lado!`,
           ephemeral: true,
@@ -6857,15 +6965,16 @@ export class DiscordBotManager {
       if (this.config.autoMoveVoice) {
         this.executeVoiceMover(interaction.guild, mix, interaction.channel).catch(() => {});
       }
-      if (mix.veto?.deciderMap) {
-        this.triggerAutoRconMapChange(mix, mix.veto.deciderMap, interaction.channel).catch(() => {});
+      const mapToLoad = (mix.finalMap && mix.finalMap.id ? mix.finalMap : null) || mix.veto?.seriesMaps?.[0] || mix.veto?.deciderMap;
+      if (mapToLoad) {
+        this.triggerAutoRconMapChange(mix, mapToLoad, interaction.channel).catch(() => {});
       }
       const finalEmbed = this.buildMatchReadyEmbed(mix);
       const components = this.buildMatchReadyButtons(mix);
-      const conn = this.resolveMixDisplayConnect(mix);
+      const conn = this.resolveMixDisplayConnect(mix, null, interaction.guildId);
 
       await interaction.update({
-        content: `🔥 **PARTIDA CONFIRMADA NO CS2!** Mapa: **${mix.veto?.deciderMap?.name?.toUpperCase() || 'CS2'}** • Comando: \`${conn ? conn.consoleCommand : 'A definir (!servidor ip:porta)'}\` • GL & HF!`,
+        content: `🔥 **PARTIDA CONFIRMADA NO CS2!** Mapa: **${(mapToLoad?.name || mix.matchMap || 'CS2').toUpperCase()}** • Comando: \`${conn ? conn.consoleCommand : 'A definir (!servidor ip:porta)'}\` • GL & HF!`,
         embeds: [finalEmbed],
         components,
       });
@@ -6965,6 +7074,12 @@ export class DiscordBotManager {
 
     // 10. DECLARE MATCH RESULT (MODAL)
     if (action === 'match_result') {
+      if (!this.canDeclareMatchResult(interaction.member, interaction.guild, mix, user?.id)) {
+        return interaction.reply({
+          content: '🚫 Apenas administradores do servidor, o criador do mix ou um dos capitães podem declarar o placar oficial.',
+          ephemeral: true,
+        });
+      }
       const modal = new ModalBuilder()
         .setCustomId(`modal_match_result:${mix.id}`)
         .setTitle('🏆 Declarar Placar da Partida');
@@ -7011,6 +7126,12 @@ export class DiscordBotManager {
 
     // 11. SUBSTITUTE INTERACTIVE PICKER OR MANUAL MODAL
     if (action === 'mix_sub') {
+      if (!this.isMixParticipantOrMod(interaction.member, interaction.guild, mix, user?.id)) {
+        return interaction.reply({
+          content: '🚫 Apenas participantes deste mix, o criador ou administradores podem executar esta ação.',
+          ephemeral: true,
+        });
+      }
       const candidates = (mix.players || []).slice(0, 25);
       if (candidates.length === 0) {
         return interaction.reply({ content: '⚠️ Não há jogadores no lobby para substituir.', ephemeral: true });
@@ -7048,6 +7169,12 @@ export class DiscordBotManager {
     }
 
     if (action === 'sub_manual_modal') {
+      if (!this.isMixParticipantOrMod(interaction.member, interaction.guild, mix, user?.id)) {
+        return interaction.reply({
+          content: '🚫 Apenas participantes deste mix, o criador ou administradores podem executar esta ação.',
+          ephemeral: true,
+        });
+      }
       const modal = new ModalBuilder()
         .setCustomId(`modal_mix_sub:${mix.id}`)
         .setTitle('🔄 Substituição de Jogador');
@@ -7190,9 +7317,15 @@ export class DiscordBotManager {
       }
     }
 
-    // 4. Save the resolved channels in config for this guild
+    // 4. Save the resolved channels in config for this guild (preserving lobbyVoiceId)
+    const lobbyVoiceId = guildVoice.lobbyVoiceId || (!this.config.guildId || this.config.guildId === guild.id ? this.config.lobbyVoiceId : '') || '';
+    const lobbyChannel = lobbyVoiceId
+      ? (guild.channels?.cache?.get?.(lobbyVoiceId) || await guild.channels?.fetch?.(lobbyVoiceId).catch(() => null))
+      : null;
+
     if (channelA && channelB) {
       this.config.guildVoiceChannels[guild.id] = {
+        ...guildVoice,
         teamAVoiceId: channelA.id,
         teamBVoiceId: channelB.id,
         categoryId: channelA.parentId || guildVoice.categoryId || '',
@@ -7206,7 +7339,7 @@ export class DiscordBotManager {
       });
     }
 
-    return { channelA, channelB };
+    return { channelA, channelB, lobbyChannel, lobbyVoiceId };
   }
 
   async executeVoiceMover(guild, mix, contextChannel = null) {
@@ -7532,13 +7665,13 @@ export class DiscordBotManager {
       return interaction.followUp(this.buildTreinoDownloadPayload());
     }
     if (commandName === 'moeda') {
-      const isHeads = Math.random() < 0.5;
+      const isHeads = crypto.randomInt(0, 2) === 0;
       const result = isHeads ? '🦅 CARA' : '👑 COROA';
       const embed = new EmbedBuilder()
         .setTitle('🪙 CARA OU COROA')
         .setDescription(`A moeda girou no ar e caiu em...\n\n# **${result}**!`)
         .setColor(isHeads ? 0x38bdf8 : 0xf59e0b)
-        .setFooter({ text: 'CS2 Mix Hub • Randomizer' });
+        .setFooter({ text: 'CS2 Mix Hub • CSPRNG (crypto.randomInt)' });
       return interaction.reply({ embeds: [embed] });
     }
     if (commandName === 'level' || commandName === 'lvl') return this.cmdSetLevel(interaction);
@@ -7731,6 +7864,12 @@ export class DiscordBotManager {
       if (!mix) {
         return interaction.reply({ content: '⚠️ Mix não encontrado ou já encerrado.', ephemeral: true });
       }
+      if (interaction.user && !this.canSubstitutePlayer(interaction.member, interaction.guild, mix, interaction.user.id, oldId)) {
+        return interaction.reply({
+          content: '🚫 Apenas administradores, o criador, os capitães ou o próprio jogador saindo podem executar esta substituição.',
+          ephemeral: true,
+        });
+      }
       const newUserId = interaction.values?.[0];
       if (!newUserId) {
         return interaction.reply({ content: '⚠️ Nenhum jogador selecionado.', ephemeral: true });
@@ -7754,7 +7893,7 @@ export class DiscordBotManager {
     if (customId.startsWith('modal_rcon_say:')) {
       const mix = this.resolveMixFromInteraction(interaction, customId);
       const text = (interaction.fields.getTextInputValue('rcon_say_text') || '').replace(/["';\r\n]/g, ' ').trim();
-      const rawServer = mix?.serverIp || this.config.serverConnect || '';
+      const rawServer = mix?.serverIp || this.getGuildServerConnect(interaction.guildId || mix?.guildId);
       const rconPwd = (mix?.rconPassword || this.config.rconPassword || process.env.CS2_RCON_PASSWORD || '').trim();
       const { host, port } = extractHostAndPort(rawServer);
 
@@ -7935,6 +8074,12 @@ export class DiscordBotManager {
       if (!mix) {
         return interaction.reply({ content: '⚠️ Nenhum mix ativo encontrado neste canal.', ephemeral: true });
       }
+      if (!this.canDeclareMatchResult(interaction.member, interaction.guild, mix, interaction.user?.id)) {
+        return interaction.reply({
+          content: '🚫 Apenas administradores do servidor, o criador do mix ou um dos capitães podem declarar o placar oficial.',
+          ephemeral: true,
+        });
+      }
       const result = await this.recordMatchResult(mix, winner, score, interaction.user, interaction.channel, map);
       if (!result.success) {
         return interaction.reply({ content: `⚠️ ${result.error}`, ephemeral: true });
@@ -7953,11 +8098,24 @@ export class DiscordBotManager {
       if (!mix) {
         return interaction.reply({ content: '⚠️ Nenhum mix ativo encontrado neste canal.', ephemeral: true });
       }
+      if (!this.canSubstitutePlayer(interaction.member, interaction.guild, mix, interaction.user?.id, outNick)) {
+        return interaction.reply({
+          content: '🚫 Apenas administradores, o criador, os capitães ou o próprio jogador saindo podem executar esta substituição.',
+          ephemeral: true,
+        });
+      }
       const res = await this.executeSubstitute(mix, outNick, inNick, interaction.guild, interaction.channel);
       return interaction.reply({ content: res.message, ephemeral: !res.success });
     }
 
     if (customId.startsWith('modal_set_ip')) {
+      const mix = this.resolveMixFromInteraction(interaction, customId);
+      if (!this.isGuildModerator(interaction.member, interaction.guild, mix, interaction.user?.id)) {
+        return interaction.reply({
+          content: '🚫 Apenas administradores do servidor ou o criador do mix podem alterar o IP do servidor.',
+          ephemeral: true,
+        });
+      }
       const rawIp = interaction.fields.getTextInputValue('server_ip_input');
       const parsed = parseServerConnect(rawIp);
 
@@ -7968,15 +8126,12 @@ export class DiscordBotManager {
         });
       }
 
-      const mix = this.resolveMixFromInteraction(interaction, customId);
-
       if (mix) {
         mix.serverIp = parsed.normalized;
         this.syncToWebRoom(mix);
         this.updateLobbyInChannels(mix);
       }
-      this.config.serverConnect = parsed.normalized;
-      this.saveConfig({ serverConnect: parsed.normalized });
+      this.setGuildServerConnect(interaction.guildId || mix?.guildId, parsed.normalized);
 
       const connectUrl = this.getPublicWebUrl(`/connect?ip=${encodeURIComponent(parsed.normalized)}`);
       const row = new ActionRowBuilder().addComponents(
@@ -8001,6 +8156,12 @@ export class DiscordBotManager {
     if (!mix) {
       return interaction.reply({ content: '⚠️ Nenhum mix ativo encontrado neste canal para registrar vitória.', ephemeral: true });
     }
+    if (!this.canDeclareMatchResult(interaction.member, interaction.guild, mix, interaction.user?.id)) {
+      return interaction.reply({
+        content: '🚫 Apenas administradores do servidor, o criador do mix ou um dos capitães podem declarar o placar oficial.',
+        ephemeral: true,
+      });
+    }
     const winner = interaction.options.getString('time');
     const score = interaction.options.getString('placar') || '13-9';
     const map = interaction.options.getString('mapa') || '';
@@ -8022,6 +8183,12 @@ export class DiscordBotManager {
     }
     const newUser = interaction.options.getUser('novo');
     const oldUser = interaction.options.getUser('antigo') || interaction.user;
+    if (!this.canSubstitutePlayer(interaction.member, interaction.guild, mix, interaction.user?.id, oldUser.id)) {
+      return interaction.reply({
+        content: '🚫 Apenas administradores, o criador, os capitães ou o próprio jogador saindo podem executar esta substituição.',
+        ephemeral: true,
+      });
+    }
     const res = await this.executeSubstitute(mix, oldUser.id, newUser.id, interaction.guild, interaction.channel);
     return interaction.reply({ content: res.message, ephemeral: !res.success });
   }
@@ -8044,6 +8211,12 @@ export class DiscordBotManager {
     const lobby = interaction.options.getChannel('lobby');
 
     if (timeA || timeB || lobby) {
+      if (!this.isGuildModerator(interaction.member, interaction.guild, null, interaction.user?.id)) {
+        return interaction.reply({
+          content: '🚫 Apenas administradores do servidor podem configurar os canais de voz.',
+          ephemeral: true,
+        });
+      }
       if (!this.config.guildVoiceChannels) this.config.guildVoiceChannels = {};
       const current = this.config.guildVoiceChannels[interaction.guildId] || {};
       if (timeA) current.teamAVoiceId = timeA.id;
@@ -8125,7 +8298,11 @@ export class DiscordBotManager {
     try {
       const name = interaction.options.getString('nome') || `Mix 5v5 de ${interaction.user.username}`;
       const format = interaction.options.getString('formato') || 'MD1';
-      const mix = this.getOrCreateMix(interaction.channelId, interaction.user, { name, format });
+      const mix = this.getOrCreateMix(interaction.channelId, interaction.user, {
+        name,
+        format,
+        guildId: interaction.guildId || interaction.guild?.id || '',
+      });
 
       if (mix.players.length === 0 && this.hasSavedLevel(interaction.user.id)) {
         mix.players.push({
@@ -8287,10 +8464,22 @@ export class DiscordBotManager {
       };
     }
 
-    const guildVoice = this.resolveVoiceChannels(guild.id);
+    const guildVoice = this.config.guildVoiceChannels?.[guild.id] || {};
     let voiceChannel = member?.voice?.channel || null;
-    if (!voiceChannel && guildVoice.lobbyVoiceId) {
-      voiceChannel = await guild.channels?.fetch?.(guildVoice.lobbyVoiceId).catch(() => null);
+    if (!voiceChannel) {
+      const configuredLobbyId =
+        guildVoice.lobbyVoiceId ||
+        (!this.config.guildId || this.config.guildId === guild.id ? this.config.lobbyVoiceId : '') ||
+        '';
+      if (configuredLobbyId) {
+        voiceChannel =
+          guild.channels?.cache?.get?.(configuredLobbyId) ||
+          (await guild.channels?.fetch?.(configuredLobbyId).catch(() => null));
+      }
+    }
+    if (!voiceChannel) {
+      const resolved = await this.resolveVoiceChannelsForGuild(guild, channel).catch(() => null);
+      voiceChannel = resolved?.lobbyChannel || null;
     }
     if (!voiceChannel) {
       return {
@@ -8576,6 +8765,12 @@ export class DiscordBotManager {
   async cmdDrawTeams(interaction) {
     const mix = this.resolveActiveMixForChannel(interaction.channelId);
     if (!mix) return interaction.reply({ content: '⚠️ Nenhum mix ativo neste canal.', ephemeral: true });
+    if (!this.isMixParticipantOrMod(interaction.member, interaction.guild, mix, interaction.user?.id)) {
+      return interaction.reply({
+        content: '🚫 Apenas participantes deste mix, o criador ou administradores podem executar esta ação.',
+        ephemeral: true,
+      });
+    }
     if (mix.players.length < 2) return interaction.reply({ content: '⚠️ Mínimo de 2 jogadores para sortear!', ephemeral: true });
 
     if (mix.readyCheck?.timer) {
@@ -8595,6 +8790,12 @@ export class DiscordBotManager {
   async cmdStartVeto(interaction) {
     const mix = this.resolveActiveMixForChannel(interaction.channelId);
     if (!mix) return interaction.reply({ content: '⚠️ Nenhum mix ativo neste canal.', ephemeral: true });
+    if (!this.isMixParticipantOrMod(interaction.member, interaction.guild, mix, interaction.user?.id)) {
+      return interaction.reply({
+        content: '🚫 Apenas participantes deste mix, o criador ou administradores podem executar esta ação.',
+        ephemeral: true,
+      });
+    }
     if (mix.teamA.players.length === 0 || mix.teamB.players.length === 0) {
       this.balanceTeams(mix);
     }
@@ -8686,6 +8887,12 @@ export class DiscordBotManager {
   }
 
   async cmdSendPermanentPanel(interaction) {
+    if (!this.isGuildModerator(interaction.member, interaction.guild, null, interaction.user?.id)) {
+      return interaction.reply({
+        content: '🚫 Apenas administradores do servidor podem publicar o painel permanente.',
+        ephemeral: true,
+      });
+    }
     const payload = this.buildOfficialPanelPayload();
 
     await interaction.reply({
@@ -8713,8 +8920,7 @@ export class DiscordBotManager {
           ephemeral: true,
         });
       }
-      this.config.serverConnect = parsed.normalized;
-      this.saveConfig({ serverConnect: parsed.normalized });
+      this.setGuildServerConnect(interaction.guildId || mix?.guildId, parsed.normalized);
       if (mix) {
         mix.serverIp = parsed.normalized;
         this.syncToWebRoom(mix);
@@ -8725,7 +8931,7 @@ export class DiscordBotManager {
       });
     }
 
-    const conn = this.resolveMixDisplayConnect(mix);
+    const conn = this.resolveMixDisplayConnect(mix, null, interaction.guildId);
     return interaction.reply({
       content: conn
         ? `💻 **Servidor Atual:** \`${conn.normalized}\`\n👉 Para conectar: \`${conn.consoleCommand}\``
@@ -8763,7 +8969,7 @@ export class DiscordBotManager {
   async cmdServerStatus(interaction) {
     await interaction.deferReply();
     const mix = this.resolveActiveMixForChannel(interaction.channelId, { includeFinished: true });
-    const rawAddress = interaction.options?.getString?.('endereco') || mix?.serverIp || this.config.serverConnect || '';
+    const rawAddress = interaction.options?.getString?.('endereco') || mix?.serverIp || this.getGuildServerConnect(interaction.guildId || mix?.guildId);
     if (!String(rawAddress).trim()) {
       return interaction.editReply({
         content: '⚠️ Nenhum servidor CS2 configurado. Use `/servidor ip_porta: 189.1.168.20:27015` ou informe o parâmetro `endereco`.',
@@ -8813,7 +9019,7 @@ export class DiscordBotManager {
   // HARDWARE DEALS & PROMOTIONS (100% AUTOMATIC)
   // ==========================================
 
-  async getOrCreateDealsChannel(guild) {
+  async getOrCreateDealsChannel(guild, { allowAutoCreate = false } = {}) {
     if (!guild) return null;
     try {
       // 1. Explicit configured channel for this guild
@@ -8835,37 +9041,34 @@ export class DiscordBotManager {
         return existing;
       }
 
-      // 3. Create dedicated clean channel if bot has permission
-      const me = guild.members.me || await guild.members.fetchMe().catch(() => null);
-      if (me && me.permissions.has(PermissionsBitField.Flags.ManageChannels)) {
-        const created = await guild.channels.create({
-          name: '🏷️・ofertas-gamer',
-          type: ChannelType.GuildText,
-          topic: '🔥 Radar automático de promoções de hardware, periféricos, cadeiras e mesas gamer (KaBuM!, Pichau, TerabyteShop)',
-          reason: 'Canal automático para promoções de computadores gamers e setup',
-        });
-        console.log(`[DISCORD BOT] Canal #${created.name} criado com sucesso no servidor "${guild.name}"!`);
+      // 3. Create dedicated clean channel ONLY when explicitly allowed / enabled for this guild (never fallback to #geral)
+      const shouldAutoCreate = allowAutoCreate || this.config.dealsEnabledGuilds?.[guild.id] === true;
+      if (shouldAutoCreate) {
+        const me = guild.members.me || await guild.members.fetchMe().catch(() => null);
+        if (me && me.permissions.has(PermissionsBitField.Flags.ManageChannels)) {
+          const created = await guild.channels.create({
+            name: '🏷️・ofertas-gamer',
+            type: ChannelType.GuildText,
+            topic: '🔥 Radar automático de promoções de hardware, periféricos, cadeiras e mesas gamer (KaBuM! ao vivo + Pichau/Terabyte curado)',
+            reason: 'Canal automático para promoções de computadores gamers e setup',
+          });
+          console.log(`[DISCORD BOT] Canal #${created.name} criado com sucesso no servidor "${guild.name}"!`);
 
-        this.config.dealsChannels = this.config.dealsChannels || {};
-        this.config.dealsChannels[guild.id] = created.id;
-        this.saveConfig({ dealsChannels: this.config.dealsChannels });
-        return created;
+          this.config.dealsChannels = this.config.dealsChannels || {};
+          this.config.dealsChannels[guild.id] = created.id;
+          this.saveConfig({ dealsChannels: this.config.dealsChannels });
+          return created;
+        }
       }
 
-      // 4. Fallback to default channel or first text channel
-      const fallback =
-        guild.channels.cache.get(this.config.defaultChannelId) ||
-        guild.channels.cache.find((c) => c.isTextBased() && (c.name.includes('cs') || c.name === 'geral')) ||
-        guild.channels.cache.filter((c) => c.isTextBased()).first();
-
-      return fallback || null;
+      return null;
     } catch (e) {
       console.warn(`[DISCORD BOT] Falha ao obter/criar canal de ofertas na guild "${guild.name}":`, e.message);
       return null;
     }
   }
 
-  async dispatchAutomaticDealsDrop(categoryType = 'all') {
+  async dispatchAutomaticDealsDrop(categoryType = 'all', { targetGuildId = null } = {}) {
     if (this._isDispatchingDeals) return;
     if (!this.client || !this.client.isReady()) return;
 
@@ -8873,7 +9076,7 @@ export class DiscordBotManager {
     try {
       let deals = [];
       let title = '🔥 RADAR AUTOMÁTICO • SUPER OFERTAS GAMER';
-      let desc = '⚡ **PROMOÇÕES RELÂMPAGO DO DIA!** Oportunidades verificadas em **KaBuM!**, **Pichau** e **TerabyteShop**:';
+      let desc = '⚡ **PROMOÇÕES RELÂMPAGO DO DIA!** KaBuM! (**ao vivo**) + catálogo curado de **Pichau** e **TerabyteShop**:';
 
       if (categoryType === 'cadeira_mesa') {
         const cadeiras = await hardwareDealsManager.getDeals({ category: 'cadeira', limit: 2 });
@@ -8906,7 +9109,7 @@ export class DiscordBotManager {
       } else {
         deals = await hardwareDealsManager.getDeals({ limit: 4 });
         title = '🔥 RADAR AUTOMÁTICO • SUPER OFERTAS PC GAMER';
-        desc = '⚡ **PROMOÇÕES RELÂMPAGO DO DIA!** Peças selecionadas com maiores descontos nas lojas confiáveis:';
+        desc = '⚡ **PROMOÇÕES RELÂMPAGO DO DIA!** KaBuM! (**ao vivo**) + catálogo curado de **Pichau** e **TerabyteShop**:';
       }
 
       if (!deals || deals.length === 0) return;
@@ -8916,8 +9119,10 @@ export class DiscordBotManager {
       const actionButtons = hardwareDealsManager.buildActionButtons(deals);
 
       for (const [, guild] of this.client.guilds.cache) {
+        if (targetGuildId && guild.id !== targetGuildId) continue;
+        if (!targetGuildId && !this.isDealsEnabledForGuild(guild.id)) continue;
         try {
-          const channel = await this.getOrCreateDealsChannel(guild);
+          const channel = await this.getOrCreateDealsChannel(guild, { allowAutoCreate: Boolean(targetGuildId) });
           if (!channel) continue;
           await channel.send({ embeds: [embed], components: [selectMenu, ...actionButtons] }).catch(() => {});
           console.log(`[DISCORD BOT] 🏷️ Ofertas automáticas (${categoryType}) postadas no canal #${channel.name} (${guild.name})!`);
@@ -8935,10 +9140,15 @@ export class DiscordBotManager {
     if (this.dealsMonitorInterval) clearInterval(this.dealsMonitorInterval);
     if (this._initialDealsTimeout) clearTimeout(this._initialDealsTimeout);
 
-    // Initial drop only if more than 45 minutes have passed since last drop (prevents duplicate spam on restarts)
+    const hasAnyDealsEnabled = () =>
+      this.config.autoPostDeals !== false ||
+      Object.values(this.config.dealsEnabledGuilds || {}).some(Boolean);
+
+    // Initial drop only if enabled and more than 45 minutes have passed since last drop
     const elapsedSinceLastDrop = Date.now() - (Number(this.config.lastDealsDropAt) || 0);
-    if (elapsedSinceLastDrop > 45 * 60 * 1000) {
+    if (hasAnyDealsEnabled() && elapsedSinceLastDrop > 45 * 60 * 1000) {
       this._initialDealsTimeout = setTimeout(() => {
+        if (!hasAnyDealsEnabled()) return;
         this.dispatchAutomaticDealsDrop('all').catch((err) => {
           console.warn('[DISCORD BOT] Aviso no drop inicial de ofertas:', err.message);
         });
@@ -8955,7 +9165,7 @@ export class DiscordBotManager {
     this.dealsMonitorInterval = setInterval(async () => {
       try {
         if (!this.client || !this.client.isReady()) return;
-        if (this.config.autoPostDeals === false) return;
+        if (!hasAnyDealsEnabled()) return;
 
         const currentCat = categoryRotation[rotationIndex % categoryRotation.length];
         rotationIndex++;
@@ -8983,13 +9193,16 @@ export class DiscordBotManager {
         return message.reply('⚠️ Canal inválido. Mencione um canal válido como `#promocoes`.');
       }
       this.config.dealsChannels = this.config.dealsChannels || {};
+      this.config.dealsEnabledGuilds = this.config.dealsEnabledGuilds || {};
       if (message.guild?.id) {
         this.config.dealsChannels[message.guild.id] = channelId;
+        this.config.dealsEnabledGuilds[message.guild.id] = true;
       }
-      this.config.dealsChannelId = channelId;
-      this.config.autoPostDeals = true;
-      this.saveConfig({ dealsChannels: this.config.dealsChannels, dealsChannelId: channelId, autoPostDeals: true });
-      return message.reply(`✅ Canal de alertas de promoções configurado com sucesso para: <#${channelId}>! O bot publicará alertas diários de hardware.`);
+      this.saveConfig({
+        dealsChannels: this.config.dealsChannels,
+        dealsEnabledGuilds: this.config.dealsEnabledGuilds,
+      });
+      return message.reply(`✅ Canal de alertas de promoções configurado apenas para este servidor: <#${channelId}>!`);
     }
 
     // 2. Force post deals to channel: !ofertas postar
@@ -8997,8 +9210,8 @@ export class DiscordBotManager {
       if (!this.isGuildModerator(message.member, message.guild, null, message.author?.id)) {
         return message.reply('🚫 Apenas administradores do servidor podem forçar o disparo de promoções.');
       }
-      await this.dispatchAutomaticDealsDrop('all');
-      return message.reply(`🚀 Alerta de ofertas postado automaticamente em todos os canais configurados!`);
+      await this.dispatchAutomaticDealsDrop('all', { targetGuildId: message.guild?.id || null });
+      return message.reply(`🚀 Alerta de ofertas postado no canal de promoções deste servidor!`);
     }
 
     // 3. Search query: !ofertas rtx 4060
@@ -9007,7 +9220,7 @@ export class DiscordBotManager {
       const deals = await hardwareDealsManager.getDeals({ query, limit: 5 });
       const embed = hardwareDealsManager.buildDealsEmbed(deals, {
         title: `🔍 BUSCA DE HARDWARE: "${query.toUpperCase()}"`,
-        description: `Resultados encontrados nas lojas oficiais parceiras (**KaBuM!**, **Pichau**, **TerabyteShop**):`,
+        description: `Resultados na **KaBuM!** (ao vivo) + catálogo curado (**Pichau** e **TerabyteShop**):`,
       });
       const selectMenu = hardwareDealsManager.buildCategorySelectMenu();
       const actionButtons = hardwareDealsManager.buildActionButtons(deals, { query });
@@ -9054,17 +9267,20 @@ export class DiscordBotManager {
     }
 
     this.config.dealsChannels = this.config.dealsChannels || {};
+    this.config.dealsEnabledGuilds = this.config.dealsEnabledGuilds || {};
     if (interaction.guildId) {
       this.config.dealsChannels[interaction.guildId] = channel.id;
+      this.config.dealsEnabledGuilds[interaction.guildId] = activate;
     }
-    this.config.dealsChannelId = channel.id;
-    this.config.autoPostDeals = activate;
-    this.saveConfig({ dealsChannels: this.config.dealsChannels, dealsChannelId: channel.id, autoPostDeals: activate });
+    this.saveConfig({
+      dealsChannels: this.config.dealsChannels,
+      dealsEnabledGuilds: this.config.dealsEnabledGuilds,
+    });
 
     return interaction.reply({
       content: activate
-        ? `🔔 **Alertas de Promoções Ativados!** As melhores ofertas de hardware de **KaBuM!**, **Pichau** e **TerabyteShop** serão postadas automaticamente em <#${channel.id}>!`
-        : `🔕 Alertas automáticos de promoções foram desativados.`,
+        ? `🔔 **Alertas de Promoções Ativados neste servidor!** Ofertas de hardware (**KaBuM!** ao vivo + catálogo curado **Pichau** e **TerabyteShop**) serão postadas automaticamente em <#${channel.id}>.`
+        : `🔕 Alertas automáticos de promoções foram desativados **neste servidor**.`,
     });
   }
 
@@ -9559,7 +9775,7 @@ export class DiscordBotManager {
     }
   }
 
-  async buildCoachReplyPayload(query, { authorId = null, authorName = 'Jogador', channelId = null } = {}) {
+  async buildCoachReplyPayload(query, { authorId = null, authorName = 'Jogador', channelId = null, guildId = null } = {}) {
     const activeMix = channelId ? this.resolveActiveMixForChannel(channelId) : null;
     const leaderboard = typeof getLeaderboard === 'function' ? getLeaderboard() : [];
     const matchHistory = typeof loadUnifiedMatchHistory === 'function' ? loadUnifiedMatchHistory() : [];
@@ -9573,7 +9789,7 @@ export class DiscordBotManager {
       leaderboard,
       matchHistory,
       grenades: grenadesState?.lineups || [],
-      serverConnect: activeMix?.serverIp || this.config.serverConnect || '',
+      serverConnect: activeMix?.serverIp || this.getGuildServerConnect(guildId || activeMix?.guildId),
       requesterId: authorId,
       requesterName: authorName,
       conversationHistory,
@@ -9618,6 +9834,7 @@ export class DiscordBotManager {
       authorId: message.author?.id,
       authorName: message.member?.displayName || message.author?.username || 'Jogador',
       channelId: message.channelId,
+      guildId: message.guild?.id || null,
     });
     return message.reply(payload);
   }
@@ -9630,6 +9847,7 @@ export class DiscordBotManager {
         authorId: interaction.user?.id,
         authorName: interaction.member?.displayName || interaction.user?.username || 'Jogador',
         channelId: interaction.channelId,
+        guildId: interaction.guildId || null,
       });
       return interaction.editReply(payload);
     } catch (err) {
