@@ -162,6 +162,8 @@ export function buildPublicRoomsList(rooms) {
       serverIp: r.serverIp || '',
       hasPassword: Boolean(r.passwordHash || (r.password && String(r.password).trim())),
       isPrivate: false,
+      creatorId: r.creatorId || null,
+      adminId: getRoomAdminId(r),
       creatorNick: r.creatorNick || null,
       createdAt: r.createdAt,
       lastActivity: r.lastActivity || r.createdAt,

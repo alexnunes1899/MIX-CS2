@@ -22,35 +22,87 @@ import {
   ChevronRight,
   Flame,
   Zap,
+  Globe,
+  Lock,
+  Share2,
+  CloudUpload,
 } from 'lucide-react';
 import { playClickSound, playReadySound } from '../utils/audio';
 import { copyText } from '../utils/clipboard';
 import { DEFAULT_TOURNAMENT_TEAMS, PRESET_LOGOS } from '../data/tournamentTeams';
 import { drawTournamentBracketCanvas, drawMatchVersusCardCanvas } from '../utils/tournamentCanvas';
 import { getTournamentRecommendation, buildMatchesStructure } from '../utils/tournamentAdvisor';
+import StandalonePageHeader from './StandalonePageHeader';
+
+function normalizeTournamentCodeClient(raw = '') {
+  return String(raw || '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 24);
+}
+
+function generateRandomTournamentCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let out = 'COPA-';
+  for (let i = 0; i < 4; i += 1) {
+    out += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return out;
+}
+
+function resolveInitialTournamentCode(fallbackRoomId) {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const fromUrl = normalizeTournamentCodeClient(params.get('code') || '');
+    if (fromUrl) return fromUrl;
+  } catch {}
+  const normalizedRoom = normalizeTournamentCodeClient(fallbackRoomId);
+  if (normalizedRoom && normalizedRoom !== 'MIX') return normalizedRoom;
+  return 'COPA-2026';
+}
 
 export default function TournamentBracketModal({
-  isOpen,
-  onClose,
+  isOpen = false,
+  onClose = () => {},
   onLoadTeamsToMix = null,
   soundEnabled = true,
   roomId = 'MIX',
+  asPage = false,
+  pageHeaderProps = null,
+  socket = null,
+  myProfile = null,
+  isSteamLogged = false,
+  isSiteAdmin = false,
+  onRequireSteamLogin = null,
 }) {
+  const effectiveOpen = asPage || isOpen;
+  const [tournamentCode, setTournamentCode] = useState(() => resolveInitialTournamentCode(roomId));
+  const [codeInput, setCodeInput] = useState(() => resolveInitialTournamentCode(roomId));
+  const storageKey = tournamentCode || roomId || 'COPA-2026';
+
   const [activeTab, setActiveTab] = useState('bracket'); // 'bracket' | 'schedule' | 'teams'
   const [teamCount, setTeamCount] = useState(() => {
     try {
-      const saved = localStorage.getItem(`cs2_tournament_teamcount_${roomId}`);
+      const saved = localStorage.getItem(`cs2_tournament_teamcount_${storageKey}`);
       if (saved) return Math.max(2, Math.min(16, Number(saved) || 8));
     } catch (e) {}
     return 8;
   });
-  const [tournamentName, setTournamentName] = useState('COPA DE MIX CS2 2026');
+  const [tournamentName, setTournamentName] = useState(() => {
+    try {
+      const saved = localStorage.getItem(`cs2_tournament_name_${storageKey}`);
+      if (saved) return saved;
+    } catch (e) {}
+    return 'COPA DE MIX CS2 2026';
+  });
   const [isEditingName, setIsEditingName] = useState(false);
 
   // Teams with custom rosters, tags and logos
   const [teams, setTeams] = useState(() => {
     try {
-      const saved = localStorage.getItem(`cs2_tournament_teams_${roomId}`);
+      const saved = localStorage.getItem(`cs2_tournament_teams_${storageKey}`);
       if (saved) return JSON.parse(saved);
     } catch (e) {}
     return DEFAULT_TOURNAMENT_TEAMS;
@@ -59,11 +111,37 @@ export default function TournamentBracketModal({
   // Matches State
   const [matches, setMatches] = useState(() => {
     try {
-      const saved = localStorage.getItem(`cs2_tournament_matches_${roomId}`);
+      const saved = localStorage.getItem(`cs2_tournament_matches_${storageKey}`);
       if (saved) return JSON.parse(saved);
     } catch (e) {}
     return {};
   });
+
+  // Live Multiplayer Sync State
+  const [remoteMeta, setRemoteMeta] = useState({
+    exists: false,
+    ownerSteamId: '',
+    ownerId: '',
+    ownerNick: '',
+    updatedAt: null,
+  });
+  const [remoteLoading, setRemoteLoading] = useState(false);
+  const [syncStatus, setSyncStatus] = useState('local'); // 'local' | 'saving' | 'synced' | 'error'
+  const [syncFeedback, setSyncFeedback] = useState('');
+  const [linkCopied, setLinkCopied] = useState(false);
+  const skipNextAutoSaveRef = useRef(false);
+  const isHydratingRemoteRef = useRef(false);
+
+  const mySteamId = String(myProfile?.steamId || myProfile?.id || '').trim();
+  const canEditRemote = useMemo(() => {
+    if (!remoteMeta.exists) return true;
+    if (isSiteAdmin) return true;
+    if (!remoteMeta.ownerSteamId && !remoteMeta.ownerId) return true;
+    return Boolean(
+      mySteamId && (mySteamId === remoteMeta.ownerSteamId || mySteamId === remoteMeta.ownerId)
+    );
+  }, [remoteMeta, isSiteAdmin, mySteamId]);
+  const isRemoteReadOnly = remoteMeta.exists && !canEditRemote;
 
   // Smart Advisor Recommendation
   const recommendation = useMemo(() => {
@@ -83,30 +161,263 @@ export default function TournamentBracketModal({
 
   // Close on Escape Key
   useEffect(() => {
-    if (!isOpen) return;
+    if (!effectiveOpen) return;
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
         if (exportModalOpen) {
           setExportModalOpen(false);
           return;
         }
-        if (soundEnabled) playClickSound();
-        onClose();
+        if (!asPage) {
+          if (soundEnabled) playClickSound();
+          onClose();
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose, exportModalOpen, soundEnabled]);
+  }, [effectiveOpen, asPage, onClose, exportModalOpen, soundEnabled]);
 
   // Persist state in localStorage
   useEffect(() => {
     try {
-      localStorage.setItem(`cs2_tournament_teams_${roomId}`, JSON.stringify(teams));
-      localStorage.setItem(`cs2_tournament_matches_${roomId}`, JSON.stringify(matches));
-      localStorage.setItem(`cs2_tournament_name_${roomId}`, tournamentName);
-      localStorage.setItem(`cs2_tournament_teamcount_${roomId}`, String(teamCount));
+      localStorage.setItem(`cs2_tournament_teams_${storageKey}`, JSON.stringify(teams));
+      localStorage.setItem(`cs2_tournament_matches_${storageKey}`, JSON.stringify(matches));
+      localStorage.setItem(`cs2_tournament_name_${storageKey}`, tournamentName);
+      localStorage.setItem(`cs2_tournament_teamcount_${storageKey}`, String(teamCount));
     } catch (e) {}
-  }, [teams, matches, tournamentName, teamCount, roomId]);
+  }, [teams, matches, tournamentName, teamCount, storageKey]);
+
+  // Keep URL ?code= synced in page mode on popstate
+  useEffect(() => {
+    if (!asPage) return;
+    const onPopState = () => {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const fromUrl = normalizeTournamentCodeClient(params.get('code') || '');
+        if (fromUrl && fromUrl !== tournamentCode) {
+          setTournamentCode(fromUrl);
+          setCodeInput(fromUrl);
+        }
+      } catch {}
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [asPage, tournamentCode]);
+
+  // Fetch remote tournament metadata/state
+  const loadRemoteTournament = useCallback(async (targetCode) => {
+    const clean = normalizeTournamentCodeClient(targetCode);
+    if (!clean) return;
+    setRemoteLoading(true);
+    isHydratingRemoteRef.current = true;
+    try {
+      const res = await fetch(`/api/tournaments/${encodeURIComponent(clean)}`);
+      if (!res.ok) throw new Error('Falha ao consultar torneio');
+      const data = await res.json();
+      if (data?.found && data.tournament) {
+        const t = data.tournament;
+        skipNextAutoSaveRef.current = true;
+        if (t.name) setTournamentName(t.name);
+        if (t.teamCount) setTeamCount(Math.max(2, Math.min(16, Number(t.teamCount) || 8)));
+        if (Array.isArray(t.teams) && t.teams.length > 0) setTeams(t.teams);
+        if (t.matches && typeof t.matches === 'object') setMatches(t.matches);
+        setRemoteMeta({
+          exists: true,
+          ownerSteamId: t.ownerSteamId || '',
+          ownerId: t.ownerId || '',
+          ownerNick: t.ownerNick || 'Organizador',
+          updatedAt: t.updatedAt || Date.now(),
+        });
+        setSyncStatus('synced');
+        setSyncFeedback('');
+      } else {
+        setRemoteMeta({
+          exists: false,
+          ownerSteamId: '',
+          ownerId: '',
+          ownerNick: '',
+          updatedAt: null,
+        });
+        setSyncStatus('local');
+        setSyncFeedback('');
+      }
+    } catch {
+      setSyncFeedback('Modo local ativo (não foi possível consultar este código no servidor).');
+    } finally {
+      setRemoteLoading(false);
+      setTimeout(() => {
+        isHydratingRemoteRef.current = false;
+      }, 60);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!effectiveOpen || !tournamentCode) return;
+    loadRemoteTournament(tournamentCode);
+  }, [effectiveOpen, tournamentCode, loadRemoteTournament]);
+
+  // Real-time Socket.IO room subscription
+  useEffect(() => {
+    if (!effectiveOpen || !socket || !tournamentCode) return;
+    const clean = normalizeTournamentCodeClient(tournamentCode);
+    if (!clean) return;
+    socket.emit('join_tournament', { code: clean });
+
+    const handleTournamentUpdated = (t) => {
+      if (!t || normalizeTournamentCodeClient(t.code) !== clean) return;
+      skipNextAutoSaveRef.current = true;
+      if (t.name) setTournamentName(t.name);
+      if (t.teamCount) setTeamCount(Math.max(2, Math.min(16, Number(t.teamCount) || 8)));
+      if (Array.isArray(t.teams) && t.teams.length > 0) setTeams(t.teams);
+      if (t.matches && typeof t.matches === 'object') setMatches(t.matches);
+      setRemoteMeta({
+        exists: true,
+        ownerSteamId: t.ownerSteamId || '',
+        ownerId: t.ownerId || '',
+        ownerNick: t.ownerNick || 'Organizador',
+        updatedAt: t.updatedAt || Date.now(),
+      });
+      setSyncStatus('synced');
+    };
+
+    socket.on('tournament_updated', handleTournamentUpdated);
+    return () => {
+      socket.emit('leave_tournament', { code: clean });
+      socket.off('tournament_updated', handleTournamentUpdated);
+    };
+  }, [effectiveOpen, socket, tournamentCode]);
+
+  const pushTournamentToServer = useCallback(async (targetCode) => {
+    const clean = normalizeTournamentCodeClient(targetCode);
+    if (!clean) return false;
+    setSyncStatus('saving');
+    setSyncFeedback('');
+    try {
+      const res = await fetch(`/api/tournaments/${encodeURIComponent(clean)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: tournamentName,
+          teamCount,
+          teams,
+          matches,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.success) {
+        if (res.status === 401) {
+          setSyncStatus('error');
+          setSyncFeedback('Entre com sua Steam para publicar e sincronizar sua chave ao vivo.');
+          return false;
+        }
+        throw new Error(data?.error || 'Erro ao sincronizar torneio');
+      }
+      const t = data.tournament;
+      setRemoteMeta({
+        exists: true,
+        ownerSteamId: t.ownerSteamId || '',
+        ownerId: t.ownerId || '',
+        ownerNick: t.ownerNick || myProfile?.nick || 'Organizador',
+        updatedAt: t.updatedAt || Date.now(),
+      });
+      setSyncStatus('synced');
+      return true;
+    } catch (err) {
+      setSyncStatus('error');
+      setSyncFeedback(err.message || 'Falha ao salvar torneio.');
+      return false;
+    }
+  }, [tournamentName, teamCount, teams, matches, myProfile]);
+
+  // Debounced auto-save for owner when live tournament is already published
+  useEffect(() => {
+    if (!effectiveOpen || !remoteMeta.exists || isRemoteReadOnly) return;
+    if (isHydratingRemoteRef.current) return;
+    if (skipNextAutoSaveRef.current) {
+      skipNextAutoSaveRef.current = false;
+      return;
+    }
+    const timer = setTimeout(() => {
+      pushTournamentToServer(tournamentCode);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [
+    effectiveOpen,
+    remoteMeta.exists,
+    isRemoteReadOnly,
+    tournamentName,
+    teamCount,
+    teams,
+    matches,
+    tournamentCode,
+    pushTournamentToServer,
+  ]);
+
+  const syncCodeInUrl = useCallback((code) => {
+    if (!asPage) return;
+    try {
+      const u = new URL(window.location);
+      u.searchParams.set('code', code);
+      window.history.replaceState({}, '', u);
+    } catch {}
+  }, [asPage]);
+
+  const handleLoadCodeSubmit = (e) => {
+    e?.preventDefault?.();
+    if (soundEnabled) playClickSound();
+    const clean = normalizeTournamentCodeClient(codeInput);
+    if (!clean) {
+      setSyncFeedback('Informe um código válido (ex: COPA-ABC).');
+      return;
+    }
+    setCodeInput(clean);
+    setTournamentCode(clean);
+    syncCodeInUrl(clean);
+  };
+
+  const handleNewRandomCode = () => {
+    if (soundEnabled) playClickSound();
+    const nextCode = generateRandomTournamentCode();
+    setCodeInput(nextCode);
+    setTournamentCode(nextCode);
+    setRemoteMeta({ exists: false, ownerSteamId: '', ownerId: '', ownerNick: '', updatedAt: null });
+    setSyncStatus('local');
+    setSyncFeedback('');
+    syncCodeInUrl(nextCode);
+  };
+
+  const handlePublishLive = async () => {
+    if (soundEnabled) playClickSound();
+    if (!isSteamLogged && !isSiteAdmin) {
+      if (onRequireSteamLogin) {
+        onRequireSteamLogin('Entre com sua Steam para publicar o torneio e gerar um link ao vivo.');
+      } else {
+        setSyncFeedback('Entre com sua Steam para publicar a chave ao vivo.');
+      }
+      return;
+    }
+    const clean = normalizeTournamentCodeClient(codeInput || tournamentCode) || generateRandomTournamentCode();
+    setCodeInput(clean);
+    setTournamentCode(clean);
+    syncCodeInUrl(clean);
+    const ok = await pushTournamentToServer(clean);
+    if (ok) {
+      if (soundEnabled) playReadySound();
+      setSyncFeedback(`Torneio ${clean} publicado ao vivo! Compartilhe o link com os capitães.`);
+    }
+  };
+
+  const handleCopyShareLink = async () => {
+    if (soundEnabled) playClickSound();
+    const clean = normalizeTournamentCodeClient(tournamentCode) || 'COPA-2026';
+    const url = `${window.location.origin}/torneio?code=${encodeURIComponent(clean)}`;
+    const ok = await copyText(url);
+    if (ok) {
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2200);
+    }
+  };
 
   // Propagador Inteligente de Vencedores entre Chaves
   const propagateWinner = useCallback((next, matchId, winnerTeam, count) => {
@@ -186,6 +497,7 @@ export default function TournamentBracketModal({
 
   // Handle Dynamic Team Count Change
   const handleSelectTeamCount = (count) => {
+    if (isRemoteReadOnly) return;
     const validCount = Math.max(2, Math.min(16, Number(count) || 8));
     if (soundEnabled) playClickSound();
     setTeamCount(validCount);
@@ -204,6 +516,7 @@ export default function TournamentBracketModal({
 
   // Handle Team Shuffling
   const handleShuffleTeams = () => {
+    if (isRemoteReadOnly) return;
     if (soundEnabled) playClickSound();
     const shuffled = [...teams].sort(() => Math.random() - 0.5);
     setTeams(shuffled);
@@ -212,6 +525,7 @@ export default function TournamentBracketModal({
 
   // Update Score & Propagate Winner
   const updateMatchScore = (matchId, side, score) => {
+    if (isRemoteReadOnly) return;
     const num = Math.max(0, parseInt(score, 10) || 0);
     setMatches((prev) => {
       const match = { ...prev[matchId] };
@@ -236,6 +550,7 @@ export default function TournamentBracketModal({
   };
 
   const setManualWinner = (matchId, winnerTeam) => {
+    if (isRemoteReadOnly) return;
     if (soundEnabled) playClickSound();
     setMatches((prev) => {
       const match = { ...prev[matchId], winner: winnerTeam, status: 'finished' };
@@ -245,6 +560,7 @@ export default function TournamentBracketModal({
   };
 
   const handleUpdateMatchDetails = (matchId, updates) => {
+    if (isRemoteReadOnly) return;
     setMatches((prev) => ({
       ...prev,
       [matchId]: {
@@ -260,12 +576,14 @@ export default function TournamentBracketModal({
   }, [teams, selectedTeamId]);
 
   const handleUpdateCurrentTeam = (updates) => {
+    if (isRemoteReadOnly) return;
     setTeams((prev) =>
       prev.map((t) => (t.id === selectedTeamId ? { ...t, ...updates } : t))
     );
   };
 
   const handleUpdatePlayer = (playerIdx, updates) => {
+    if (isRemoteReadOnly) return;
     const updatedPlayers = currentEditingTeam.players.map((p, idx) =>
       idx === playerIdx ? { ...p, ...updates } : p
     );
@@ -273,6 +591,7 @@ export default function TournamentBracketModal({
   };
 
   const handleSetCaptain = (playerIdx) => {
+    if (isRemoteReadOnly) return;
     if (soundEnabled) playClickSound();
     const updatedPlayers = currentEditingTeam.players.map((p, idx) => ({
       ...p,
@@ -282,6 +601,7 @@ export default function TournamentBracketModal({
   };
 
   const handleApplyPresetLogo = (preset) => {
+    if (isRemoteReadOnly) return;
     if (soundEnabled) playClickSound();
     handleUpdateCurrentTeam({
       name: preset.name,
@@ -307,7 +627,7 @@ export default function TournamentBracketModal({
         teamBObj,
         matchId: match.id,
       });
-      onClose();
+      if (!asPage) onClose();
     }
   };
 
@@ -391,11 +711,16 @@ export default function TournamentBracketModal({
     return t?.icon || '🛡️';
   };
 
-  if (!isOpen) return null;
+  if (!effectiveOpen) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-fadeIn">
-      <div className="bg-slate-900 border border-amber-500/30 rounded-3xl w-full max-w-6xl max-h-[94vh] flex flex-col shadow-2xl overflow-hidden">
+  const cardContent = (
+    <div
+      className={
+        asPage
+          ? 'bg-slate-900/95 border border-amber-500/35 rounded-3xl w-full flex flex-col shadow-2xl overflow-hidden'
+          : 'bg-slate-900 border border-amber-500/30 rounded-3xl w-full max-w-6xl max-h-[94vh] flex flex-col shadow-2xl overflow-hidden'
+      }
+    >
         
         {/* Header with Editable Tournament Name */}
         <div className="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between bg-slate-950/70">
@@ -404,8 +729,8 @@ export default function TournamentBracketModal({
               <Trophy size={20} />
             </div>
             <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                {isEditingName ? (
+              <div className="flex items-center gap-2 flex-wrap">
+                {isEditingName && !isRemoteReadOnly ? (
                   <input
                     type="text"
                     value={tournamentName}
@@ -417,12 +742,16 @@ export default function TournamentBracketModal({
                   />
                 ) : (
                   <h2
-                    onClick={() => setIsEditingName(true)}
-                    className="text-base sm:text-lg font-black font-heading text-white truncate cursor-pointer hover:text-amber-300 transition-colors flex items-center gap-1.5"
-                    title="Clique para editar o nome do torneio"
+                    onClick={() => {
+                      if (!isRemoteReadOnly) setIsEditingName(true);
+                    }}
+                    className={`text-base sm:text-lg font-black font-heading text-white truncate flex items-center gap-1.5 ${
+                      isRemoteReadOnly ? '' : 'cursor-pointer hover:text-amber-300 transition-colors'
+                    }`}
+                    title={isRemoteReadOnly ? 'Modo somente leitura' : 'Clique para editar o nome do torneio'}
                   >
                     <span>{tournamentName}</span>
-                    <Edit2 size={13} className="text-amber-400/70" />
+                    {!isRemoteReadOnly && <Edit2 size={13} className="text-amber-400/70" />}
                   </h2>
                 )}
                 <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded-full uppercase shrink-0">
@@ -430,20 +759,103 @@ export default function TournamentBracketModal({
                 </span>
               </div>
               <p className="text-xs text-slate-400 truncate">
-                Central Profissional: Chaveamento, Monitoramento Ao Vivo, Escalações e Gerador de Imagens.
+                Central Profissional: Chaveamento ao Vivo Compartilhável, Escalações e Gerador de Imagens.
               </p>
             </div>
           </div>
-          <button
-            onClick={() => {
-              if (soundEnabled) playClickSound();
-              onClose();
-            }}
-            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
-          >
-            <X size={18} />
-          </button>
+          {!asPage && (
+            <button
+              onClick={() => {
+                if (soundEnabled) playClickSound();
+                onClose();
+              }}
+              className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
+            >
+              <X size={18} />
+            </button>
+          )}
         </div>
+
+        {/* Live Multiplayer Sync Bar */}
+        <div className="px-5 py-2.5 border-b border-slate-800/80 bg-slate-950/60 flex flex-col lg:flex-row lg:items-center justify-between gap-2.5">
+          <div className="flex flex-wrap items-center gap-2">
+            {remoteLoading ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-mono font-bold bg-slate-800 text-slate-300 border border-slate-700">
+                Carregando chave...
+              </span>
+            ) : isRemoteReadOnly ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-mono font-bold bg-amber-500/15 text-amber-300 border border-amber-500/35">
+                <Lock size={11} />
+                <span>Somente Leitura • Organizador: {remoteMeta.ownerNick || 'Criador'}</span>
+              </span>
+            ) : remoteMeta.exists ? (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-mono font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/35">
+                <Radio size={11} className="animate-pulse" />
+                <span>
+                  AO VIVO • {syncStatus === 'saving' ? 'Salvando...' : `Sincronizado (${remoteMeta.ownerNick || 'Organizador'})`}
+                </span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-mono font-bold bg-slate-800/90 text-slate-300 border border-slate-700">
+                <Globe size={11} className="text-slate-400" />
+                <span>Rascunho Local (Código {tournamentCode})</span>
+              </span>
+            )}
+
+            <form onSubmit={handleLoadCodeSubmit} className="flex items-center gap-1.5">
+              <input
+                type="text"
+                value={codeInput}
+                onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
+                placeholder="EX: COPA-2026"
+                maxLength={24}
+                className="w-32 sm:w-36 bg-slate-900 border border-slate-700 focus:border-amber-400 rounded-lg px-2.5 py-1 text-xs font-mono font-bold text-white uppercase outline-none"
+              />
+              <button
+                type="submit"
+                className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[11px] font-bold cursor-pointer transition-colors"
+              >
+                Carregar
+              </button>
+              <button
+                type="button"
+                onClick={handleNewRandomCode}
+                className="px-2.5 py-1 rounded-lg bg-slate-800/70 hover:bg-slate-700 text-amber-300 border border-slate-700 text-[11px] font-bold cursor-pointer transition-colors"
+                title="Gerar um novo código exclusivo para criar outro campeonato"
+              >
+                Novo Código
+              </button>
+            </form>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {!isRemoteReadOnly && (
+              <button
+                type="button"
+                onClick={handlePublishLive}
+                disabled={syncStatus === 'saving'}
+                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs flex items-center gap-1.5 cursor-pointer shadow-md shadow-emerald-500/20 disabled:opacity-60 transition-all"
+              >
+                <CloudUpload size={13} />
+                <span>{remoteMeta.exists ? 'Sincronizar Agora' : 'Publicar & Sincronizar ao Vivo'}</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleCopyShareLink}
+              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
+            >
+              {linkCopied ? <Check size={13} className="text-emerald-400" /> : <Share2 size={13} className="text-amber-400" />}
+              <span>{linkCopied ? 'Link Copiado!' : 'Copiar Link da Chave'}</span>
+            </button>
+          </div>
+        </div>
+
+        {syncFeedback && (
+          <div className="px-5 py-2 bg-amber-500/10 border-b border-amber-500/25 text-xs text-amber-200 font-medium">
+            {syncFeedback}
+          </div>
+        )}
 
         {/* Tab Navigation & Action Bar */}
         <div className="px-5 py-2.5 border-b border-slate-800 bg-slate-950/40 flex flex-wrap items-center justify-between gap-2.5">
@@ -505,8 +917,8 @@ export default function TournamentBracketModal({
               <button
                 type="button"
                 onClick={() => handleSelectTeamCount(teamCount - 1)}
-                disabled={teamCount <= 2}
-                className="w-5 h-5 rounded flex items-center justify-center text-xs font-black text-slate-400 hover:text-white bg-slate-900 border border-slate-800 disabled:opacity-30 cursor-pointer"
+                disabled={isRemoteReadOnly || teamCount <= 2}
+                className="w-5 h-5 rounded flex items-center justify-center text-xs font-black text-slate-400 hover:text-white bg-slate-900 border border-slate-800 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
                 title="Diminuir equipes"
               >
                 -
@@ -517,8 +929,8 @@ export default function TournamentBracketModal({
               <button
                 type="button"
                 onClick={() => handleSelectTeamCount(teamCount + 1)}
-                disabled={teamCount >= 16}
-                className="w-5 h-5 rounded flex items-center justify-center text-xs font-black text-slate-400 hover:text-white bg-slate-900 border border-slate-800 disabled:opacity-30 cursor-pointer"
+                disabled={isRemoteReadOnly || teamCount >= 16}
+                className="w-5 h-5 rounded flex items-center justify-center text-xs font-black text-slate-400 hover:text-white bg-slate-900 border border-slate-800 disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
                 title="Aumentar equipes"
               >
                 +
@@ -529,7 +941,7 @@ export default function TournamentBracketModal({
             <button
               onClick={handleOpenExportBracket}
               className="px-3 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-md shadow-purple-600/20 active:scale-95 transition-all"
-              title="Gera uma imagem de alta definição (1920x1080) da tabela do torneio para postar no Discord/WhatsApp"
+              title="Gera uma imagem de alta definição (1920x1080) da tabela do torneio para postar no Discord"
             >
               <Image size={13} />
               <span>Gerar Imagem da Chave (PNG)</span>
@@ -538,7 +950,8 @@ export default function TournamentBracketModal({
             {/* Shuffle */}
             <button
               onClick={handleShuffleTeams}
-              className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+              disabled={isRemoteReadOnly}
+              className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               title="Embaralhar seeds das equipes"
             >
               <Shuffle size={13} />
@@ -546,8 +959,11 @@ export default function TournamentBracketModal({
 
             {/* Reset */}
             <button
-              onClick={() => initBracketMatches(teamCount)}
-              className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+              onClick={() => {
+                if (!isRemoteReadOnly) initBracketMatches(teamCount);
+              }}
+              disabled={isRemoteReadOnly}
+              className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               title="Reiniciar Chaveamento"
             >
               <RotateCcw size={13} />
@@ -686,9 +1102,10 @@ export default function TournamentBracketModal({
                         <span className="text-base shrink-0">{getTeamIcon(match.teamA)}</span>
                         <button
                           type="button"
+                          disabled={isRemoteReadOnly}
                           onClick={() => setManualWinner(mKey, match.teamA)}
-                          className="font-bold text-xs text-white hover:text-amber-300 cursor-pointer truncate text-left"
-                          title="Clique para declarar vencedor"
+                          className="font-bold text-xs text-white hover:text-amber-300 cursor-pointer truncate text-left disabled:cursor-default disabled:hover:text-white"
+                          title={isRemoteReadOnly ? match.teamA : 'Clique para declarar vencedor'}
                         >
                           {match.teamA}
                         </button>
@@ -697,9 +1114,10 @@ export default function TournamentBracketModal({
                         type="number"
                         min="0"
                         max="30"
+                        disabled={isRemoteReadOnly}
                         value={match.scoreA}
                         onChange={(e) => updateMatchScore(mKey, 'A', e.target.value)}
-                        className="w-11 bg-slate-950 border border-slate-700 rounded-lg text-center font-mono font-bold text-xs py-1 text-white outline-none focus:border-amber-400"
+                        className="w-11 bg-slate-950 border border-slate-700 rounded-lg text-center font-mono font-bold text-xs py-1 text-white outline-none focus:border-amber-400 disabled:opacity-70"
                       />
                     </div>
 
@@ -713,9 +1131,10 @@ export default function TournamentBracketModal({
                         <span className="text-base shrink-0">{getTeamIcon(match.teamB)}</span>
                         <button
                           type="button"
+                          disabled={isRemoteReadOnly}
                           onClick={() => setManualWinner(mKey, match.teamB)}
-                          className="font-bold text-xs text-white hover:text-amber-300 cursor-pointer truncate text-left"
-                          title="Clique para declarar vencedor"
+                          className="font-bold text-xs text-white hover:text-amber-300 cursor-pointer truncate text-left disabled:cursor-default disabled:hover:text-white"
+                          title={isRemoteReadOnly ? match.teamB : 'Clique para declarar vencedor'}
                         >
                           {match.teamB}
                         </button>
@@ -724,9 +1143,10 @@ export default function TournamentBracketModal({
                         type="number"
                         min="0"
                         max="30"
+                        disabled={isRemoteReadOnly}
                         value={match.scoreB}
                         onChange={(e) => updateMatchScore(mKey, 'B', e.target.value)}
-                        className="w-11 bg-slate-950 border border-slate-700 rounded-lg text-center font-mono font-bold text-xs py-1 text-white outline-none focus:border-amber-400"
+                        className="w-11 bg-slate-950 border border-slate-700 rounded-lg text-center font-mono font-bold text-xs py-1 text-white outline-none focus:border-amber-400 disabled:opacity-70"
                       />
                     </div>
 
@@ -1053,16 +1473,18 @@ export default function TournamentBracketModal({
                       <div className="flex items-center gap-2 font-mono">
                         <input
                           type="number"
+                          disabled={isRemoteReadOnly}
                           value={m.scoreA}
                           onChange={(e) => updateMatchScore(m.id, 'A', e.target.value)}
-                          className="w-10 bg-slate-950 border border-slate-700 rounded text-center text-xs py-1 text-white font-bold"
+                          className="w-10 bg-slate-950 border border-slate-700 rounded text-center text-xs py-1 text-white font-bold disabled:opacity-70"
                         />
                         <span className="text-slate-500">:</span>
                         <input
                           type="number"
+                          disabled={isRemoteReadOnly}
                           value={m.scoreB}
                           onChange={(e) => updateMatchScore(m.id, 'B', e.target.value)}
-                          className="w-10 bg-slate-950 border border-slate-700 rounded text-center text-xs py-1 text-white font-bold"
+                          className="w-10 bg-slate-950 border border-slate-700 rounded text-center text-xs py-1 text-white font-bold disabled:opacity-70"
                         />
                       </div>
 
@@ -1164,18 +1586,20 @@ export default function TournamentBracketModal({
                   <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Nome do Time</label>
                   <input
                     type="text"
+                    disabled={isRemoteReadOnly}
                     value={currentEditingTeam.name}
                     onChange={(e) => handleUpdateCurrentTeam({ name: e.target.value })}
-                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-white outline-none focus:border-amber-400"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs font-bold text-white outline-none focus:border-amber-400 disabled:opacity-70"
                   />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Tag Curta</label>
                   <input
                     type="text"
+                    disabled={isRemoteReadOnly}
                     value={currentEditingTeam.tag}
                     onChange={(e) => handleUpdateCurrentTeam({ tag: e.target.value.toUpperCase().slice(0, 5) })}
-                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs font-mono font-bold text-amber-300 outline-none focus:border-amber-400"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-xs font-mono font-bold text-amber-300 outline-none focus:border-amber-400 disabled:opacity-70"
                   />
                 </div>
               </div>
@@ -1190,8 +1614,9 @@ export default function TournamentBracketModal({
                     <button
                       key={p.id}
                       type="button"
+                      disabled={isRemoteReadOnly}
                       onClick={() => handleApplyPresetLogo(p)}
-                      className={`p-2 rounded-xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-1 ${
+                      className={`p-2 rounded-xl border text-center transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex flex-col items-center justify-center gap-1 ${
                         currentEditingTeam.tag === p.tag
                           ? 'bg-amber-500/20 border-amber-400 ring-1 ring-amber-400 scale-105'
                           : 'bg-slate-900 border-slate-800 hover:border-slate-700'
@@ -1225,8 +1650,9 @@ export default function TournamentBracketModal({
                       <div className="flex items-center gap-2 flex-1">
                         <button
                           type="button"
+                          disabled={isRemoteReadOnly}
                           onClick={() => handleSetCaptain(idx)}
-                          className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
+                          className={`p-1.5 rounded-lg border transition-colors cursor-pointer disabled:cursor-not-allowed ${
                             p.isCaptain
                               ? 'bg-amber-500/20 text-amber-400 border-amber-500/40 shadow-sm'
                               : 'bg-slate-950 text-slate-600 border-slate-800 hover:text-slate-400'
@@ -1238,18 +1664,20 @@ export default function TournamentBracketModal({
                         <span className="text-xs font-mono text-slate-500 w-4">#{idx + 1}</span>
                         <input
                           type="text"
+                          disabled={isRemoteReadOnly}
                           value={p.nick}
                           onChange={(e) => handleUpdatePlayer(idx, { nick: e.target.value })}
                           placeholder={`Jogador ${idx + 1}`}
-                          className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1 text-xs font-bold text-white outline-none focus:border-amber-400"
+                          className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1 text-xs font-bold text-white outline-none focus:border-amber-400 disabled:opacity-70"
                         />
                       </div>
 
                       {/* Role selector */}
                       <select
+                        disabled={isRemoteReadOnly}
                         value={p.role || 'Rifler'}
                         onChange={(e) => handleUpdatePlayer(idx, { role: e.target.value })}
-                        className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-xs font-mono text-slate-300 outline-none"
+                        className="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-xs font-mono text-slate-300 outline-none disabled:opacity-70"
                       >
                         <option value="IGL">🧠 IGL</option>
                         <option value="AWPer">🎯 AWPer</option>
@@ -1269,23 +1697,29 @@ export default function TournamentBracketModal({
         <div className="px-5 py-3 border-t border-slate-800 bg-slate-950/70 flex items-center justify-between text-xs text-slate-400">
           <span className="flex items-center gap-1.5">
             <Sparkles size={13} className="text-amber-400" />
-            <span>Chaveamento e tabelas salvos automaticamente em tempo real.</span>
+            <span>
+              {remoteMeta.exists
+                ? 'Chaveamento conectado ao vivo com atualização automática em tempo real.'
+                : 'Chaveamento salvo localmente no navegador (clique em Publicar para sincronizar ao vivo).'}
+            </span>
           </span>
-          <button
-            onClick={() => {
-              if (soundEnabled) playClickSound();
-              onClose();
-            }}
-            className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold cursor-pointer transition-colors"
-          >
-            Fechar Janela
-          </button>
+          {!asPage && (
+            <button
+              onClick={() => {
+                if (soundEnabled) playClickSound();
+                onClose();
+              }}
+              className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold cursor-pointer transition-colors"
+            >
+              Fechar Janela
+            </button>
+          )}
         </div>
 
       </div>
+  );
 
-      {/* EXPORT IMAGE MODAL (CANVAS PREVIEW & DOWNLOAD) */}
-      {exportModalOpen && (
+  const exportModalElement = exportModalOpen ? (
         <div className="fixed inset-0 z-60 flex items-center justify-center p-3 sm:p-5 bg-black/90 backdrop-blur-lg animate-fadeIn">
           <div className="bg-slate-900 border border-amber-500/40 rounded-3xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/70">
@@ -1340,7 +1774,30 @@ export default function TournamentBracketModal({
             </div>
           </div>
         </div>
-      )}
+  ) : null;
+
+  if (asPage) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
+        <StandalonePageHeader
+          activeTab="torneio"
+          badgeLabel="TORNEIO"
+          subtitle="CHAVEAMENTO & CAMPEONATOS"
+          soundEnabled={soundEnabled}
+          {...(pageHeaderProps || {})}
+        />
+        <main className="max-w-7xl w-full mx-auto px-3 sm:px-5 py-6 flex-1">
+          {cardContent}
+        </main>
+        {exportModalElement}
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-fadeIn">
+      {cardContent}
+      {exportModalElement}
     </div>
   );
 }

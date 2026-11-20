@@ -18,6 +18,7 @@ import { sendDiscordWebhook, isValidDiscordWebhookUrl } from '../discordWebhook.
 import { moveGuildMember, testDiscordBotVoiceChannels } from '../discordVoiceMover.js';
 import { writeJsonAtomic } from '../utils/atomicJson.js';
 import { logger } from '../utils/logger.js';
+import { getTournament, saveTournament } from '../tournaments.js';
 
 const BACKUPABLE_FILES = [
   'leaderboard.json',
@@ -34,6 +35,7 @@ const BACKUPABLE_FILES = [
   'bagreVotesStore.json',
   'commendationsStore.json',
   'discordBotConfig.json',
+  'tournamentsStore.json',
 ];
 
 export function registerAdminAndSocialRoutes(app, { io, rooms, discordBotManager, sensitiveLimiter }) {
@@ -195,6 +197,47 @@ export function registerAdminAndSocialRoutes(app, { io, rooms, discordBotManager
     const match = (state.matches || []).find((m) => m.id === req.params.id);
     if (!match) return res.status(404).json({ error: 'Partida não encontrada' });
     res.json(match);
+  });
+
+  // Synchronized Multiplayer Tournaments API
+  app.get('/api/tournaments/:code', (req, res) => {
+    const tournament = getTournament(req.params.code);
+    return res.json({
+      success: true,
+      found: Boolean(tournament),
+      tournament,
+    });
+  });
+
+  app.put('/api/tournaments/:code', sensitiveLimiter, (req, res) => {
+    const sessionUser = getSessionUser(req);
+    const admin = isAdminRequest(req);
+    if (!sessionUser?.steamId && !admin) {
+      return res.status(401).json({
+        error: 'Faça login com a Steam para publicar ou atualizar um torneio ao vivo.',
+        requiresAuth: true,
+      });
+    }
+
+    const result = saveTournament(req.params.code, req.body || {}, {
+      ownerId: sessionUser?.steamId || (admin ? 'site-admin' : ''),
+      ownerSteamId: sessionUser?.steamId || '',
+      ownerNick: sessionUser?.nick || (admin ? 'Admin' : 'Organizador'),
+      isSiteAdmin: admin,
+    });
+
+    if (!result.ok) {
+      return res.status(result.status || 400).json({ error: result.error });
+    }
+
+    if (io) {
+      io.to(`tournament:${result.tournament.code}`).emit('tournament_updated', result.tournament);
+    }
+
+    return res.json({
+      success: true,
+      tournament: result.tournament,
+    });
   });
 
   // Admin JSON Snapshot Backup & Restore (for safe DATA_DIR migration)

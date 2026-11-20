@@ -86,6 +86,48 @@ export function verifySessionToken(token) {
   }
 }
 
+export function signGsiInstallerToken(roomId, ttlMs = 15 * 60 * 1000) {
+  const cleanRoomId = String(roomId || 'MIX-PRO').trim().toUpperCase();
+  if (!cleanRoomId) return '';
+  const now = Date.now();
+  const payload = {
+    roomId: cleanRoomId,
+    scope: 'gsi_installer',
+    iat: now,
+    exp: now + Math.max(60_000, Number(ttlMs) || 15 * 60 * 1000),
+  };
+  const body = base64UrlEncode(JSON.stringify(payload));
+  const sig = crypto.createHmac('sha256', getSessionSecret()).update(body).digest('base64url');
+  return `${body}.${sig}`;
+}
+
+export function verifyGsiInstallerToken(token, expectedRoomId = '') {
+  if (!token || typeof token !== 'string') return false;
+  const parts = token.split('.');
+  if (parts.length !== 2) return false;
+  const [body, sig] = parts;
+  if (!body || !sig) return false;
+
+  const expectedSig = crypto.createHmac('sha256', getSessionSecret()).update(body).digest('base64url');
+  const sigBuf = Buffer.from(sig);
+  const expBuf = Buffer.from(expectedSig);
+  if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+    return false;
+  }
+
+  try {
+    const parsed = JSON.parse(base64UrlDecode(body));
+    if (!parsed || typeof parsed !== 'object') return false;
+    if (parsed.scope !== 'gsi_installer') return false;
+    if (Number(parsed.exp || 0) < Date.now()) return false;
+    const cleanExpected = String(expectedRoomId || '').trim().toUpperCase();
+    if (cleanExpected && parsed.roomId !== cleanExpected) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function parseCookies(cookieHeader = '') {
   const out = {};
   if (!cookieHeader || typeof cookieHeader !== 'string') return out;

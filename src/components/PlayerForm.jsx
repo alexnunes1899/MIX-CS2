@@ -3,10 +3,10 @@ import GCBadge from './GCBadge';
 import FaceitBadge from './FaceitBadge';
 import PlayerAvatar from './PlayerAvatar';
 import SteamIcon from './SteamIcon';
-import { Shield, Flame, Shuffle, UserPlus, CheckCircle2, LogOut, RefreshCw, Zap, Lock, ArrowRightLeft, Trophy, Sparkles, Copy, Check } from 'lucide-react';
+import { Shield, Flame, Shuffle, UserPlus, CheckCircle2, LogOut, RefreshCw, Zap, Lock, Trophy } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
 import { getPlayerStats } from '../utils/playerStats';
-import { copyText } from '../utils/clipboard';
+import { savePendingInvite } from '../hooks/useSteamSession';
 
 const AVATARS = ['🎯', '👑', '💀', '⚡', '🛡️', '💣', '🔥', '🦅', '🚀', '🧠'];
 
@@ -37,9 +37,34 @@ export default function PlayerForm({
   const [isSaved, setIsSaved] = useState(false);
   const [levelSynced, setLevelSynced] = useState(false);
   const [syncingFaceit, setSyncingFaceit] = useState(false);
-  const [copiedSteamId, setCopiedSteamId] = useState(false);
 
-  const playerStats = getPlayerStats(currentProfile?.steamId);
+  const localStats = getPlayerStats(currentProfile?.steamId);
+  const [serverStats, setServerStats] = useState(null);
+
+  useEffect(() => {
+    const steamId = currentProfile?.steamId;
+    if (!steamId) {
+      setServerStats(null);
+      return;
+    }
+    const controller = new AbortController();
+    fetch(`/api/players/${encodeURIComponent(steamId)}/analytics`, { signal: controller.signal })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        const s = data?.analytics?.summary;
+        if (s && typeof s.matchesPlayed === 'number') {
+          setServerStats({
+            matchesPlayed: s.matchesPlayed,
+            wins: s.wins || 0,
+            winRate: s.winRate || 0,
+          });
+        }
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [currentProfile?.steamId]);
+
+  const playerStats = serverStats && serverStats.matchesPlayed > 0 ? serverStats : localStats;
 
   useEffect(() => {
     if (currentProfile?.nick) setNick(currentProfile.nick);
@@ -211,10 +236,10 @@ export default function PlayerForm({
     if (soundEnabled) playClickSound();
     try {
       const params = new URLSearchParams(window.location.search);
-      const pendingRoom = params.get('room');
-      const pendingKey = params.get('key') || params.get('token');
+      const pendingRoom = params.get('room') || roomId;
+      const pendingKey = params.get('key') || params.get('token') || '';
       if (pendingRoom) {
-        sessionStorage.setItem('cs2_pending_invite', JSON.stringify({ room: pendingRoom, key: pendingKey || '' }));
+        savePendingInvite(pendingRoom, pendingKey);
       }
     } catch (e) {}
     window.location.href = '/api/auth/steam';
@@ -298,63 +323,42 @@ export default function PlayerForm({
           </button>
         </div>
       ) : (
-        <div className="bg-slate-950/90 border border-slate-800 rounded-2xl p-4 shadow-inner space-y-3">
-          {/* Passport Header with Steam Verified Badge & Switch Account */}
-          <div className="flex items-center justify-between pb-3 border-b border-slate-800/80">
+        <div className="bg-slate-950/90 border border-slate-800 rounded-2xl p-3.5 shadow-inner space-y-2.5">
+          {/* Compact Passport Header */}
+          <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-slate-800/80">
             <div className="flex items-center gap-2.5 min-w-0">
               <div className="relative shrink-0">
-                <PlayerAvatar avatar={avatar} nick={nick} size="md" />
+                <PlayerAvatar avatar={avatar} nick={nick} size="sm" />
                 <span className="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full bg-slate-950 border border-slate-800 flex items-center justify-center">
                   <SteamIcon className="w-2.5 h-2.5 text-[#66c0f4]" />
                 </span>
               </div>
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-xs font-bold text-white truncate max-w-[110px] sm:max-w-[140px]">{nick}</span>
+                  <span className="text-xs font-bold text-white truncate max-w-[115px]">{nick}</span>
                   <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.2 rounded font-mono">
                     Steam ✓
                   </span>
-                </div>
-                <div className="flex items-center gap-1 mt-0.5 flex-wrap">
-                  <span className="text-[10px] text-slate-500 font-mono truncate max-w-[105px]">ID: {currentProfile.steamId}</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (soundEnabled) playClickSound();
-                      copyText(currentProfile.steamId);
-                      setCopiedSteamId(true);
-                      setTimeout(() => setCopiedSteamId(false), 2000);
-                    }}
-                    className="text-slate-500 hover:text-amber-400 p-0.5"
-                    title="Copiar SteamID64"
-                  >
-                    {copiedSteamId ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
-                  </button>
-                  {onOpenProfileModal && (
-                    <button
-                      type="button"
-                      onClick={onOpenProfileModal}
-                      className="ml-1 text-[9px] font-mono px-1.5 py-0.2 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 transition-colors cursor-pointer"
-                      title="Ver ou editar horas de CS2"
-                    >
-                      {currentProfile?.cs2Hours ? `${currentProfile.cs2Hours.toLocaleString('pt-BR')}h` : '+ Horas'}
-                    </button>
+                  {currentProfile?.cs2Hours && (
+                    <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-300 border border-amber-500/30">
+                      {currentProfile.cs2Hours.toLocaleString('pt-BR')}h
+                    </span>
                   )}
                 </div>
               </div>
             </div>
 
-            {/* Account Switch & Logout Controls */}
             <div className="flex items-center gap-1 shrink-0">
-              <button
-                type="button"
-                onClick={handleSwitchAccount}
-                className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-sky-400 hover:text-sky-300 border border-slate-700/80 hover:border-sky-500/40 text-[10px] font-bold transition-all cursor-pointer active:scale-95"
-                title="Entrar com outra conta da Steam"
-              >
-                <ArrowRightLeft size={11} />
-                <span className="hidden xl:inline">Trocar</span>
-              </button>
+              {onOpenProfileModal && (
+                <button
+                  type="button"
+                  onClick={onOpenProfileModal}
+                  className="px-2 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-amber-400 border border-amber-500/30 text-[10px] font-bold transition-colors cursor-pointer whitespace-nowrap"
+                  title="Ver estatísticas completas, vincular Discord ou trocar conta"
+                >
+                  Perfil Completo →
+                </button>
+              )}
 
               <button
                 type="button"
@@ -367,20 +371,14 @@ export default function PlayerForm({
             </div>
           </div>
 
-          {/* Embedded Player Statistics in Profile */}
-          <div className="space-y-2">
+          {/* Compact Player Statistics */}
+          <div className="space-y-1.5">
             <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400">
               <span className="flex items-center gap-1">
                 <Trophy size={11} className="text-amber-400" /> Estatísticas no Mix
               </span>
-              {onOpenProfileModal && (
-                <button
-                  type="button"
-                  onClick={onOpenProfileModal}
-                  className="text-amber-400 hover:underline cursor-pointer font-semibold"
-                >
-                  Ver Detalhes ➔
-                </button>
+              {serverStats && serverStats.matchesPlayed > 0 && (
+                <span className="text-[9px] font-mono text-emerald-400">Sync Servidor</span>
               )}
             </div>
 
@@ -397,14 +395,6 @@ export default function PlayerForm({
                 <span className="text-[9px] uppercase font-mono text-slate-500 block">Win Rate</span>
                 <span className="text-xs font-black font-mono text-amber-400">{playerStats.winRate}%</span>
               </div>
-            </div>
-
-            {/* Win rate progress bar */}
-            <div className="w-full bg-slate-900 rounded-full h-1.5 overflow-hidden border border-slate-800">
-              <div
-                className="bg-gradient-to-r from-emerald-500 to-teal-400 h-full rounded-full transition-all duration-500"
-                style={{ width: `${playerStats.winRate}%` }}
-              />
             </div>
           </div>
         </div>

@@ -13,6 +13,7 @@ export default function RoomsHubModal({
   onDeleteRoom,
   soundEnabled,
   isSteamLogged = false,
+  isSiteAdmin = false,
   onRequireSteamLogin,
   myProfile,
 }) {
@@ -480,19 +481,21 @@ export default function RoomsHubModal({
                         <span>{r.playerCount}/10</span>
                       </div>
 
-                      {/* Excluir Sala Button */}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (soundEnabled) playClickSound();
-                          setRoomToDelete(r);
-                        }}
-                        className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/25 border border-red-500/20 hover:border-red-500/60 text-red-400 hover:text-red-300 transition-colors cursor-pointer"
-                        title={`Excluir sala ${r.name || r.id}`}
-                      >
-                        <Trash2 size={13} />
-                      </button>
+                      {/* Excluir Sala Button (Apenas Criador/Admin da Sala ou Admin do Site) */}
+                      {isSteamLogged && (isSiteAdmin || (myProfile?.id && (r.creatorId === myProfile.id || r.adminId === myProfile.id))) && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (soundEnabled) playClickSound();
+                            setRoomToDelete(r);
+                          }}
+                          className="p-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/25 border border-red-500/20 hover:border-red-500/60 text-red-400 hover:text-red-300 transition-colors cursor-pointer"
+                          title={`Excluir sala ${r.name || r.id}`}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
 
                       {isCurrent ? (
                         <span className="text-[10px] uppercase font-bold text-amber-400 px-2 py-1 rounded bg-amber-500/20">
@@ -517,9 +520,10 @@ export default function RoomsHubModal({
           onClose={() => setRoomToDelete(null)}
           onConfirm={(roomId) => {
             if (onDeleteRoom) {
-              onDeleteRoom(roomId);
+              onDeleteRoom(roomId, {
+                onDeleted: () => fetchRooms(),
+              });
             }
-            setRooms((prev) => prev.filter((r) => r.id !== roomId));
             setRoomToDelete(null);
           }}
           roomId={roomToDelete?.id || ''}

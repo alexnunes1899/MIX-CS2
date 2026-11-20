@@ -3,7 +3,7 @@ import GCBadge from './GCBadge';
 import FaceitBadge from './FaceitBadge';
 import PlayerAvatar from './PlayerAvatar';
 import ServerConnectBar from './ServerConnectBar';
-import { Users, Trash2, Bot, Scale, Shuffle, Shield, Flame, CheckCircle2, Crown, Check, AlertCircle, Zap, Dices, ArrowLeftRight, Lock, Globe, Share2, Layers, Copy, KeyRound, Hash, Eye, EyeOff, Sparkles, Bell, BookOpen, Target, Trophy, Server, Clock, UserX, Plug } from 'lucide-react';
+import { Users, Trash2, Bot, Scale, Shuffle, Shield, Flame, CheckCircle2, Crown, Check, AlertCircle, Zap, Lock, Globe, Share2, Layers, Copy, Hash, Eye, Sparkles, Bell, Clock, UserX } from 'lucide-react';
 import { playClickSound, playReadySound } from '../utils/audio';
 import { copyText, buildRoomInviteData } from '../utils/clipboard';
 
@@ -118,6 +118,16 @@ export default function Lobby({
 
   return (
     <div className="space-y-6 pb-24 sm:pb-12">
+      {/* Spectator Notice Banner when not logged in */}
+      {!myProfile?.steamId && (
+        <div className="bg-sky-950/35 border border-sky-500/35 rounded-2xl px-4 py-3 flex items-center gap-2.5 text-xs text-sky-200 shadow-sm">
+          <Eye size={16} className="text-sky-400 shrink-0" />
+          <span>
+            <strong>Modo Espectador:</strong> Você está visualizando a sala em tempo real. Faça login com a <strong>Steam</strong> ao lado para garantir sua vaga na fila.
+          </span>
+        </div>
+      )}
+
       {/* Room Security & Privacy Card */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-lg space-y-3 backdrop-blur">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
@@ -204,7 +214,7 @@ export default function Lobby({
             </button>
           </div>
 
-          {/* Direct Invite Link Status */}
+          {/* Direct Invite Link Status (No duplicated copy button here) */}
           <div className="bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
               {isPrivate ? (
@@ -219,15 +229,11 @@ export default function Lobby({
                 </span>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={handleCopyInviteLink}
-              className="p-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 hover:text-amber-200 transition-colors cursor-pointer text-[10px] font-bold flex items-center gap-1 shrink-0"
-              title="Copiar Link Direto de Convite"
-            >
-              {copiedInvite ? <Check size={12} className="text-emerald-400" /> : <Share2 size={12} />}
-              <span>{copiedInvite ? 'Link Copiado!' : 'Copiar Link'}</span>
-            </button>
+            <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-lg border shrink-0 ${
+              isPrivate ? 'bg-purple-500/15 text-purple-300 border-purple-500/30' : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+            }`}>
+              {isPrivate ? 'Privada' : 'Pública'}
+            </span>
           </div>
         </div>
 
@@ -240,106 +246,6 @@ export default function Lobby({
               : <>Envie o <strong>Link de Convite</strong> para seus amigos entrarem direto na sala com 1 clique!</>}
           </span>
         </div>
-      </div>
-
-      {/* Quick Mode Shortcuts Toolbar (Compact 1-Row Rail) */}
-      <div className="bg-slate-900/75 border border-slate-800/90 rounded-2xl p-2 flex items-center gap-1.5 flex-wrap shadow-sm">
-        <span className="text-[10px] font-mono uppercase tracking-wider text-slate-500 font-bold px-2 hidden sm:inline">
-          Atalhos:
-        </span>
-        <button
-          type="button"
-          onClick={() => {
-            if (soundEnabled) playClickSound();
-            onOpenQuickVeto();
-          }}
-          className="px-3 py-1.5 rounded-xl bg-slate-950/70 hover:bg-sky-500/15 border border-slate-800 hover:border-sky-500/40 text-xs font-bold text-slate-200 hover:text-sky-300 flex items-center gap-1.5 transition-all cursor-pointer"
-        >
-          <Zap size={13} className="text-sky-400" />
-          <span>Veto Direto</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            if (soundEnabled) playClickSound();
-            onOpenQuickMapRoll();
-          }}
-          className="px-3 py-1.5 rounded-xl bg-slate-950/70 hover:bg-amber-500/15 border border-slate-800 hover:border-amber-500/40 text-xs font-bold text-slate-200 hover:text-amber-300 flex items-center gap-1.5 transition-all cursor-pointer"
-        >
-          <Dices size={13} className="text-amber-400" />
-          <span>Roleta de Mapa</span>
-        </button>
-
-        {onOpenGrenades && (
-          <button
-            type="button"
-            onClick={() => {
-              if (soundEnabled) playClickSound();
-              onOpenGrenades();
-            }}
-            className="px-3 py-1.5 rounded-xl bg-slate-950/70 hover:bg-emerald-500/15 border border-slate-800 hover:border-emerald-500/40 text-xs font-bold text-slate-200 hover:text-emerald-300 flex items-center gap-1.5 transition-all cursor-pointer"
-          >
-            <BookOpen size={13} className="text-emerald-400" />
-            <span>Granadas</span>
-          </button>
-        )}
-
-        {onOpenAimReflex && (
-          <button
-            type="button"
-            onClick={() => {
-              if (soundEnabled) playClickSound();
-              onOpenAimReflex();
-            }}
-            className="px-3 py-1.5 rounded-xl bg-slate-950/70 hover:bg-orange-500/15 border border-slate-800 hover:border-orange-500/40 text-xs font-bold text-slate-200 hover:text-orange-300 flex items-center gap-1.5 transition-all cursor-pointer"
-          >
-            <Target size={13} className="text-orange-400" />
-            <span>Aquecer Mira</span>
-          </button>
-        )}
-
-        {onOpenTournament && (
-          <button
-            type="button"
-            onClick={() => {
-              if (soundEnabled) playClickSound();
-              onOpenTournament();
-            }}
-            className="px-3 py-1.5 rounded-xl bg-slate-950/70 hover:bg-purple-500/15 border border-slate-800 hover:border-purple-500/40 text-xs font-bold text-slate-200 hover:text-purple-300 flex items-center gap-1.5 transition-all cursor-pointer"
-          >
-            <Trophy size={13} className="text-purple-400" />
-            <span>Torneio</span>
-          </button>
-        )}
-
-        {onOpenServersPage && (
-          <button
-            type="button"
-            onClick={() => {
-              if (soundEnabled) playClickSound();
-              onOpenServersPage();
-            }}
-            className="px-3 py-1.5 rounded-xl bg-slate-950/70 hover:bg-emerald-500/15 border border-slate-800 hover:border-emerald-500/40 text-xs font-bold text-slate-200 hover:text-emerald-300 flex items-center gap-1.5 transition-all cursor-pointer"
-          >
-            <Server size={13} className="text-emerald-400" />
-            <span>Servidores</span>
-          </button>
-        )}
-        {onOpenServersPage && (
-          <button
-            type="button"
-            onClick={() => {
-              if (soundEnabled) playClickSound();
-              onOpenServersPage('integracao');
-            }}
-            className="px-3 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 hover:border-emerald-400/50 text-xs font-bold text-emerald-300 flex items-center gap-1.5 transition-all cursor-pointer"
-            title="Abrir passo a passo de integração do Servidor Privado + Bot Integrador"
-          >
-            <Plug size={13} className="text-emerald-400" />
-            <span>Integração Servidor Privado</span>
-          </button>
-        )}
       </div>
 
       {/* Top Banner & Quick Controls */}
@@ -647,11 +553,6 @@ export default function Lobby({
                     <span className="text-[10px] text-slate-500 font-mono shrink-0">
                       Slot #{idx + 1}
                     </span>
-                    {(p.source === 'whatsapp' || String(p.id).startsWith('wa_') || Boolean(p.phone)) && (
-                      <span className="text-[8px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-1 rounded shrink-0" title="Conectado pelo WhatsApp">
-                        WhatsApp
-                      </span>
-                    )}
                     {isMe && (
                       <span className="text-[8px] font-black uppercase tracking-wider text-amber-300 bg-amber-500/25 border border-amber-500/40 px-1 rounded shrink-0">
                         VOCÊ
@@ -814,44 +715,59 @@ export default function Lobby({
             <p className="text-xs text-slate-400">
               {players.length < 2
                 ? 'Necessário no mínimo 2 jogadores para iniciar'
-                : `Pronto para sortear equipes usando ranking ${isFaceit ? 'FACEIT' : 'Gamers Club'}`}
+                : isAdmin
+                ? `Pronto para sortear equipes usando ranking ${isFaceit ? 'FACEIT' : 'Gamers Club'}`
+                : 'O líder da sala iniciará o sorteio quando os jogadores estiverem prontos'}
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          {/* Balanced Draw */}
-          <button
-            onClick={() => onDrawTeams('balanced')}
-            disabled={players.length < 2}
-            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs uppercase tracking-wider transition-all shadow-lg shadow-amber-500/25 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
-            title="Calcular os times com o menor desbalanceamento de nível possível"
-          >
-            <Scale size={16} />
-            <span>Sorteio Equilibrado ({isFaceit ? 'FACEIT' : 'GC'})</span>
-          </button>
+        {isAdmin ? (
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            {/* Balanced Draw */}
+            <button
+              onClick={() => onDrawTeams('balanced')}
+              disabled={players.length < 2}
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs uppercase tracking-wider transition-all shadow-lg shadow-amber-500/25 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
+              title="Calcular os times com o menor desbalanceamento de nível possível"
+            >
+              <Scale size={16} />
+              <span>Sorteio Equilibrado ({isFaceit ? 'FACEIT' : 'GC'})</span>
+            </button>
 
-          {/* Captains 1v1 Draft */}
-          <button
-            onClick={onStartCaptainDraft}
-            disabled={players.length < 4}
-            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 hover:border-amber-400 text-xs font-bold transition-all shadow-md cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
-            title="Capitães escolhem os jogadores alternadamente no estilo 1v1 Draft"
-          >
-            <Crown size={15} className="text-amber-400" />
-            <span>Draft 1v1</span>
-          </button>
+            {/* Captains 1v1 Draft */}
+            <button
+              onClick={onStartCaptainDraft}
+              disabled={players.length < 4}
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 hover:border-amber-400 text-xs font-bold transition-all shadow-md cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed active:scale-95"
+              title="Capitães escolhem os jogadores alternadamente no estilo 1v1 Draft"
+            >
+              <Crown size={15} className="text-amber-400" />
+              <span>Draft 1v1</span>
+            </button>
 
-          {/* Random Shuffle */}
-          <button
-            onClick={() => onDrawTeams('random')}
-            disabled={players.length < 2}
-            className="p-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-bold transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-            title="Sorteio 100% Aleatório (Sem levar em consideração o nível)"
-          >
-            <Shuffle size={16} />
-          </button>
-        </div>
+            {/* Random Shuffle */}
+            <button
+              onClick={() => onDrawTeams('random')}
+              disabled={players.length < 2}
+              className="p-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-bold transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              title="Sorteio 100% Aleatório (Sem levar em consideração o nível)"
+            >
+              <Shuffle size={16} />
+            </button>
+          </div>
+        ) : (
+          <div className="px-4 py-2.5 rounded-xl bg-slate-950/90 border border-slate-800 text-xs text-slate-300 flex items-center gap-2 shrink-0">
+            <Crown size={14} className="text-amber-400 shrink-0" />
+            <span>
+              Aguardando{' '}
+              <strong className="text-amber-300">
+                {players.find((p) => p.id === adminId)?.nick || 'o líder da sala'}
+              </strong>{' '}
+              sortear os times...
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -18,7 +18,6 @@ const PlayerStoryCardModal = lazy(() => import('./PlayerStoryCardModal'));
 const GrenadePlaybookModal = lazy(() => import('./GrenadePlaybookModal'));
 const AimReflexModal = lazy(() => import('./AimReflexModal'));
 const TournamentBracketModal = lazy(() => import('./TournamentBracketModal'));
-const LocalHostModal = lazy(() => import('./LocalHostModal'));
 const LiveSpectatorModal = lazy(() => import('./LiveSpectatorModal'));
 
 /**
@@ -31,6 +30,8 @@ export default function AppModalsHost({
   room,
   myProfile,
   isSteamLogged,
+  isAdmin = false,
+  isSiteAdmin = false,
   soundEnabled,
   socket,
   officialRotation,
@@ -80,8 +81,6 @@ export default function AppModalsHost({
   setAimReflexModalOpen,
   tournamentModalOpen,
   setTournamentModalOpen,
-  localHostModalOpen,
-  setLocalHostModalOpen,
   // Callbacks
   onSelectRoom,
   onDeleteRoom,
@@ -98,6 +97,7 @@ export default function AppModalsHost({
   onSubmitRoomPassword,
   onSaveDiscordWebhook,
   onOpenServersPage,
+  onOpenLeaderboardPage,
   onLoadTournamentTeams,
   onUpdateServerIp,
 }) {
@@ -112,27 +112,19 @@ export default function AppModalsHost({
           onDeleteRoom={onDeleteRoom}
           soundEnabled={soundEnabled}
           isSteamLogged={isSteamLogged}
+          isSiteAdmin={isSiteAdmin}
           onRequireSteamLogin={onRequireSteamLogin}
           myProfile={myProfile}
         />
       )}
 
-      {(steamGateModalOpen || (view === 'mix' && room.phase === 'lobby' && !isSteamLogged)) && (
+      {steamGateModalOpen && (
         <SteamLoginGateModal
-          isOpen={steamGateModalOpen || (view === 'mix' && room.phase === 'lobby' && !isSteamLogged)}
+          isOpen={steamGateModalOpen}
           roomId={roomId}
           actionText={steamGateActionText}
           soundEnabled={soundEnabled}
-          onClose={
-            view === 'mix' && !isSteamLogged
-              ? () => {
-                  setView('landing');
-                  const u = new URL(window.location);
-                  u.searchParams.delete('room');
-                  window.history.pushState({}, '', u);
-                }
-              : () => setSteamGateModalOpen(false)
-          }
+          onClose={() => setSteamGateModalOpen(false)}
         />
       )}
 
@@ -145,7 +137,11 @@ export default function AppModalsHost({
           onSaveScore={onSaveScore}
           onOpenGlobalHistory={() => {
             setHistoryOpen(false);
-            setLeaderboardOpen(true);
+            if (onOpenLeaderboardPage) {
+              onOpenLeaderboardPage();
+            } else {
+              setLeaderboardOpen(true);
+            }
           }}
           soundEnabled={soundEnabled}
         />
@@ -313,6 +309,7 @@ export default function AppModalsHost({
           autoStats={room.discordAutoStats !== false}
           onSaveWebhook={onSaveDiscordWebhook}
           onOpenServersPage={onOpenServersPage}
+          isAdmin={view === 'mix' ? isAdmin : false}
           soundEnabled={soundEnabled}
         />
       )}
@@ -367,18 +364,12 @@ export default function AppModalsHost({
           onClose={() => setTournamentModalOpen(false)}
           onLoadTeamsToMix={onLoadTournamentTeams}
           soundEnabled={soundEnabled}
-        />
-      )}
-
-      {localHostModalOpen && (
-        <LocalHostModal
-          isOpen={localHostModalOpen}
-          onClose={() => setLocalHostModalOpen(false)}
-          roomId={roomId}
-          currentServerIp={room.serverIp || ''}
-          finalMap={room.finalMap?.name || 'de_mirage'}
-          onUpdateServerIp={onUpdateServerIp}
-          soundEnabled={soundEnabled}
+          roomId={roomId || 'MIX'}
+          socket={socket}
+          myProfile={myProfile}
+          isSteamLogged={isSteamLogged}
+          isSiteAdmin={isSiteAdmin}
+          onRequireSteamLogin={onRequireSteamLogin}
         />
       )}
     </Suspense>

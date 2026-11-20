@@ -28,6 +28,7 @@ export default function FinalSummary({
   onCommendPlayer,
   commendations = {},
   myProfile = null,
+  isAdmin = false,
 }) {
   const [copiedDiscord, setCopiedDiscord] = useState(false);
   const [copiedRcon, setCopiedRcon] = useState(false);
@@ -268,11 +269,6 @@ export default function FinalSummary({
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="font-bold text-sm text-white truncate">{p.nick}</span>
-              {(p.source === 'whatsapp' || String(p.id).startsWith('wa_') || Boolean(p.phone)) && (
-                <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded border border-emerald-500/20 shrink-0" title="Conectado pelo WhatsApp">
-                  WhatsApp
-                </span>
-              )}
             </div>
             <div className="flex items-center gap-1 mt-1 flex-wrap">
               {COMMEND_OPTIONS.map((opt) => {
@@ -382,14 +378,14 @@ export default function FinalSummary({
                   onOpenMatchCard();
                 }}
                 className="h-11 px-5 rounded-xl bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-black text-xs uppercase tracking-wider font-heading flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-amber-500/30 hover:shadow-amber-500/50 hover:scale-[1.02] active:scale-95"
-                title="Gera e baixa um card visual em alta resolução para WhatsApp ou redes sociais"
+                title="Gera e baixa um card visual em alta resolução para compartilhar no Discord ou redes sociais"
               >
                 <Sparkles size={16} />
                 <span>Gerar Card (PNG)</span>
               </button>
             )}
 
-            {/* Generate 9:16 Story Card for Instagram / WhatsApp */}
+            {/* Generate 9:16 Story Card for Instagram / Discord */}
             {onOpenStoryCard && (
               <button
                 onClick={() => {
@@ -397,7 +393,7 @@ export default function FinalSummary({
                   onOpenStoryCard();
                 }}
                 className="h-11 px-4 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 text-white font-bold text-xs uppercase tracking-wider font-heading flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-purple-600/30 hover:scale-[1.02] active:scale-95"
-                title="Gera imagem vertical em formato 9:16 para Stories do Instagram ou Status do WhatsApp"
+                title="Gera imagem vertical em formato 9:16 para Stories ou Discord"
               >
                 <Smartphone size={16} />
                 <span>Story (9:16)</span>
@@ -442,8 +438,8 @@ export default function FinalSummary({
               <span>{copiedDiscord ? 'Copiado!' : 'Copiar Texto'}</span>
             </button>
 
-            {/* Change Server Map via RCON */}
-            {onChangeServerMapRcon && serverIp && (
+            {/* Change Server Map via RCON (Admin) */}
+            {isAdmin && onChangeServerMapRcon && serverIp && (
               <button
                 onClick={() => {
                   if (soundEnabled) playClickSound();
@@ -891,11 +887,12 @@ export default function FinalSummary({
         onOpenGsiSetup={onOpenGsiSetup}
         onOpenServersPage={onOpenServersPage}
         soundEnabled={soundEnabled}
+        isAdmin={isAdmin}
         finalMap={room.finalMap?.id || 'de_mirage'}
       />
 
-      {/* RCON 1-Click Server Administration Hub */}
-      {serverIp && (
+      {/* RCON 1-Click Server Administration Hub (Admin) */}
+      {isAdmin && serverIp && (
         <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-xl space-y-2.5">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2">
@@ -1081,16 +1078,18 @@ export default function FinalSummary({
 
       {/* Bottom Actions */}
       <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-3">
-        <button
-          onClick={() => {
-            if (soundEnabled) playClickSound();
-            if (onRematchSameTeams) onRematchSameTeams();
-          }}
-          className="w-full sm:w-auto px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white shadow-lg shadow-emerald-950/40 text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer border border-emerald-500/30 active:scale-95"
-        >
-          <Swords size={16} />
-          <span>Jogar Revanche (Mesmos Times)</span>
-        </button>
+        {isAdmin && (
+          <button
+            onClick={() => {
+              if (soundEnabled) playClickSound();
+              if (onRematchSameTeams) onRematchSameTeams();
+            }}
+            className="w-full sm:w-auto px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white shadow-lg shadow-emerald-950/40 text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer border border-emerald-500/30 active:scale-95"
+          >
+            <Swords size={16} />
+            <span>Jogar Revanche (Mesmos Times)</span>
+          </button>
+        )}
 
         <button
           onClick={() => {
@@ -1100,19 +1099,26 @@ export default function FinalSummary({
           className="w-full sm:w-auto px-5 py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-300 border border-slate-800 text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer"
         >
           <History size={16} />
-          <span>Registrar / Ver Placar da Partida</span>
+          <span>{isAdmin ? 'Registrar / Ver Placar da Partida' : 'Ver Placar / Histórico'}</span>
         </button>
 
-        <button
-          onClick={() => {
-            if (soundEnabled) playClickSound();
-            onResetMix();
-          }}
-          className="w-full sm:w-auto px-6 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer"
-        >
-          <RotateCcw size={15} />
-          <span>Jogar Novo Mix (Voltar ao Lobby)</span>
-        </button>
+        {isAdmin ? (
+          <button
+            onClick={() => {
+              if (soundEnabled) playClickSound();
+              onResetMix();
+            }}
+            className="w-full sm:w-auto px-6 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold flex items-center justify-center gap-2 transition-all cursor-pointer"
+          >
+            <RotateCcw size={15} />
+            <span>Jogar Novo Mix (Voltar ao Lobby)</span>
+          </button>
+        ) : (
+          <div className="px-4 py-2.5 rounded-xl bg-slate-900/80 border border-slate-800 text-[11px] text-slate-400 flex items-center gap-1.5">
+            <Crown size={13} className="text-amber-400 shrink-0" />
+            <span>Aguardando o líder iniciar revanche ou novo mix</span>
+          </div>
+        )}
       </div>
     </div>
   );

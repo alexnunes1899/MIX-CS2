@@ -17,7 +17,6 @@ export default function LandingPage({
   onOpenRoomsHub,
   onOpenLeaderboard,
   onOpenDiscordModal,
-  onOpenLocalHost,
   onOpenServersPage,
   onOpenUpdatesPage,
   onOpenTournament,
@@ -90,31 +89,34 @@ export default function LandingPage({
       ? `TIME-${myProfile.nick.toUpperCase().replace(/[^A-Z0-9]/g, '')}`
       : 'MIX-PRO';
     const code = roomCodeInput.trim().toUpperCase() || defaultCode;
-    if (!isSteamLogged) {
+    const roomExists = displayedRooms.some((r) => String(r.id || '').toUpperCase() === code);
+    if (!isSteamLogged && !roomExists) {
       persistPendingRoomRedirect(code);
       if (onRequireSteamLogin) {
-        onRequireSteamLogin('criar ou entrar em uma sala de mix');
+        onRequireSteamLogin('criar uma nova sala de mix');
       } else {
         window.location.href = '/api/auth/steam';
       }
       return;
     }
     if (soundEnabled) playClickSound();
-    onEnterRoom(code);
+    onEnterRoom(code, { requireCreate: !roomExists });
   };
 
-  const handleCreateMix = (code = 'MIX-PRO') => {
-    if (!isSteamLogged) {
-      persistPendingRoomRedirect(code);
+  const handleCreateMix = (code = 'MIX-PRO', { requireCreate = false } = {}) => {
+    const clean = String(code || 'MIX-PRO').trim().toUpperCase();
+    const roomExists = displayedRooms.some((r) => String(r.id || '').toUpperCase() === clean);
+    if (!isSteamLogged && (requireCreate || !roomExists)) {
+      persistPendingRoomRedirect(clean);
       if (onRequireSteamLogin) {
-        onRequireSteamLogin('criar ou entrar em um mix');
+        onRequireSteamLogin('criar uma nova sala de mix');
       } else {
         window.location.href = '/api/auth/steam';
       }
       return;
     }
     if (soundEnabled) playClickSound();
-    onEnterRoom(code);
+    onEnterRoom(clean, { requireCreate: !roomExists });
   };
   const handleOpenMix = handleCreateMix;
 
@@ -163,7 +165,7 @@ export default function LandingPage({
               onOpenDiscordModal={onOpenDiscordModal}
               onOpenQuickMapRoll={onOpenQuickMapRoll}
               onOpenQuickVeto={onOpenQuickVeto}
-              onOpenServersPage={onOpenServersPage || onOpenLocalHost}
+              onOpenServersPage={onOpenServersPage}
               onOpenUpdatesPage={onOpenUpdatesPage}
               onOpenRoomsHub={onOpenRoomsHub}
               onOpenTournament={onOpenTournament}
@@ -174,7 +176,7 @@ export default function LandingPage({
             />
           </div>
 
-          {/* 3. Right: Discord, WhatsApp, Audio Toggle, Steam Login & Criar Mix CTA */}
+          {/* 3. Right: Discord, Audio Toggle, Steam Login & Criar Mix CTA */}
           <div className="flex items-center gap-1 sm:gap-1.5 xl:gap-2 shrink-0 whitespace-nowrap">
             {/* Discord Bot Button */}
             <button
@@ -302,7 +304,7 @@ export default function LandingPage({
             onOpenDiscordModal={onOpenDiscordModal}
             onOpenQuickMapRoll={onOpenQuickMapRoll}
             onOpenQuickVeto={onOpenQuickVeto}
-            onOpenServersPage={onOpenServersPage || onOpenLocalHost}
+            onOpenServersPage={onOpenServersPage}
             onOpenUpdatesPage={onOpenUpdatesPage}
             onOpenRoomsHub={onOpenRoomsHub}
             onOpenTournament={onOpenTournament}
@@ -378,8 +380,8 @@ export default function LandingPage({
               </div>
             </form>
 
-            {/* Fast Action Utility Strip */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 max-w-2xl mx-auto lg:mx-0 pt-1 text-left">
+            {/* Fast Action Utility Strip — Symmetric 2x2 Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-w-2xl mx-auto lg:mx-0 pt-1 text-left">
               <button
                 onClick={() => {
                   if (soundEnabled) playClickSound();
@@ -412,41 +414,24 @@ export default function LandingPage({
                 <p className="text-[11px] text-slate-400 leading-snug">Sorteio 3D da rotação Valve</p>
               </button>
 
-              {(onOpenServersPage || onOpenLocalHost) && (
+              {onOpenServersPage && (
                 <button
                   onClick={() => {
                     if (soundEnabled) playClickSound();
-                    if (onOpenServersPage) onOpenServersPage();
-                    else if (onOpenLocalHost) onOpenLocalHost();
+                    onOpenServersPage();
                   }}
-                  className="p-3 rounded-2xl bg-slate-900/75 hover:bg-slate-800/90 border border-white/[0.08] hover:border-emerald-400/60 transition-all shadow-lg group cursor-pointer active:scale-95"
+                  className="p-3 rounded-2xl bg-slate-900/75 hover:bg-emerald-500/20 border border-white/[0.08] hover:border-emerald-400/60 transition-all shadow-lg group cursor-pointer active:scale-95 text-left"
                 >
                   <div className="flex items-center gap-2 mb-0.5">
                     <div className="w-6 h-6 rounded-lg bg-emerald-500/15 text-emerald-400 flex items-center justify-center border border-emerald-500/30">
                       <Server size={13} />
                     </div>
-                    <span className="text-xs font-black uppercase text-white group-hover:text-emerald-300 transition-colors">Servidores & LAN</span>
+                    <span className="text-xs font-black uppercase text-white group-hover:text-emerald-300 transition-colors">Servidores & Bot</span>
                   </div>
-                  <p className="text-[11px] text-slate-400 leading-snug">Host 0ms, Radmin & Dedicado</p>
+                  <p className="text-[11px] text-slate-400 leading-snug">Dedicado, Radmin VPN, LAN & Integração</p>
                 </button>
               )}
-              {onOpenServersPage && (
-                <button
-                  onClick={() => {
-                    if (soundEnabled) playClickSound();
-                    onOpenServersPage('integracao');
-                  }}
-                  className="p-3 rounded-2xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/35 hover:border-emerald-400 transition-all shadow-lg group cursor-pointer active:scale-95 text-left"
-                >
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <div className="w-6 h-6 rounded-lg bg-emerald-500/20 text-emerald-300 flex items-center justify-center border border-emerald-500/40">
-                      <Plug size={13} />
-                    </div>
-                    <span className="text-xs font-black uppercase text-emerald-300 group-hover:text-white transition-colors">Integração Servidor Privado</span>
-                  </div>
-                  <p className="text-[11px] text-slate-300 leading-snug">Passo a passo p/ Bot Integrador</p>
-                </button>
-              )}
+
               {onOpenUpdatesPage && (
                 <button
                   onClick={() => {
@@ -484,7 +469,7 @@ export default function LandingPage({
 
               {displayedRooms.length > 0 ? (
                 <div className="space-y-2.5">
-                  {displayedRooms.slice(0, 3).map((r) => {
+                  {displayedRooms.slice(0, 4).map((r) => {
                     const c = Math.min(10, Math.max(0, Number(r.playerCount) || 0));
                     const pct = Math.round((c / 10) * 100);
                     const live = r.liveMatch?.connected ? r.liveMatch : null;
@@ -608,162 +593,6 @@ export default function LandingPage({
           </div>
         </div>
       </div>
-
-      {/* Live Public Rooms Showcase */}
-      <section className="max-w-7xl mx-auto px-4 pt-12 w-full">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
-          <div>
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold uppercase tracking-wider mb-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              Em Tempo Real ({displayedRooms.length} {displayedRooms.length === 1 ? 'sala aberta' : 'salas abertas'})
-            </div>
-            <h2 className="text-xl sm:text-2xl font-black font-heading text-white uppercase tracking-wide">
-              Salas Públicas Abertas Agora
-            </h2>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => {
-              if (soundEnabled) playClickSound();
-              onOpenRoomsHub();
-            }}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 text-xs font-bold transition-all cursor-pointer self-start sm:self-auto"
-          >
-            <Layers size={14} />
-            <span>Abrir Hub / Criar Sala</span>
-          </button>
-        </div>
-
-        {displayedRooms.length === 0 ? (
-          <div className="bg-slate-900/60 border border-slate-800/80 rounded-2xl p-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
-            <div className="space-y-1">
-              <div className="text-sm font-bold text-white">Nenhuma sala pública ativa neste instante</div>
-              <p className="text-xs text-slate-400">Crie uma sala em segundos com link de convite, senha opcional e servidor integrado.</p>
-            </div>
-            <button
-              type="button"
-              onClick={() => handleCreateMix('MIX-PRO')}
-              className="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider cursor-pointer shrink-0"
-            >
-              Criar Primeiro Mix Agora
-            </button>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {displayedRooms.slice(0, 6).map((r) => {
-              const isFaceitRoom = r.rankingSystem === 'faceit';
-              const count = Math.min(10, Math.max(0, Number(r.playerCount) || 0));
-              const fillPct = Math.round((count / 10) * 100);
-              const phaseStyle =
-                r.phase === 'teams'
-                  ? { label: 'Times Formados', cls: 'bg-sky-500/15 text-sky-300 border-sky-500/30' }
-                  : r.phase === 'captains_draft'
-                  ? { label: 'Draft Capitães', cls: 'bg-purple-500/15 text-purple-300 border-purple-500/30' }
-                  : r.phase === 'veto' || r.phase === 'side_pick'
-                  ? { label: 'Veto de Mapas', cls: 'bg-amber-500/15 text-amber-300 border-amber-500/30' }
-                  : r.phase === 'finished'
-                  ? { label: 'Em Partida', cls: 'bg-rose-500/15 text-rose-300 border-rose-500/30' }
-                  : { label: 'No Lobby', cls: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' };
-              return (
-                <div
-                  key={r.id}
-                  className="bg-slate-900/85 hover:bg-slate-900 border border-slate-800 hover:border-amber-500/40 rounded-2xl p-4 flex flex-col justify-between gap-3 transition-all shadow-lg group hover:-translate-y-0.5"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="font-bold text-sm text-white truncate group-hover:text-amber-300 transition-colors">{r.name || r.id}</span>
-                        <span
-                          className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${
-                            isFaceitRoom
-                              ? 'bg-orange-500/15 text-orange-300 border-orange-500/30'
-                              : 'bg-amber-500/15 text-amber-300 border-amber-500/30'
-                          }`}
-                        >
-                          {isFaceitRoom ? 'FACEIT' : 'GC'}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2 mt-1.5 text-[11px] font-mono text-slate-400">
-                        <span className="text-slate-500">#{r.id}</span>
-                        <span className={`px-2 py-0.2 rounded-full text-[10px] font-sans font-bold border ${phaseStyle.cls}`}>
-                          {phaseStyle.label}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-1 shrink-0">
-                      {r.hasPassword && (
-                        <span className="px-1.5 py-0.5 rounded bg-slate-800 text-amber-300 text-[10px]" title="Sala protegida com senha">
-                          🔒
-                        </span>
-                      )}
-                      {r.hasServer && (
-                        <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold">
-                          CS2
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Slot Progress Bar + Live GSI Banner */}
-                  <div className="space-y-1.5">
-                    {r.liveMatch?.connected && (
-                      <div className="px-2.5 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/35 flex items-center justify-between gap-2 text-[11px] font-mono text-emerald-300">
-                        <span className="flex items-center gap-1.5 font-bold truncate">
-                          <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse shrink-0" />
-                          <span>{r.liveMatch.mapName} • CT {r.liveMatch.scoreCT} × {r.liveMatch.scoreTR} TR</span>
-                        </span>
-                        <span className="text-amber-300 shrink-0">R{r.liveMatch.roundNumber}</span>
-                      </div>
-                    )}
-                    <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden border border-slate-800/80">
-                      <div
-                        className={`h-full rounded-full transition-all duration-500 ${
-                          count >= 10
-                            ? 'bg-emerald-400'
-                            : 'bg-gradient-to-r from-amber-500 to-orange-400'
-                        }`}
-                        style={{ width: `${fillPct}%` }}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-800/80 gap-2">
-                    <div className="flex items-center gap-1.5 text-xs font-mono text-slate-300">
-                      <Users size={13} className="text-sky-400" />
-                      <strong>{count}</strong>/10 jogadores
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      {r.liveMatch?.connected && onSpectateRoom && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (soundEnabled) playClickSound();
-                            onSpectateRoom(r);
-                          }}
-                          className="px-2.5 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-300 font-bold text-[11px] flex items-center gap-1 cursor-pointer transition-colors"
-                        >
-                          <Eye size={12} />
-                          <span>Assistir</span>
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => handleCreateMix(r.id)}
-                        className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[11px] uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-colors"
-                      >
-                        <span>Entrar</span>
-                        <ArrowRight size={12} />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
 
       {/* Official & Extra Map Pool Section */}
       <section id="mapas" className="max-w-7xl mx-auto px-4 py-20 w-full">
@@ -931,7 +760,7 @@ export default function LandingPage({
             </div>
             <h3 className="font-bold text-base font-heading text-white tracking-wide">Múltiplas Salas Isoladas</h3>
             <p className="text-xs text-slate-400 leading-relaxed font-normal">
-              Crie salas com links únicos para mandar no WhatsApp ou Discord. Vários grupos de amigos podem jogar ao mesmo tempo em salas separadas!
+              Crie salas com link direto para compartilhar com seus amigos ou no Discord. Vários grupos podem jogar ao mesmo tempo em salas separadas!
             </p>
           </div>
 
@@ -939,7 +768,6 @@ export default function LandingPage({
             onClick={() => {
               if (soundEnabled) playClickSound();
               if (onOpenServersPage) onOpenServersPage();
-              else if (onOpenLocalHost) onOpenLocalHost();
             }}
             className="glass-panel glass-panel-hover rounded-2xl p-6 space-y-3 border-emerald-500/30 hover:border-emerald-500/70 cursor-pointer group transition-all"
           >
@@ -1114,10 +942,10 @@ export default function LandingPage({
             <button type="button" onClick={onOpenRoomsHub} className="hover:text-amber-400 transition-colors cursor-pointer">Salas Abertas</button>
             <button type="button" onClick={onOpenLeaderboard} className="hover:text-amber-400 transition-colors cursor-pointer">Hall da Fama</button>
             <button type="button" onClick={onOpenDiscordModal} className="hover:text-amber-400 transition-colors cursor-pointer">Bot Discord</button>
-            {(onOpenServersPage || onOpenLocalHost) && (
+            {onOpenServersPage && (
               <button
                 type="button"
-                onClick={onOpenServersPage || onOpenLocalHost}
+                onClick={onOpenServersPage}
                 className="hover:text-amber-400 transition-colors cursor-pointer"
               >
                 Servidores & LAN

@@ -96,17 +96,19 @@ export default function TeamsView({
               </div>
             </div>
 
-            <button
-              onClick={() => {
-                if (soundEnabled) playClickSound();
-                onSwapTeams();
-              }}
-              className="flex items-center gap-1.5 px-3 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold transition-all cursor-pointer"
-              title={`Inverter ${labelA} e ${labelB}`}
-            >
-              <ArrowLeftRight size={15} />
-              <span>Inverter</span>
-            </button>
+            {isAdmin && (
+              <button
+                onClick={() => {
+                  if (soundEnabled) playClickSound();
+                  onSwapTeams();
+                }}
+                className="flex items-center gap-1.5 px-3 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold transition-all cursor-pointer"
+                title={`Inverter ${labelA} e ${labelB}`}
+              >
+                <ArrowLeftRight size={15} />
+                <span>Inverter</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -172,6 +174,7 @@ export default function TeamsView({
           onOpenGsiSetup={onOpenGsiSetup}
           onOpenServersPage={onOpenServersPage}
           soundEnabled={soundEnabled}
+          isAdmin={isAdmin}
         />
       )}
 
@@ -212,11 +215,6 @@ export default function TeamsView({
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="font-bold text-sm text-white truncate max-w-[140px] sm:max-w-[180px]" title={p.nick}>{p.nick}</span>
-                        {(p.source === 'whatsapp' || String(p.id).startsWith('wa_') || Boolean(p.phone)) && (
-                          <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded border border-emerald-500/20 shrink-0" title="Conectado pelo WhatsApp">
-                            WhatsApp
-                          </span>
-                        )}
                         {p.id === adminId && (
                           <span className="text-[9px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.2 rounded-full flex items-center gap-1 font-mono shadow-sm shrink-0">
                             <Crown size={9} className="fill-amber-400 text-amber-400" /> Admin
@@ -328,11 +326,6 @@ export default function TeamsView({
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="font-bold text-sm text-white truncate max-w-[140px] sm:max-w-[180px]" title={p.nick}>{p.nick}</span>
-                        {(p.source === 'whatsapp' || String(p.id).startsWith('wa_') || Boolean(p.phone)) && (
-                          <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-1.5 py-0.2 rounded border border-emerald-500/20 shrink-0" title="Conectado pelo WhatsApp">
-                            WhatsApp
-                          </span>
-                        )}
                         {p.id === adminId && (
                           <span className="text-[9px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.2 rounded-full flex items-center gap-1 font-mono shadow-sm shrink-0">
                             <Crown size={9} className="fill-amber-400 text-amber-400" /> Admin
@@ -413,59 +406,66 @@ export default function TeamsView({
       </div>
 
       {/* Navigation Footer */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <button
-            onClick={() => {
-              if (soundEnabled) playClickSound();
-              onBackToLobby();
-            }}
-            className="flex items-center gap-1.5 px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-semibold transition-all cursor-pointer"
-          >
-            <ChevronLeft size={16} />
-            <span>Voltar ao Lobby</span>
-          </button>
+      {isAdmin ? (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <button
+              onClick={() => {
+                if (soundEnabled) playClickSound();
+                onBackToLobby();
+              }}
+              className="flex items-center gap-1.5 px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-semibold transition-all cursor-pointer"
+            >
+              <ChevronLeft size={16} />
+              <span>Voltar ao Lobby</span>
+            </button>
 
-          <button
-            onClick={() => {
-              if (soundEnabled) playClickSound();
-              onReDraw();
-            }}
-            className="flex items-center gap-1.5 px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-semibold transition-all cursor-pointer"
-            title="Refazer o balanceamento"
-          >
-            <RotateCcw size={15} />
-            <span>Re-sortear</span>
-          </button>
+            <button
+              onClick={() => {
+                if (soundEnabled) playClickSound();
+                onReDraw();
+              }}
+              className="flex items-center gap-1.5 px-4 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-xs font-semibold transition-all cursor-pointer"
+              title="Refazer o balanceamento"
+            >
+              <RotateCcw size={15} />
+              <span>Re-sortear</span>
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2.5 w-full sm:w-auto">
+            {/* Coin Flip option */}
+            <button
+              onClick={() => {
+                if (soundEnabled) playClickSound();
+                onStartCoinFlip();
+              }}
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/40 text-xs font-bold transition-all shadow-md cursor-pointer active:scale-95"
+              title="Disputar quem começa banindo na moeda 3D"
+            >
+              <Coins size={16} className="text-amber-400" />
+              <span>Cara ou Coroa</span>
+            </button>
+
+            {/* Direct to Map Veto */}
+            <button
+              onClick={() => {
+                if (soundEnabled) playClickSound();
+                onStartVeto();
+              }}
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs uppercase tracking-wider transition-all shadow-lg shadow-amber-500/30 cursor-pointer active:scale-95"
+            >
+              <MapPin size={16} />
+              <span>Ir para o Veto de Mapas ➔</span>
+            </button>
+          </div>
         </div>
-
-        <div className="flex items-center gap-2.5 w-full sm:w-auto">
-          {/* Coin Flip option */}
-          <button
-            onClick={() => {
-              if (soundEnabled) playClickSound();
-              onStartCoinFlip();
-            }}
-            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/40 text-xs font-bold transition-all shadow-md cursor-pointer active:scale-95"
-            title="Disputar quem começa banindo na moeda 3D"
-          >
-            <Coins size={16} className="text-amber-400" />
-            <span>Cara ou Coroa</span>
-          </button>
-
-          {/* Direct to Map Veto */}
-          <button
-            onClick={() => {
-              if (soundEnabled) playClickSound();
-              onStartVeto();
-            }}
-            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs uppercase tracking-wider transition-all shadow-lg shadow-amber-500/30 cursor-pointer active:scale-95"
-          >
-            <MapPin size={16} />
-            <span>Ir para o Veto de Mapas ➔</span>
-          </button>
+      ) : (
+        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex items-center justify-center gap-2.5 text-xs text-slate-300">
+          <Crown size={15} className="text-amber-400 shrink-0" />
+          <span>Aguardando o líder da sala iniciar o <strong>Veto de Mapas</strong> ou ajustar os times...</span>
         </div>
-      </div>
+      )}
     </div>
   );
 }

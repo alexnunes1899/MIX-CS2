@@ -7,6 +7,7 @@ import {
 import { economyDb } from '../db.js';
 import { getVetoSchedule } from '../../shared/proVeto.js';
 import { shuffleTeams } from '../../shared/balance.js';
+import { getTournament, normalizeTournamentCode } from '../tournaments.js';
 import {
   MOCK_BOTS,
   buildPublicRoomsList,
@@ -390,6 +391,22 @@ export function registerRoomSocket({
       const cleanId = sanitizeInput(roomId || '', 20).toUpperCase();
       if (!cleanId) return;
       socket.leave(`gsi:${cleanId}`);
+    });
+
+    socket.on('join_tournament', ({ code } = {}) => {
+      const cleanCode = normalizeTournamentCode(code || '');
+      if (!cleanCode) return;
+      socket.join(`tournament:${cleanCode}`);
+      const existing = getTournament(cleanCode);
+      if (existing) {
+        socket.emit('tournament_updated', existing);
+      }
+    });
+
+    socket.on('leave_tournament', ({ code } = {}) => {
+      const cleanCode = normalizeTournamentCode(code || '');
+      if (!cleanCode) return;
+      socket.leave(`tournament:${cleanCode}`);
     });
 
     socket.on('join_room', async ({ roomId, player, roomName, rankingSystem, serverIp, password, isPrivate, inviteKey, createIfMissing }) => {
@@ -1568,14 +1585,23 @@ export function registerRoomSocket({
       lifecycle.broadcastRoomsList();
     });
 
-    socket.on('delete_room', ({ roomId }) => {
+    socket.on('delete_room', ({ roomId } = {}, callback) => {
       const cleanRoomId = String(roomId || '').trim().toUpperCase();
-      if (!rooms.has(cleanRoomId)) return;
+      if (!rooms.has(cleanRoomId)) {
+        if (typeof callback === 'function') {
+          callback({ success: false, error: 'Sala não encontrada ou já encerrada.' });
+        }
+        return;
+      }
 
       const room = rooms.get(cleanRoomId);
       const isEmptyRoom = !room.players || room.players.length === 0;
       if (!isRoomAdmin(room, socket) && !isEmptyRoom) {
-        socket.emit('admin_error', { message: 'Apenas o criador da sala pode excluí-la.' });
+        const errMsg = 'Apenas o criador da sala pode excluí-la.';
+        socket.emit('admin_error', { message: errMsg });
+        if (typeof callback === 'function') {
+          callback({ success: false, error: errMsg });
+        }
         return;
       }
 
@@ -1589,6 +1615,9 @@ export function registerRoomSocket({
 
       rooms.delete(cleanRoomId);
       lifecycle.broadcastRoomsList();
+      if (typeof callback === 'function') {
+        callback({ success: true, roomId: cleanRoomId });
+      }
     });
 
     socket.on('sync_official_rotation', async () => {

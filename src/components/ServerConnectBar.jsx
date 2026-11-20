@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Server, Copy, Check, Edit2, Play, Trash2, Key, Radio, Terminal, RefreshCw, Zap, ShieldCheck, Laptop, CheckCircle2 } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
 import { parseServerDetails } from '../utils/serverParser';
-import LocalHostModal from './LocalHostModal';
 import { copyText } from '../utils/clipboard';
 
 export default function ServerConnectBar({
@@ -15,6 +14,7 @@ export default function ServerConnectBar({
   onOpenGsiSetup,
   onOpenServersPage,
   soundEnabled,
+  isAdmin = false,
   title = 'Servidor do Mix (FireGames / Dedicado / Host)',
   description = 'Conecte-se diretamente, crie um host local no seu PC ou envie comandos RCON',
   finalMap = 'de_mirage',
@@ -22,13 +22,23 @@ export default function ServerConnectBar({
   const [editing, setEditing] = useState(false);
   const [ipInput, setIpInput] = useState(serverIp || '');
   const [copied, setCopied] = useState(false);
-  const [localHostOpen, setLocalHostOpen] = useState(false);
-  const [gsiInstalled, setGsiInstalled] = useState(false);
+  const [gsiInstalled, setGsiInstalled] = useState(() => {
+    try {
+      return typeof window !== 'undefined' && localStorage.getItem('cs2_gsi_installed') === '1';
+    } catch {
+      return false;
+    }
+  });
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    if (!isLocalHost) return;
     fetch('/api/gsi/check-installed')
       .then((res) => res.json())
-      .then((data) => setGsiInstalled(Boolean(data?.installed)))
+      .then((data) => {
+        if (data?.installed) setGsiInstalled(true);
+      })
       .catch(() => {});
   }, []);
 
@@ -184,7 +194,7 @@ export default function ServerConnectBar({
                 </span>
               )}
 
-              {!editing && (
+              {isAdmin && !editing && (
                 <button
                   onClick={handleStartEditing}
                   className="text-slate-400 hover:text-amber-400 transition-colors p-1 cursor-pointer"
@@ -194,7 +204,7 @@ export default function ServerConnectBar({
                 </button>
               )}
 
-              {!editing && parsed.isValid && (
+              {isAdmin && !editing && parsed.isValid && (
                 <button
                   onClick={handleClear}
                   className="text-slate-500 hover:text-rose-400 transition-colors p-1 cursor-pointer"
@@ -230,7 +240,7 @@ export default function ServerConnectBar({
 
         {/* Right: Actions (Connect, RCON, GSI) */}
         <div className="w-full md:w-auto">
-          {editing ? (
+          {isAdmin && editing ? (
             <form onSubmit={handleSave} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
               <input
                 type="text"
@@ -292,38 +302,41 @@ export default function ServerConnectBar({
                 </a>
               )}
 
-              {/* RCON Toggle Button */}
-              <button
-                type="button"
-                onClick={() => {
-                  if (soundEnabled) playClickSound();
-                  setShowRcon(!showRcon);
-                }}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
-                  showRcon
-                    ? 'bg-amber-500/20 border-amber-400 text-amber-300'
-                    : 'bg-slate-800 hover:bg-slate-750 border-slate-700 text-slate-300'
-                }`}
-                title="Administrar servidor via RCON (FireGames)"
-              >
-                <Terminal size={13} className="text-amber-400" />
-                <span>RCON</span>
-              </button>
+              {/* RCON Toggle Button (Admin) */}
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (soundEnabled) playClickSound();
+                    setShowRcon(!showRcon);
+                  }}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                    showRcon
+                      ? 'bg-amber-500/20 border-amber-400 text-amber-300'
+                      : 'bg-slate-800 hover:bg-slate-750 border-slate-700 text-slate-300'
+                  }`}
+                  title="Administrar servidor via RCON (FireGames)"
+                >
+                  <Terminal size={13} className="text-amber-400" />
+                  <span>RCON</span>
+                </button>
+              )}
 
               {/* Central de Servidores / Host Guide */}
-              <button
-                type="button"
-                onClick={() => {
-                  if (soundEnabled) playClickSound();
-                  if (onOpenServersPage) onOpenServersPage();
-                  else setLocalHostOpen(true);
-                }}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-750 border border-slate-700 text-slate-300 text-xs font-bold transition-all cursor-pointer"
-                title="Central Completa de Servidores (Dedicado Online, LAN Party, Radmin VPN e Testador de Portas)"
-              >
-                <Server size={13} className="text-amber-400" />
-                <span>Central Servidores</span>
-              </button>
+              {onOpenServersPage && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (soundEnabled) playClickSound();
+                    onOpenServersPage();
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-750 border border-slate-700 text-slate-300 text-xs font-bold transition-all cursor-pointer"
+                  title="Central Completa de Servidores (Dedicado Online, LAN Party, Radmin VPN e Testador de Portas)"
+                >
+                  <Server size={13} className="text-amber-400" />
+                  <span>Central Servidores</span>
+                </button>
+              )}
 
               {/* GSI Setup Button */}
               {onOpenGsiSetup && (
@@ -352,27 +365,30 @@ export default function ServerConnectBar({
           ) : (
             <div className="flex items-center gap-2 flex-wrap">
               {/* Central de Servidores / Host on My PC Button */}
-              <button
-                type="button"
-                onClick={() => {
-                  if (soundEnabled) playClickSound();
-                  if (onOpenServersPage) onOpenServersPage();
-                  else setLocalHostOpen(true);
-                }}
-                className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 hover:border-amber-400 text-amber-300 text-xs font-bold transition-all cursor-pointer shadow-sm active:scale-95"
-                title="Abrir Central Completa de Servidores (Dedicado, Host PC, LAN Party e Radmin VPN)"
-              >
-                <Server size={14} className="text-amber-400" />
-                <span>Central de Servidores</span>
-              </button>
+              {onOpenServersPage && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (soundEnabled) playClickSound();
+                    onOpenServersPage();
+                  }}
+                  className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 hover:border-amber-400 text-amber-300 text-xs font-bold transition-all cursor-pointer shadow-sm active:scale-95"
+                  title="Abrir Central Completa de Servidores (Dedicado, Host PC, LAN Party e Radmin VPN)"
+                >
+                  <Server size={14} className="text-amber-400" />
+                  <span>Central de Servidores</span>
+                </button>
+              )}
 
-              <button
-                onClick={handleStartEditing}
-                className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 border border-amber-500/30 hover:border-amber-400 text-xs font-bold transition-all shadow-sm cursor-pointer active:scale-95"
-              >
-                <Server size={14} />
-                <span>Configurar Servidor</span>
-              </button>
+              {isAdmin && (
+                <button
+                  onClick={handleStartEditing}
+                  className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 border border-amber-500/30 hover:border-amber-400 text-xs font-bold transition-all shadow-sm cursor-pointer active:scale-95"
+                >
+                  <Server size={14} />
+                  <span>Configurar Servidor</span>
+                </button>
+              )}
 
               {onOpenGsiSetup && (
                 <button
@@ -398,8 +414,8 @@ export default function ServerConnectBar({
         </div>
       </div>
 
-      {/* RCON CONTROL DRAWER */}
-      {showRcon && (
+      {/* RCON CONTROL DRAWER (Admin) */}
+      {isAdmin && showRcon && (
         <div className="mt-4 pt-3.5 border-t border-slate-800/80 animate-fadeIn">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-3">
             <div>
@@ -467,17 +483,6 @@ export default function ServerConnectBar({
           </div>
         </div>
       )}
-
-      {/* Local Host Guide & Setup Modal */}
-      <LocalHostModal
-        isOpen={localHostOpen}
-        onClose={() => setLocalHostOpen(false)}
-        roomId={roomId}
-        currentServerIp={serverIp}
-        finalMap={finalMap}
-        onUpdateServerIp={onUpdateServerIp}
-        soundEnabled={soundEnabled}
-      />
     </div>
   );
 }

@@ -27,6 +27,7 @@ import {
 import PlayerAvatar from './PlayerAvatar';
 import GCBadge from './GCBadge';
 import FaceitBadge from './FaceitBadge';
+import StandalonePageHeader from './StandalonePageHeader';
 import { playClickSound } from '../utils/audio';
 
 function DiscordIcon({ size = 14, className = '' }) {
@@ -49,12 +50,15 @@ const MAP_OPTIONS = [
 ];
 
 export default function LeaderboardModal({
-  isOpen,
-  onClose,
+  isOpen = false,
+  onClose = () => {},
   socket,
   soundEnabled,
   onInspectPlayer,
+  asPage = false,
+  pageHeaderProps = null,
 }) {
+  const effectiveOpen = asPage || isOpen;
   const [activeTab, setActiveTab] = useState('ranking'); // 'ranking' | 'matches'
   
   // Players Ranking & Monthly Seasons state
@@ -77,15 +81,15 @@ export default function LeaderboardModal({
   const [copiedId, setCopiedId] = useState(null);
 
   const selectedSeasonRef = useRef(selectedSeason);
-  const isOpenRef = useRef(isOpen);
+  const isOpenRef = useRef(effectiveOpen);
 
   useEffect(() => {
     selectedSeasonRef.current = selectedSeason;
   }, [selectedSeason]);
 
   useEffect(() => {
-    isOpenRef.current = isOpen;
-  }, [isOpen]);
+    isOpenRef.current = effectiveOpen;
+  }, [effectiveOpen]);
 
   const fetchSeasons = async () => {
     try {
@@ -137,12 +141,12 @@ export default function LeaderboardModal({
   };
 
   useEffect(() => {
-    if (isOpen) {
+    if (effectiveOpen) {
       fetchSeasons();
       fetchLeaderboard(selectedSeason);
       fetchMatches();
     }
-  }, [isOpen, selectedSeason]);
+  }, [effectiveOpen, selectedSeason]);
 
   useEffect(() => {
     if (!socket) return;
@@ -180,7 +184,7 @@ export default function LeaderboardModal({
     };
   }, [socket]);
 
-  if (!isOpen) return null;
+  if (!effectiveOpen) return null;
 
   // Filter and sort players
   const filteredPlayers = players.filter((p) => {
@@ -237,14 +241,14 @@ export default function LeaderboardModal({
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  return (
+  const cardContent = (
     <div
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/85 backdrop-blur-md animate-fadeIn"
+      className={
+        asPage
+          ? 'relative w-full overflow-hidden bg-slate-900/95 border border-amber-500/35 rounded-3xl shadow-2xl flex flex-col'
+          : 'relative w-full max-w-5xl max-h-[92vh] overflow-hidden bg-slate-900 border-2 border-amber-500/40 rounded-3xl shadow-2xl flex flex-col'
+      }
     >
-      <div className="relative w-full max-w-5xl max-h-[92vh] overflow-hidden bg-slate-900 border-2 border-amber-500/40 rounded-3xl shadow-2xl flex flex-col">
         
         {/* Glow ambient */}
         <div className="absolute top-0 right-0 w-80 h-80 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -285,14 +289,16 @@ export default function LeaderboardModal({
               <RefreshCw size={13} className={loadingPlayers || loadingMatches ? 'animate-spin text-amber-400' : ''} />
               <span className="hidden sm:inline">Atualizar</span>
             </button>
-            <button
-              type="button"
-              onClick={onClose}
-              title="Fechar"
-              className="p-2 rounded-xl bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition-colors cursor-pointer"
-            >
-              <X size={18} />
-            </button>
+            {!asPage && (
+              <button
+                type="button"
+                onClick={onClose}
+                title="Fechar"
+                className="p-2 rounded-xl bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            )}
           </div>
         </div>
 
@@ -1025,19 +1031,48 @@ export default function LeaderboardModal({
             </span>
           </div>
 
-          <button
-            type="button"
-            onClick={() => {
-              if (soundEnabled) playClickSound();
-              onClose();
-            }}
-            className="w-full sm:w-auto px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 text-xs font-bold transition-all cursor-pointer"
-          >
-            Fechar
-          </button>
+          {!asPage && (
+            <button
+              type="button"
+              onClick={() => {
+                if (soundEnabled) playClickSound();
+                onClose();
+              }}
+              className="w-full sm:w-auto px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 text-xs font-bold transition-all cursor-pointer"
+            >
+              Fechar
+            </button>
+          )}
         </div>
 
       </div>
+  );
+
+  if (asPage) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
+        <StandalonePageHeader
+          activeTab="hall"
+          badgeLabel="RANKING"
+          subtitle="HALL DA FAMA & TEMPORADAS"
+          soundEnabled={soundEnabled}
+          {...(pageHeaderProps || {})}
+        />
+        <main className="max-w-6xl w-full mx-auto px-3 sm:px-5 py-6 flex-1">
+          {cardContent}
+        </main>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-black/85 backdrop-blur-md animate-fadeIn"
+    >
+      {cardContent}
     </div>
   );
 }

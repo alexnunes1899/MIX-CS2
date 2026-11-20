@@ -107,7 +107,7 @@ export function renderProfileHtml({ query = {} } = {}) {
         </div>
         <h1 class="text-xl sm:text-2xl font-black font-heading text-white">Definir Meu Nível GC</h1>
         <p class="text-slate-400 text-xs mt-1">
-          Salve seu nível para sempre! Ele será usado no WhatsApp e no Discord para equilibrar os times no sorteio automático.
+          Salve seu nível para sempre! Ele será usado no Discord e no Web Hub para equilibrar os times no sorteio automático.
         </p>
       </div>
 
@@ -166,18 +166,17 @@ export function renderProfileHtml({ query = {} } = {}) {
 
         <div>
           <label class="block text-xs font-bold text-slate-300 mb-1" for="input-phone">
-            Seu Número de WhatsApp (com DDD):
+            Identificador / Telefone (Opcional para vínculo legado):
           </label>
           <input
             id="input-phone"
             type="tel"
-            required
             placeholder="Ex: 5534999998888"
             value="${safePhoneHtml}"
             class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 transition"
           />
           <span class="text-[10px] text-slate-500 block mt-1">
-            Usado para associar com o bot do WhatsApp e marcar você no mix.
+            Usado para recuperar ou atualizar perfis já salvos anteriormente pelo número.
           </span>
         </div>
 
@@ -209,9 +208,9 @@ export function renderProfileHtml({ query = {} } = {}) {
       <!-- Action Footer Links -->
       <div class="mt-5 pt-4 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
         <span>Mix Ativo: <strong class="text-amber-400" id="mix-active-label">${safeRoomHtml}</strong></span>
-        <button type="button" id="btn-back-zap" class="text-emerald-400 hover:text-emerald-300 font-bold flex items-center gap-1 transition">
-          💬 Abrir WhatsApp
-        </button>
+        <a href="/" class="text-emerald-400 hover:text-emerald-300 font-bold flex items-center gap-1 transition">
+          🎮 Ir para o CS2 Mix Hub
+        </a>
       </div>
     </div>
   </main>
@@ -302,8 +301,8 @@ export function renderProfileHtml({ query = {} } = {}) {
       const btn = document.getElementById('btn-submit');
       const feedback = document.getElementById('feedback-box');
 
-      if (!nick || !phone) {
-        showFeedback('Por favor, preencha seu Nick e WhatsApp.', false);
+      if (!nick) {
+        showFeedback('Por favor, preencha seu Nick no CS2.', false);
         return;
       }
 
@@ -326,7 +325,7 @@ export function renderProfileHtml({ query = {} } = {}) {
 
         const data = await res.json();
         if (res.ok && data.success) {
-          showFeedback(\`✅ <strong>Perfil Salvo com Sucesso!</strong><br>Seu Nível <strong>\${selectedLevel} da Gamers Club</strong> está salvo para sempre e já foi sincronizado com o WhatsApp e Discord!\`, true);
+          showFeedback(\`✅ <strong>Perfil Salvo com Sucesso!</strong><br>Seu Nível <strong>\${selectedLevel} da Gamers Club</strong> está salvo para sempre e sincronizado com o Discord e Web Hub!\`, true);
           btn.innerHTML = '✅ Salvo com Sucesso!';
           setTimeout(() => {
             btn.disabled = false;
@@ -354,10 +353,6 @@ export function renderProfileHtml({ query = {} } = {}) {
       box.innerHTML = html;
       box.classList.remove('hidden');
     }
-
-    document.getElementById('btn-back-zap').addEventListener('click', () => {
-      window.location.href = 'whatsapp://';
-    });
 
     // Init
     selectLevel(16);

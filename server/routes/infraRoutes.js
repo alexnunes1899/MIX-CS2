@@ -2,7 +2,9 @@ import {
   getSessionUser,
   isAdminRequest,
   isLoopbackRequest,
+  signGsiInstallerToken,
   timingSafeStringEqual,
+  verifyGsiInstallerToken,
 } from '../authSession.js';
 import { executeRconCommand } from '../rcon.js';
 import { pingCs2Server } from '../serverQuery.js';
@@ -248,10 +250,12 @@ export function registerInfraRoutes(app, { io, rooms, lifecycle, discordBotManag
   }
 
   function resolveRoomGsiTokenForInstaller(req, roomId) {
-    if (!(getSessionUser(req) || isAdminRequest(req) || isLoopbackRequest(req))) {
+    const cleanId = normalizeRoomId(roomId, 'MIX-PRO');
+    const querySig = typeof req?.query?.sig === 'string' ? req.query.sig.trim() : '';
+    const hasValidSig = Boolean(querySig && verifyGsiInstallerToken(querySig, cleanId));
+    if (!(hasValidSig || getSessionUser(req) || isAdminRequest(req) || isLoopbackRequest(req))) {
       return '';
     }
-    const cleanId = normalizeRoomId(roomId, 'MIX-PRO');
     const room = rooms.get(cleanId);
     return room?.gsiToken || String(process.env.GSI_AUTH_TOKEN || '').trim() || '';
   }
@@ -271,7 +275,31 @@ export function registerInfraRoutes(app, { io, rooms, lifecycle, discordBotManag
   });
 
   app.get('/api/gsi/check-installed', (req, res) => {
-    res.json(checkGsiInstalled());
+    if (!isLocalPc) {
+      return res.json({ installed: false, path: null, hasMatchStats: false, active: false, isCloudHosted: true });
+    }
+    return res.json({ ...checkGsiInstalled(), isCloudHosted: false });
+  });
+
+  app.get('/api/gsi/setup-info/:roomId', (req, res) => {
+    const cleanId = normalizeRoomId(req.params.roomId, 'MIX-PRO');
+    const baseUrl = resolveSafeBaseUrl(req, DEFAULT_PUBLIC_URL);
+    const gsiToken = resolveRoomGsiTokenForInstaller(req, cleanId);
+    const hasRoomToken = Boolean(gsiToken);
+    const sig = hasRoomToken ? signGsiInstallerToken(cleanId) : '';
+    const ps1Url = `${baseUrl}/api/gsi/installer/ps1/${encodeURIComponent(cleanId)}${sig ? `?sig=${encodeURIComponent(sig)}` : ''}`;
+    const batDownloadUrl = `/api/gsi/installer/${encodeURIComponent(cleanId)}${sig ? `?sig=${encodeURIComponent(sig)}` : ''}`;
+    const cfgDownloadUrl = `/api/gsi/cfg/${encodeURIComponent(cleanId)}${sig ? `?sig=${encodeURIComponent(sig)}` : ''}`;
+
+    return res.json({
+      roomId: cleanId,
+      isCloudHosted: !isLocalPc,
+      hasRoomToken,
+      cfgContent: generateGsiConfig(baseUrl, cleanId, gsiToken),
+      ps1Command: `irm "${ps1Url}" | iex`,
+      cfgDownloadUrl,
+      batDownloadUrl,
+    });
   });
 
   app.post('/api/gsi/:roomId', (req, res) => {

@@ -15,6 +15,7 @@ export default function MapVeto({
   onResetMix,
   onSetTurnTimer,
   isAdmin = false,
+  myProfile = null,
   soundEnabled,
 }) {
   const [copiedLog, setCopiedLog] = useState(false);
@@ -83,8 +84,27 @@ export default function MapVeto({
 
   const turnIsTeamA = activeTeam === 'teamA';
 
+  const realHumansInTeam = (roster = []) =>
+    Array.isArray(roster) && roster.some((p) => p && p.id !== 't1' && p.id !== 't2' && !String(p.id || '').startsWith('bot-'));
+  const hasRealTeams = realHumansInTeam(room.teamA) && realHumansInTeam(room.teamB);
+  const isInRoster = (roster = []) =>
+    Boolean(
+      myProfile &&
+      Array.isArray(roster) &&
+      roster.some(
+        (p) =>
+          p &&
+          ((myProfile.id && p.id === myProfile.id) || (myProfile.steamId && p.steamId === myProfile.steamId))
+      )
+    );
+  const canActThisTurn = Boolean(
+    isAdmin ||
+    (!hasRealTeams && (isInRoster(room.players) || !room.players?.length)) ||
+    (hasRealTeams && isInRoster(turnIsTeamA ? room.teamA : room.teamB))
+  );
+
   const handleMapAction = (mapId) => {
-    if (phase !== 'veto' || isWaitingPickSide) return;
+    if (phase !== 'veto' || isWaitingPickSide || !canActThisTurn) return;
     if (isBanned(mapId) || isPicked(mapId)) return;
     if (soundEnabled) {
       if (isActionPick) playPickSound();
@@ -94,6 +114,7 @@ export default function MapVeto({
   };
 
   const handleSelectSide = (side) => {
+    if (!canActThisTurn) return;
     if (soundEnabled) playPickSound();
     onSelectSide(side);
   };
@@ -208,7 +229,7 @@ export default function MapVeto({
             </div>
           )}
 
-          {onChangeVetoFormat && (
+          {isAdmin && onChangeVetoFormat && (
             <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800">
               {['MD1', 'MD3', 'MD5'].map((fmt) => (
                 <button
@@ -381,31 +402,38 @@ export default function MapVeto({
             </p>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
-            <button
-              onClick={() => handleSelectSide('CT')}
-              className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-sky-600/30 transition-all cursor-pointer active:scale-95"
-            >
-              <Shield size={18} />
-              <span>{getTeamLabel(pendingSidePick.sidePickBy)} começa de CT (Defesa)</span>
-            </button>
+          {canActThisTurn ? (
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+              <button
+                onClick={() => handleSelectSide('CT')}
+                className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-sky-600/30 transition-all cursor-pointer active:scale-95"
+              >
+                <Shield size={18} />
+                <span>{getTeamLabel(pendingSidePick.sidePickBy)} começa de CT (Defesa)</span>
+              </button>
 
-            <button
-              onClick={() => handleSelectSide('TR')}
-              className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-amber-600/30 transition-all cursor-pointer active:scale-95"
-            >
-              <Flame size={18} />
-              <span>{getTeamLabel(pendingSidePick.sidePickBy)} começa de TR (Ataque)</span>
-            </button>
+              <button
+                onClick={() => handleSelectSide('TR')}
+                className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-amber-600/30 transition-all cursor-pointer active:scale-95"
+              >
+                <Flame size={18} />
+                <span>{getTeamLabel(pendingSidePick.sidePickBy)} começa de TR (Ataque)</span>
+              </button>
 
-            <button
-              onClick={() => handleSelectSide('KNIFE')}
-              className="w-full sm:w-auto px-5 py-3.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer active:scale-95"
-            >
-              <Swords size={16} className="text-amber-400" />
-              <span>🔪 Definir na Faca (Knife)</span>
-            </button>
-          </div>
+              <button
+                onClick={() => handleSelectSide('KNIFE')}
+                className="w-full sm:w-auto px-5 py-3.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer active:scale-95"
+              >
+                <Swords size={16} className="text-amber-400" />
+                <span>🔪 Definir na Faca (Knife)</span>
+              </button>
+            </div>
+          ) : (
+            <div className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-xs text-slate-300">
+              <Clock size={14} className="text-amber-400 animate-pulse" />
+              <span>Aguardando <strong>{getTeamLabel(pendingSidePick.sidePickBy)}</strong> escolher o lado inicial...</span>
+            </div>
+          )}
         </div>
       )}
 
@@ -424,31 +452,38 @@ export default function MapVeto({
             </p>
           </div>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
-            <button
-              onClick={() => handleSelectSide('CT')}
-              className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-sky-600/30 transition-all cursor-pointer active:scale-95"
-            >
-              <Shield size={18} />
-              <span>{getTeamLabel(deciderSidePicker)} começa de CT (Defesa)</span>
-            </button>
+          {canActThisTurn ? (
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+              <button
+                onClick={() => handleSelectSide('CT')}
+                className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-sky-600/30 transition-all cursor-pointer active:scale-95"
+              >
+                <Shield size={18} />
+                <span>{getTeamLabel(deciderSidePicker)} começa de CT (Defesa)</span>
+              </button>
 
-            <button
-              onClick={() => handleSelectSide('TR')}
-              className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-amber-600/30 transition-all cursor-pointer active:scale-95"
-            >
-              <Flame size={18} />
-              <span>{getTeamLabel(deciderSidePicker)} começa de TR (Ataque)</span>
-            </button>
+              <button
+                onClick={() => handleSelectSide('TR')}
+                className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-amber-600/30 transition-all cursor-pointer active:scale-95"
+              >
+                <Flame size={18} />
+                <span>{getTeamLabel(deciderSidePicker)} começa de TR (Ataque)</span>
+              </button>
 
-            <button
-              onClick={() => handleSelectSide('KNIFE')}
-              className="w-full sm:w-auto px-5 py-3.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer active:scale-95"
-            >
-              <Swords size={16} className="text-amber-400" />
-              <span>🔪 Round Faca (Knife Round)</span>
-            </button>
-          </div>
+              <button
+                onClick={() => handleSelectSide('KNIFE')}
+                className="w-full sm:w-auto px-5 py-3.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md transition-all cursor-pointer active:scale-95"
+              >
+                <Swords size={16} className="text-amber-400" />
+                <span>🔪 Round Faca (Knife Round)</span>
+              </button>
+            </div>
+          ) : (
+            <div className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-xs text-slate-300">
+              <Clock size={14} className="text-amber-400 animate-pulse" />
+              <span>Aguardando <strong>{getTeamLabel(deciderSidePicker)}</strong> definir o lado inicial...</span>
+            </div>
+          )}
         </div>
       )}
 
@@ -472,11 +507,13 @@ export default function MapVeto({
                   ? 'border-2 border-emerald-400 ring-2 ring-emerald-400/30 shadow-xl shadow-emerald-500/15'
                   : banned
                   ? 'border border-slate-800/80 bg-slate-950/90 opacity-55 grayscale'
+                  : !canActThisTurn
+                  ? 'border border-white/[0.08] bg-slate-900/90 shadow-lg'
                   : isActionPick
                   ? 'border border-white/[0.1] hover:border-emerald-400 bg-slate-900 shadow-lg hover:shadow-emerald-500/20 hover:-translate-y-0.5 cursor-pointer'
                   : 'border border-white/[0.1] hover:border-amber-400/80 bg-slate-900 shadow-lg hover:shadow-amber-500/15 hover:-translate-y-0.5 cursor-pointer'
               }`}
-              onClick={() => !banned && !picked && phase === 'veto' && !isWaitingPickSide && handleMapAction(map.id)}
+              onClick={() => canActThisTurn && !banned && !picked && phase === 'veto' && !isWaitingPickSide && handleMapAction(map.id)}
             >
               {/* Map Background Artwork */}
               <div
@@ -546,31 +583,37 @@ export default function MapVeto({
               {/* Card Footer / Action */}
               <div className="relative z-10 p-4 pt-0">
                 {!banned && !picked && phase === 'veto' && !isWaitingPickSide && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleMapAction(map.id);
-                    }}
-                    className={`w-full py-2.5 px-3 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 shadow-md cursor-pointer ${
-                      isActionPick
-                        ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black shadow-emerald-500/25'
-                        : turnIsTeamA
-                        ? 'bg-sky-600 hover:bg-sky-500 text-white'
-                        : 'bg-amber-600 hover:bg-amber-500 text-white'
-                    }`}
-                  >
-                    {isActionPick ? (
-                      <>
-                        <Check size={15} strokeWidth={3} />
-                        <span>Escolher {map.name} (Mapa {currentStepObj.mapNumber})</span>
-                      </>
-                    ) : (
-                      <>
-                        <Ban size={14} />
-                        <span>Banir {map.name}</span>
-                      </>
-                    )}
-                  </button>
+                  canActThisTurn ? (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleMapAction(map.id);
+                      }}
+                      className={`w-full py-2.5 px-3 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 shadow-md cursor-pointer ${
+                        isActionPick
+                          ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black shadow-emerald-500/25'
+                          : turnIsTeamA
+                          ? 'bg-sky-600 hover:bg-sky-500 text-white'
+                          : 'bg-amber-600 hover:bg-amber-500 text-white'
+                      }`}
+                    >
+                      {isActionPick ? (
+                        <>
+                          <Check size={15} strokeWidth={3} />
+                          <span>Escolher {map.name} (Mapa {currentStepObj.mapNumber})</span>
+                        </>
+                      ) : (
+                        <>
+                          <Ban size={14} />
+                          <span>Banir {map.name}</span>
+                        </>
+                      )}
+                    </button>
+                  ) : (
+                    <div className="w-full py-2 px-3 rounded-xl bg-slate-950/85 border border-slate-800 text-slate-400 font-semibold text-[11px] text-center">
+                      Aguardando vez de {turnIsTeamA ? labelA : labelB}
+                    </div>
+                  )
                 )}
 
                 {picked && (
@@ -688,18 +731,20 @@ export default function MapVeto({
       )}
 
       {/* Reset Controls */}
-      <div className="flex items-center justify-end">
-        <button
-          onClick={() => {
-            if (soundEnabled) playClickSound();
-            onResetMix();
-          }}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 text-xs font-semibold transition-all cursor-pointer"
-        >
-          <RotateCcw size={14} />
-          <span>Reiniciar Veto</span>
-        </button>
-      </div>
+      {isAdmin && (
+        <div className="flex items-center justify-end">
+          <button
+            onClick={() => {
+              if (soundEnabled) playClickSound();
+              onResetMix();
+            }}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 text-xs font-semibold transition-all cursor-pointer"
+          >
+            <RotateCcw size={14} />
+            <span>Reiniciar Veto</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }

@@ -21,6 +21,13 @@ const { buildDiscordBotInviteUrl, DISCORD_BOT_PERMISSIONS } = await import('../s
 const { setBounded } = await import('../server/utils/boundedMap.js');
 const { writeJsonAtomic, readJsonSafe } = await import('../server/utils/atomicJson.js');
 const { parseServerDetails } = await import('../src/utils/serverParser.js');
+const {
+  signGsiInstallerToken,
+  verifyGsiInstallerToken,
+  signSessionToken,
+  SESSION_COOKIE_NAME,
+} = await import('../server/authSession.js');
+const { io: createSocketClient } = await import('socket.io-client');
 
 test('Security, SSRF, GSI auth, MatchZy webhooks & Shared Config suite', async (t) => {
   const { server, rooms, lifecycle, close } = createMixServer({
@@ -236,5 +243,203 @@ test('Security, SSRF, GSI auth, MatchZy webhooks & Shared Config suite', async (
     assert.equal(parsed.ip, '189.1.168.20:27015');
     assert.equal(parsed.password, 'mix');
     assert.match(parsed.steamUrl, /^steam:\/\/rungame\/730\//);
+  });
+
+  await t.test('GSI installer HMAC token, setup-info e cloud check funcionam corretamente', async () => {
+    const sig = signGsiInstallerToken('ROOM-GSI');
+    assert.ok(sig);
+    assert.equal(verifyGsiInstallerToken(sig, 'ROOM-GSI'), true);
+    assert.equal(verifyGsiInstallerToken(sig, 'OTHER-ROOM'), false);
+    assert.equal(verifyGsiInstallerToken(`${sig}tamper`, 'ROOM-GSI'), false);
+
+    const checkRes = await fetch(`${baseUrl}/api/gsi/check-installed`);
+    assert.equal(checkRes.status, 200);
+    const checkData = await checkRes.json();
+    assert.equal(checkData.isCloudHosted, true);
+    assert.equal(checkData.installed, false);
+
+    const setupRes = await fetch(`${baseUrl}/api/gsi/setup-info/ROOM-GSI`, {
+      headers: { 'x-admin-key': 'sec-admin-key-xyz' },
+    });
+    assert.equal(setupRes.status, 200);
+    const setupData = await setupRes.json();
+    assert.equal(setupData.roomId, 'ROOM-GSI');
+    assert.equal(setupData.isCloudHosted, true);
+    assert.equal(setupData.hasRoomToken, true);
+    assert.ok(setupData.cfgContent.includes('gsi-room-secret-999'));
+    assert.ok(setupData.ps1Command.includes('?sig='));
+
+    const urlObj = new URL(setupData.cfgDownloadUrl, baseUrl);
+    const extractedSig = urlObj.searchParams.get('sig');
+    assert.ok(extractedSig);
+    assert.equal(verifyGsiInstallerToken(extractedSig, 'ROOM-GSI'), true);
+
+    const cfgRes = await fetch(`${baseUrl}/api/gsi/cfg/ROOM-GSI?sig=${encodeURIComponent(extractedSig)}`);
+    assert.equal(cfgRes.status, 200);
+    const cfgBody = await cfgRes.text();
+    assert.ok(cfgBody.includes('gsi-room-secret-999'));
+
+    const ps1Res = await fetch(`${baseUrl}/api/gsi/installer/ps1/ROOM-GSI?sig=${encodeURIComponent(extractedSig)}`);
+    assert.equal(ps1Res.status, 200);
+    const ps1Body = await ps1Res.text();
+    const b64Match = ps1Body.match(/\$b64\s*=\s*'([^']+)'/);
+    assert.ok(b64Match);
+    const decodedCfg = Buffer.from(b64Match[1], 'base64').toString('utf8');
+    assert.ok(decodedCfg.includes('gsi-room-secret-999'));
+  });
+
+  await t.test('Socket.IO delete_room retorna callback ack e respeita permissão de admin', async () => {
+    const adminToken = signSessionToken({
+      id: '76561198000000010',
+      steamId: '76561198000000010',
+      nick: 'HostAdmin',
+    });
+    const otherToken = signSessionToken({
+      id: '76561198000000011',
+      steamId: '76561198000000011',
+      nick: 'OutroUser',
+    });
+
+    const connectClient = (token) =>
+      new Promise((resolve, reject) => {
+        const client = createSocketClient(baseUrl, {
+          transports: ['websocket'],
+          extraHeaders: { Cookie: `${SESSION_COOKIE_NAME}=${token}` },
+        });
+        const timer = setTimeout(() => {
+          client.disconnect();
+          reject(new Error('Socket connect timeout'));
+        }, 4000);
+        client.on('connect', () => {
+          clearTimeout(timer);
+          resolve(client);
+        });
+        client.on('connect_error', (err) => {
+          clearTimeout(timer);
+          reject(err);
+        });
+      });
+
+    const adminSocket = await connectClient(adminToken);
+    const otherSocket = await connectClient(otherToken);
+
+    try {
+      await new Promise((resolve) => {
+        adminSocket.once('room_state', resolve);
+        adminSocket.emit('join_room', {
+          roomId: 'ACKROOM',
+          roomName: 'Teste Ack',
+          player: { id: '76561198000000010', steamId: '76561198000000010', nick: 'HostAdmin', level: 12 },
+          createIfMissing: true,
+        });
+      });
+
+      await new Promise((resolve) => {
+        otherSocket.once('room_state', resolve);
+        otherSocket.emit('join_room', {
+          roomId: 'ACKROOM',
+          player: { id: '76561198000000011', steamId: '76561198000000011', nick: 'OutroUser', level: 10 },
+          createIfMissing: false,
+        });
+      });
+
+      const deniedAck = await new Promise((resolve) => {
+        otherSocket.emit('delete_room', { roomId: 'ACKROOM' }, resolve);
+      });
+      assert.equal(deniedAck.success, false);
+      assert.match(deniedAck.error, /criador/i);
+      assert.equal(rooms.has('ACKROOM'), true);
+
+      const allowedAck = await new Promise((resolve) => {
+        adminSocket.emit('delete_room', { roomId: 'ACKROOM' }, resolve);
+      });
+      assert.equal(allowedAck.success, true);
+      assert.equal(allowedAck.roomId, 'ACKROOM');
+      assert.equal(rooms.has('ACKROOM'), false);
+    } finally {
+      adminSocket.disconnect();
+      otherSocket.disconnect();
+    }
+  });
+
+  await t.test('GET / PUT /api/tournaments/:code valida autenticação, leitura pública e ownership', async () => {
+    const emptyGet = await fetch(`${baseUrl}/api/tournaments/COPA-TEST1`);
+    assert.equal(emptyGet.status, 200);
+    const emptyJson = await emptyGet.json();
+    assert.equal(emptyJson.success, true);
+    assert.equal(emptyJson.found, false);
+    assert.equal(emptyJson.tournament, null);
+
+    const unauthPut = await fetch(`${baseUrl}/api/tournaments/COPA-TEST1`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Copa Sem Auth', teamCount: 4 }),
+    });
+    assert.equal(unauthPut.status, 401);
+
+    const ownerToken = signSessionToken({
+      id: '76561198000000001',
+      steamId: '76561198000000001',
+      nick: 'OrganizadorA',
+    });
+    const otherToken = signSessionToken({
+      id: '76561198000000002',
+      steamId: '76561198000000002',
+      nick: 'OutroPlayer',
+    });
+
+    const ownerPut = await fetch(`${baseUrl}/api/tournaments/COPA-TEST1`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `${SESSION_COOKIE_NAME}=${ownerToken}`,
+      },
+      body: JSON.stringify({
+        name: 'Copa Relâmpago',
+        teamCount: 4,
+        teams: [
+          { id: 't1', name: 'Alpha', tag: 'ALP', players: [{ id: 'p1', nick: 'Player1', role: 'IGL', isCaptain: true }] },
+          { id: 't2', name: 'Bravo', tag: 'BRV', players: [{ id: 'p2', nick: 'Player2', role: 'AWPer', isCaptain: true }] },
+        ],
+        matches: {
+          m1: { id: 'm1', title: 'Semifinal A', map: 'Mirage', teamA: 'Alpha', teamB: 'Bravo', scoreA: 13, scoreB: 9, status: 'finished' },
+        },
+      }),
+    });
+    assert.equal(ownerPut.status, 200);
+    const ownerJson = await ownerPut.json();
+    assert.equal(ownerJson.success, true);
+    assert.equal(ownerJson.tournament.code, 'COPA-TEST1');
+    assert.equal(ownerJson.tournament.ownerSteamId, '76561198000000001');
+    assert.equal(ownerJson.tournament.matches.m1.title, 'Semifinal A');
+    assert.equal(ownerJson.tournament.matches.m1.map, 'Mirage');
+
+    const publicGet = await fetch(`${baseUrl}/api/tournaments/COPA-TEST1`);
+    assert.equal(publicGet.status, 200);
+    const publicJson = await publicGet.json();
+    assert.equal(publicJson.found, true);
+    assert.equal(publicJson.tournament.name, 'Copa Relâmpago');
+
+    const forbiddenPut = await fetch(`${baseUrl}/api/tournaments/COPA-TEST1`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Cookie: `${SESSION_COOKIE_NAME}=${otherToken}`,
+      },
+      body: JSON.stringify({ name: 'Tentativa Hijack', teamCount: 4 }),
+    });
+    assert.equal(forbiddenPut.status, 403);
+
+    const adminPut = await fetch(`${baseUrl}/api/tournaments/COPA-TEST1`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-key': 'sec-admin-key-xyz',
+      },
+      body: JSON.stringify({ name: 'Copa Admin Editada', teamCount: 4 }),
+    });
+    assert.equal(adminPut.status, 200);
+    const adminJson = await adminPut.json();
+    assert.equal(adminJson.tournament.name, 'Copa Admin Editada');
   });
 });

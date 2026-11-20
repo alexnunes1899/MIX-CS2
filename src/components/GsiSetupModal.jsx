@@ -32,6 +32,7 @@ export default function GsiSetupModal({
   const [copiedPs1, setCopiedPs1] = useState(false);
   const [gsiStatus, setGsiStatus] = useState(liveMatch || null);
   const [activeTab, setActiveTab] = useState('auto'); // 'auto' | 'firegames' | 'manual'
+  const [setupInfo, setSetupInfo] = useState(null);
   const [localInstallStatus, setLocalInstallStatus] = useState({
     checked: false,
     installed: false,
@@ -44,20 +45,58 @@ export default function GsiSetupModal({
   useEffect(() => {
     if (!isOpen) return;
 
+    let cancelled = false;
+
+    // Fetch real GSI config, signed PowerShell command and cloud/local metadata from backend
+    fetch(`/api/gsi/setup-info/${encodeURIComponent(roomId)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data) {
+          setSetupInfo(data);
+        }
+      })
+      .catch(() => {});
+
     // Check live GSI room transmission status
     const checkStatus = () => {
       fetch(`/api/gsi/status/${encodeURIComponent(roomId)}`)
         .then((res) => res.json())
-        .then((data) => setGsiStatus(data))
+        .then((data) => {
+          if (!cancelled) setGsiStatus(data);
+        })
         .catch(() => {});
     };
 
     // Check if GSI file is already installed in CS2 folder on this PC
     const checkInstalledOnPc = () => {
-      const savedLocal = typeof window !== 'undefined' && localStorage.getItem('cs2_gsi_installed') === '1';
+      let savedLocal = false;
+      try {
+        savedLocal = typeof window !== 'undefined' && localStorage.getItem('cs2_gsi_installed') === '1';
+      } catch {}
+
+      const isLocalOrigin =
+        typeof window !== 'undefined' &&
+        (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+      if (!isLocalOrigin) {
+        if (!cancelled) {
+          setLocalInstallStatus((prev) => ({
+            ...prev,
+            checked: true,
+            installed: savedLocal,
+            path: savedLocal
+              ? 'C:\\Program Files (x86)\\Steam\\steamapps\\common\\Counter-Strike Global Offensive\\game\\csgo\\cfg\\gamestate_integration_cs2mixhub.cfg'
+              : null,
+            hasMatchStats: true,
+          }));
+        }
+        return;
+      }
+
       fetch('/api/gsi/check-installed')
         .then((res) => res.json())
         .then((data) => {
+          if (cancelled) return;
           const isInstalled = Boolean(data?.installed) || savedLocal;
           setLocalInstallStatus((prev) => ({
             ...prev,
@@ -72,7 +111,7 @@ export default function GsiSetupModal({
           }));
         })
         .catch(() => {
-          if (savedLocal) {
+          if (!cancelled && savedLocal) {
             setLocalInstallStatus((prev) => ({
               ...prev,
               checked: true,
@@ -87,16 +126,25 @@ export default function GsiSetupModal({
     checkStatus();
     checkInstalledOnPc();
     const interval = setInterval(checkStatus, 3000);
-    return () => clearInterval(interval);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, [isOpen, roomId]);
 
   if (!isOpen) return null;
 
   const currentHost = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
-  const cfgUrl = `/api/gsi/cfg/${encodeURIComponent(roomId)}`;
-  const installerBatUrl = `/api/gsi/installer/${encodeURIComponent(roomId)}`;
-  const ps1Command = `irm ${currentHost}/api/gsi/installer/ps1/${encodeURIComponent(roomId)} | iex`;
-  const cfgContent = `"CS2MixHub Integration"
+  const cfgDownloadUrl = setupInfo?.cfgDownloadUrl || `/api/gsi/cfg/${encodeURIComponent(roomId)}`;
+  const installerBatUrl = setupInfo?.batDownloadUrl || `/api/gsi/installer/${encodeURIComponent(roomId)}`;
+  const ps1Command = setupInfo?.ps1Command || `irm "${currentHost}/api/gsi/installer/ps1/${encodeURIComponent(roomId)}" | iex`;
+  const isCloudHosted =
+    setupInfo?.isCloudHosted ??
+    (typeof window !== 'undefined' &&
+      window.location.hostname !== 'localhost' &&
+      window.location.hostname !== '127.0.0.1');
+  const hasRoomToken = setupInfo?.hasRoomToken ?? false;
+  const fallbackCfgContent = `"CS2MixHub Integration"
 {
     "uri" "${currentHost}/api/gsi/${roomId}"
     "timeout" "3.0"
@@ -121,6 +169,7 @@ export default function GsiSetupModal({
         "token" "${roomId}"
     }
 }`;
+  const cfgContent = setupInfo?.cfgContent || fallbackCfgContent;
 
   const handleInstallDirectly = async () => {
     if (soundEnabled) playClickSound();
@@ -128,41 +177,39 @@ export default function GsiSetupModal({
     const cs2CfgFolder = 'C:\\Program Files (x86)\\Steam\\steamapps\\common\\Counter-Strike Global Offensive\\game\\csgo\\cfg';
 
     try {
-      // 1. Try direct host installation (or local bridge on 127.0.0.1:3000)
-      let res = await fetch('/api/gsi/install-local', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ roomId }),
-      });
-      let data = await res.json();
-
-      if (!data?.success && typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-        try {
-          const localRes = await fetch('http://127.0.0.1:3000/api/gsi/install-local', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ roomId }),
-          });
-          if (localRes.ok) {
-            data = await localRes.json();
-          }
-        } catch (_) {}
-      }
-
-      if (data?.success) {
-        try { localStorage.setItem('cs2_gsi_installed', '1'); } catch (_) {}
-        setLocalInstallStatus({
-          checked: true,
-          installed: true,
-          path: data.primaryPath || data.paths?.[0] || `${cs2CfgFolder}\\gamestate_integration_cs2mixhub.cfg`,
-          hasMatchStats: true,
-          loading: false,
-          msg: { text: data.message || 'GSI instalado com sucesso no seu CS2!', type: 'success' },
+      // 1. Only try direct local filesystem write when running locally on the user's PC
+      if (!isCloudHosted) {
+        const res = await fetch('/api/gsi/install-local', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ roomId }),
         });
-        return;
+        const data = await res.json().catch(() => ({}));
+        if (data?.success) {
+          try { localStorage.setItem('cs2_gsi_installed', '1'); } catch (_) {}
+          setLocalInstallStatus({
+            checked: true,
+            installed: true,
+            path: data.primaryPath || data.paths?.[0] || `${cs2CfgFolder}\\gamestate_integration_cs2mixhub.cfg`,
+            hasMatchStats: true,
+            loading: false,
+            msg: { text: data.message || 'GSI instalado com sucesso no seu CS2!', type: 'success' },
+          });
+          return;
+        }
       }
 
-      // 2. Cloud Browser Direct Save (Zero .bat download — saves .cfg directly via File System Access API)
+      // 2. Cloud Browser Direct Save (saves real server-issued .cfg with room token directly via File System Access API)
+      let latestCfg = cfgContent;
+      if (isCloudHosted && !setupInfo?.cfgContent) {
+        const freshRes = await fetch(`/api/gsi/setup-info/${encodeURIComponent(roomId)}`).catch(() => null);
+        const freshInfo = freshRes?.ok ? await freshRes.json().catch(() => null) : null;
+        if (freshInfo?.cfgContent) {
+          latestCfg = freshInfo.cfgContent;
+          setSetupInfo(freshInfo);
+        }
+      }
+
       copyText(cs2CfgFolder);
       if (typeof window !== 'undefined' && typeof window.showSaveFilePicker === 'function') {
         const handle = await window.showSaveFilePicker({
@@ -175,7 +222,7 @@ export default function GsiSetupModal({
           ],
         });
         const writable = await handle.createWritable();
-        await writable.write(data?.cfgContent || cfgContent);
+        await writable.write(latestCfg);
         await writable.close();
 
         try { localStorage.setItem('cs2_gsi_installed', '1'); } catch (_) {}
@@ -186,17 +233,18 @@ export default function GsiSetupModal({
           hasMatchStats: true,
           loading: false,
           msg: {
-            text: 'Arquivo gamestate_integration_cs2mixhub.cfg salvo direto no seu CS2 (sem precisar de .bat)!',
+            text: hasRoomToken
+              ? 'Arquivo gamestate_integration_cs2mixhub.cfg salvo com o token seguro da sala!'
+              : 'Arquivo gamestate_integration_cs2mixhub.cfg salvo direto no seu CS2!',
             type: 'success',
           },
         });
         return;
       }
 
-      // 3. Fallback: direct .cfg download (plain text Valve CFG, zero .bat)
-      const blob = new Blob([data?.cfgContent || cfgContent], { type: 'text/plain;charset=utf-8' });
+      // 3. Fallback: direct .cfg download from server endpoint (preserves session cookie & room token)
       const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
+      link.href = cfgDownloadUrl;
       link.download = 'gamestate_integration_cs2mixhub.cfg';
       document.body.appendChild(link);
       link.click();
@@ -209,7 +257,7 @@ export default function GsiSetupModal({
         hasMatchStats: true,
         loading: false,
         msg: {
-          text: `Arquivo .cfg pronto (sem .bat)! O caminho da pasta (${cs2CfgFolder}) já foi copiado para seu Ctrl+V.`,
+          text: `Arquivo .cfg baixado com token da sala! O caminho da pasta (${cs2CfgFolder}) já foi copiado para seu Ctrl+V.`,
           type: 'success',
         },
       });
@@ -463,6 +511,16 @@ export default function GsiSetupModal({
           )}
         </div>
 
+        {/* AUTH TOKEN NOTICE WHEN NOT STEAM LOGGED */}
+        {setupInfo && !hasRoomToken && (
+          <div className="mb-4 p-3 rounded-2xl bg-amber-950/35 border border-amber-500/40 text-xs text-amber-200 flex items-start gap-2.5">
+            <ShieldCheck size={16} className="text-amber-400 shrink-0 mt-0.5" />
+            <span>
+              <strong>Dica de Ranking:</strong> Faça login com a Steam antes de baixar o <code>.cfg</code> ou gerar o PowerShell para incluir o token seguro da sala e computar pontos automaticamente no Hall da Fama.
+            </span>
+          </div>
+        )}
+
         {/* TAB SELECTOR: AUTO 1-CLICK VS FIREGAMES VS MANUAL */}
         <div className="flex items-center gap-1.5 mb-4 p-1 bg-slate-950/80 border border-slate-800 rounded-2xl overflow-x-auto no-scrollbar">
           <button
@@ -584,7 +642,7 @@ export default function GsiSetupModal({
                   type="button"
                   onClick={handleDownloadBat}
                   className="w-full sm:flex-1 py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 hover:border-slate-600 text-slate-200 text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2"
-                  title="Baixar instalador .bat para mandar para amigos no Discord/WhatsApp"
+                  title="Baixar instalador .bat para mandar para amigos no Discord"
                 >
                   <Download size={14} className="text-emerald-400" />
                   <span>Baixar .bat para Enviar aos Amigos</span>

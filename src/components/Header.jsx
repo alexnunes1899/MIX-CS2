@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
-import { Share2, Check, Users, Swords, MapPin, Trophy, Volume2, VolumeX, Layers, History, Dices, Zap, Home, Server, Laptop, Play, Copy, User, Trash2, Lock, KeyRound, Eye, EyeOff, Globe, Bell } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Share2, Check, Users, Swords, MapPin, Trophy, Volume2, VolumeX, Layers, History, Dices, Zap, Home, Server, Copy, Trash2, Lock, Globe, Bell, Menu, BookOpen, Target, Newspaper, ChevronDown } from 'lucide-react';
 import PlayerAvatar from './PlayerAvatar';
 import DeleteRoomModal from './DeleteRoomModal';
-import MainNavigationMenu from './MainNavigationMenu';
 import MixHubLogo from './MixHubLogo';
 import { playClickSound } from '../utils/audio';
 import { parseServerDetails } from '../utils/serverParser';
@@ -16,6 +15,7 @@ export default function Header({
   playerCount = 0,
   serverIp = '',
   myProfile,
+  isAdmin = false,
   onOpenProfile,
   onDeleteRoom,
   soundEnabled,
@@ -28,7 +28,6 @@ export default function Header({
   onOpenQuickMapRoll,
   onOpenLeaderboard,
   onOpenDiscordModal,
-  onOpenLocalHost,
   onOpenServersPage,
   onOpenUpdatesPage,
   onOpenTournament,
@@ -43,7 +42,24 @@ export default function Header({
   const [copied, setCopied] = useState(false);
   const [copiedServer, setCopiedServer] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
-  const [showHeaderPassword, setShowHeaderPassword] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    const handleOutside = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, []);
+
+  const handleMenuAction = (fn) => {
+    if (soundEnabled) playClickSound();
+    setMenuOpen(false);
+    if (fn) fn();
+  };
 
   const parsedServer = parseServerDetails(serverIp);
 
@@ -80,9 +96,9 @@ export default function Header({
 
   return (
     <header className="border-b border-slate-800 bg-[#0c1220]/95 backdrop-blur-xl sticky top-0 z-40 shadow-xl">
-      <div className="max-w-7xl mx-auto px-3 sm:px-5 py-2 space-y-2">
+      <div className="max-w-7xl mx-auto px-3 sm:px-5 py-2 space-y-1.5">
         
-        {/* ROW 1: Room Identity, Center Match Phase Stepper & Utility Actions */}
+        {/* SINGLE FOCUS ROW: Room Identity, Center Match Phase Stepper & Compact Menu + Utility Actions */}
         <div className="flex items-center justify-between gap-3 flex-wrap">
           {/* Left: Logo & Room Details */}
           <div className="flex items-center gap-3 shrink-0 min-w-0">
@@ -243,37 +259,83 @@ export default function Header({
               </span>
             </button>
 
+            {/* Compact Room Hub Dropdown Menu (Replaces bulky 2nd navigation row) */}
+            <div className="relative" ref={menuRef}>
+              <button
+                type="button"
+                onClick={() => {
+                  if (soundEnabled) playClickSound();
+                  setMenuOpen((prev) => !prev);
+                }}
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer active:scale-95 ${
+                  menuOpen
+                    ? 'bg-amber-500/20 border-amber-400 text-amber-300'
+                    : 'bg-slate-800/90 hover:bg-slate-700 text-slate-200 border-slate-700/70'
+                }`}
+                title="Abrir menu de ferramentas e páginas do Mix Hub"
+              >
+                <Menu size={15} />
+                <span className="hidden sm:inline">Menu</span>
+                <ChevronDown size={12} className={`transition-transform ${menuOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {menuOpen && (
+                <div className="absolute right-0 top-full mt-2 w-64 bg-[#0a101d] border border-slate-700/80 rounded-2xl p-1.5 shadow-2xl backdrop-blur-xl z-50 animate-fadeIn space-y-1">
+                  <div className="px-3 py-1.5 text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800/80 flex items-center justify-between">
+                    <span>Navegação & Ferramentas</span>
+                    {activeRoomsCount > 0 && (
+                      <span className="text-emerald-400">{activeRoomsCount} salas</span>
+                    )}
+                  </div>
+
+                  {[
+                    { label: 'Início', icon: Home, color: 'text-amber-400', action: onGoHome },
+                    { label: `Salas da Comunidade${activeRoomsCount > 0 ? ` (${activeRoomsCount})` : ''}`, icon: Layers, color: 'text-sky-400', action: onOpenRoomsHub },
+                    { label: 'Hall da Fama & Ranking', icon: Trophy, color: 'text-amber-400', action: onOpenLeaderboard },
+                    { label: 'Pick & Ban Rápido', icon: Zap, color: 'text-sky-400', action: onOpenQuickVeto },
+                    { label: 'Roleta de Mapas', icon: Dices, color: 'text-yellow-400', action: onOpenQuickMapRoll },
+                    { label: 'Granadas & Treino LXN', icon: BookOpen, color: 'text-teal-400', action: onOpenGrenades },
+                    { label: 'Teste de Reflexo', icon: Target, color: 'text-orange-400', action: onOpenAimReflex },
+                    { label: 'Modo Torneio', icon: Swords, color: 'text-purple-400', action: onOpenTournament },
+                    { label: 'Servidores & Bot CS2', icon: Server, color: 'text-emerald-400', action: onOpenServersPage },
+                    { label: 'Atualizações CS2 (PT-BR)', icon: Newspaper, color: 'text-orange-400', action: onOpenUpdatesPage },
+                    { label: 'Central Discord', icon: Bell, color: 'text-indigo-400', action: onOpenDiscordModal },
+                    { label: 'Histórico desta Sala', icon: History, color: 'text-slate-300', action: onOpenHistory },
+                  ]
+                    .filter((item) => typeof item.action === 'function')
+                    .map((item) => {
+                      const Icon = item.icon;
+                      return (
+                        <button
+                          key={item.label}
+                          type="button"
+                          onClick={() => handleMenuAction(item.action)}
+                          className="w-full px-2.5 py-2 rounded-xl text-left text-xs font-semibold text-slate-200 hover:text-white hover:bg-slate-800/80 transition-colors flex items-center gap-2.5 cursor-pointer"
+                        >
+                          <Icon size={14} className={`${item.color} shrink-0`} />
+                          <span className="truncate">{item.label}</span>
+                        </button>
+                      );
+                    })}
+                </div>
+              )}
+            </div>
+
             {/* Delete Room Button (Admin) */}
-            <button
-              onClick={() => {
-                if (soundEnabled) playClickSound();
-                setDeleteConfirmOpen(true);
-              }}
-              className="p-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/25 border border-red-500/30 text-red-400 hover:text-red-300 transition-colors cursor-pointer"
-              title="Excluir permanentemente esta sala de mix"
-            >
-              <Trash2 size={15} />
-            </button>
+            {isAdmin && (
+              <button
+                onClick={() => {
+                  if (soundEnabled) playClickSound();
+                  setDeleteConfirmOpen(true);
+                }}
+                className="p-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/25 border border-red-500/30 text-red-400 hover:text-red-300 transition-colors cursor-pointer"
+                title="Excluir permanentemente esta sala de mix"
+              >
+                <Trash2 size={15} />
+              </button>
+            )}
           </div>
         </div>
-
-        {/* ROW 2: O MENU PRINCIPAL — CENTRALIZADO E COM DESIGN ESPORTS UNIFICADO */}
-        <MainNavigationMenu
-          activeTab=""
-          onGoHome={onGoHome}
-          onOpenLeaderboard={onOpenLeaderboard}
-          onOpenDiscordModal={onOpenDiscordModal}
-          onOpenQuickMapRoll={onOpenQuickMapRoll}
-          onOpenQuickVeto={onOpenQuickVeto}
-          onOpenServersPage={onOpenServersPage || onOpenLocalHost}
-          onOpenUpdatesPage={onOpenUpdatesPage}
-          onOpenRoomsHub={onOpenRoomsHub}
-          onOpenTournament={onOpenTournament}
-          onOpenGrenades={onOpenGrenades}
-          onOpenAimReflex={onOpenAimReflex}
-          activeRoomsCount={activeRoomsCount}
-          soundEnabled={soundEnabled}
-        />
 
         {/* Mobile Phase Stepper (< 1024px) */}
         <div className="flex lg:hidden items-center justify-start sm:justify-center gap-1 pt-1.5 border-t border-slate-800/40 overflow-x-auto no-scrollbar">
@@ -304,17 +366,19 @@ export default function Header({
       </div>
 
       {/* Delete Room Confirmation Modal */}
-      <DeleteRoomModal
-        isOpen={deleteConfirmOpen}
-        onClose={() => setDeleteConfirmOpen(false)}
-        onConfirm={(targetId) => {
-          if (onDeleteRoom) onDeleteRoom(targetId);
-          setDeleteConfirmOpen(false);
-        }}
-        roomId={roomId}
-        roomName={roomName}
-        soundEnabled={soundEnabled}
-      />
+      {isAdmin && (
+        <DeleteRoomModal
+          isOpen={deleteConfirmOpen}
+          onClose={() => setDeleteConfirmOpen(false)}
+          onConfirm={(targetId) => {
+            if (onDeleteRoom) onDeleteRoom(targetId);
+            setDeleteConfirmOpen(false);
+          }}
+          roomId={roomId}
+          roomName={roomName}
+          soundEnabled={soundEnabled}
+        />
+      )}
     </header>
   );
 }

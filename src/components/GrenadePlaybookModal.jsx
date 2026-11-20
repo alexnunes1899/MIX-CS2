@@ -40,18 +40,32 @@ import {
 } from '../../shared/treinoCfg';
 import { playClickSound } from '../utils/audio';
 import { copyText } from '../utils/clipboard';
+import StandalonePageHeader from './StandalonePageHeader';
+
+function resolveTabFromUrl() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get('tab');
+    if (tab === 'lineups' || tab === 'workshop' || tab === 'cfg') return tab;
+    if (params.get('treino') === '1') return 'cfg';
+  } catch {}
+  return null;
+}
 
 export default function GrenadePlaybookModal({
-  isOpen,
-  onClose,
+  isOpen = false,
+  onClose = () => {},
   initialMap = null,
   initialTab = 'lineups',
   soundEnabled = true,
   serverIp = '',
   rconPassword = '',
   isSteamLogged = false,
+  asPage = false,
+  pageHeaderProps = null,
 }) {
-  const [activeTab, setActiveTab] = useState(initialTab || 'lineups'); // 'lineups' | 'workshop' | 'cfg'
+  const effectiveOpen = asPage || isOpen;
+  const [activeTab, setActiveTab] = useState(() => (asPage ? resolveTabFromUrl() : null) || initialTab || 'lineups'); // 'lineups' | 'workshop' | 'cfg'
   const [selectedMap, setSelectedMap] = useState(initialMap || 'all');
   const [selectedType, setSelectedType] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -120,10 +134,14 @@ export default function GrenadePlaybookModal({
   };
 
   useEffect(() => {
-    if (isOpen && initialTab) {
+    if (!effectiveOpen) return;
+    const urlTab = asPage ? resolveTabFromUrl() : null;
+    if (urlTab) {
+      setActiveTab(urlTab);
+    } else if (initialTab) {
       setActiveTab(initialTab);
     }
-  }, [isOpen, initialTab]);
+  }, [effectiveOpen, asPage, initialTab]);
   const [syncMessage, setSyncMessage] = useState(null);
 
   const openMediaModal = (lineup, initialMedia = 'video') => {
@@ -133,9 +151,9 @@ export default function GrenadePlaybookModal({
     setIsZoomed(false);
   };
 
-  // Fetch updated PT-BR feed on modal open
+  // Fetch updated PT-BR feed on modal/page open
   useEffect(() => {
-    if (!isOpen) return;
+    if (!effectiveOpen) return;
     fetch('/api/grenades')
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
@@ -144,7 +162,7 @@ export default function GrenadePlaybookModal({
         }
       })
       .catch(() => {});
-  }, [isOpen]);
+  }, [effectiveOpen]);
 
   const handleSyncVideos = async () => {
     if (soundEnabled) playClickSound();
@@ -174,20 +192,22 @@ export default function GrenadePlaybookModal({
   }, [initialMap]);
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!effectiveOpen) return;
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
         if (videoModalLineup) {
           setVideoModalLineup(null);
           return;
         }
-        if (soundEnabled) playClickSound();
-        onClose();
+        if (!asPage) {
+          if (soundEnabled) playClickSound();
+          onClose();
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose, soundEnabled, videoModalLineup]);
+  }, [effectiveOpen, asPage, onClose, soundEnabled, videoModalLineup]);
 
   const mapsList = useMemo(
     () => [
@@ -265,11 +285,16 @@ export default function GrenadePlaybookModal({
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
-  if (!isOpen) return null;
+  if (!effectiveOpen) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/85 backdrop-blur-md animate-fadeIn">
-      <div className="bg-slate-900 border-2 border-amber-500/40 rounded-3xl w-full max-w-5xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden relative">
+  const cardContent = (
+    <div
+      className={
+        asPage
+          ? 'bg-slate-900/95 border border-amber-500/35 rounded-3xl w-full flex flex-col shadow-2xl overflow-hidden relative'
+          : 'bg-slate-900 border-2 border-amber-500/40 rounded-3xl w-full max-w-5xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden relative'
+      }
+    >
         {/* Glow */}
         <div className="absolute top-0 right-0 w-80 h-80 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-0 left-0 w-80 h-80 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -307,15 +332,17 @@ export default function GrenadePlaybookModal({
               <span className="hidden sm:inline">{isSyncing ? 'Buscando Vídeos...' : 'Buscar Atualizações PT-BR'}</span>
               <span className="sm:hidden">{isSyncing ? '...' : 'Atualizar'}</span>
             </button>
-            <button
-              onClick={() => {
-                if (soundEnabled) playClickSound();
-                onClose();
-              }}
-              className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
-            >
-              <X size={18} />
-            </button>
+            {!asPage && (
+              <button
+                onClick={() => {
+                  if (soundEnabled) playClickSound();
+                  onClose();
+                }}
+                className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            )}
           </div>
         </div>
 
@@ -1396,6 +1423,28 @@ export default function GrenadePlaybookModal({
           </div>
         )}
       </div>
+  );
+
+  if (asPage) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
+        <StandalonePageHeader
+          activeTab="granadas"
+          badgeLabel="TREINO"
+          subtitle="GRANADAS, WORKSHOP & CFG LXN"
+          soundEnabled={soundEnabled}
+          {...(pageHeaderProps || {})}
+        />
+        <main className="max-w-6xl w-full mx-auto px-3 sm:px-5 py-6 flex-1">
+          {cardContent}
+        </main>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/85 backdrop-blur-md animate-fadeIn">
+      {cardContent}
     </div>
   );
 }

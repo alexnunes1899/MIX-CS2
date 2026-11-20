@@ -42,7 +42,7 @@ export async function copyText(text, toastTitle = 'Copiado para a área de trans
 }
 
 /**
- * Builds the direct invite URL and the rich WhatsApp/Discord invite message
+ * Builds the direct invite URL and the rich Discord/chat invite message
  * with the room name, active player count, and a call-to-action to join the Mix.
  */
 export function buildRoomInviteData({

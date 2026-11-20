@@ -42,12 +42,14 @@ export default function DiscordWebhookModal({
   autoStats = true,
   onSaveWebhook,
   onOpenServersPage,
+  isAdmin = false,
   soundEnabled,
 }) {
   const [activeTab, setActiveTab] = useState('bot'); // 'bot' | 'voicemover' | 'webhook'
   const [showToken, setShowToken] = useState(false);
   const [copiedInvite, setCopiedInvite] = useState(false);
   const [showCriteria, setShowCriteria] = useState(false);
+  const [showAdminUnlock, setShowAdminUnlock] = useState(false);
 
   // Bot Status State from /api/discord/bot/status
   const [botStatus, setBotStatus] = useState({
@@ -58,7 +60,7 @@ export default function DiscordWebhookModal({
     ping: null,
     lastError: null,
     activeMixesCount: 0,
-    canManageBot: true,
+    canManageBot: false,
   });
   const [loadingStatus, setLoadingStatus] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
@@ -455,7 +457,7 @@ export default function DiscordWebhookModal({
         </div>
 
         {/* Navigation Tabs */}
-        <div className="grid grid-cols-3 gap-1.5 bg-slate-950 p-1.5 rounded-2xl border border-slate-800">
+        <div className={`grid ${botStatus.canManageBot ? 'grid-cols-3' : 'grid-cols-2'} gap-1.5 bg-slate-950 p-1.5 rounded-2xl border border-slate-800`}>
           <button
             type="button"
             onClick={() => setActiveTab('bot')}
@@ -469,18 +471,20 @@ export default function DiscordWebhookModal({
             <span>Bot do Discord</span>
           </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab('voicemover')}
-            className={`py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
-              activeTab === 'voicemover'
-                ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white shadow-md shadow-indigo-600/30'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <Mic size={15} />
-            <span>Canais de Voz</span>
-          </button>
+          {botStatus.canManageBot && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('voicemover')}
+              className={`py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                activeTab === 'voicemover'
+                  ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white shadow-md shadow-indigo-600/30'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Mic size={15} />
+              <span>Canais de Voz</span>
+            </button>
+          )}
 
           <button
             type="button"
@@ -548,7 +552,9 @@ export default function DiscordWebhookModal({
                     <span className="text-[11px] text-slate-400 block">
                       {botStatus.running
                         ? `Ping: ${botStatus.ping || 0}ms • ${botStatus.guildCount || 0} servidor(es) • ${botStatus.activeMixesCount || 0} mix(es) ativo(s)`
-                        : botStatus.lastError || 'Insira o token abaixo e clique em Iniciar Bot para ativar.'}
+                        : botStatus.canManageBot
+                        ? (botStatus.lastError || 'Insira o token abaixo e clique em Iniciar Bot para ativar.')
+                        : 'O bot oficial está temporariamente offline ou reiniciando.'}
                     </span>
                   </div>
                 </div>
@@ -557,7 +563,7 @@ export default function DiscordWebhookModal({
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={fetchBotStatus}
+                    onClick={() => fetchBotStatus()}
                     disabled={loadingStatus}
                     className="p-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 border border-slate-700/60 text-xs transition-colors cursor-pointer"
                     title="Atualizar Status"
@@ -565,26 +571,28 @@ export default function DiscordWebhookModal({
                     <RefreshCw size={14} className={loadingStatus ? 'animate-spin' : ''} />
                   </button>
 
-                  {botStatus.running ? (
-                    <button
-                      type="button"
-                      onClick={handleStopBot}
-                      disabled={actionLoading}
-                      className="px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
-                    >
-                      <Power size={13} />
-                      <span>Parar Bot</span>
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={handleStartBot}
-                      disabled={actionLoading || (!token && !botStatus.config?.hasToken)}
-                      className="px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-md shadow-emerald-500/20 transition-all cursor-pointer disabled:opacity-50"
-                    >
-                      <Power size={13} />
-                      <span>Iniciar Bot</span>
-                    </button>
+                  {botStatus.canManageBot && (
+                    botStatus.running ? (
+                      <button
+                        type="button"
+                        onClick={handleStopBot}
+                        disabled={actionLoading}
+                        className="px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                      >
+                        <Power size={13} />
+                        <span>Parar Bot</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleStartBot}
+                        disabled={actionLoading || (!token && !botStatus.config?.hasToken)}
+                        className="px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-md shadow-emerald-500/20 transition-all cursor-pointer disabled:opacity-50"
+                      >
+                        <Power size={13} />
+                        <span>Iniciar Bot</span>
+                      </button>
+                    )
                   )}
                 </div>
               </div>
@@ -593,40 +601,6 @@ export default function DiscordWebhookModal({
               <div className="pt-2 border-t border-slate-800/80 text-[11px] text-slate-400 leading-relaxed">
                 Organize partidas 5v5 diretamente no canal de texto do Discord com botões de entrada, sorteio equilibrado de capitães e times, e <strong>Pick & Ban de mapas oficial</strong> com turnos alternados!
               </div>
-
-              {/* Optional Admin Key Bar when server requires ADMIN_API_KEY / ADMIN_STEAM_IDS */}
-              {botStatus.canManageBot === false && (
-                <div className="p-3 rounded-xl bg-amber-950/30 border border-amber-500/30 space-y-2">
-                  <div className="flex items-center gap-2 text-xs font-bold text-amber-300">
-                    <KeyRound size={14} />
-                    <span>Autorização Admin necessária para alterar o Bot</span>
-                  </div>
-                  <p className="text-[11px] text-slate-400 leading-snug">
-                    Entre com uma conta Steam cadastrada em <code className="text-amber-300">ADMIN_STEAM_IDS</code> ou informe a chave <code className="text-amber-300">ADMIN_API_KEY</code> do servidor:
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="password"
-                      value={adminKey}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setAdminKey(val);
-                        if (val.trim()) localStorage.setItem('cs2_admin_api_key', val.trim());
-                        else localStorage.removeItem('cs2_admin_api_key');
-                      }}
-                      placeholder="Cole a ADMIN_API_KEY..."
-                      className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-mono text-white outline-none focus:border-amber-400"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => fetchBotStatus(adminKey)}
-                      className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold cursor-pointer"
-                    >
-                      Validar
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
 
             {/* 1-CLICK DISCORD BOT INVITE & CRITERIA SHOWCASE */}
@@ -751,8 +725,9 @@ export default function DiscordWebhookModal({
               </div>
             </div>
 
-            {/* Bot Configuration Form */}
-            <form onSubmit={handleSaveBotConfig} className="space-y-3.5">
+            {/* Bot Configuration Form (Admin do Host apenas) */}
+            {botStatus.canManageBot && (
+              <form onSubmit={handleSaveBotConfig} className="space-y-3.5">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {/* Bot Token */}
                 <div className="sm:col-span-2">
@@ -881,22 +856,23 @@ export default function DiscordWebhookModal({
                   <span>Publicar Painel no Canal</span>
                 </button>
               </div>
-
-              {onOpenServersPage && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (soundEnabled) playClickSound();
-                    onClose();
-                    onOpenServersPage('integracao');
-                  }}
-                  className="w-full py-2.5 px-4 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
-                >
-                  <Plug size={14} className="text-emerald-400" />
-                  <span>Integração com Servidor Privado (Abrir Passo a Passo no Site)</span>
-                </button>
-              )}
             </form>
+            )}
+
+            {onOpenServersPage && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (soundEnabled) playClickSound();
+                  onClose();
+                  onOpenServersPage('integracao');
+                }}
+                className="w-full py-2.5 px-4 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+              >
+                <Plug size={14} className="text-emerald-400" />
+                <span>Integração com Servidor Privado (Abrir Passo a Passo no Site)</span>
+              </button>
+            )}
 
             {/* Slash Commands Cheatsheet */}
             <div className="bg-slate-950/70 border border-slate-800 rounded-2xl p-4 space-y-2.5">
@@ -921,6 +897,14 @@ export default function DiscordWebhookModal({
                   <span className="text-slate-400 text-[10px]">Sorteia um ou mais mapas com roleta CSPRNG</span>
                 </div>
                 <div className="bg-slate-900/80 p-2 rounded-xl border border-slate-800/80">
+                  <span className="font-mono font-bold text-white block">/vincular</span>
+                  <span className="text-slate-400 text-[10px]">Liga sua conta Discord à Steam para unificar stats</span>
+                </div>
+                <div className="bg-slate-900/80 p-2 rounded-xl border border-slate-800/80">
+                  <span className="font-mono font-bold text-white block">/treino</span>
+                  <span className="text-slate-400 text-[10px]">Baixa o Pack de Treino LXN + comandos práticos</span>
+                </div>
+                <div className="bg-slate-900/80 p-2 rounded-xl border border-slate-800/80">
                   <span className="font-mono font-bold text-white block">/painel</span>
                   <span className="text-slate-400 text-[10px]">Cria um painel fixo com botão verde Criar Mix</span>
                 </div>
@@ -939,25 +923,67 @@ export default function DiscordWebhookModal({
               </div>
             </div>
 
-            {/* Quick Tutorial */}
-            <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 text-[11px] text-slate-400 space-y-1.5">
-              <span className="text-white font-bold block flex items-center gap-1.5">
-                <HelpCircle size={13} className="text-indigo-400" /> Como configurar seu Bot no Discord Developer Portal:
-              </span>
-              <ol className="list-decimal list-inside space-y-1 text-slate-400 font-sans">
-                <li>Acesse <strong>discord.com/developers/applications</strong> e crie uma <strong>New Application</strong>.</li>
-                <li>Na aba <strong>Bot</strong>, clique em <strong>Reset Token</strong>, copie o Token gerado e cole acima.</li>
-                <li>Abaixo em <strong>Privileged Gateway Intents</strong>, ative <strong>Message Content Intent</strong> e <strong>Server Members Intent</strong>.</li>
-                <li>Na aba <strong>OAuth2 → URL Generator</strong>, marque <code>bot</code> e <code>applications.commands</code> com permissões de <code>Administrator</code> ou <code>Move Members / Send Messages</code>, e use o link gerado para convidar o bot ao seu servidor!</li>
-              </ol>
-            </div>
+            {/* Quick Tutorial (Admin do Host apenas) */}
+            {botStatus.canManageBot ? (
+              <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 text-[11px] text-slate-400 space-y-1.5">
+                <span className="text-white font-bold block flex items-center gap-1.5">
+                  <HelpCircle size={13} className="text-indigo-400" /> Como configurar seu Bot no Discord Developer Portal:
+                </span>
+                <ol className="list-decimal list-inside space-y-1 text-slate-400 font-sans">
+                  <li>Acesse <strong>discord.com/developers/applications</strong> e crie uma <strong>New Application</strong>.</li>
+                  <li>Na aba <strong>Bot</strong>, clique em <strong>Reset Token</strong>, copie o Token gerado e cole acima.</li>
+                  <li>Abaixo em <strong>Privileged Gateway Intents</strong>, ative <strong>Message Content Intent</strong> e <strong>Server Members Intent</strong>.</li>
+                  <li>Na aba <strong>OAuth2 → URL Generator</strong>, marque <code>bot</code> e <code>applications.commands</code> com permissões de <code>Administrator</code> ou <code>Move Members / Send Messages</code>, e use o link gerado para convidar o bot ao seu servidor!</li>
+                </ol>
+              </div>
+            ) : (
+              <div className="pt-1 border-t border-slate-800/70">
+                <button
+                  type="button"
+                  onClick={() => setShowAdminUnlock((prev) => !prev)}
+                  className="text-[11px] text-slate-500 hover:text-amber-300 font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <KeyRound size={12} />
+                  <span>{showAdminUnlock ? 'Ocultar Acesso Técnico (Admin do Host)' : 'Acesso Técnico (Admin do Host)'}</span>
+                </button>
+
+                {showAdminUnlock && (
+                  <div className="mt-2.5 p-3 rounded-xl bg-amber-950/25 border border-amber-500/30 space-y-2 animate-fadeIn">
+                    <p className="text-[11px] text-slate-300 leading-snug">
+                      Área exclusiva para administradores desta instância: entre com Steam cadastrada em <code className="text-amber-300">ADMIN_STEAM_IDS</code> ou valide a <code className="text-amber-300">ADMIN_API_KEY</code>.
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="password"
+                        value={adminKey}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setAdminKey(val);
+                          if (val.trim()) localStorage.setItem('cs2_admin_api_key', val.trim());
+                          else localStorage.removeItem('cs2_admin_api_key');
+                        }}
+                        placeholder="Cole a ADMIN_API_KEY..."
+                        className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-mono text-white outline-none focus:border-amber-400"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => fetchBotStatus(adminKey)}
+                        className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold cursor-pointer"
+                      >
+                        Validar
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
         {/* ======================================================== */}
         {/* TAB 2: VOICE CHANNEL MOVER BOT                           */}
         {/* ======================================================== */}
-        {activeTab === 'voicemover' && (
+        {botStatus.canManageBot && activeTab === 'voicemover' && (
           <form onSubmit={handleSaveBotConfig} className="space-y-4 animate-fadeIn">
             <div className="bg-slate-950/80 p-3.5 rounded-2xl border border-indigo-500/30 space-y-2">
               <span className="text-xs font-bold text-indigo-300 uppercase tracking-wide flex items-center gap-1.5 font-heading">
@@ -1058,8 +1084,17 @@ export default function DiscordWebhookModal({
         {/* ======================================================== */}
         {/* TAB 3: WEBHOOKS & GSI NOTIFICATIONS                      */}
         {/* ======================================================== */}
-        {activeTab === 'webhook' && (
+        {activeTab === 'webhook' && (() => {
+          const canEditRoomWebhook = !roomId || isAdmin;
+          return (
           <form onSubmit={handleSaveWebhookForm} className="space-y-4 animate-fadeIn">
+            {roomId && !isAdmin && (
+              <div className="p-3 rounded-xl bg-amber-950/35 border border-amber-500/35 text-xs text-amber-200 flex items-center gap-2">
+                <KeyRound size={14} className="text-amber-400 shrink-0" />
+                <span>Somente o líder da sala <strong>{roomId}</strong> pode alterar o Webhook desta partida.</span>
+              </div>
+            )}
+
             <div>
               <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5 font-heading">
                 URL do Webhook do Discord (Canal de Notificações)
@@ -1067,9 +1102,10 @@ export default function DiscordWebhookModal({
               <input
                 type="url"
                 value={url}
+                disabled={!canEditRoomWebhook}
                 onChange={(e) => setUrl(e.target.value)}
                 placeholder="https://discord.com/api/webhooks/123456.../abcdef..."
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-600 outline-none focus:border-indigo-400 font-mono shadow-inner"
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-600 outline-none focus:border-indigo-400 font-mono shadow-inner disabled:opacity-60"
               />
             </div>
 
@@ -1083,6 +1119,7 @@ export default function DiscordWebhookModal({
                 <input
                   type="checkbox"
                   checked={optLobby}
+                  disabled={!canEditRoomWebhook}
                   onChange={(e) => setOptLobby(e.target.checked)}
                   className="w-4 h-4 rounded text-indigo-500 focus:ring-0 bg-slate-900 border-slate-700"
                 />
@@ -1093,6 +1130,7 @@ export default function DiscordWebhookModal({
                 <input
                   type="checkbox"
                   checked={optVeto}
+                  disabled={!canEditRoomWebhook}
                   onChange={(e) => setOptVeto(e.target.checked)}
                   className="w-4 h-4 rounded text-indigo-500 focus:ring-0 bg-slate-900 border-slate-700"
                 />
@@ -1103,6 +1141,7 @@ export default function DiscordWebhookModal({
                 <input
                   type="checkbox"
                   checked={optStats}
+                  disabled={!canEditRoomWebhook}
                   onChange={(e) => setOptStats(e.target.checked)}
                   className="w-4 h-4 rounded text-indigo-500 focus:ring-0 bg-slate-900 border-slate-700"
                 />
@@ -1119,6 +1158,7 @@ export default function DiscordWebhookModal({
                     <input
                       type="checkbox"
                       checked={optGsiRounds}
+                      disabled={!canEditRoomWebhook}
                       onChange={(e) => setOptGsiRounds(e.target.checked)}
                       className="w-4 h-4 rounded text-emerald-500 focus:ring-0 bg-slate-900 border-slate-700 mt-0.5"
                     />
@@ -1134,6 +1174,7 @@ export default function DiscordWebhookModal({
                     <input
                       type="checkbox"
                       checked={optGsiBomb}
+                      disabled={!canEditRoomWebhook}
                       onChange={(e) => setOptGsiBomb(e.target.checked)}
                       className="w-4 h-4 rounded text-emerald-500 focus:ring-0 bg-slate-900 border-slate-700 mt-0.5"
                     />
@@ -1149,24 +1190,26 @@ export default function DiscordWebhookModal({
             </div>
 
             {/* Test & Save Buttons */}
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 pt-1">
-              <button
-                type="button"
-                disabled={testingWebhook || !url.trim()}
-                onClick={handleTestWebhook}
-                className="py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-750 text-indigo-300 border border-indigo-500/30 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
-              >
-                <Send size={13} className={testingWebhook ? 'animate-pulse' : ''} />
-                <span>{testingWebhook ? 'Enviando...' : 'Enviar Teste'}</span>
-              </button>
+            {canEditRoomWebhook && (
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 pt-1">
+                <button
+                  type="button"
+                  disabled={testingWebhook || !url.trim()}
+                  onClick={handleTestWebhook}
+                  className="py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-750 text-indigo-300 border border-indigo-500/30 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                >
+                  <Send size={13} className={testingWebhook ? 'animate-pulse' : ''} />
+                  <span>{testingWebhook ? 'Enviando...' : 'Enviar Teste'}</span>
+                </button>
 
-              <button
-                type="submit"
-                className="flex-1 py-2.5 px-4 rounded-xl bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-400 text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-indigo-500/25 transition-all cursor-pointer active:scale-95"
-              >
-                Salvar Configurações de Webhook
-              </button>
-            </div>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 px-4 rounded-xl bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-400 text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-indigo-500/25 transition-all cursor-pointer active:scale-95"
+                >
+                  Salvar Configurações de Webhook
+                </button>
+              </div>
+            )}
 
             {/* Tutorial */}
             <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 text-[11px] text-slate-400 space-y-1">
@@ -1178,7 +1221,8 @@ export default function DiscordWebhookModal({
               </ol>
             </div>
           </form>
-        )}
+          );
+        })()}
       </div>
     </div>
   );

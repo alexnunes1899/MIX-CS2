@@ -25,6 +25,9 @@ const CaptainsDraftView = lazy(() => import('./components/CaptainsDraftView'));
 const LandingPage = lazy(() => import('./components/LandingPage'));
 const DedicatedServersHub = lazy(() => import('./components/DedicatedServersHub'));
 const CS2UpdatesPage = lazy(() => import('./components/CS2UpdatesPage'));
+const LeaderboardModal = lazy(() => import('./components/LeaderboardModal'));
+const GrenadePlaybookModal = lazy(() => import('./components/GrenadePlaybookModal'));
+const TournamentBracketModal = lazy(() => import('./components/TournamentBracketModal'));
 
 function PageFallback() {
   return (
@@ -78,6 +81,9 @@ export default function App() {
     setView,
     handleOpenServersPage,
     handleOpenUpdatesPage,
+    handleOpenLeaderboardPage,
+    handleOpenGrenadesPage,
+    handleOpenTournamentPage,
     handleGoHome,
   } = useNavigationView({ setRoomId, soundEnabled });
 
@@ -151,13 +157,7 @@ export default function App() {
   const [discordModalOpen, setDiscordModalOpen] = useState(false);
   const [matchCardOpen, setMatchCardOpen] = useState(false);
   const [storyCardOpen, setStoryCardOpen] = useState(false);
-  const [grenadeModalOpen, setGrenadeModalOpen] = useState(() => {
-    try {
-      return new URLSearchParams(window.location.search).get('treino') === '1';
-    } catch (e) {
-      return false;
-    }
-  });
+  const [grenadeModalOpen, setGrenadeModalOpen] = useState(false);
   const [grenadeInitialTab, setGrenadeInitialTab] = useState(() => {
     try {
       return new URLSearchParams(window.location.search).get('treino') === '1' ? 'cfg' : 'lineups';
@@ -167,7 +167,6 @@ export default function App() {
   });
   const [aimReflexModalOpen, setAimReflexModalOpen] = useState(false);
   const [tournamentModalOpen, setTournamentModalOpen] = useState(false);
-  const [localHostModalOpen, setLocalHostModalOpen] = useState(false);
   const [spectateRoom, setSpectateRoom] = useState(null);
   const [publicProfile, setPublicProfile] = useState(() => {
     try {
@@ -258,12 +257,22 @@ export default function App() {
     unassignedPlayers: [],
   });
 
-  // Update browser tab title dynamically with room name and player count
+  // Update browser tab title dynamically with room name, player count or page view
   useEffect(() => {
     if (view === 'mix' && roomId) {
       const rName = room?.name || `Mix ${roomId}`;
       const pCount = room?.players?.length || 0;
       document.title = `🔥 ${rName} (${pCount}/10) — Bora pro Mix CS2!`;
+    } else if (view === 'servers') {
+      document.title = 'Servidores & Bot CS2 | CS2 Mix Hub';
+    } else if (view === 'updates') {
+      document.title = 'Atualizações CS2 | CS2 Mix Hub';
+    } else if (view === 'ranking') {
+      document.title = 'Hall da Fama & Ranking | CS2 Mix Hub';
+    } else if (view === 'grenades') {
+      document.title = 'Playbook de Granadas & Treino | CS2 Mix Hub';
+    } else if (view === 'tournament') {
+      document.title = 'Chaveamento de Torneio ao Vivo | CS2 Mix Hub';
     } else {
       document.title = 'CS2 Mix Hub | Sorteador GC & Pick/Ban';
     }
@@ -338,11 +347,11 @@ export default function App() {
       socket.emit('join_room', {
         roomId: urlRoom,
         roomName: urlName || undefined,
-        player: myProfile.nick ? myProfile : null,
+        player: isSteamLogged && myProfile.nick ? myProfile : null,
         password: roomPassword || undefined,
         inviteKey: urlKey || undefined,
         isPrivate: Boolean(urlKey),
-        createIfMissing: true,
+        createIfMissing: Boolean(isSteamLogged),
       });
     }
   }, []);
@@ -359,11 +368,11 @@ export default function App() {
         socket.emit('join_room', {
           roomId,
           roomName: urlName || undefined,
-          player: myProfile.nick ? myProfile : null,
+          player: isSteamLogged && myProfile.nick ? myProfile : null,
           password: roomPassword || undefined,
           inviteKey: urlKey || undefined,
           isPrivate: Boolean(urlKey),
-          createIfMissing: true,
+          createIfMissing: Boolean(isSteamLogged),
         });
       }
     };
@@ -543,6 +552,11 @@ export default function App() {
     }
 
     const url = new URL(window.location);
+    url.pathname = '/';
+    url.searchParams.delete('view');
+    url.searchParams.delete('tab');
+    url.searchParams.delete('code');
+    url.searchParams.delete('treino');
     url.searchParams.set('room', clean);
     if (targetPassword) {
       url.searchParams.set('pwd', targetPassword);
@@ -564,8 +578,8 @@ export default function App() {
       password: targetPassword || undefined,
       isPrivate: Boolean(isPrivate),
       inviteKey: targetKey || undefined,
-      player: myProfile.nick ? myProfile : null,
-      createIfMissing: true,
+      player: isSteamLogged && myProfile.nick ? myProfile : null,
+      createIfMissing: Boolean(isSteamLogged),
     });
   };
 
@@ -643,11 +657,14 @@ export default function App() {
     }
   };
 
-  const handleEnterRoom = (code = 'MIX-PRO') => {
+  const handleEnterRoom = (code = 'MIX-PRO', options = {}) => {
     const safeCode = typeof code === 'string' && code.trim() ? code : (roomId || 'MIX-PRO');
-    if (!isSteamLogged) {
+    const cleanCode = safeCode.trim().toUpperCase();
+    const roomExists = publicRooms.some((r) => String(r.id || '').toUpperCase() === cleanCode);
+    const { requireCreate = false } = options || {};
+    if (!isSteamLogged && (requireCreate || !roomExists)) {
       savePendingInvite(safeCode, inviteKey);
-      handleRequireSteamLogin('entrar no mix');
+      handleRequireSteamLogin('criar uma nova sala de mix');
       return;
     }
     handleSelectRoom(safeCode);
@@ -676,29 +693,69 @@ export default function App() {
     }
   };
 
-  // Delete Room
-  const handleDeleteRoom = (targetRoomId) => {
+  // Delete Room (only navigates/notifies on verified server confirmation)
+  const handleDeleteRoom = (targetRoomId, options = {}) => {
     const safeTarget = typeof targetRoomId === 'string' && targetRoomId.trim() ? targetRoomId : (roomId || 'MIX-PRO');
     const cleanId = safeTarget.trim().toUpperCase();
+    const { onDeleted } = options || {};
+
     if (socket.connected) {
-      socket.emit('delete_room', { roomId: cleanId });
+      socket.emit('delete_room', { roomId: cleanId }, (ack) => {
+        if (ack && ack.success === false) {
+          setRoomNotice({
+            title: 'Aviso de Administrador',
+            message: ack.error || 'Apenas o criador da sala pode excluí-la.',
+            type: 'warning',
+          });
+          return;
+        }
+        if (typeof onDeleted === 'function') onDeleted(cleanId);
+        // When cleanId === roomId, handleRoomDeleted handles toast + navigation.
+        if (cleanId !== roomId) {
+          setRoomNotice({
+            title: 'Sala Excluída',
+            message: `A sala ${cleanId} foi excluída com sucesso.`,
+            type: 'info',
+          });
+        }
+      });
     } else {
       fetch(`/api/rooms/${encodeURIComponent(cleanId)}`, {
         method: 'DELETE',
         headers: myProfile?.id ? { 'x-creator-id': myProfile.id } : {},
-      }).catch(() => {});
-    }
-
-    if (cleanId === roomId) {
-      setRoomNotice({
-        title: 'Sala Excluída',
-        message: `A sala ${room.name || cleanId} foi excluída com sucesso.`,
-        type: 'info',
-      });
-      setView('landing');
-      const u = new URL(window.location);
-      u.searchParams.delete('room');
-      window.history.pushState({}, '', u);
+      })
+        .then(async (res) => {
+          if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            setRoomNotice({
+              title: 'Aviso de Administrador',
+              message: errData.error || 'Não foi possível excluir esta sala.',
+              type: 'warning',
+            });
+            return;
+          }
+          if (typeof onDeleted === 'function') onDeleted(cleanId);
+          setRoomNotice({
+            title: 'Sala Excluída',
+            message: `A sala ${cleanId === roomId ? (room.name || cleanId) : cleanId} foi excluída com sucesso.`,
+            type: 'info',
+          });
+          if (cleanId === roomId) {
+            setView('landing');
+            const u = new URL(window.location);
+            u.searchParams.delete('room');
+            u.searchParams.delete('pwd');
+            u.searchParams.delete('key');
+            window.history.pushState({}, '', u);
+          }
+        })
+        .catch(() => {
+          setRoomNotice({
+            title: 'Erro de Conexão',
+            message: 'Não foi possível contatar o servidor para excluir a sala.',
+            type: 'warning',
+          });
+        });
     }
   };
 
@@ -845,6 +902,10 @@ export default function App() {
 
   // Send chat message
   const handleSendMessage = (message) => {
+    if (!isSteamLogged) {
+      handleRequireSteamLogin('enviar mensagens no chat da sala');
+      return;
+    }
     if (socket.connected) {
       socket.emit('send_chat', { roomId, message });
     } else {
@@ -1150,6 +1211,14 @@ export default function App() {
 
     if (view !== 'mix') {
       setView('mix');
+      const u = new URL(window.location);
+      u.pathname = '/';
+      u.searchParams.delete('view');
+      u.searchParams.delete('tab');
+      u.searchParams.delete('code');
+      u.searchParams.delete('treino');
+      u.searchParams.set('room', cleanRoom);
+      window.history.pushState({}, '', u);
     }
     setTournamentModalOpen(false);
   };
@@ -1189,8 +1258,11 @@ export default function App() {
     const safeTarget = typeof targetRoomId === 'string' && targetRoomId.trim() ? targetRoomId : (roomId || 'MIX-PRO');
     const clean = safeTarget.trim().toUpperCase();
     const u = new URL(window.location);
+    u.pathname = '/';
     u.searchParams.delete('view');
     u.searchParams.delete('tab');
+    u.searchParams.delete('code');
+    u.searchParams.delete('treino');
     window.history.replaceState({}, '', u);
     handleEnterRoom(clean);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1747,6 +1819,25 @@ export default function App() {
     }
   };
 
+  const standaloneHeaderProps = {
+    roomId,
+    onGoHome: handleGoHome,
+    onGoToRoom: handleGoToRoom,
+    onOpenQuickVeto: () => setQuickVetoOpen(true),
+    onOpenQuickMapRoll: () => setQuickMapRollOpen(true),
+    onOpenRoomsHub: () => setRoomsHubOpen(true),
+    onOpenLeaderboard: () => handleOpenLeaderboardPage(),
+    onOpenDiscordModal: () => setDiscordModalOpen(true),
+    onOpenTournament: () => handleOpenTournamentPage(),
+    onOpenGrenades: () => handleOpenGrenadesPage(),
+    onOpenAimReflex: () => setAimReflexModalOpen(true),
+    onOpenServersPage: () => handleOpenServersPage(),
+    onOpenUpdatesPage: handleOpenUpdatesPage,
+    activeRoomsCount,
+    soundEnabled,
+    onToggleSound: handleToggleSound,
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-[#090d16] text-slate-100 font-sans">
       <ToastHost />
@@ -1767,10 +1858,10 @@ export default function App() {
             onOpenQuickVeto={() => setQuickVetoOpen(true)}
             onOpenQuickMapRoll={() => setQuickMapRollOpen(true)}
             onOpenRoomsHub={() => setRoomsHubOpen(true)}
-            onOpenLeaderboard={() => setLeaderboardOpen(true)}
+            onOpenLeaderboard={() => handleOpenLeaderboardPage()}
             onOpenDiscordModal={() => setDiscordModalOpen(true)}
-            onOpenTournament={() => setTournamentModalOpen(true)}
-            onOpenGrenades={() => setGrenadeModalOpen(true)}
+            onOpenTournament={() => handleOpenTournamentPage()}
+            onOpenGrenades={() => handleOpenGrenadesPage()}
             onOpenAimReflex={() => setAimReflexModalOpen(true)}
             onOpenUpdatesPage={handleOpenUpdatesPage}
             onOpenGsiSetup={() => setGsiModalOpen(true)}
@@ -1791,15 +1882,66 @@ export default function App() {
             onOpenQuickVeto={() => setQuickVetoOpen(true)}
             onOpenQuickMapRoll={() => setQuickMapRollOpen(true)}
             onOpenRoomsHub={() => setRoomsHubOpen(true)}
-            onOpenLeaderboard={() => setLeaderboardOpen(true)}
+            onOpenLeaderboard={() => handleOpenLeaderboardPage()}
             onOpenDiscordModal={() => setDiscordModalOpen(true)}
-            onOpenTournament={() => setTournamentModalOpen(true)}
-            onOpenGrenades={() => setGrenadeModalOpen(true)}
+            onOpenTournament={() => handleOpenTournamentPage()}
+            onOpenGrenades={() => handleOpenGrenadesPage()}
             onOpenAimReflex={() => setAimReflexModalOpen(true)}
             onOpenServersPage={handleOpenServersPage}
             activeRoomsCount={activeRoomsCount}
             soundEnabled={soundEnabled}
             onToggleSound={handleToggleSound}
+          />
+        </Suspense>
+      ) : view === 'ranking' ? (
+        <Suspense fallback={<PageFallback />}>
+          <LeaderboardModal
+            asPage
+            isOpen
+            socket={socket}
+            soundEnabled={soundEnabled}
+            pageHeaderProps={standaloneHeaderProps}
+            onInspectPlayer={(p) =>
+              setPublicProfile({
+                id: p.id,
+                steamId: p.steamId || '',
+                discordId: p.discordId || '',
+                nick: p.nick || 'Jogador',
+                avatar: p.avatar || '',
+                level: p.level || 12,
+                faceitLevel: p.faceitLevel || 5,
+              })
+            }
+          />
+        </Suspense>
+      ) : view === 'grenades' ? (
+        <Suspense fallback={<PageFallback />}>
+          <GrenadePlaybookModal
+            asPage
+            isOpen
+            initialMap={room.finalMap?.id || null}
+            initialTab={grenadeInitialTab}
+            soundEnabled={soundEnabled}
+            serverIp={room.serverIp || ''}
+            rconPassword={room.rconPassword || ''}
+            isSteamLogged={isSteamLogged}
+            pageHeaderProps={standaloneHeaderProps}
+          />
+        </Suspense>
+      ) : view === 'tournament' ? (
+        <Suspense fallback={<PageFallback />}>
+          <TournamentBracketModal
+            asPage
+            isOpen
+            roomId={roomId || 'MIX'}
+            socket={socket}
+            myProfile={myProfile}
+            isSteamLogged={isSteamLogged}
+            isSiteAdmin={isSiteAdmin}
+            onRequireSteamLogin={handleRequireSteamLogin}
+            onLoadTeamsToMix={handleLoadTournamentTeams}
+            soundEnabled={soundEnabled}
+            pageHeaderProps={standaloneHeaderProps}
           />
         </Suspense>
       ) : view === 'landing' ? (
@@ -1810,11 +1952,10 @@ export default function App() {
             onOpenQuickVeto={() => setQuickVetoOpen(true)}
             onOpenQuickMapRoll={() => setQuickMapRollOpen(true)}
             onOpenRoomsHub={() => setRoomsHubOpen(true)}
-            onOpenLeaderboard={() => setLeaderboardOpen(true)}
+            onOpenLeaderboard={() => handleOpenLeaderboardPage()}
             onOpenDiscordModal={() => setDiscordModalOpen(true)}
-            onOpenLocalHost={() => setLocalHostModalOpen(true)}
-            onOpenTournament={() => setTournamentModalOpen(true)}
-            onOpenGrenades={() => setGrenadeModalOpen(true)}
+            onOpenTournament={() => handleOpenTournamentPage()}
+            onOpenGrenades={() => handleOpenGrenadesPage()}
             onOpenAimReflex={() => setAimReflexModalOpen(true)}
             onOpenServersPage={handleOpenServersPage}
             onOpenUpdatesPage={handleOpenUpdatesPage}
@@ -1844,6 +1985,7 @@ export default function App() {
             playerCount={room.players?.length || 0}
             serverIp={room.serverIp || ''}
             myProfile={myProfile}
+            isAdmin={isAdmin}
             onOpenProfile={() => setProfileModalOpen(true)}
             onDeleteRoom={handleDeleteRoom}
             soundEnabled={soundEnabled}
@@ -1854,11 +1996,10 @@ export default function App() {
             onOpenHistory={() => setHistoryOpen(true)}
             onOpenQuickVeto={() => setQuickVetoOpen(true)}
             onOpenQuickMapRoll={() => setQuickMapRollOpen(true)}
-            onOpenLeaderboard={() => setLeaderboardOpen(true)}
+            onOpenLeaderboard={() => handleOpenLeaderboardPage()}
             onOpenDiscordModal={() => setDiscordModalOpen(true)}
-            onOpenLocalHost={() => setLocalHostModalOpen(true)}
-            onOpenTournament={() => setTournamentModalOpen(true)}
-            onOpenGrenades={() => setGrenadeModalOpen(true)}
+            onOpenTournament={() => handleOpenTournamentPage()}
+            onOpenGrenades={() => handleOpenGrenadesPage()}
             onOpenAimReflex={() => setAimReflexModalOpen(true)}
             onOpenServersPage={handleOpenServersPage}
             onOpenUpdatesPage={handleOpenUpdatesPage}
@@ -1903,9 +2044,9 @@ export default function App() {
                       onOpenQuickVeto={() => setQuickVetoOpen(true)}
                       onOpenQuickMapRoll={() => setQuickMapRollOpen(true)}
                       onOpenDiscordModal={() => setDiscordModalOpen(true)}
-                      onOpenGrenades={() => setGrenadeModalOpen(true)}
+                      onOpenGrenades={() => handleOpenGrenadesPage()}
                       onOpenAimReflex={() => setAimReflexModalOpen(true)}
-                      onOpenTournament={() => setTournamentModalOpen(true)}
+                      onOpenTournament={() => handleOpenTournamentPage()}
                       serverIp={room.serverIp || ''}
                       onUpdateServerIp={handleUpdateServerIp}
                       rconPassword={room.rconPassword || ''}
@@ -1987,6 +2128,7 @@ export default function App() {
                   onResetMix={handleRestartVeto}
                   onSetTurnTimer={handleSetTurnTimer}
                   isAdmin={isAdmin}
+                  myProfile={myProfile}
                   soundEnabled={soundEnabled}
                 />
               )}
@@ -2010,6 +2152,7 @@ export default function App() {
                   onCommendPlayer={handleCommendPlayer}
                   commendations={commendations}
                   myProfile={myProfile}
+                  isAdmin={isAdmin}
                   soundEnabled={soundEnabled}
                 />
               )}
@@ -2062,6 +2205,8 @@ export default function App() {
         room={room}
         myProfile={myProfile}
         isSteamLogged={isSteamLogged}
+        isAdmin={isAdmin}
+        isSiteAdmin={isSiteAdmin}
         soundEnabled={soundEnabled}
         socket={socket}
         officialRotation={officialRotation}
@@ -2110,8 +2255,6 @@ export default function App() {
         setAimReflexModalOpen={setAimReflexModalOpen}
         tournamentModalOpen={tournamentModalOpen}
         setTournamentModalOpen={setTournamentModalOpen}
-        localHostModalOpen={localHostModalOpen}
-        setLocalHostModalOpen={setLocalHostModalOpen}
         onSelectRoom={handleSelectRoom}
         onDeleteRoom={handleDeleteRoom}
         onRequireSteamLogin={handleRequireSteamLogin}
@@ -2127,6 +2270,7 @@ export default function App() {
         onSubmitRoomPassword={handleSubmitRoomPassword}
         onSaveDiscordWebhook={handleSaveDiscordWebhook}
         onOpenServersPage={handleOpenServersPage}
+        onOpenLeaderboardPage={handleOpenLeaderboardPage}
         onLoadTournamentTeams={handleLoadTournamentTeams}
         onUpdateServerIp={handleUpdateServerIp}
       />

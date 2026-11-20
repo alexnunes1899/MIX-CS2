@@ -564,6 +564,135 @@ pause
           </div>
         )}
 
+        {/* Guided 2-Step Scenario Wizard */}
+        <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-4 sm:p-5 space-y-3 shadow-xl">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+            <div className="flex items-center gap-2">
+              <Sparkles size={16} className="text-amber-400 shrink-0" />
+              <h2 className="text-sm sm:text-base font-black font-heading text-white uppercase tracking-wide">
+                Como você vai jogar este Mix?
+              </h2>
+            </div>
+            <span className="text-[11px] font-mono text-slate-400">
+              Passo 1: Escolha o cenário • Passo 2: Siga a aba destacada abaixo
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {/* Option A: Dedicated / VPS */}
+            <div
+              className={`rounded-2xl p-3.5 border transition-all space-y-2.5 ${
+                activeTab === 'integracao' || activeTab === 'online'
+                  ? 'bg-emerald-500/10 border-emerald-500/45 shadow-md'
+                  : 'bg-slate-950/70 border-slate-800 hover:border-slate-700'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Server size={16} className="text-emerald-400 shrink-0" />
+                  <span className="text-xs sm:text-sm font-black text-white">
+                    Servidor Dedicado / VPS (Online 24h)
+                  </span>
+                </div>
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                  Melhor ping
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                Já alugou ou vai conectar em um servidor dedicado (FireGames, Dathost, VPS)? Integre RCON + placar GSI automático na sala.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => changeTab('integracao')}
+                  className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    activeTab === 'integracao'
+                      ? 'bg-emerald-500 text-slate-950 font-black'
+                      : 'bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30'
+                  }`}
+                >
+                  <Plug size={12} />
+                  <span>Configurar Bot + GSI + RCON</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => changeTab('online')}
+                  className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    activeTab === 'online'
+                      ? 'bg-emerald-500 text-slate-950 font-black'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
+                  }`}
+                >
+                  <Server size={12} />
+                  <span>Alugar / Conectar Dedicado</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Option B: Free on PC */}
+            <div
+              className={`rounded-2xl p-3.5 border transition-all space-y-2.5 ${
+                activeTab === 'radmin' || activeTab === 'lan' || activeTab === 'public'
+                  ? 'bg-amber-500/10 border-amber-500/45 shadow-md'
+                  : 'bg-slate-950/70 border-slate-800 hover:border-slate-700'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Laptop size={16} className="text-amber-400 shrink-0" />
+                  <span className="text-xs sm:text-sm font-black text-white">
+                    Grátis no meu PC (Sem alugar)
+                  </span>
+                </div>
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                  100% Gratuito
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                Crie a sala direto do seu CS2 sem custo. Com amigos à distância, prefira <strong>Radmin VPN</strong> para evitar bloqueio CGNAT.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => changeTab('radmin')}
+                  className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    activeTab === 'radmin'
+                      ? 'bg-amber-500 text-slate-950 font-black'
+                      : 'bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/35'
+                  }`}
+                >
+                  <Network size={12} />
+                  <span>Amigos à distância — Radmin VPN • Recomendado</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => changeTab('lan')}
+                  className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    activeTab === 'lan'
+                      ? 'bg-amber-500 text-slate-950 font-black'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
+                  }`}
+                >
+                  <Home size={12} />
+                  <span>Mesma rede — LAN 0ms</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => changeTab('public')}
+                  className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    activeTab === 'public'
+                      ? 'bg-sky-500 text-slate-950 font-black'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
+                  }`}
+                >
+                  <Globe size={12} />
+                  <span>IP Público / Porta 27015</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Server Type Tabs */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 bg-slate-950/90 p-2 rounded-2xl border border-slate-800 shadow-xl">
           <button
@@ -1299,7 +1428,7 @@ pause
                   </h4>
 
                   <div className="p-3.5 bg-slate-950 rounded-2xl border border-emerald-500/30 space-y-1.5 font-mono">
-                    <span className="text-[10px] text-slate-500 block uppercase font-bold">Mande no WhatsApp / Discord:</span>
+                    <span className="text-[10px] text-slate-500 block uppercase font-bold">Mande no Discord / Convite:</span>
                     <div className="text-emerald-400 font-bold text-xs select-all">
                       connect {lanIp}:{port}
                     </div>
@@ -1582,6 +1711,29 @@ pause
                         </p>
                       </div>
                     )}
+
+                    {/* CGNAT Honest Warning for Brazilian Residential ISPs */}
+                    <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/35 space-y-2">
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle size={16} className="text-amber-400 shrink-0 mt-0.5" />
+                        <div className="space-y-1">
+                          <h6 className="text-xs font-black text-amber-200 uppercase tracking-wide">
+                            Atenção ao CGNAT em provedores do Brasil
+                          </h6>
+                          <p className="text-[11px] text-slate-300 leading-relaxed">
+                            A maioria das operadoras residenciais no Brasil (Claro, Vivo, Oi, TIM e provedores regionais) usa <strong>CGNAT</strong> (IP compartilhado). Nessa rede, mesmo abrindo a porta <strong>27015 UDP</strong> no roteador, conexões externas continuam bloqueadas. Se o teste der fechado, não perca tempo: use o <strong>Radmin VPN</strong> gratuitamente em 2 minutos.
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => changeTab('radmin')}
+                        className="w-full py-2 px-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider transition-colors cursor-pointer flex items-center justify-center gap-1.5"
+                      >
+                        <Network size={14} />
+                        <span>Ir para Guia Radmin VPN (Recomendado)</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
