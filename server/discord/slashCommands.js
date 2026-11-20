@@ -29,7 +29,7 @@ export function buildSlashCommands({ officialMaps = [], treinoMaps = [] } = {}) 
       .addSubcommand((sub) => sub.setName('veto').setDescription('Inicia o Pick & Ban (Veto) oficial de mapas'))
       .addSubcommand((sub) => sub.setName('roleta').setDescription('Sorteia um mapa na roleta rápida do CS2'))
       .addSubcommand((sub) => sub.setName('status').setDescription('Exibe o status do mix atual'))
-      .addSubcommand((sub) => sub.setName('puxar').setDescription('Puxa todos os jogadores da call de voz do Lobby para a fila do Mix'))
+      .addSubcommand((sub) => sub.setName('puxar').setDescription('Inscreve todos os jogadores da call de voz na fila do Mix'))
       .addSubcommand((sub) => sub.setName('cancelar').setDescription('Cancela o mix atual do canal')),
 
     new SlashCommandBuilder()

@@ -189,7 +189,7 @@ test('MixScheduler parses PT-BR schedule times, handles RSVPs, and triggers 15-m
   assert.equal(dueAfter.some((item) => item.id === sched.id), false);
 });
 
-test('DiscordBotManager integrates pullMembersIntoMix, Puxar da Call button, duos, and slash commands', (t) => {
+test('DiscordBotManager integrates pullMembersIntoMix, Inscrever da Call button, duos, and slash commands', (t) => {
   const cmds = buildSlashCommands({
     officialMaps: [{ id: 'de_mirage', name: 'Mirage' }],
     treinoMaps: [{ id: 'mirage', name: 'Mirage' }],
@@ -222,6 +222,8 @@ test('DiscordBotManager integrates pullMembersIntoMix, Puxar da Call button, duo
   }
   const row3Ids = rows[2].components.map((b) => b.toJSON().custom_id);
   assert.ok(row3Ids.includes('mix_pull_voice:MIX-PULL1'));
+  const pullBtn = rows[2].components.map((b) => b.toJSON()).find((b) => b.custom_id === 'mix_pull_voice:MIX-PULL1');
+  assert.equal(pullBtn?.label, 'Inscrever da Call');
 
   const pullRes = bot.pullMembersIntoMix(mix, [
     { id: 'bot-skip', user: { id: 'bot-skip', username: 'Bot', bot: true } },

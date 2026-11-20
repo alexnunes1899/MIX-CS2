@@ -3087,7 +3087,7 @@ export class DiscordBotManager {
           name: '🎮 Mix 5v5 & Draft',
           value:
             '`!painel` • Painel fixo oficial\n' +
-            '`!mix` / `!puxar` • Abrir lobby ou puxar call\n' +
+            '`!mix` / `!puxar` • Abrir ou inscrever call\n' +
             '`!entrar` / `!sair` • Fila ou reserva (3/3)\n' +
             '`!dupla @amigo` • Jogar no mesmo time\n' +
             '`!agendar 21:00` • Agendar com lembrete\n' +
@@ -5436,7 +5436,7 @@ export class DiscordBotManager {
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId(`mix_pull_voice:${mix.id}`)
-        .setLabel('Puxar da Call')
+        .setLabel('Inscrever da Call')
         .setEmoji('🎙️')
         .setStyle(ButtonStyle.Success)
         .setDisabled(isFull && isWaitlistFull)
@@ -8188,7 +8188,7 @@ export class DiscordBotManager {
       addedStarters,
       addedWaitlist,
       voiceChannelName: voiceChannel.name,
-      message: `🎙️ **Puxados da call ${voiceChannel.name}:** ${addedStarters.length} titular(es)${waitNote} adicionados (${mix.players.length}/10)!\n👥 ${addedMentions}`,
+      message: `🎙️ **Inscritos da call ${voiceChannel.name}:** ${addedStarters.length} titular(es)${waitNote} adicionados na fila (${mix.players.length}/10)!\n👥 ${addedMentions}`,
     };
   }
 
