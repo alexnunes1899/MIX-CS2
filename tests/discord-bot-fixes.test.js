@@ -31,6 +31,11 @@ const {
   buildPostMatchCoachInsight,
 } = await import('../server/discordAiRouter.js');
 const { BagreVoteService } = await import('../server/bagreVote.js');
+const {
+  HardwareDealsManager,
+  getBrtDateParts,
+  isBlackFridaySeason,
+} = await import('../server/hardwareDeals.js');
 import { PermissionsBitField } from 'discord.js';
 import { DISCORD_BOT_PERMISSIONS } from '../shared/appConfig.js';
 import { OFFICIAL_MAPS } from '../server/discord/constants.js';
@@ -1192,4 +1197,238 @@ test('Auditoria Bot Prioridade 1-3: permissoes, pull voice, isolamento multi-gui
   assert.equal(unavailEmbed.title.includes('STEAM'), false);
   assert.equal(unavailEmbed.fields.some((f) => f.name.includes('Idle Champions')), false);
   assert.equal(unavailEmbed.fields.some((f) => f.name.includes('indisponível')), true);
+});
+
+test('HardwareDealsManager deduplicates, detects price drops/Black Friday and enforces daily BRT caps', async (t) => {
+  const manager = new HardwareDealsManager({
+    stateFile: path.join(tmpDataDir, 'hardwareDealsState.isolated.json'),
+  });
+
+  const baseLiveDeals = [
+    {
+      id: 'kabum-rtx-4060',
+      title: 'Placa de Vídeo RTX 4060 8GB',
+      store: 'kabum',
+      storeBadge: '🟠 KaBuM!',
+      oldPrice: 2399,
+      price: 2000,
+      discountPct: 17,
+      link: 'https://www.kabum.com.br/produto/1001/rtx-4060',
+      isLive: true,
+      inStock: true,
+    },
+    {
+      id: 'kabum-mouse-gpx',
+      title: 'Mouse Logitech G Pro X Superlight',
+      store: 'kabum',
+      storeBadge: '🟠 KaBuM!',
+      oldPrice: 799,
+      price: 650,
+      discountPct: 19,
+      link: 'https://www.kabum.com.br/produto/1002/gpx',
+      isLive: true,
+      inStock: true,
+    },
+  ];
+
+  // November timestamps in BRT (UTC-3): 12:10 BRT = 15:10Z, 15:00 BRT = 18:00Z, 19:15 BRT = 22:15Z
+  const t1210 = Date.parse('2026-11-20T15:10:00Z');
+  const t1240 = Date.parse('2026-11-20T15:40:00Z');
+  const t1500 = Date.parse('2026-11-20T18:00:00Z');
+  const t1915 = Date.parse('2026-11-20T22:15:00Z');
+  const t2230 = Date.parse('2026-11-21T01:30:00Z');
+
+  assert.equal(getBrtDateParts(t1210).hour, 12);
+  assert.equal(isBlackFridaySeason(t1210), true);
+
+  // 1. First regular window (12h BRT) returns fresh deals
+  const gate1 = manager.canSendDropToGuild('g-deals', { kind: 'regular', now: t1210 });
+  assert.equal(gate1.allowed, true);
+  assert.equal(gate1.slot, '12h');
+  assert.equal(gate1.isBlackFriday, true);
+
+  const first = manager.filterFreshAndPriceDropDeals('g-deals', baseLiveDeals, { now: t1210 });
+  assert.equal(first.length, 2);
+  assert.equal(first.every((d) => d.isNew), true);
+  manager.recordPostedDeals('g-deals', first, { kind: 'regular', slot: gate1.slot, now: t1210 });
+
+  // 2. Identical deals/prices later the same day are suppressed (0 repeats)
+  const gateSameSlot = manager.canSendDropToGuild('g-deals', { kind: 'regular', now: t1240 });
+  assert.equal(gateSameSlot.allowed, false);
+  assert.equal(gateSameSlot.reason, 'slot_already_sent');
+
+  const gateOutside = manager.canSendDropToGuild('g-deals', { kind: 'regular', now: t1500 });
+  assert.equal(gateOutside.allowed, false);
+  assert.equal(gateOutside.reason, 'outside_window');
+
+  const repeated = manager.filterFreshAndPriceDropDeals('g-deals', baseLiveDeals, { now: t1915 });
+  assert.equal(repeated.length, 0);
+
+  // Tiny insignificant price noise (R$ 2000 -> R$ 1990 = -0.5%, -R$ 10) must NOT re-trigger
+  const minorDip = [
+    { ...baseLiveDeals[0], price: 1990 },
+    baseLiveDeals[1],
+  ];
+  assert.equal(manager.filterFreshAndPriceDropDeals('g-deals', minorDip, { now: t1915 }).length, 0);
+
+  // 3. Real price drop (R$ 2000 -> R$ 1799, -R$ 201 / -10%) triggers CAIU MAIS alert
+  const droppedDeals = [
+    { ...baseLiveDeals[0], price: 1799 },
+    baseLiveDeals[1],
+  ];
+  const dropResult = manager.filterFreshAndPriceDropDeals('g-deals', droppedDeals, { now: t1915, priceDropOnly: true });
+  assert.equal(dropResult.length, 1);
+  assert.equal(dropResult[0].id, 'kabum-rtx-4060');
+  assert.equal(dropResult[0].isPriceDrop, true);
+  assert.equal(dropResult[0].previousPrice, 2000);
+  assert.equal(dropResult[0].dropBrl, 201);
+  assert.equal(dropResult[0].dropPct, 10);
+  assert.equal(dropResult[0].isNewLowest, true);
+
+  const dropEmbedJson = manager.buildDealsEmbed(dropResult, { color: 0xf97316 }).toJSON();
+  assert.match(dropEmbedJson.fields[0].value, /CAIU MAIS!/);
+  assert.match(dropEmbedJson.fields[0].value, /Menor preço registrado/);
+
+  // 4. After recording R$ 1799, polling R$ 1799 again stays silent until it drops even more
+  const priceDropGate1 = manager.canSendDropToGuild('g-deals', { kind: 'price_drop', now: t1915 });
+  assert.equal(priceDropGate1.allowed, true);
+  manager.recordPostedDeals('g-deals', dropResult, { kind: 'price_drop', now: t1915 });
+  assert.equal(manager.filterFreshAndPriceDropDeals('g-deals', droppedDeals, { now: t2230 }).length, 0);
+
+  // 5. Black Friday (November) allows flash >= 30% OFF new deal on price_drop check, ignores 15% OFF
+  const bfCandidates = [
+    {
+      id: 'kabum-flash-bf',
+      title: 'Monitor 240Hz Black Friday',
+      store: 'kabum',
+      oldPrice: 2000,
+      price: 1300,
+      discountPct: 35,
+      link: 'https://www.kabum.com.br/produto/1003/monitor-bf',
+      isLive: true,
+      inStock: true,
+    },
+    {
+      id: 'kabum-normal-15',
+      title: 'Teclado Comum 15% OFF',
+      store: 'kabum',
+      oldPrice: 200,
+      price: 170,
+      discountPct: 15,
+      link: 'https://www.kabum.com.br/produto/1004/teclado',
+      isLive: true,
+      inStock: true,
+    },
+  ];
+  const bfFlash = manager.filterFreshAndPriceDropDeals('g-deals', bfCandidates, { now: t2230, priceDropOnly: true });
+  assert.equal(bfFlash.length, 1);
+  assert.equal(bfFlash[0].id, 'kabum-flash-bf');
+  assert.equal(bfFlash[0].isFlashDeal, true);
+
+  // November allows 2nd price_drop after 3h, then blocks 3rd on the same day
+  const priceDropGate2 = manager.canSendDropToGuild('g-deals', { kind: 'price_drop', now: t2230 });
+  assert.equal(priceDropGate2.allowed, true);
+  manager.recordPostedDeals('g-deals', bfFlash, { kind: 'price_drop', now: t2230 });
+
+  const priceDropGate3 = manager.canSendDropToGuild('g-deals', { kind: 'price_drop', now: t2230 + 1 * 3600000 });
+  assert.equal(priceDropGate3.allowed, false);
+  assert.equal(priceDropGate3.reason, 'daily_price_drop_cap');
+
+  // Next BRT calendar day (02:30 BRT) resets daily counters cleanly
+  const nextDayReset = manager.canSendDropToGuild('g-deals', { kind: 'price_drop', now: t2230 + 4 * 3600000 });
+  assert.equal(nextDayReset.allowed, true);
+
+  // Outside November (October): price_drop caps at 1/day and 19h regular slot caps at 2/day
+  const octMorning = Date.parse('2026-10-15T15:10:00Z'); // 12:10 BRT
+  const octAfternoon = Date.parse('2026-10-15T18:40:00Z'); // 15:40 BRT
+  const octEvening = Date.parse('2026-10-15T22:15:00Z'); // 19:15 BRT
+  assert.equal(isBlackFridaySeason(octMorning), false);
+
+  manager.recordPostedDeals('g-oct', [baseLiveDeals[0]], { kind: 'price_drop', now: octMorning });
+  const octSecondDrop = manager.canSendDropToGuild('g-oct', { kind: 'price_drop', now: octEvening });
+  assert.equal(octSecondDrop.allowed, false);
+  assert.equal(octSecondDrop.reason, 'daily_price_drop_cap');
+
+  const reg1 = manager.canSendDropToGuild('g-oct', { kind: 'regular', now: octMorning });
+  assert.equal(reg1.allowed, true);
+  assert.equal(reg1.slot, '12h');
+  manager.recordPostedDeals('g-oct', [baseLiveDeals[0]], { kind: 'regular', slot: '12h', now: octMorning });
+
+  const reg2 = manager.canSendDropToGuild('g-oct', { kind: 'regular', now: octEvening });
+  assert.equal(reg2.allowed, true);
+  assert.equal(reg2.slot, '19h');
+  manager.recordPostedDeals('g-oct', [baseLiveDeals[1]], { kind: 'regular', slot: '19h', now: octEvening });
+
+  // Attempt extra regular drop later same window -> capped at 2/day
+  const reg3 = manager.canSendDropToGuild('g-oct', { kind: 'regular', now: octEvening + 20 * 60000, regularSlots: [12, 19, 20] });
+  assert.equal(reg3.allowed, false);
+  assert.equal(reg3.reason, 'daily_regular_cap');
+  assert.equal(manager.canSendDropToGuild('g-oct', { kind: 'regular', now: octAfternoon }).reason, 'outside_window');
+
+  // 6. Integration with DiscordBotManager: zero boot timeout spam & silent skip when nothing is new
+  const bot = createBot(t);
+  bot.client.isReady = () => true;
+  const sentPayloads = [];
+  const dealsChannel = {
+    id: 'ch-ofertas-test',
+    name: 'ofertas-gamer',
+    isTextBased: () => true,
+    send: async (payload) => {
+      sentPayloads.push(payload);
+      return { id: `msg-${sentPayloads.length}` };
+    },
+  };
+  const testGuild = {
+    id: 'g-bot-deals',
+    name: 'Guild Ofertas',
+    channels: {
+      cache: {
+        get: (id) => (id === 'ch-ofertas-test' ? dealsChannel : null),
+        find: (fn) => (fn(dealsChannel) ? dealsChannel : undefined),
+      },
+      fetch: async (id) => (id === 'ch-ofertas-test' ? dealsChannel : null),
+    },
+  };
+  bot.client.guilds.cache.set('g-bot-deals', testGuild);
+  bot.config.dealsChannels = { 'g-bot-deals': 'ch-ofertas-test' };
+  bot.config.dealsEnabledGuilds = { 'g-bot-deals': true };
+
+  // startScheduledDealsMonitor must NOT create _initialDealsTimeout (zero restart spam)
+  bot.startScheduledDealsMonitor();
+  assert.equal(bot._initialDealsTimeout, null);
+
+  // Regular window 12h posts once
+  const botCandidates = [
+    {
+      id: 'kabum-bot-ssd',
+      title: 'SSD NVMe 1TB Teste',
+      store: 'kabum',
+      storeBadge: '🟠 KaBuM!',
+      oldPrice: 600,
+      price: 450,
+      discountPct: 25,
+      link: 'https://www.kabum.com.br/produto/9001/ssd',
+      isLive: true,
+      inStock: true,
+    },
+  ];
+  const r1 = await bot.dispatchAutomaticDealsDrop('all', { now: t1210, candidateDeals: botCandidates });
+  assert.equal(r1.sentGuilds, 1);
+  assert.equal(sentPayloads.length, 1);
+
+  // Next regular window 19h with identical deal/price stays silent (0 new messages)
+  const r2 = await bot.dispatchAutomaticDealsDrop('all', { now: t1915, candidateDeals: botCandidates });
+  assert.equal(r2.sentGuilds, 0);
+  assert.equal(sentPayloads.length, 1);
+
+  // Price drop (R$ 450 -> R$ 379, -16%) triggers extra price_drop alert!
+  const botDroppedCandidates = [{ ...botCandidates[0], price: 379, discountPct: 37 }];
+  const r3 = await bot.dispatchAutomaticDealsDrop('all', {
+    mode: 'price_drop',
+    now: t1915,
+    candidateDeals: botDroppedCandidates,
+  });
+  assert.equal(r3.sentGuilds, 1);
+  assert.equal(sentPayloads.length, 2);
+  assert.match(sentPayloads[1].embeds[0].toJSON().title, /QUEDA DE PREÇO|BLACK FRIDAY/);
 });

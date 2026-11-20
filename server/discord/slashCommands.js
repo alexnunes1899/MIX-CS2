@@ -297,7 +297,7 @@ export function buildSlashCommands({ officialMaps = [], treinoMaps = [] } = {}) 
 
     new SlashCommandBuilder()
       .setName('alertas-hardware')
-      .setDescription('Configura o canal de alertas automáticos de promoções de hardware')
+      .setDescription('Configura alertas diários (1-2x/dia, sem repetir + quedas de preço) de hardware')
       .addChannelOption((opt) =>
         opt.setName('canal').setDescription('Canal de texto para postar promoções').setRequired(true)
       )

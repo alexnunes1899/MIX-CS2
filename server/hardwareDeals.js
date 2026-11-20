@@ -1,9 +1,56 @@
 import fs from 'fs';
-import path from 'path';
 import { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } from 'discord.js';
-import { resolveSeededDataFile } from './dataDir.js';
+import { getDataFilePath, resolveSeededDataFile } from './dataDir.js';
+import { readJsonSafe, writeJsonAtomic } from './utils/atomicJson.js';
 
 const DEALS_FILE = resolveSeededDataFile('hardwareDeals.json');
+
+export const LIVE_REPEAT_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
+export const CURATED_REPEAT_COOLDOWN_MS = 14 * 24 * 60 * 60 * 1000;
+export const MAX_SEEN_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+export const MAX_SEEN_PER_GUILD = 400;
+export const DEFAULT_REGULAR_SLOTS_BRT = [12, 19];
+export const MIN_DROP_PCT = 5;
+export const MIN_DROP_BRL = 30;
+export const BLACK_FRIDAY_FLASH_MIN_DISCOUNT_PCT = 30;
+
+const BRT_FORMATTER = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'America/Sao_Paulo',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+});
+
+/**
+ * Returns calendar date & wall-clock hour/minute in America/Sao_Paulo (BRT).
+ */
+export function getBrtDateParts(now = Date.now()) {
+  const parts = {};
+  for (const part of BRT_FORMATTER.formatToParts(new Date(now))) {
+    if (part.type !== 'literal') parts[part.type] = part.value;
+  }
+  const hour = Number(parts.hour) % 24;
+  return {
+    dateKey: `${parts.year}-${parts.month}-${parts.day}`,
+    year: Number(parts.year),
+    month: Number(parts.month),
+    day: Number(parts.day),
+    hour,
+    minute: Number(parts.minute),
+  };
+}
+
+/**
+ * Returns true during Black Friday season (November in BRT or explicit BLACK_FRIDAY_MODE=1).
+ */
+export function isBlackFridaySeason(now = Date.now()) {
+  if (process.env.BLACK_FRIDAY_MODE === '1') return true;
+  if (process.env.BLACK_FRIDAY_MODE === '0') return false;
+  return getBrtDateParts(now).month === 11;
+}
 
 export const CATEGORY_LABELS = {
   gpu: 'Placa de Vídeo (GPU)',
@@ -17,10 +64,96 @@ export const CATEGORY_LABELS = {
   mesa: 'Mesa Gamer & Setup',
 };
 
-class HardwareDealsManager {
-  constructor() {
+const LIVE_POOL_QUERIES = {
+  gpu_cpu: ['placa de video rtx', 'processador ryzen', 'placa de video rx'],
+  monitor_audio: ['monitor gamer 144hz', 'monitor gamer 240hz', 'headset gamer'],
+  mouse_teclado: ['mouse gamer', 'teclado mecanico', 'mousepad gamer'],
+  ram_ssd: ['ssd nvme 1tb', 'memoria ram ddr4', 'memoria ram ddr5'],
+  cadeira_mesa: ['cadeira gamer', 'mesa gamer'],
+  all: ['placa de video rtx', 'processador ryzen', 'monitor gamer 144hz', 'mouse gamer', 'ssd nvme'],
+};
+
+const REGULAR_ROTATION_EXTRA_QUERIES = [
+  'teclado mecanico',
+  'headset gamer',
+  'cadeira gamer',
+  'memoria ram ddr4',
+  'fonte 650w 80 plus',
+];
+
+export class HardwareDealsManager {
+  constructor(options = {}) {
+    this.stateFile = options.stateFile || null;
     this.cachedDeals = null;
     this.lastLoadTime = 0;
+    this._state = null;
+    this._loadedStatePath = null;
+  }
+
+  getStateFilePath() {
+    return this.stateFile || getDataFilePath('hardwareDealsState.json');
+  }
+
+  loadState() {
+    const filePath = this.getStateFilePath();
+    if (this._state && this._loadedStatePath === filePath) {
+      return this._state;
+    }
+    const raw = readJsonSafe(filePath, { guilds: {} });
+    const normalized = raw && typeof raw === 'object' ? raw : { guilds: {} };
+    if (!normalized.guilds || typeof normalized.guilds !== 'object') {
+      normalized.guilds = {};
+    }
+    this._state = normalized;
+    this._loadedStatePath = filePath;
+    return this._state;
+  }
+
+  saveState() {
+    if (!this._state) return false;
+    const filePath = this.getStateFilePath();
+    this._loadedStatePath = filePath;
+    return writeJsonAtomic(filePath, this._state);
+  }
+
+  getGuildState(guildId = 'default', now = Date.now()) {
+    const state = this.loadState();
+    const gid = String(guildId || 'default');
+    if (!state.guilds[gid] || typeof state.guilds[gid] !== 'object') {
+      state.guilds[gid] = { seenDeals: {}, daily: {} };
+    }
+    const g = state.guilds[gid];
+    if (!g.seenDeals || typeof g.seenDeals !== 'object') {
+      g.seenDeals = {};
+    }
+    const { dateKey } = getBrtDateParts(now);
+    if (!g.daily || typeof g.daily !== 'object' || g.daily.dateKey !== dateKey) {
+      g.daily = {
+        dateKey,
+        regularCount: 0,
+        priceDropCount: 0,
+        lastRegularSlot: null,
+        lastRegularAt: 0,
+        lastPriceDropAt: 0,
+      };
+    }
+    return g;
+  }
+
+  getDealKey(deal) {
+    if (!deal) return '';
+    if (deal.id !== undefined && deal.id !== null && String(deal.id).trim()) {
+      return String(deal.id).trim().toLowerCase();
+    }
+    if (deal.link) {
+      const cleanUrl = String(deal.link).split('#')[0].split('?')[0].replace(/\/+$/, '').toLowerCase();
+      if (cleanUrl) return cleanUrl;
+    }
+    return String(deal.title || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 80);
   }
 
   loadCuratedData() {
@@ -75,14 +208,21 @@ class HardwareDealsManager {
       const list = json.data || [];
 
       return list
-        .filter((item) => item.attributes?.available)
         .map((item) => {
-          const attr = item.attributes;
-          const oldPrice = attr.old_price && attr.old_price > attr.price_with_discount ? attr.old_price : attr.price;
-          const price = attr.price_with_discount || attr.price;
-          const discountPct =
-            attr.discount_percentage ||
-            (oldPrice > price ? Math.round(((oldPrice - price) / oldPrice) * 100) : 0);
+          const attr = item?.attributes;
+          if (!attr?.available) return null;
+          const discountPrice = Number(attr.price_with_discount || 0);
+          const listPrice = Number(attr.price || 0);
+          const oldCandidate = Number(attr.old_price || 0);
+          const price = discountPrice > 0 ? discountPrice : listPrice;
+          if (!Number.isFinite(price) || price <= 0) return null;
+
+          const oldPrice = oldCandidate > price
+            ? oldCandidate
+            : (listPrice > price ? listPrice : 0);
+          const discountPct = Number(attr.discount_percentage) > 0
+            ? Math.round(Number(attr.discount_percentage))
+            : (oldPrice > price ? Math.round(((oldPrice - price) / oldPrice) * 100) : 0);
 
           const slug = (attr.product_link || '').replace(/^\/+/, '');
           const link = item.id && slug
@@ -116,11 +256,250 @@ class HardwareDealsManager {
             inStock: true,
             isLive: true,
           };
-        });
+        })
+        .filter(Boolean);
     } catch (e) {
       console.warn('[HARDWARE DEALS] Erro na busca ao vivo KaBuM:', e.message);
       return [];
     }
+  }
+
+  /**
+   * Fetches a deduplicated live pool from KaBuM! across relevant hardware queries
+   * so scheduled drops surface genuinely fresh offers and real price drops.
+   */
+  async fetchLiveDealsPool({ categoryType = 'all', limitPerQuery = 6, now = Date.now() } = {}) {
+    const baseQueries = LIVE_POOL_QUERIES[categoryType] || LIVE_POOL_QUERIES.all;
+    const queries = [...baseQueries];
+
+    if (categoryType === 'all') {
+      const slotSeed = Math.floor(now / (30 * 60 * 1000));
+      const extraQuery = REGULAR_ROTATION_EXTRA_QUERIES[slotSeed % REGULAR_ROTATION_EXTRA_QUERIES.length];
+      if (extraQuery && !queries.includes(extraQuery)) {
+        queries.push(extraQuery);
+      }
+    }
+
+    if (isBlackFridaySeason(now)) {
+      for (const bfQuery of ['black friday gamer', 'black friday placa de video']) {
+        if (!queries.includes(bfQuery)) queries.push(bfQuery);
+      }
+    }
+
+    const settled = await Promise.allSettled(
+      queries.map((q) => this.searchKabumLive(q, limitPerQuery))
+    );
+
+    const byKey = new Map();
+    for (const outcome of settled) {
+      if (outcome.status !== 'fulfilled' || !Array.isArray(outcome.value)) continue;
+      for (const deal of outcome.value) {
+        if (!deal || !(Number(deal.price) > 0) || deal.inStock === false) continue;
+        const key = this.getDealKey(deal);
+        if (!key) continue;
+        const existing = byKey.get(key);
+        if (!existing || deal.price < existing.price) {
+          byKey.set(key, deal);
+        }
+      }
+    }
+
+    return Array.from(byKey.values()).sort(
+      (a, b) => (Number(b.discountPct || 0) - Number(a.discountPct || 0)) || (a.price - b.price)
+    );
+  }
+
+  /**
+   * Enforces max 2 regular daily windows (12h & 19h BRT) and capped extra price-drop alerts
+   * (max 1/day normally, max 2/day during November Black Friday season).
+   */
+  canSendDropToGuild(guildId, {
+    kind = 'regular',
+    now = Date.now(),
+    regularSlots = DEFAULT_REGULAR_SLOTS_BRT,
+    maxRegularPerDay = 2,
+    minRegularGapHours = 6,
+    minPriceDropGapHours = 3,
+  } = {}) {
+    const brt = getBrtDateParts(now);
+    const guildState = this.getGuildState(guildId, now);
+    const { daily } = guildState;
+    const isBF = isBlackFridaySeason(now);
+
+    if (kind === 'price_drop') {
+      const maxPriceDropPerDay = isBF ? 2 : 1;
+      if (daily.priceDropCount >= maxPriceDropPerDay) {
+        return { allowed: false, reason: 'daily_price_drop_cap', isBlackFriday: isBF };
+      }
+      if (daily.lastPriceDropAt && (now - daily.lastPriceDropAt) < minPriceDropGapHours * 3600000) {
+        return { allowed: false, reason: 'price_drop_cooldown', isBlackFriday: isBF };
+      }
+      return { allowed: true, slot: null, isBlackFriday: isBF };
+    }
+
+    const activeSlot = (regularSlots || DEFAULT_REGULAR_SLOTS_BRT).find((slotHour) => {
+      const h = Number(slotHour);
+      return brt.hour >= h && brt.hour < h + 2;
+    });
+
+    if (activeSlot === undefined) {
+      return { allowed: false, reason: 'outside_window', isBlackFriday: isBF };
+    }
+
+    const slotKey = `${activeSlot}h`;
+    if (daily.regularCount >= maxRegularPerDay) {
+      return { allowed: false, reason: 'daily_regular_cap', isBlackFriday: isBF };
+    }
+    if (daily.lastRegularSlot === slotKey) {
+      return { allowed: false, reason: 'slot_already_sent', isBlackFriday: isBF };
+    }
+    if (daily.lastRegularAt && (now - daily.lastRegularAt) < minRegularGapHours * 3600000) {
+      return { allowed: false, reason: 'regular_cooldown', isBlackFriday: isBF };
+    }
+
+    return { allowed: true, slot: slotKey, isBlackFriday: isBF };
+  }
+
+  /**
+   * Filters candidate deals so previously sent offers are NOT repeated within cooldown
+   * UNLESS a live deal drops further in price (>= minDropPct OR >= minDropBrl).
+   */
+  filterFreshAndPriceDropDeals(guildId, candidateDeals = [], {
+    now = Date.now(),
+    liveRepeatCooldownMs = LIVE_REPEAT_COOLDOWN_MS,
+    curatedRepeatCooldownMs = CURATED_REPEAT_COOLDOWN_MS,
+    minDropPct = MIN_DROP_PCT,
+    minDropBrl = MIN_DROP_BRL,
+    limit = 4,
+    priceDropOnly = false,
+    includeBlackFridayFlash = true,
+  } = {}) {
+    const guildState = this.getGuildState(guildId, now);
+    const seenDeals = guildState.seenDeals || {};
+    const isBF = isBlackFridaySeason(now);
+
+    const uniqueByKey = new Map();
+    for (const deal of candidateDeals || []) {
+      const price = Number(deal?.price || 0);
+      if (!deal || !Number.isFinite(price) || price <= 0 || deal.inStock === false) continue;
+      const key = this.getDealKey(deal);
+      if (!key) continue;
+      const existing = uniqueByKey.get(key);
+      if (!existing || price < Number(existing.price)) {
+        uniqueByKey.set(key, deal);
+      }
+    }
+
+    const selected = [];
+    for (const [key, deal] of uniqueByKey.entries()) {
+      const prev = seenDeals[key];
+      const currentPrice = Number(deal.price);
+      const isLive = Boolean(deal.isLive);
+
+      if (prev) {
+        const prevPrice = Number(prev.lastPostedPrice || 0);
+        const dropBrl = prevPrice > 0 ? Number((prevPrice - currentPrice).toFixed(2)) : 0;
+        const dropPct = prevPrice > 0 ? Math.round((dropBrl / prevPrice) * 100) : 0;
+        const hasSignificantDrop = isLive && dropBrl >= 5 && (dropPct >= minDropPct || dropBrl >= minDropBrl);
+
+        if (hasSignificantDrop) {
+          const prevLowest = Number(prev.lowestPrice || prevPrice);
+          selected.push({
+            ...deal,
+            isPriceDrop: true,
+            previousPrice: prevPrice,
+            dropBrl,
+            dropPct,
+            isNewLowest: currentPrice < prevLowest,
+          });
+          continue;
+        }
+
+        const cooldownMs = isLive ? liveRepeatCooldownMs : curatedRepeatCooldownMs;
+        if ((now - Number(prev.lastPostedAt || 0)) < cooldownMs) {
+          continue;
+        }
+
+        if (priceDropOnly) {
+          if (includeBlackFridayFlash && isBF && isLive && Number(deal.discountPct || 0) >= BLACK_FRIDAY_FLASH_MIN_DISCOUNT_PCT) {
+            selected.push({ ...deal, isFlashDeal: true, isNew: true });
+          }
+          continue;
+        }
+
+        selected.push({ ...deal, isNew: true });
+        continue;
+      }
+
+      const isFlashDeal = Boolean(isBF && isLive && Number(deal.discountPct || 0) >= BLACK_FRIDAY_FLASH_MIN_DISCOUNT_PCT);
+      if (priceDropOnly) {
+        if (includeBlackFridayFlash && isFlashDeal) {
+          selected.push({ ...deal, isFlashDeal: true, isNew: true });
+        }
+        continue;
+      }
+
+      selected.push({ ...deal, isNew: true, isFlashDeal });
+    }
+
+    const scoreDeal = (d) => {
+      if (d.isPriceDrop) return 4000 + Number(d.dropPct || 0) * 10 + Math.min(100, Number(d.dropBrl || 0) / 10);
+      if (d.isFlashDeal) return 3000 + Number(d.discountPct || 0);
+      if (d.isLive) return 2000 + Number(d.discountPct || 0);
+      return 1000 + Number(d.discountPct || 0);
+    };
+
+    return selected.sort((a, b) => scoreDeal(b) - scoreDeal(a)).slice(0, limit);
+  }
+
+  /**
+   * Persists sent deals & prices per guild so repeated deals are suppressed
+   * and future price drops can be detected accurately.
+   */
+  recordPostedDeals(guildId, postedDeals = [], {
+    kind = 'regular',
+    slot = null,
+    now = Date.now(),
+    countTowardDaily = true,
+  } = {}) {
+    if (!postedDeals || postedDeals.length === 0) return false;
+    const guildState = this.getGuildState(guildId, now);
+
+    for (const deal of postedDeals) {
+      const key = this.getDealKey(deal);
+      const price = Number(deal?.price || 0);
+      if (!key || !(price > 0)) continue;
+      const prev = guildState.seenDeals[key];
+      const prevLowest = prev && Number(prev.lowestPrice) > 0 ? Number(prev.lowestPrice) : price;
+      guildState.seenDeals[key] = {
+        title: String(deal.title || '').slice(0, 120),
+        store: deal.store || '',
+        link: deal.link || '',
+        lastPostedPrice: price,
+        lowestPrice: Math.min(prevLowest, price),
+        lastPostedAt: now,
+        lastDiscountPct: Number(deal.discountPct || 0),
+      };
+    }
+
+    const entries = Object.entries(guildState.seenDeals)
+      .filter(([, entry]) => entry && (now - Number(entry.lastPostedAt || 0)) <= MAX_SEEN_AGE_MS)
+      .sort((a, b) => Number(b[1].lastPostedAt || 0) - Number(a[1].lastPostedAt || 0))
+      .slice(0, MAX_SEEN_PER_GUILD);
+    guildState.seenDeals = Object.fromEntries(entries);
+
+    if (countTowardDaily) {
+      if (kind === 'price_drop') {
+        guildState.daily.priceDropCount = Number(guildState.daily.priceDropCount || 0) + 1;
+        guildState.daily.lastPriceDropAt = now;
+      } else {
+        guildState.daily.regularCount = Number(guildState.daily.regularCount || 0) + 1;
+        guildState.daily.lastRegularAt = now;
+        if (slot) guildState.daily.lastRegularSlot = slot;
+      }
+    }
+
+    return this.saveState();
   }
 
   async getDeals(options = {}) {
@@ -209,7 +588,7 @@ class HardwareDealsManager {
     const embed = new EmbedBuilder()
       .setTitle(title)
       .setDescription(description)
-      .setColor(0x38bdf8)
+      .setColor(options.color ?? 0x38bdf8)
       .setThumbnail('https://images.unsplash.com/photo-1587202372775-e229f172b9d7?auto=format&fit=crop&w=256&q=80')
       .setFooter({ text: 'CS2 Mix Hub • KaBuM! ao vivo + Catálogo curado Pichau/Terabyte • Confira no link' })
       .setTimestamp();
@@ -222,18 +601,28 @@ class HardwareDealsManager {
       return embed;
     }
 
+    const formatBrl = (val) => Number(val || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
     deals.forEach((d, idx) => {
-      const oldStr = d.oldPrice ? `~~R$ ${d.oldPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}~~ ` : '';
-      const newStr = `**R$ ${d.price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}**`;
+      const hasHigherOldPrice = Number(d.oldPrice || 0) > Number(d.price || 0);
+      const oldStr = hasHigherOldPrice ? `~~R$ ${formatBrl(d.oldPrice)}~~ ` : '';
+      const newStr = `**R$ ${formatBrl(d.price)}**`;
       const discStr = d.discountPct > 0 ? ` \`[${d.discountPct}% OFF]\`` : '';
       const couponStr = d.coupon ? ` • Cupom: \`${d.coupon}\`` : '';
       const sourceBadge = d.isLive ? ' `🟢 Ao vivo`' : ' `📋 Catálogo curado`';
+      const freshnessBadge = d.isNew && !d.isPriceDrop && !d.isFlashDeal ? ' `🆕 Nova`' : '';
+      const priceDropStr = d.isPriceDrop
+        ? `\n📉 **CAIU MAIS!** Era ~~R$ ${formatBrl(d.previousPrice)}~~ → **R$ ${formatBrl(d.price)}** (**-R$ ${formatBrl(d.dropBrl)} / -${d.dropPct}%**)${d.isNewLowest ? ' 🏆 *Menor preço registrado*' : ''}`
+        : '';
+      const flashStr = !d.isPriceDrop && d.isFlashDeal
+        ? `\n🖤🔥 **BLACK FRIDAY RELÂMPAGO (${d.discountPct}% OFF AO VIVO)!**`
+        : '';
       const installStr = d.installment ? `\n💳 *${d.installment}*` : '';
       const highlightStr = d.highlight ? `\n> ${d.highlight}` : '';
 
       embed.addFields({
         name: `${idx + 1}. ${d.storeBadge || '🛒'} • ${d.title.slice(0, 75)}`,
-        value: `💰 ${oldStr}${newStr}${discStr}${couponStr}${sourceBadge}${installStr}${highlightStr}\n👉 [Clique aqui para conferir preço e estoque na loja](${d.link})\n`,
+        value: `💰 ${oldStr}${newStr}${discStr}${couponStr}${sourceBadge}${freshnessBadge}${priceDropStr}${flashStr}${installStr}${highlightStr}\n👉 [Clique aqui para conferir preço e estoque na loja](${d.link})\n`,
       });
     });
 

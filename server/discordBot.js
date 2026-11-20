@@ -41,7 +41,7 @@ import {
   normalizeMapName,
 } from './matchHistory.js';
 import { scheduleSave, clearMixPersistence } from './mixPersistence.js';
-import { hardwareDealsManager, CATEGORY_LABELS } from './hardwareDeals.js';
+import { hardwareDealsManager, CATEGORY_LABELS, isBlackFridaySeason } from './hardwareDeals.js';
 import { SteamScannerService } from './steamScanner.js';
 import { cs2NewsRadar } from './cs2NewsRadar.js';
 import { proMatchesAgenda } from './proMatchesAgenda.js';
@@ -1671,7 +1671,9 @@ export class DiscordBotManager {
       dealsChannels: {},
       dealsEnabledGuilds: {},
       autoPostDeals: true,
-      dealsIntervalMinutes: 60,
+      dealsCheckIntervalMinutes: 30,
+      dealsDailyHoursBrt: [12, 19],
+      dealsMaxDailyRegular: 2,
       geminiApiKey: process.env.GEMINI_API_KEY || '',
     };
     try {
@@ -9068,69 +9070,162 @@ export class DiscordBotManager {
     }
   }
 
-  async dispatchAutomaticDealsDrop(categoryType = 'all', { targetGuildId = null } = {}) {
-    if (this._isDispatchingDeals) return;
-    if (!this.client || !this.client.isReady()) return;
+  async dispatchAutomaticDealsDrop(categoryType = 'all', {
+    targetGuildId = null,
+    mode = 'regular',
+    bypassSchedule = false,
+    allowRepeatFallback = false,
+    now = Date.now(),
+    candidateDeals = null,
+  } = {}) {
+    if (this._isDispatchingDeals) {
+      return { sentGuilds: 0, skippedGuilds: 0, totalDealsSent: 0, reason: 'busy' };
+    }
+    if (!this.client || !this.client.isReady()) {
+      return { sentGuilds: 0, skippedGuilds: 0, totalDealsSent: 0, reason: 'not_ready' };
+    }
 
     this._isDispatchingDeals = true;
     try {
-      let deals = [];
-      let title = '🔥 RADAR AUTOMÁTICO • SUPER OFERTAS GAMER';
-      let desc = '⚡ **PROMOÇÕES RELÂMPAGO DO DIA!** KaBuM! (**ao vivo**) + catálogo curado de **Pichau** e **TerabyteShop**:';
-
-      if (categoryType === 'cadeira_mesa') {
-        const cadeiras = await hardwareDealsManager.getDeals({ category: 'cadeira', limit: 2 });
-        const mesas = await hardwareDealsManager.getDeals({ category: 'mesa', limit: 2 });
-        deals = [...cadeiras, ...mesas];
-        title = '💺🪵 ALERTA DE OFERTAS • CADEIRAS & MESAS GAMER';
-        desc = '🛋️ **CONFORTO & ERGONOMIA GAMER!** Cadeiras reclináveis e mesas reforçadas com desconto:';
-      } else if (categoryType === 'gpu_cpu') {
-        const gpus = await hardwareDealsManager.getDeals({ category: 'gpu', limit: 2 });
-        const cpus = await hardwareDealsManager.getDeals({ category: 'cpu', limit: 2 });
-        deals = [...gpus, ...cpus];
-        title = '🎮⚡ ALERTA DE OFERTAS • PLACAS DE VÍDEO & PROCESSADORES';
-        desc = '🚀 **MÁXIMO FPS NO CS2!** As melhores GPUs e processadores Ryzen/Intel com preço reduzido:';
-      } else if (categoryType === 'mouse_teclado') {
-        const mouses = await hardwareDealsManager.getDeals({ query: 'mouse gamer', limit: 2 });
-        const teclados = await hardwareDealsManager.getDeals({ query: 'teclado mecanico', limit: 2 });
-        deals = [...mouses, ...teclados];
-        title = '🖱️⌨️ ALERTA DE OFERTAS • MOUSES & TECLADOS MECÂNICOS';
-        desc = '🎯 **PRECISÃO COMPETITIVA!** Mouses ultraleves e teclados mecânicos em promoção:';
-      } else if (categoryType === 'monitor_audio') {
-        const monitores = await hardwareDealsManager.getDeals({ category: 'monitor', limit: 2 });
-        const audio = await hardwareDealsManager.getDeals({ category: 'audio', limit: 2 });
-        deals = [...monitores, ...audio];
-        title = '🖥️🎧 ALERTA DE OFERTAS • MONITORES 144Hz-240Hz & HEADSETS';
-        desc = '👀 **FLUIDEZ & ÁUDIO ESPACIAL!** Veja inimigos primeiro e escute passos com precisão:';
-      } else if (categoryType === 'ram_ssd') {
-        deals = await hardwareDealsManager.getDeals({ category: 'ram_ssd', limit: 4 });
-        title = '🚀🛡️ ALERTA DE OFERTAS • MEMÓRIAS RAM & SSDs NVMe';
-        desc = '⚡ **VELOCIDADE TOTAL!** Carregamento instantâneo de mapas e zero stuttering:';
-      } else {
-        deals = await hardwareDealsManager.getDeals({ limit: 4 });
-        title = '🔥 RADAR AUTOMÁTICO • SUPER OFERTAS PC GAMER';
-        desc = '⚡ **PROMOÇÕES RELÂMPAGO DO DIA!** KaBuM! (**ao vivo**) + catálogo curado de **Pichau** e **TerabyteShop**:';
-      }
-
-      if (!deals || deals.length === 0) return;
-
-      const embed = hardwareDealsManager.buildDealsEmbed(deals, { title, description: desc });
-      const selectMenu = hardwareDealsManager.buildCategorySelectMenu();
-      const actionButtons = hardwareDealsManager.buildActionButtons(deals);
+      const regularSlots = this.config.dealsDailyHoursBrt || [12, 19];
+      const maxRegularPerDay = Number(this.config.dealsMaxDailyRegular) || 2;
+      const eligibleGuilds = [];
+      let skippedGuilds = 0;
 
       for (const [, guild] of this.client.guilds.cache) {
         if (targetGuildId && guild.id !== targetGuildId) continue;
         if (!targetGuildId && !this.isDealsEnabledForGuild(guild.id)) continue;
+
+        if (!bypassSchedule) {
+          const gate = hardwareDealsManager.canSendDropToGuild(guild.id, {
+            kind: mode,
+            now,
+            regularSlots,
+            maxRegularPerDay,
+          });
+          if (!gate.allowed) {
+            skippedGuilds++;
+            continue;
+          }
+          eligibleGuilds.push({ guild, gate });
+        } else {
+          eligibleGuilds.push({ guild, gate: { allowed: true, slot: null, isBlackFriday: isBlackFridaySeason(now) } });
+        }
+      }
+
+      if (eligibleGuilds.length === 0) {
+        return { sentGuilds: 0, skippedGuilds, totalDealsSent: 0, reason: 'no_eligible_guild' };
+      }
+
+      let pool = Array.isArray(candidateDeals) ? [...candidateDeals] : null;
+      if (!pool) {
+        const liveDeals = await hardwareDealsManager.fetchLiveDealsPool({ categoryType, limitPerQuery: 6, now });
+        pool = [...liveDeals];
+
+        // Only supplement with static curated items in regular mode when live results are scarce
+        if (mode !== 'price_drop' && pool.length < 4) {
+          const curatedCategoryMap = {
+            cadeira_mesa: ['cadeira', 'mesa'],
+            gpu_cpu: ['gpu', 'cpu'],
+            mouse_teclado: ['mouse_teclado'],
+            monitor_audio: ['monitor', 'audio'],
+            ram_ssd: ['ram_ssd'],
+            all: [null],
+          };
+          const cats = curatedCategoryMap[categoryType] || [null];
+          const seenKeys = new Set(pool.map((d) => hardwareDealsManager.getDealKey(d)));
+          for (const cat of cats) {
+            const extra = await hardwareDealsManager.getDeals({ ...(cat ? { category: cat } : {}), limit: 3 });
+            for (const item of extra) {
+              const key = hardwareDealsManager.getDealKey(item);
+              if (key && !seenKeys.has(key)) {
+                seenKeys.add(key);
+                pool.push(item);
+              }
+            }
+          }
+        }
+      }
+
+      if (!pool || pool.length === 0) {
+        return { sentGuilds: 0, skippedGuilds: skippedGuilds + eligibleGuilds.length, totalDealsSent: 0, reason: 'empty_pool' };
+      }
+
+      const selectMenu = hardwareDealsManager.buildCategorySelectMenu();
+      const isBFSeason = isBlackFridaySeason(now);
+      let sentGuilds = 0;
+      let totalDealsSent = 0;
+
+      for (const { guild, gate } of eligibleGuilds) {
         try {
           const channel = await this.getOrCreateDealsChannel(guild, { allowAutoCreate: Boolean(targetGuildId) });
-          if (!channel) continue;
-          await channel.send({ embeds: [embed], components: [selectMenu, ...actionButtons] }).catch(() => {});
-          console.log(`[DISCORD BOT] 🏷️ Ofertas automáticas (${categoryType}) postadas no canal #${channel.name} (${guild.name})!`);
+          if (!channel) {
+            skippedGuilds++;
+            continue;
+          }
+
+          let dealsToPost = hardwareDealsManager.filterFreshAndPriceDropDeals(guild.id, pool, {
+            now,
+            limit: 4,
+            priceDropOnly: mode === 'price_drop',
+          });
+
+          if (dealsToPost.length === 0 && allowRepeatFallback) {
+            dealsToPost = pool.filter((d) => Number(d?.price) > 0 && d?.inStock !== false).slice(0, 4);
+          }
+
+          if (dealsToPost.length === 0) {
+            skippedGuilds++;
+            continue;
+          }
+
+          const hasPriceDrops = dealsToPost.some((d) => d.isPriceDrop);
+          const allPriceDrops = dealsToPost.every((d) => d.isPriceDrop);
+
+          let title = '🔥 RESUMO DIÁRIO DE OFERTAS GAMER • SOMENTE NOVIDADES';
+          let desc = '⚡ **CURADORIA ANTI-SPAM (1–2x/dia):** Apenas ofertas novas ou que caíram ainda mais de preço na **KaBuM!** (ao vivo) + catálogo **Pichau/Terabyte**:';
+          let color = 0x38bdf8;
+
+          if (mode === 'price_drop' || allPriceDrops) {
+            title = isBFSeason
+              ? '📉🖤 ALERTA BLACK FRIDAY • PREÇO CAIU AINDA MAIS!'
+              : '📉🚨 ALERTA DE QUEDA DE PREÇO • RADAR AO VIVO';
+            desc = '🚨 **PREÇO BAIXOU DE NOVO!** Produtos monitorados com redução real frente ao último alerta (ou oferta relâmpago ao vivo):';
+            color = 0xf97316;
+          } else if (isBFSeason) {
+            title = hasPriceDrops
+              ? '🖤📉 BLACK FRIDAY • NOVAS OFERTAS & QUEDAS DE PREÇO'
+              : '🖤🔥 RESUMO DIÁRIO BLACK FRIDAY • OFERTAS INÉDITAS';
+            desc = '⚡ **SELEÇÃO SEM REPETIÇÃO (1–2x/dia):** Somente ofertas novas ou itens que caíram ainda mais de preço hoje:';
+            color = 0xf97316;
+          } else if (hasPriceDrops) {
+            title = '🔥📉 RESUMO DIÁRIO • OFERTAS NOVAS & QUEDAS DE PREÇO';
+            color = 0x22c55e;
+          }
+
+          const embed = hardwareDealsManager.buildDealsEmbed(dealsToPost, { title, description: desc, color });
+          const actionButtons = hardwareDealsManager.buildActionButtons(dealsToPost);
+
+          await channel.send({ embeds: [embed], components: [selectMenu, ...actionButtons] });
+          hardwareDealsManager.recordPostedDeals(guild.id, dealsToPost, {
+            kind: mode,
+            slot: gate?.slot || null,
+            now,
+            countTowardDaily: !bypassSchedule,
+          });
+          sentGuilds++;
+          totalDealsSent += dealsToPost.length;
+          console.log(`[DISCORD BOT] 🏷️ ${dealsToPost.length} oferta(s) [${mode}] postadas em #${channel.name} (${guild.name})!`);
         } catch (err) {
+          skippedGuilds++;
           console.warn(`[DISCORD BOT] Erro ao postar ofertas na guild "${guild.name}":`, err.message);
         }
       }
-      this.saveConfig({ lastDealsDropAt: Date.now() });
+
+      if (sentGuilds > 0) {
+        this.saveConfig({ lastDealsDropAt: now });
+      }
+      return { sentGuilds, skippedGuilds, totalDealsSent, reason: sentGuilds > 0 ? 'sent' : 'no_fresh_deals' };
     } finally {
       this._isDispatchingDeals = false;
     }
@@ -9139,43 +9234,39 @@ export class DiscordBotManager {
   startScheduledDealsMonitor() {
     if (this.dealsMonitorInterval) clearInterval(this.dealsMonitorInterval);
     if (this._initialDealsTimeout) clearTimeout(this._initialDealsTimeout);
+    this._initialDealsTimeout = null;
 
     const hasAnyDealsEnabled = () =>
       this.config.autoPostDeals !== false ||
       Object.values(this.config.dealsEnabledGuilds || {}).some(Boolean);
 
-    // Initial drop only if enabled and more than 45 minutes have passed since last drop
-    const elapsedSinceLastDrop = Date.now() - (Number(this.config.lastDealsDropAt) || 0);
-    if (hasAnyDealsEnabled() && elapsedSinceLastDrop > 45 * 60 * 1000) {
-      this._initialDealsTimeout = setTimeout(() => {
-        if (!hasAnyDealsEnabled()) return;
-        this.dispatchAutomaticDealsDrop('all').catch((err) => {
-          console.warn('[DISCORD BOT] Aviso no drop inicial de ofertas:', err.message);
-        });
-      }, 8000);
-      this._initialDealsTimeout.unref?.();
-    }
-
-    // Rotating categories across cycles
-    const categoryRotation = ['cadeira_mesa', 'gpu_cpu', 'mouse_teclado', 'monitor_audio', 'ram_ssd', 'all'];
+    // Quiet scheduler check every 30 min (never blind-posts on server boot/restart):
+    // - Regular digest posts only in 12h & 19h BRT windows (max 2x/day/guild), strictly non-repeated
+    // - Quiet price-drop check every ~2h alerts only on >=5% or >=R$30 price drops (or BF >=30% flash)
+    const categoryRotation = ['all', 'gpu_cpu', 'monitor_audio', 'mouse_teclado', 'ram_ssd', 'cadeira_mesa'];
     let rotationIndex = 0;
+    let checkTick = 0;
 
-    // Check and post automatically every 60 minutes
-    const intervalMs = (this.config.dealsIntervalMinutes || 60) * 60 * 1000;
+    const checkIntervalMs = Math.max(15, Number(this.config.dealsCheckIntervalMinutes) || 30) * 60 * 1000;
     this.dealsMonitorInterval = setInterval(async () => {
       try {
         if (!this.client || !this.client.isReady()) return;
         if (!hasAnyDealsEnabled()) return;
 
+        checkTick++;
         const currentCat = categoryRotation[rotationIndex % categoryRotation.length];
-        rotationIndex++;
+        const regularRes = await this.dispatchAutomaticDealsDrop(currentCat, { mode: 'regular' });
+        if (regularRes?.sentGuilds > 0) {
+          rotationIndex++;
+        }
 
-        await this.dispatchAutomaticDealsDrop(currentCat);
-
+        if (checkTick % 4 === 0) {
+          await this.dispatchAutomaticDealsDrop('all', { mode: 'price_drop' });
+        }
       } catch (err) {
-        console.warn('[DISCORD BOT] Erro ao disparar alertas de ofertas:', err.message);
+        console.warn('[DISCORD BOT] Erro ao verificar radar de ofertas:', err.message);
       }
-    }, intervalMs);
+    }, checkIntervalMs);
     this.dealsMonitorInterval.unref?.();
   }
 
@@ -9202,16 +9293,28 @@ export class DiscordBotManager {
         dealsChannels: this.config.dealsChannels,
         dealsEnabledGuilds: this.config.dealsEnabledGuilds,
       });
-      return message.reply(`✅ Canal de alertas de promoções configurado apenas para este servidor: <#${channelId}>!`);
+      return message.reply(
+        `✅ Canal de alertas de promoções configurado para este servidor em <#${channelId}>!\n` +
+        `🕒 Envio anti-spam **1 a 2x/dia** (12h e 19h BRT), **somente ofertas novas** (sem repetir por 7 dias) + alerta extra se o preço cair ainda mais.`
+      );
     }
 
-    // 2. Force post deals to channel: !ofertas postar
+    // 2. Manual check/post deals to channel: !ofertas postar [forcar]
     if (sub === 'postar' || sub === 'alerta') {
       if (!this.isGuildModerator(message.member, message.guild, null, message.author?.id)) {
         return message.reply('🚫 Apenas administradores do servidor podem forçar o disparo de promoções.');
       }
-      await this.dispatchAutomaticDealsDrop('all', { targetGuildId: message.guild?.id || null });
-      return message.reply(`🚀 Alerta de ofertas postado no canal de promoções deste servidor!`);
+      const forceFlag = ['forcar', 'forçar', 'force'].includes((args[1] || '').toLowerCase());
+      const res = await this.dispatchAutomaticDealsDrop('all', {
+        targetGuildId: message.guild?.id || null,
+        mode: 'regular',
+        bypassSchedule: true,
+        allowRepeatFallback: forceFlag,
+      });
+      if (res?.sentGuilds > 0) {
+        return message.reply(`🚀 **${res.totalDealsSent} oferta(s)** ${forceFlag ? 'enviada(s)' : 'nova(s) / queda(s) de preço enviada(s)'} no canal de promoções deste servidor!`);
+      }
+      return message.reply('ℹ️ Nenhuma oferta nova ou queda de preço relevante desde o último envio (ou nenhum canal configurado). Use `!ofertas postar forcar` para enviar manualmente mesmo assim.');
     }
 
     // 3. Search query: !ofertas rtx 4060
@@ -9279,7 +9382,7 @@ export class DiscordBotManager {
 
     return interaction.reply({
       content: activate
-        ? `🔔 **Alertas de Promoções Ativados neste servidor!** Ofertas de hardware (**KaBuM!** ao vivo + catálogo curado **Pichau** e **TerabyteShop**) serão postadas automaticamente em <#${channel.id}>.`
+        ? `🔔 **Alertas de Promoções Ativados neste servidor em <#${channel.id}>!**\n🕒 Cadência anti-spam: **1 a 2x por dia** (12h e 19h BRT), **somente ofertas novas** (sem repetir por 7 dias), além de alerta automático quando algum preço cair ainda mais (Black Friday / quedas reais).`
         : `🔕 Alertas automáticos de promoções foram desativados **neste servidor**.`,
     });
   }
