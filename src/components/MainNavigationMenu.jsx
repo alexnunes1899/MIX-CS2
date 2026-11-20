@@ -15,7 +15,6 @@ import {
   Sparkles,
   MoreHorizontal,
   Newspaper,
-  Film,
 } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
 
@@ -28,7 +27,6 @@ export default function MainNavigationMenu({
   onOpenQuickVeto,
   onOpenServersPage,
   onOpenUpdatesPage,
-  onOpenClipsPage,
   onOpenRoomsHub,
   onOpenTournament,
   onOpenGrenades,
@@ -135,20 +133,6 @@ export default function MainNavigationMenu({
             action: onOpenUpdatesPage,
             title: 'Notas de Atualização Oficiais do CS2 (PT-BR)',
             iconColor: 'text-orange-400',
-            visibility: 'xl',
-          },
-        ]
-      : []),
-    ...(onOpenClipsPage
-      ? [
-          {
-            id: 'clips',
-            label: 'Clipes',
-            shortLabel: 'Clipes',
-            icon: Film,
-            action: onOpenClipsPage,
-            title: 'Galeria de Clipes e Highlights da Comunidade',
-            iconColor: 'text-purple-400',
             visibility: 'xl',
           },
         ]
@@ -363,18 +347,6 @@ export default function MainNavigationMenu({
                     <span>Atualizações CS2 (PT-BR)</span>
                   </button>
                 )}
-
-                {/* Galeria de Clipes (hidden on < 1280px) */}
-                {onOpenClipsPage && (
-                  <button
-                    type="button"
-                    onClick={() => handleClick(onOpenClipsPage)}
-                    className="w-full p-2 rounded-xl text-left text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-800/80 flex items-center gap-2 cursor-pointer"
-                  >
-                    <Film size={14} className="text-purple-400" />
-                    <span>Clipes da Comunidade</span>
-                  </button>
-                )}
               </div>
             )}
           </div>
@@ -494,17 +466,6 @@ export default function MainNavigationMenu({
                   >
                     <Newspaper size={14} className="text-orange-400" />
                     <span>Atualizações CS2 (PT-BR)</span>
-                  </button>
-                )}
-
-                {onOpenClipsPage && (
-                  <button
-                    type="button"
-                    onClick={() => handleClick(onOpenClipsPage)}
-                    className="w-full p-2 rounded-xl text-left text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-800 flex items-center gap-2"
-                  >
-                    <Film size={14} className="text-purple-400" />
-                    <span>Clipes da Comunidade</span>
                   </button>
                 )}
 

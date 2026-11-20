@@ -31,7 +31,6 @@ export default function Header({
   onOpenLocalHost,
   onOpenServersPage,
   onOpenUpdatesPage,
-  onOpenClipsPage,
   onOpenTournament,
   onOpenGrenades,
   onOpenAimReflex,
@@ -268,7 +267,6 @@ export default function Header({
           onOpenQuickVeto={onOpenQuickVeto}
           onOpenServersPage={onOpenServersPage || onOpenLocalHost}
           onOpenUpdatesPage={onOpenUpdatesPage}
-          onOpenClipsPage={onOpenClipsPage}
           onOpenRoomsHub={onOpenRoomsHub}
           onOpenTournament={onOpenTournament}
           onOpenGrenades={onOpenGrenades}

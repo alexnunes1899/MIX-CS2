@@ -110,7 +110,6 @@ export default function CS2UpdatesPage({
   onOpenGrenades,
   onOpenAimReflex,
   onOpenServersPage,
-  onOpenClipsPage,
   activeRoomsCount = 0,
   soundEnabled = true,
   onToggleSound,
@@ -269,7 +268,6 @@ export default function CS2UpdatesPage({
               onOpenQuickVeto={onOpenQuickVeto}
               onOpenServersPage={onOpenServersPage}
               onOpenUpdatesPage={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-              onOpenClipsPage={onOpenClipsPage}
               onOpenRoomsHub={onOpenRoomsHub}
               onOpenTournament={onOpenTournament}
               onOpenGrenades={onOpenGrenades}
@@ -308,7 +306,6 @@ export default function CS2UpdatesPage({
             onOpenQuickVeto={onOpenQuickVeto}
             onOpenServersPage={onOpenServersPage}
             onOpenUpdatesPage={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-            onOpenClipsPage={onOpenClipsPage}
             onOpenRoomsHub={onOpenRoomsHub}
             onOpenTournament={onOpenTournament}
             onOpenGrenades={onOpenGrenades}

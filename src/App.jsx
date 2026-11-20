@@ -25,7 +25,6 @@ const CaptainsDraftView = lazy(() => import('./components/CaptainsDraftView'));
 const LandingPage = lazy(() => import('./components/LandingPage'));
 const DedicatedServersHub = lazy(() => import('./components/DedicatedServersHub'));
 const CS2UpdatesPage = lazy(() => import('./components/CS2UpdatesPage'));
-const ClipsGalleryPage = lazy(() => import('./components/ClipsGalleryPage'));
 
 function PageFallback() {
   return (
@@ -79,7 +78,6 @@ export default function App() {
     setView,
     handleOpenServersPage,
     handleOpenUpdatesPage,
-    handleOpenClipsPage,
     handleGoHome,
   } = useNavigationView({ setRoomId, soundEnabled });
 
@@ -1775,7 +1773,6 @@ export default function App() {
             onOpenGrenades={() => setGrenadeModalOpen(true)}
             onOpenAimReflex={() => setAimReflexModalOpen(true)}
             onOpenUpdatesPage={handleOpenUpdatesPage}
-            onOpenClipsPage={handleOpenClipsPage}
             onOpenGsiSetup={() => setGsiModalOpen(true)}
             onOpenProfile={() => setProfileModalOpen(true)}
             activeRoomsCount={activeRoomsCount}
@@ -1800,30 +1797,6 @@ export default function App() {
             onOpenGrenades={() => setGrenadeModalOpen(true)}
             onOpenAimReflex={() => setAimReflexModalOpen(true)}
             onOpenServersPage={handleOpenServersPage}
-            onOpenClipsPage={handleOpenClipsPage}
-            activeRoomsCount={activeRoomsCount}
-            soundEnabled={soundEnabled}
-            onToggleSound={handleToggleSound}
-          />
-        </Suspense>
-      ) : view === 'clips' ? (
-        <Suspense fallback={<PageFallback />}>
-          <ClipsGalleryPage
-            roomId={roomId}
-            socket={socket}
-            myProfile={myProfile}
-            onGoHome={handleGoHome}
-            onGoToRoom={handleGoToRoom}
-            onOpenQuickVeto={() => setQuickVetoOpen(true)}
-            onOpenQuickMapRoll={() => setQuickMapRollOpen(true)}
-            onOpenRoomsHub={() => setRoomsHubOpen(true)}
-            onOpenLeaderboard={() => setLeaderboardOpen(true)}
-            onOpenDiscordModal={() => setDiscordModalOpen(true)}
-            onOpenTournament={() => setTournamentModalOpen(true)}
-            onOpenGrenades={() => setGrenadeModalOpen(true)}
-            onOpenAimReflex={() => setAimReflexModalOpen(true)}
-            onOpenServersPage={handleOpenServersPage}
-            onOpenUpdatesPage={handleOpenUpdatesPage}
             activeRoomsCount={activeRoomsCount}
             soundEnabled={soundEnabled}
             onToggleSound={handleToggleSound}
@@ -1845,7 +1818,6 @@ export default function App() {
             onOpenAimReflex={() => setAimReflexModalOpen(true)}
             onOpenServersPage={handleOpenServersPage}
             onOpenUpdatesPage={handleOpenUpdatesPage}
-            onOpenClipsPage={handleOpenClipsPage}
             onRequireSteamLogin={handleRequireSteamLogin}
             onOpenProfile={() => setProfileModalOpen(true)}
             onSpectateRoom={(r) => setSpectateRoom(r)}
@@ -1890,7 +1862,6 @@ export default function App() {
             onOpenAimReflex={() => setAimReflexModalOpen(true)}
             onOpenServersPage={handleOpenServersPage}
             onOpenUpdatesPage={handleOpenUpdatesPage}
-            onOpenClipsPage={handleOpenClipsPage}
             onGoHome={handleGoHome}
             roomPassword={roomPassword}
             hasPassword={Boolean(room.hasPassword)}

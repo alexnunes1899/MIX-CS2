@@ -39,7 +39,6 @@ import { SteamScannerService } from './steamScanner.js';
 import { cs2NewsRadar } from './cs2NewsRadar.js';
 import { proMatchesAgenda } from './proMatchesAgenda.js';
 import { freeGamesRadar } from './freeGamesRadar.js';
-import { communityClips } from './communityClips.js';
 import { renderProfileHtml } from './profileHtml.js';
 import {
   setPersistenceRefs,
@@ -536,65 +535,6 @@ export function createMixServer({ startBackgroundTasks = true, buildVersion = Da
       res.json({ success: true, scan });
     } catch (err) {
       res.status(400).json({ success: false, error: err.message });
-    }
-  });
-
-  app.get('/api/community/clips', (req, res) => {
-    try {
-      const sort = req.query.sort === 'top' ? 'top' : 'recent';
-      const platform = String(req.query.platform || 'all');
-      const { clips, clipOfTheWeek } = communityClips.listClips({ sort, platform });
-      res.json({ success: true, count: clips.length, clips, clipOfTheWeek });
-    } catch (err) {
-      res.status(500).json({ success: false, error: err.message });
-    }
-  });
-
-  app.post('/api/community/clips', sensitiveLimiter, (req, res) => {
-    try {
-      const { url, title, map, authorName } = req.body || {};
-      const sessionUser = getSessionUser(req);
-      const clientIp = String(req.headers['x-forwarded-for'] || req.ip || req.socket?.remoteAddress || 'anon')
-        .split(',')[0]
-        .trim();
-      const author = sessionUser
-        ? {
-            id: sessionUser.steamId,
-            username: sessionUser.nick || 'Jogador Steam',
-            avatar: sessionUser.avatar || null,
-          }
-        : {
-            id: `web:${clientIp}`,
-            username: sanitizeInput(String(authorName || 'Jogador da Comunidade'), 40) || 'Jogador da Comunidade',
-            avatar: null,
-          };
-
-      const clip = communityClips.submitClip(author, url, title, map);
-      const listState = communityClips.listClips();
-      io.emit('community_clips_updated', listState);
-      return res.status(201).json({ success: true, clip, ...listState });
-    } catch (err) {
-      return res.status(400).json({ success: false, error: err.message });
-    }
-  });
-
-  app.post('/api/community/clips/:id/vote', sensitiveLimiter, (req, res) => {
-    try {
-      const sessionUser = getSessionUser(req);
-      const clientIp = String(req.headers['x-forwarded-for'] || req.ip || req.socket?.remoteAddress || 'anon')
-        .split(',')[0]
-        .trim();
-      const voterId = sessionUser?.steamId ? `steam:${sessionUser.steamId}` : `ip:${clientIp}`;
-      const voteType = req.body?.voteType === 'bagre' ? 'bagre' : 'fire';
-      const updated = communityClips.voteClip(req.params.id, voterId, voteType);
-      if (!updated) {
-        return res.status(404).json({ success: false, error: 'Clipe não encontrado.' });
-      }
-      const listState = communityClips.listClips();
-      io.emit('community_clips_updated', listState);
-      return res.json({ success: true, clip: updated, ...listState });
-    } catch (err) {
-      return res.status(400).json({ success: false, error: err.message });
     }
   });
 

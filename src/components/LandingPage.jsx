@@ -20,7 +20,6 @@ export default function LandingPage({
   onOpenLocalHost,
   onOpenServersPage,
   onOpenUpdatesPage,
-  onOpenClipsPage,
   onOpenTournament,
   onOpenGrenades,
   onOpenAimReflex,
@@ -166,7 +165,6 @@ export default function LandingPage({
               onOpenQuickVeto={onOpenQuickVeto}
               onOpenServersPage={onOpenServersPage || onOpenLocalHost}
               onOpenUpdatesPage={onOpenUpdatesPage}
-              onOpenClipsPage={onOpenClipsPage}
               onOpenRoomsHub={onOpenRoomsHub}
               onOpenTournament={onOpenTournament}
               onOpenGrenades={onOpenGrenades}
@@ -306,7 +304,6 @@ export default function LandingPage({
             onOpenQuickVeto={onOpenQuickVeto}
             onOpenServersPage={onOpenServersPage || onOpenLocalHost}
             onOpenUpdatesPage={onOpenUpdatesPage}
-            onOpenClipsPage={onOpenClipsPage}
             onOpenRoomsHub={onOpenRoomsHub}
             onOpenTournament={onOpenTournament}
             onOpenGrenades={onOpenGrenades}

@@ -31,11 +31,6 @@
       "name": "Atualizações CS2 (PT-BR)",
       "short_name": "Updates",
       "url": "/?view=updates"
-    },
-    {
-      "name": "Galeria de Clipes",
-      "short_name": "Clipes",
-      "url": "/?view=clips"
     }
   ],
   "theme_color": "#090d16",

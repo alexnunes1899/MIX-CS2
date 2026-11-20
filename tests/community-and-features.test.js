@@ -323,7 +323,7 @@ test('Monthly seasons, identity merge & playerAnalytics compute accurate metrics
   assert.ok(analytics.badges.some((b) => b.id === 'lethal_duo'));
 });
 
-test('HTTP endpoints expose clips, seasons, analytics, schedules, liveMatch & protected RCON presets', async (t) => {
+test('HTTP endpoints expose seasons, analytics, schedules, liveMatch & protected RCON presets', async (t) => {
   const { server, rooms, lifecycle, close } = createMixServer({ startBackgroundTasks: false });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const { port } = server.address();
@@ -332,36 +332,7 @@ test('HTTP endpoints expose clips, seasons, analytics, schedules, liveMatch & pr
     await close();
   });
 
-  // 1. Clips submit, list & vote
-  const postClipRes = await fetch(`${baseUrl}/api/community/clips`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
-      title: 'Ace de Deagle na Mirage',
-      map: 'Mirage',
-    }),
-  });
-  assert.equal(postClipRes.status, 201);
-  const clipCreated = await postClipRes.json();
-  assert.equal(clipCreated.success, true);
-  assert.ok(clipCreated.clip.id);
-
-  const voteRes = await fetch(`${baseUrl}/api/community/clips/${clipCreated.clip.id}/vote`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ voteType: 'fire' }),
-  });
-  assert.equal(voteRes.status, 200);
-  const voteData = await voteRes.json();
-  assert.equal(voteData.clip.votes.fire.length, 1);
-
-  const clipsGet = await fetch(`${baseUrl}/api/community/clips?sort=top`);
-  const clipsJson = await clipsGet.json();
-  assert.ok(clipsJson.clips.length >= 1);
-  assert.ok(clipsJson.clipOfTheWeek);
-
-  // 2. Seasons, Analytics & Schedules endpoints
+  // 1. Seasons, Analytics & Schedules endpoints
   const seasonsRes = await fetch(`${baseUrl}/api/leaderboard/seasons`);
   assert.equal(seasonsRes.status, 200);
   const seasonsJson = await seasonsRes.json();
