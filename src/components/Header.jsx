@@ -96,12 +96,12 @@ export default function Header({
 
   return (
     <header className="border-b border-slate-800 bg-[#0c1220]/95 backdrop-blur-xl sticky top-0 z-40 shadow-xl">
-      <div className="max-w-7xl mx-auto px-3 sm:px-5 py-2 space-y-1.5">
+      <div className="max-w-[1400px] mx-auto px-3 sm:px-5 py-2 space-y-1.5">
         
         {/* SINGLE FOCUS ROW: Room Identity, Center Match Phase Stepper & Compact Menu + Utility Actions */}
-        <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center justify-between gap-2.5 flex-wrap sm:flex-nowrap">
           {/* Left: Logo & Room Details */}
-          <div className="flex items-center gap-3 shrink-0 min-w-0">
+          <div className="flex items-center gap-2.5 shrink-0 min-w-0">
             <button
               type="button"
               onClick={() => {
@@ -111,15 +111,15 @@ export default function Header({
               className="shrink-0 cursor-pointer group focus:outline-none"
               title="Voltar para a Página Inicial"
             >
-              <MixHubLogo className="w-9 h-9 sm:w-10 sm:h-10 group-hover:scale-105 transition-transform" />
+              <MixHubLogo className="w-9 h-9 group-hover:scale-105 transition-transform" />
             </button>
             <div className="min-w-0">
-              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-                <h1 className="text-sm sm:text-base font-black font-heading tracking-wide text-white truncate max-w-[140px] sm:max-w-[200px]">
+              <div className="flex items-center gap-1.5 flex-nowrap">
+                <h1 className="text-sm sm:text-base font-black font-heading tracking-wide text-white truncate max-w-[120px] sm:max-w-[165px] xl:max-w-[190px]">
                   {roomName || 'MIX HUB'}
                 </h1>
                 <span
-                  className={`text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                  className={`text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${
                     rankingSystem === 'faceit'
                       ? 'text-orange-400 bg-orange-500/10 border-orange-500/30'
                       : 'text-amber-400 bg-amber-500/10 border-amber-500/30'
@@ -128,7 +128,7 @@ export default function Header({
                   {rankingSystem === 'faceit' ? '⚡ FACEIT' : '🛡️ GC'}
                 </span>
                 <span
-                  className={`text-[9px] sm:text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
+                  className={`text-[9px] sm:text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border shrink-0 ${
                     playerCount >= 10
                       ? 'text-emerald-300 bg-emerald-500/15 border-emerald-500/40'
                       : 'text-slate-300 bg-slate-800/80 border-slate-700'
@@ -138,11 +138,11 @@ export default function Header({
                   {playerCount}/10
                 </span>
                 {isPrivate ? (
-                  <span className="text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full border text-purple-300 bg-purple-500/15 border-purple-500/30 hidden sm:flex items-center gap-1 font-mono">
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border text-purple-300 bg-purple-500/15 border-purple-500/30 hidden 2xl:flex items-center gap-1 font-mono shrink-0">
                     <Lock size={10} /> Privado
                   </span>
                 ) : (
-                  <span className="text-[9px] sm:text-[10px] font-bold px-2 py-0.5 rounded-full border text-emerald-400 bg-emerald-500/15 border-emerald-500/30 hidden sm:flex items-center gap-1 font-mono">
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border text-emerald-400 bg-emerald-500/15 border-emerald-500/30 hidden 2xl:flex items-center gap-1 font-mono shrink-0">
                     <Globe size={10} /> Público
                   </span>
                 )}
@@ -151,14 +151,14 @@ export default function Header({
           </div>
 
           {/* Center: Match Phase Stepper (Sleek eSports Breadcrumb) */}
-          <div className="hidden lg:flex items-center justify-center gap-1.5 px-3 py-1 rounded-xl bg-slate-900/80 border border-slate-800/80 shadow-inner">
+          <div className="hidden xl:flex items-center justify-center gap-1 px-2.5 py-1 rounded-xl bg-slate-900/80 border border-slate-800/80 shadow-inner shrink-0">
             {steps.map((st, idx) => {
               const status = getStepStatus(st.id);
               const Icon = st.icon;
               return (
-                <div key={st.id} className="flex items-center gap-1.5">
+                <div key={st.id} className="flex items-center gap-1">
                   <div
-                    className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg text-[11px] font-bold transition-colors ${
+                    className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-bold transition-colors whitespace-nowrap ${
                       status === 'active'
                         ? 'bg-amber-500/25 text-amber-300 border border-amber-500/50 shadow-sm shadow-amber-500/20'
                         : status === 'completed'
@@ -178,10 +178,10 @@ export default function Header({
           </div>
 
           {/* Right: Steam Profile, Server Pill, Share Invite & Sound Controls */}
-          <div className="flex items-center gap-2 flex-wrap shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap">
             {/* Quick Server Action if Configured */}
             {parsedServer.isValid && (
-              <div className="hidden xl:flex items-center gap-1.5 bg-slate-900 border border-emerald-500/30 rounded-xl p-1 pl-2.5 shadow-inner">
+              <div className="hidden 2xl:flex items-center gap-1.5 bg-slate-900 border border-emerald-500/30 rounded-xl p-1 pl-2.5 shadow-inner">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                 <span className="text-[11px] font-mono text-emerald-400 font-bold truncate max-w-[120px]" title={parsedServer.ip}>
                   {parsedServer.ip}
@@ -204,8 +204,8 @@ export default function Header({
 
             {/* Room Code & Invite button */}
             <div className="flex items-center bg-slate-900/90 border border-slate-800 rounded-xl p-1 pl-2.5 shadow-inner">
-              <div className="text-xs mr-2 font-mono flex items-center gap-1.5">
-                <span className="text-slate-500 text-[10px] font-semibold">SALA:</span>{' '}
+              <div className="text-xs mr-2 font-mono flex items-center gap-1">
+                <span className="text-slate-500 text-[10px] font-semibold hidden sm:inline">SALA:</span>
                 <span className="font-bold text-amber-400">{roomId}</span>
               </div>
               <button
@@ -225,24 +225,21 @@ export default function Header({
                   if (soundEnabled) playClickSound();
                   if (onOpenProfile) onOpenProfile();
                 }}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-white border border-emerald-500/30 hover:border-emerald-500/60 text-xs font-semibold transition-all cursor-pointer shadow-sm group"
+                className="flex items-center gap-1.5 px-2 py-1 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-white border border-emerald-500/30 hover:border-emerald-500/60 text-xs font-semibold transition-all cursor-pointer shadow-sm group"
                 title="Ver meu perfil, estatísticas e gerenciar conta Steam"
               >
                 <PlayerAvatar avatar={myProfile.avatar} nick={myProfile.nick} size="sm" />
-                <span className="truncate max-w-[85px] hidden sm:inline font-bold">{myProfile.nick}</span>
-                <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1.5 py-0.2 rounded font-mono hidden sm:inline">
-                  Stats
-                </span>
+                <span className="truncate max-w-[78px] hidden xl:inline font-bold">{myProfile.nick}</span>
               </button>
             )}
 
-            {/* Sound Toggle */}
+            {/* Sound Toggle (Compact Icon-Only) */}
             <button
               onClick={() => {
                 if (onToggleSound) onToggleSound();
                 else if (setSoundEnabled) setSoundEnabled(!soundEnabled);
               }}
-              className={`p-1.5 sm:px-2.5 sm:py-1 rounded-xl transition-all cursor-pointer border flex items-center gap-1.5 shadow-sm active:scale-95 ${
+              className={`p-1.5 rounded-xl transition-all cursor-pointer border flex items-center justify-center shadow-sm active:scale-95 ${
                 soundEnabled
                   ? 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border-emerald-500/40'
                   : 'bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white border-slate-700/60'
@@ -254,9 +251,6 @@ export default function Header({
               ) : (
                 <VolumeX size={15} className="text-slate-400" />
               )}
-              <span className="hidden xl:inline text-[11px] font-bold">
-                {soundEnabled ? 'Som' : 'Mudo'}
-              </span>
             </button>
 
             {/* Compact Room Hub Dropdown Menu (Replaces bulky 2nd navigation row) */}
@@ -337,8 +331,8 @@ export default function Header({
           </div>
         </div>
 
-        {/* Mobile Phase Stepper (< 1024px) */}
-        <div className="flex lg:hidden items-center justify-start sm:justify-center gap-1 pt-1.5 border-t border-slate-800/40 overflow-x-auto no-scrollbar">
+        {/* Mobile / Laptop Phase Stepper (< 1280px) */}
+        <div className="flex xl:hidden items-center justify-start sm:justify-center gap-1 pt-1.5 border-t border-slate-800/40 overflow-x-auto no-scrollbar">
           {steps.map((st, idx) => {
             const status = getStepStatus(st.id);
             const Icon = st.icon;

@@ -2015,7 +2015,7 @@ export default function App() {
               {/* LOBBY PHASE */}
               {room.phase === 'lobby' && (
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                  <div className="lg:col-span-4 lg:sticky lg:top-24">
+                  <div className="lg:col-span-4 lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto no-scrollbar">
                     <PlayerForm
                       currentProfile={myProfile}
                       onSave={handleSaveProfile}

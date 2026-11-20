@@ -209,35 +209,35 @@ export default function TeamsView({
 
             <div className="divide-y divide-slate-800/60 mt-2">
               {teamA.map((p, i) => (
-                <div key={p.id} className="py-2.5 flex items-center justify-between gap-2 flex-wrap">
+                <div key={p.id} className="py-2.5 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2.5 min-w-0 flex-1">
                     <PlayerAvatar avatar={p.avatar} nick={p.nick} size="md" />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="font-bold text-sm text-white truncate max-w-[140px] sm:max-w-[180px]" title={p.nick}>{p.nick}</span>
                         {p.id === adminId && (
-                          <span className="text-[9px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.2 rounded-full flex items-center gap-1 font-mono shadow-sm shrink-0">
+                          <span className="text-[9px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 rounded-full flex items-center gap-1 font-mono shadow-sm shrink-0">
                             <Crown size={9} className="fill-amber-400 text-amber-400" /> Admin
                           </span>
                         )}
                         {p.side === 'CT' && (
-                          <span className="text-[9px] font-bold text-sky-400 bg-sky-500/10 px-1.5 py-0.2 rounded border border-sky-500/20 shrink-0">
+                          <span className="text-[9px] font-bold text-sky-400 bg-sky-500/10 px-1.5 py-0.5 rounded border border-sky-500/20 shrink-0">
                             CT
                           </span>
                         )}
                         {p.side === 'TR' && (
-                          <span className="text-[9px] font-bold text-amber-400 bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20 shrink-0">
+                          <span className="text-[9px] font-bold text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 shrink-0">
                             TR
                           </span>
                         )}
                         {p.side === 'ANY' && (
-                          <span className="text-[9px] font-bold text-purple-400 bg-purple-500/10 px-1.5 py-0.2 rounded border border-purple-500/20 shrink-0">
+                          <span className="text-[9px] font-bold text-purple-400 bg-purple-500/10 px-1.5 py-0.5 rounded border border-purple-500/20 shrink-0">
                             Flex
                           </span>
                         )}
                         {p.cs2Hours && (
                           <span
-                            className="text-[9px] font-mono text-amber-400 bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20 font-bold shrink-0"
+                            className="text-[9px] font-mono text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 font-bold shrink-0"
                             title={`${p.cs2Hours.toLocaleString('pt-BR')} horas no CS2`}
                           >
                             🕒 {p.cs2Hours.toLocaleString('pt-BR')}h
@@ -258,10 +258,10 @@ export default function TeamsView({
                             if (soundEnabled) playClickSound();
                             onMovePlayerTeam(p.id, 'teamB');
                           }}
-                          className="px-2 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 hover:text-amber-200 text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-all active:scale-95 shadow-sm max-w-[120px]"
-                          title={`Mover este jogador para o ${labelB}`}
+                          className="px-2 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 hover:text-amber-200 text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-all active:scale-95 shadow-sm"
+                          title={`Mover ${p.nick} para ${labelB}`}
                         >
-                          <span className="truncate">Mover {labelB}</span>
+                          <span>Mover</span>
                           <ArrowRight size={11} className="shrink-0" />
                         </button>
                         {p.id !== myProfile?.id && (
@@ -320,35 +320,35 @@ export default function TeamsView({
 
             <div className="divide-y divide-slate-800/60 mt-2">
               {teamB.map((p, i) => (
-                <div key={p.id} className="py-2.5 flex items-center justify-between gap-2 flex-wrap">
+                <div key={p.id} className="py-2.5 flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2.5 min-w-0 flex-1">
                     <PlayerAvatar avatar={p.avatar} nick={p.nick} size="md" />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="font-bold text-sm text-white truncate max-w-[140px] sm:max-w-[180px]" title={p.nick}>{p.nick}</span>
                         {p.id === adminId && (
-                          <span className="text-[9px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.2 rounded-full flex items-center gap-1 font-mono shadow-sm shrink-0">
+                          <span className="text-[9px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 rounded-full flex items-center gap-1 font-mono shadow-sm shrink-0">
                             <Crown size={9} className="fill-amber-400 text-amber-400" /> Admin
                           </span>
                         )}
                         {p.side === 'CT' && (
-                          <span className="text-[9px] font-bold text-sky-400 bg-sky-500/10 px-1.5 py-0.2 rounded border border-sky-500/20 shrink-0">
+                          <span className="text-[9px] font-bold text-sky-400 bg-sky-500/10 px-1.5 py-0.5 rounded border border-sky-500/20 shrink-0">
                             CT
                           </span>
                         )}
                         {p.side === 'TR' && (
-                          <span className="text-[9px] font-bold text-amber-400 bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20 shrink-0">
+                          <span className="text-[9px] font-bold text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 shrink-0">
                             TR
                           </span>
                         )}
                         {p.side === 'ANY' && (
-                          <span className="text-[9px] font-bold text-purple-400 bg-purple-500/10 px-1.5 py-0.2 rounded border border-purple-500/20 shrink-0">
+                          <span className="text-[9px] font-bold text-purple-400 bg-purple-500/10 px-1.5 py-0.5 rounded border border-purple-500/20 shrink-0">
                             Flex
                           </span>
                         )}
                         {p.cs2Hours && (
                           <span
-                            className="text-[9px] font-mono text-amber-400 bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20 font-bold shrink-0"
+                            className="text-[9px] font-mono text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 font-bold shrink-0"
                             title={`${p.cs2Hours.toLocaleString('pt-BR')} horas no CS2`}
                           >
                             🕒 {p.cs2Hours.toLocaleString('pt-BR')}h
@@ -369,11 +369,11 @@ export default function TeamsView({
                             if (soundEnabled) playClickSound();
                             onMovePlayerTeam(p.id, 'teamA');
                           }}
-                          className="px-2 py-1 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/30 text-sky-300 hover:text-sky-200 text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-all active:scale-95 shadow-sm max-w-[120px]"
-                          title={`Mover este jogador para o ${labelA}`}
+                          className="px-2 py-1 rounded-lg bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/30 text-sky-300 hover:text-sky-200 text-[10px] font-bold flex items-center gap-1 cursor-pointer transition-all active:scale-95 shadow-sm"
+                          title={`Mover ${p.nick} para ${labelA}`}
                         >
                           <ArrowLeft size={11} className="shrink-0" />
-                          <span className="truncate">Mover {labelA}</span>
+                          <span>Mover</span>
                         </button>
                         {p.id !== myProfile?.id && (
                           <button

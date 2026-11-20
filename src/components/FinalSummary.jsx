@@ -795,7 +795,7 @@ export default function FinalSummary({
                             <span className="text-amber-400" title="MVP">⭐</span>
                           )}
                           {p.activeWeapon && (
-                            <span className="text-[9px] text-slate-400 font-normal bg-slate-900 border border-slate-800 px-1 py-0.2 rounded">
+                            <span className="text-[9px] text-slate-400 font-normal bg-slate-900 border border-slate-800 px-1 py-0.5 rounded">
                               🔫 {p.activeWeapon}
                             </span>
                           )}

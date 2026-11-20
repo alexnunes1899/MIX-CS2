@@ -214,7 +214,7 @@ export default function MatchHistoryModal({
                             <Calendar size={10} /> {h.date} às {h.time}
                           </span>
                           {(h.mvpNick || h.mvp?.nick) && (
-                            <span className="text-[10px] font-mono font-bold text-amber-300 bg-amber-500/20 border border-amber-500/40 px-1.5 py-0.2 rounded-md flex items-center gap-1 shadow-sm">
+                            <span className="text-[10px] font-mono font-bold text-amber-300 bg-amber-500/20 border border-amber-500/40 px-1.5 py-0.5 rounded-md flex items-center gap-1 shadow-sm">
                               👑 MVP: <strong>{h.mvpNick || h.mvp?.nick}</strong>
                             </span>
                           )}

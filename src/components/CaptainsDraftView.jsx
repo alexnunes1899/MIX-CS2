@@ -195,7 +195,7 @@ export default function CaptainsDraftView({
                   <span className="text-sm font-semibold text-white truncate" title={p.nick}>
                     {p.nick}
                   </span>
-                  {i === 0 && <span className="text-[10px] text-amber-400 font-mono font-bold bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20 shrink-0">Capitão</span>}
+                  {i === 0 && <span className="text-[10px] text-amber-400 font-mono font-bold bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 shrink-0">Capitão</span>}
                 </div>
                 <div className="shrink-0">
                   {isFaceit ? (
@@ -235,7 +235,7 @@ export default function CaptainsDraftView({
                   <span className="text-sm font-semibold text-white truncate" title={p.nick}>
                     {p.nick}
                   </span>
-                  {i === 0 && <span className="text-[10px] text-amber-400 font-mono font-bold bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20 shrink-0">Capitão</span>}
+                  {i === 0 && <span className="text-[10px] text-amber-400 font-mono font-bold bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 shrink-0">Capitão</span>}
                 </div>
                 <div className="shrink-0">
                   {isFaceit ? (

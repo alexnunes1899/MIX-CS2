@@ -23,6 +23,7 @@ export default function StandalonePageHeader({
   activeRoomsCount = 0,
   soundEnabled = true,
   onToggleSound,
+  rightExtra = null,
 }) {
   const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
 
@@ -45,15 +46,15 @@ export default function StandalonePageHeader({
 
   return (
     <header className="border-b border-slate-800/80 bg-[#070b15]/95 backdrop-blur-xl sticky top-0 z-40 shadow-2xl">
-      <div className="max-w-7xl mx-auto px-3 sm:px-5 h-16 sm:h-20 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3 shrink-0">
+      <div className="max-w-[1400px] mx-auto px-3 sm:px-5 h-16 flex items-center justify-between gap-2.5">
+        <div className="flex items-center gap-2.5 shrink-0 min-w-0">
           <div
             onClick={onGoHome}
-            className="flex items-center gap-2.5 cursor-pointer group select-none"
+            className="flex items-center gap-2 cursor-pointer group select-none shrink-0"
           >
-            <MixHubLogo className="w-9 h-9 sm:w-10 sm:h-10 shrink-0" />
+            <MixHubLogo className="w-9 h-9 shrink-0" />
             <div className="hidden sm:block">
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 whitespace-nowrap">
                 <span className="text-base font-bold font-heading tracking-wider text-white group-hover:text-amber-400 transition-colors">
                   MIX HUB
                 </span>
@@ -61,7 +62,7 @@ export default function StandalonePageHeader({
                   {badgeLabel}
                 </span>
               </div>
-              <p className="text-[10px] text-slate-400 font-mono uppercase">{subtitle}</p>
+              <p className="text-[10px] text-slate-400 font-mono uppercase hidden 2xl:block">{subtitle}</p>
             </div>
           </div>
 
@@ -69,25 +70,27 @@ export default function StandalonePageHeader({
             <button
               type="button"
               onClick={() => onGoToRoom(roomId)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-xs font-bold text-slate-300 hover:text-white border border-slate-700/80 transition-all cursor-pointer"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-xs font-bold text-slate-200 hover:text-white border border-slate-700/80 transition-all cursor-pointer shrink-0"
+              title={`Voltar para a sala ${roomId}`}
             >
-              <ArrowLeft size={14} />
-              <span className="hidden sm:inline">Voltar para o Mix ({roomId})</span>
-              <span className="sm:hidden">Voltar</span>
+              <ArrowLeft size={14} className="shrink-0" />
+              <span className="hidden lg:inline truncate max-w-[130px]">Mix ({roomId})</span>
+              <span className="lg:hidden">Voltar</span>
             </button>
           )}
         </div>
 
-        <div className="hidden md:flex items-center justify-center flex-1 min-w-0 px-2">
+        <div className="hidden lg:flex items-center justify-center flex-1 min-w-0 px-2">
           <MainNavigationMenu {...navProps} />
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          {rightExtra}
           {onToggleSound && (
             <button
               type="button"
               onClick={onToggleSound}
-              className={`p-2 sm:px-2.5 sm:py-1.5 rounded-xl transition-all cursor-pointer border flex items-center gap-1.5 shadow-sm active:scale-95 ${
+              className={`p-2 rounded-xl transition-all cursor-pointer border flex items-center justify-center shadow-sm active:scale-95 ${
                 soundEnabled
                   ? 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border-emerald-500/40'
                   : 'bg-slate-900/90 hover:bg-slate-800 text-slate-400 hover:text-white border-slate-700/60'
@@ -95,13 +98,12 @@ export default function StandalonePageHeader({
               title={soundEnabled ? 'Sons Ativados' : 'Sons Silenciados'}
             >
               {soundEnabled ? <Volume2 size={16} className="text-emerald-400" /> : <VolumeX size={16} className="text-slate-400" />}
-              <span className="hidden xl:inline text-[11px] font-bold">{soundEnabled ? 'Som Ativo' : 'Sem Som'}</span>
             </button>
           )}
         </div>
       </div>
 
-      <div className="md:hidden border-t border-slate-800/80 px-2 py-1.5 bg-[#070b15]/98 flex items-center justify-center">
+      <div className="lg:hidden border-t border-slate-800/80 px-2 py-1.5 bg-[#070b15]/98 flex items-center justify-center">
         <MainNavigationMenu {...navProps} />
       </div>
     </header>

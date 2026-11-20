@@ -105,31 +105,37 @@ export default function RoomsHubModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
-      <div className="relative w-full max-w-lg max-h-[92vh] overflow-y-auto bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl">
+      <div className="relative w-full max-w-lg max-h-[90vh] overflow-hidden bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl flex flex-col">
         {/* Glow */}
         <div className="absolute top-0 right-0 w-40 h-40 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
 
-        {/* Close Button */}
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 p-2 rounded-xl bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer"
-        >
-          <X size={18} />
-        </button>
+        {/* Pinned Header */}
+        <div className="relative z-10 flex items-center justify-between gap-3 px-6 pt-5 pb-4 border-b border-slate-800/80 shrink-0 bg-slate-900/95">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30 shrink-0">
+              <Layers size={20} />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-base sm:text-lg font-bold font-heading text-white truncate">Hub de Salas de Mix (Estilo GC)</h2>
+              <p className="text-[11px] sm:text-xs text-slate-400 truncate">Crie mix público para a comunidade ou privado exclusivo via link</p>
+            </div>
+          </div>
 
-        {/* Title */}
-        <div className="flex items-center gap-2.5 mb-5 pr-10">
-          <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30 shrink-0">
-            <Layers size={20} />
-          </div>
-          <div className="min-w-0">
-            <h2 className="text-base sm:text-lg font-bold font-heading text-white truncate">Hub de Salas de Mix (Estilo GC)</h2>
-            <p className="text-[11px] sm:text-xs text-slate-400">Crie mix público para a comunidade ou privado exclusivo via link</p>
-          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 rounded-xl bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer shrink-0"
+            title="Fechar"
+          >
+            <X size={18} />
+          </button>
         </div>
 
+        {/* Scrollable Body */}
+        <div className="relative z-10 overflow-y-auto flex-1 p-6 space-y-5">
+
         {/* Create New Room Form */}
-        <form onSubmit={handleCreate} className="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-4 mb-5 space-y-3.5">
+        <form onSubmit={handleCreate} className="bg-slate-950/80 border border-slate-800/80 rounded-2xl p-4 space-y-3.5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5 text-xs font-bold text-amber-400 uppercase tracking-wider">
               <Plus size={14} /> Criar Novo Mix
@@ -198,29 +204,6 @@ export default function RoomsHubModal({
                   Oculto da lista pública. <strong>Só entra quem tiver o link direto</strong>.
                 </p>
               </button>
-            </div>
-          </div>
-
-          {/* Gamers Club Explanation Notice */}
-          <div className={`p-3 rounded-xl border text-xs flex items-start gap-2.5 transition-colors ${
-            isPrivate
-              ? 'bg-purple-500/10 border-purple-500/30 text-purple-200'
-              : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'
-          }`}>
-            {isPrivate ? (
-              <Lock size={15} className="text-purple-400 shrink-0 mt-0.5" />
-            ) : (
-              <Globe size={15} className="text-emerald-400 shrink-0 mt-0.5" />
-            )}
-            <div className="space-y-0.5">
-              <span className="font-bold block">
-                {isPrivate ? '🔒 Modo Privado Selecionado:' : '🌐 Modo Público Selecionado:'}
-              </span>
-              <p className="text-[11px] text-slate-300 leading-relaxed">
-                {isPrivate
-                  ? 'A sala ficará oculta da lista do Hub. Apenas seus amigos que receberem o Link Direto de Convite entrarão automaticamente.'
-                  : 'Sua sala aparecerá na lista de Salas Ativas para qualquer jogador da comunidade encontrar e entrar com 1 clique.'}
-              </p>
             </div>
           </div>
 
@@ -327,7 +310,7 @@ export default function RoomsHubModal({
                   <span className="font-bold text-xs text-amber-400 flex items-center gap-1">
                     <Shield size={12} /> Gamers Club
                   </span>
-                  <span className="text-[9px] font-mono font-bold bg-amber-500/20 text-amber-300 px-1.5 py-0.2 rounded">
+                  <span className="text-[9px] font-mono font-bold bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded">
                     1 a 21
                   </span>
                 </div>
@@ -349,7 +332,7 @@ export default function RoomsHubModal({
                   <span className="font-bold text-xs text-orange-400 flex items-center gap-1">
                     <Zap size={12} /> FACEIT
                   </span>
-                  <span className="text-[9px] font-mono font-bold bg-orange-500/20 text-orange-300 px-1.5 py-0.2 rounded whitespace-nowrap shrink-0">
+                  <span className="text-[9px] font-mono font-bold bg-orange-500/20 text-orange-300 px-1.5 py-0.5 rounded whitespace-nowrap shrink-0">
                     Auto 1-10
                   </span>
                 </div>
@@ -449,23 +432,23 @@ export default function RoomsHubModal({
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-bold text-sm text-white">{r.name}</span>
-                        <span className="font-mono text-[10px] text-amber-400 bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20">
+                        <span className="font-mono text-[10px] text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
                           #{r.id}
                         </span>
-                        <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.2 rounded font-mono flex items-center gap-1">
+                        <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 rounded font-mono flex items-center gap-1">
                           <Globe size={9} /> Público
                         </span>
                         {isFaceit ? (
-                          <span className="text-[9px] font-bold text-orange-400 bg-orange-500/15 border border-orange-500/30 px-1.5 py-0.2 rounded font-mono">
+                          <span className="text-[9px] font-bold text-orange-400 bg-orange-500/15 border border-orange-500/30 px-1.5 py-0.5 rounded font-mono">
                             ⚡ FACEIT
                           </span>
                         ) : (
-                          <span className="text-[9px] font-bold text-amber-400 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.2 rounded font-mono">
+                          <span className="text-[9px] font-bold text-amber-400 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 rounded font-mono">
                             🛡️ GC
                           </span>
                         )}
                         {Boolean(r.hasServer || r.serverIp) && (
-                          <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.2 rounded font-mono flex items-center gap-1">
+                          <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 rounded font-mono flex items-center gap-1">
                             <Server size={9} /> Servidor
                           </span>
                         )}
@@ -512,6 +495,8 @@ export default function RoomsHubModal({
               })
             )}
           </div>
+        </div>
+
         </div>
 
         {/* Delete Confirmation Modal */}

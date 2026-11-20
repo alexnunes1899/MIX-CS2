@@ -275,7 +275,7 @@ export default function PlayerForm({
   };
 
   return (
-    <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl relative overflow-hidden backdrop-blur space-y-4">
+    <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-xl relative overflow-hidden backdrop-blur space-y-3">
       <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full blur-2xl pointer-events-none" />
 
       {/* Header with Mode indicator and Badge */}
@@ -286,10 +286,10 @@ export default function PlayerForm({
             <span className="truncate">Seu Perfil no Mix</span>
           </h2>
           <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-            <span className="text-[10px] text-amber-400 font-bold bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.2 rounded font-mono flex items-center gap-1 shrink-0">
+            <span className="text-[10px] text-amber-400 font-bold bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 rounded font-mono flex items-center gap-1 shrink-0">
               <Shield size={10} /> GC: LVL {level}
             </span>
-            <span className="text-[10px] text-orange-400 font-bold bg-orange-500/15 border border-orange-500/30 px-1.5 py-0.2 rounded font-mono flex items-center gap-1 shrink-0">
+            <span className="text-[10px] text-orange-400 font-bold bg-orange-500/15 border border-orange-500/30 px-1.5 py-0.5 rounded font-mono flex items-center gap-1 shrink-0">
               <Zap size={10} /> FACEIT: LVL {faceitLevel}
             </span>
           </div>
@@ -336,11 +336,11 @@ export default function PlayerForm({
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="text-xs font-bold text-white truncate max-w-[115px]">{nick}</span>
-                  <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.2 rounded font-mono">
+                  <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 rounded font-mono">
                     Steam ✓
                   </span>
                   {currentProfile?.cs2Hours && (
-                    <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-300 border border-amber-500/30">
+                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/30">
                       {currentProfile.cs2Hours.toLocaleString('pt-BR')}h
                     </span>
                   )}
@@ -401,7 +401,7 @@ export default function PlayerForm({
       )}
 
       {/* Form Details */}
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-3">
         {/* Nickname & Avatar */}
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
           <div className="sm:col-span-3">
@@ -489,7 +489,7 @@ export default function PlayerForm({
                 <span className="text-xs font-semibold text-orange-300 uppercase tracking-wider flex items-center gap-1">
                   <Zap size={13} className="text-orange-400" /> Nível FACEIT Oficial (1 a 10)
                 </span>
-                <span className="text-[9px] text-orange-400 font-mono font-bold bg-orange-500/10 px-1.5 py-0.2 rounded border border-orange-500/20">
+                <span className="text-[9px] text-orange-400 font-mono font-bold bg-orange-500/10 px-1.5 py-0.5 rounded border border-orange-500/20">
                   Auto API
                 </span>
               </div>
@@ -497,7 +497,7 @@ export default function PlayerForm({
                 <span className="text-slate-500 text-xs">LVL</span>
                 <span className="text-base font-black">{faceitLevel}</span>
                 {levelSynced && (
-                  <span className="text-[10px] text-emerald-400 font-sans font-bold bg-emerald-500/10 px-1.5 py-0.2 rounded border border-emerald-500/20 animate-pulse">
+                  <span className="text-[10px] text-emerald-400 font-sans font-bold bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20 animate-pulse">
                     ✓ Sincronizado
                   </span>
                 )}
@@ -603,7 +603,7 @@ export default function PlayerForm({
                 <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
                   Level Gamers Club (1 a 21)
                 </span>
-                <span className="text-[9px] text-amber-400 font-mono font-bold bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20">
+                <span className="text-[9px] text-amber-400 font-mono font-bold bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
                   Auto-sync
                 </span>
               </div>
@@ -611,7 +611,7 @@ export default function PlayerForm({
                 <span className="text-slate-500 text-xs">LVL</span>
                 <span className="text-base">{level}</span>
                 {levelSynced && (
-                  <span className="text-[10px] text-emerald-400 font-sans font-bold bg-emerald-500/10 px-1.5 py-0.2 rounded border border-emerald-500/20 animate-pulse">
+                  <span className="text-[10px] text-emerald-400 font-sans font-bold bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20 animate-pulse">
                     ✓ Atualizado
                   </span>
                 )}
@@ -686,32 +686,6 @@ export default function PlayerForm({
                   </button>
                 );
               })}
-            </div>
-
-            {/* Always Visible FACEIT Quick-Sync Bar inside GC view */}
-            <div className="pt-2 border-t border-slate-800/80 mt-2 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <FaceitBadge level={faceitLevel} elo={faceitElo} size="sm" />
-                <div className="min-w-0 text-[11px]">
-                  <span className="font-bold text-white truncate block">
-                    {faceitNick || nick || 'Conta FACEIT'}
-                  </span>
-                  <span className="text-[10px] text-orange-400 font-mono">
-                    Nível {faceitLevel} {faceitElo ? `(${faceitElo} ELO)` : ''}
-                  </span>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => handleRefreshFaceit(faceitNick || nick)}
-                disabled={syncingFaceit}
-                className="px-2.5 py-1 rounded-lg bg-orange-500 hover:bg-orange-400 text-slate-950 font-bold text-xs flex items-center gap-1 transition-all cursor-pointer shadow-md shadow-orange-500/20 disabled:opacity-50 active:scale-95 shrink-0"
-                title="Puxar nível e ELO da FACEIT agora"
-              >
-                <RefreshCw size={11} className={syncingFaceit ? 'animate-spin' : ''} />
-                <span>{syncingFaceit ? 'Buscando...' : 'Puxar FACEIT'}</span>
-              </button>
             </div>
           </div>
         )}

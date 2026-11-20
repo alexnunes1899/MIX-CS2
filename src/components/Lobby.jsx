@@ -3,7 +3,7 @@ import GCBadge from './GCBadge';
 import FaceitBadge from './FaceitBadge';
 import PlayerAvatar from './PlayerAvatar';
 import ServerConnectBar from './ServerConnectBar';
-import { Users, Trash2, Bot, Scale, Shuffle, Shield, Flame, CheckCircle2, Crown, Check, AlertCircle, Zap, Lock, Globe, Share2, Layers, Copy, Hash, Eye, Sparkles, Bell, Clock, UserX } from 'lucide-react';
+import { Users, Trash2, Bot, Scale, Shuffle, Shield, Flame, CheckCircle2, Crown, Check, AlertCircle, Zap, Lock, Globe, Share2, Layers, Copy, Hash, Eye, Sparkles, Bell, Clock, UserX, ArrowLeftRight } from 'lucide-react';
 import { playClickSound, playReadySound } from '../utils/audio';
 import { copyText, buildRoomInviteData } from '../utils/clipboard';
 
@@ -128,123 +128,67 @@ export default function Lobby({
         </div>
       )}
 
-      {/* Room Security & Privacy Card */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 shadow-lg space-y-3 backdrop-blur">
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
-          <div className="space-y-1 min-w-0 flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs font-bold uppercase tracking-wider text-white flex items-center gap-1.5">
-                <Layers size={14} className="text-amber-400" />
-                Mix: <span className="text-amber-400 font-bold truncate max-w-[200px]">{roomName || roomId}</span>
-                {roomName && roomName !== roomId && (
-                  <span className="text-slate-500 font-mono text-[10px]">({roomId})</span>
-                )}
-              </span>
-
-              {isPrivate ? (
-                <span className="text-[10px] font-bold text-purple-300 bg-purple-500/15 border border-purple-500/30 px-2 py-0.5 rounded-full flex items-center gap-1 font-mono">
-                  <Lock size={10} /> Privado (Só via Link)
-                </span>
-              ) : (
-                <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-full flex items-center gap-1 font-mono">
-                  <Globe size={10} /> Mix Público
-                </span>
-              )}
-
-              {isAdmin && (
-                <span className="text-[10px] font-bold text-amber-300 bg-amber-500/20 border border-amber-500/40 px-2 py-0.5 rounded-full flex items-center gap-1 font-mono">
-                  <Crown size={10} className="text-amber-400" /> Admin
-                </span>
-              )}
-            </div>
-            <p className="text-[11px] text-slate-400">
-              {isPrivate
-                ? 'Sala privada sem senha. Os jogadores entram exclusivamente abrindo o Link de Convite.'
-                : 'Mix público aberto. Qualquer jogador da comunidade pode entrar pelo Hub ou pelo link.'}
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2 w-full md:w-auto shrink-0 flex-wrap">
-            {onOpenDiscordModal && (
-              <button
-                type="button"
-                onClick={() => {
-                  if (soundEnabled) playClickSound();
-                  onOpenDiscordModal();
-                }}
-                className="px-3 py-2 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95"
-                title="Configurar Notificações no Discord (Avisar quando fechar 10/10)"
-              >
-                <Bell size={14} className="text-indigo-400" />
-                <span>Discord</span>
-              </button>
-            )}
-
-            <button
-              type="button"
-              onClick={handleCopyInviteLink}
-              className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs uppercase tracking-wider shadow-md shadow-amber-500/20 flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
-              title={isPrivate ? 'Copiar link de acesso exclusivo para convidados' : 'Copiar link para amigos entrarem'}
-            >
-              {copiedInvite ? <Check size={14} className="text-slate-950" /> : <Share2 size={14} />}
-              <span>{copiedInvite ? 'Copiado!' : 'Copiar Link'}</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Room Identity & Direct Invite Link Bar (No Password Needed) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-slate-800/80">
-          {/* Room Identifier */}
-          <div className="bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 flex items-center justify-between">
-            <div className="flex items-center gap-2 min-w-0">
-              <Hash size={14} className="text-amber-400 shrink-0" />
-              <div className="min-w-0">
-                <span className="text-[10px] text-slate-400 font-semibold block uppercase">Código Identificador</span>
-                <span className="text-xs font-mono font-bold text-white truncate block">{roomId}</span>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={handleCopyUser}
-              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer text-[10px] font-bold flex items-center gap-1 shrink-0"
-              title="Copiar Código da Sala"
-            >
-              {copiedUser ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
-              <span>{copiedUser ? 'Copiado' : 'Copiar'}</span>
-            </button>
-          </div>
-
-          {/* Direct Invite Link Status (No duplicated copy button here) */}
-          <div className="bg-slate-950/70 border border-slate-800 rounded-xl px-3 py-2 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 min-w-0">
-              {isPrivate ? (
-                <Lock size={14} className="text-purple-400 shrink-0" />
-              ) : (
-                <Globe size={14} className="text-emerald-400 shrink-0" />
-              )}
-              <div className="min-w-0">
-                <span className="text-[10px] text-slate-400 font-semibold block uppercase">Modo de Entrada</span>
-                <span className={`text-xs font-mono font-bold truncate block ${isPrivate ? 'text-purple-300' : 'text-emerald-300'}`}>
-                  {isPrivate ? 'Somente pelo Link Direto' : 'Aberto / Link Direto'}
-                </span>
-              </div>
-            </div>
-            <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-lg border shrink-0 ${
-              isPrivate ? 'bg-purple-500/15 text-purple-300 border-purple-500/30' : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
-            }`}>
-              {isPrivate ? 'Privada' : 'Pública'}
-            </span>
-          </div>
-        </div>
-
-        {/* Informative Note */}
-        <div className="text-[11px] text-slate-400 flex items-center gap-1.5 pt-0.5">
-          <Sparkles size={12} className="text-amber-400 shrink-0" />
-          <span>
-            {isPrivate
-              ? <>Sala privada: envie o <strong>Link de Convite</strong> para seus amigos — só entra quem abrir pelo link!</>
-              : <>Envie o <strong>Link de Convite</strong> para seus amigos entrarem direto na sala com 1 clique!</>}
+      {/* Compact Room Info & Invite Bar */}
+      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl px-4 py-3 shadow-lg backdrop-blur flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex items-center gap-2 flex-wrap min-w-0">
+          <span className="text-xs font-bold uppercase tracking-wider text-white flex items-center gap-1.5 min-w-0">
+            <Layers size={14} className="text-amber-400 shrink-0" />
+            <span className="text-amber-400 font-bold truncate max-w-[200px]">{roomName || roomId}</span>
           </span>
+
+          {isPrivate ? (
+            <span className="text-[10px] font-bold text-purple-300 bg-purple-500/15 border border-purple-500/30 px-2 py-0.5 rounded-full flex items-center gap-1 font-mono shrink-0">
+              <Lock size={10} /> Privado
+            </span>
+          ) : (
+            <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-full flex items-center gap-1 font-mono shrink-0">
+              <Globe size={10} /> Público
+            </span>
+          )}
+
+          {isAdmin && (
+            <span className="text-[10px] font-bold text-amber-300 bg-amber-500/20 border border-amber-500/40 px-2 py-0.5 rounded-full flex items-center gap-1 font-mono shrink-0">
+              <Crown size={10} className="text-amber-400" /> Admin
+            </span>
+          )}
+
+          <button
+            type="button"
+            onClick={handleCopyUser}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-slate-950/90 hover:bg-slate-800 border border-slate-700/80 text-[11px] font-mono font-bold text-slate-300 hover:text-white transition-colors cursor-pointer shrink-0"
+            title="Copiar código identificador da sala"
+          >
+            <Hash size={11} className="text-amber-400" />
+            <span>{roomId}</span>
+            {copiedUser ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} className="text-slate-500" />}
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
+          {onOpenDiscordModal && (
+            <button
+              type="button"
+              onClick={() => {
+                if (soundEnabled) playClickSound();
+                onOpenDiscordModal();
+              }}
+              className="px-3 py-2 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm active:scale-95"
+              title="Configurar Notificações no Discord (Avisar quando fechar 10/10)"
+            >
+              <Bell size={14} className="text-indigo-400" />
+              <span>Discord</span>
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={handleCopyInviteLink}
+            className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs uppercase tracking-wider shadow-md shadow-amber-500/20 flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
+            title={isPrivate ? 'Copiar link de acesso exclusivo para convidados' : 'Copiar link para amigos entrarem'}
+          >
+            {copiedInvite ? <Check size={14} className="text-slate-950" /> : <Share2 size={14} />}
+            <span>{copiedInvite ? 'Copiado!' : 'Copiar Link'}</span>
+          </button>
         </div>
       </div>
 
@@ -501,8 +445,8 @@ export default function Lobby({
         );
       })()}
 
-      {/* Players Grid (10 Slots) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+      {/* Players Grid (10 Slots — 2 Roomy Horizontal Columns on sm+) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {players.map((p, idx) => {
           const isMe = p.id === myProfile?.id || (p.nick && p.nick === myProfile?.nick);
           const isSlotAdmin = adminId && p.id === adminId;
@@ -510,92 +454,85 @@ export default function Lobby({
           return (
             <div
               key={p.id || idx}
-              className={`relative overflow-hidden bg-slate-900/90 border rounded-2xl p-3 pt-3.5 flex flex-col justify-between transition-all group ${
+              className={`relative overflow-hidden bg-slate-900/90 border rounded-2xl p-3.5 pt-4 flex flex-col justify-between gap-2.5 transition-all group ${
                 p.ready
                   ? 'border-emerald-500/45 shadow-md shadow-emerald-500/10'
                   : 'border-slate-800 hover:border-slate-700'
               } ${isMe ? 'ring-2 ring-amber-500/45 bg-slate-900' : ''}`}
             >
-              {/* Top Status Strip */}
+              {/* Top Status Accent Strip */}
               <div
                 className={`absolute top-0 inset-x-0 h-1 ${
                   p.ready ? 'bg-emerald-400' : isMe ? 'bg-amber-400' : 'bg-slate-800'
                 }`}
               />
-              {/* Ready Indicator Dot */}
-              <div
-                className={`absolute top-3 right-3 w-2.5 h-2.5 rounded-full z-10 ${
-                  p.ready ? 'bg-emerald-400 shadow-sm shadow-emerald-400' : 'bg-slate-700'
-                }`}
-                title={p.ready ? 'Pronto' : 'Aguardando'}
-              />
 
-              {/* Top: Avatar & Player Nick */}
-              <div className="flex items-center gap-2.5 mb-2.5 pr-4 min-w-0">
-                <div className="relative shrink-0">
-                  <PlayerAvatar avatar={p.avatar} size="md" />
-                  {isSlotAdmin && (
-                    <div
-                      className="absolute -top-1 -left-1 w-4 h-4 rounded-full bg-slate-950 text-amber-400 flex items-center justify-center border border-amber-400/80 shadow-md z-10"
-                      title="Administrador / Criador da Sala"
-                    >
-                      <Crown size={9} className="fill-amber-400/30" />
-                    </div>
-                  )}
-                </div>
-                <div className="min-w-0 flex-1 overflow-hidden">
-                  <div className="flex items-center gap-1 min-w-0">
-                    <span className="font-bold text-xs text-white truncate block" title={p.nick}>
-                      {p.nick}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                    <span className="text-[10px] text-slate-500 font-mono shrink-0">
-                      Slot #{idx + 1}
-                    </span>
-                    {isMe && (
-                      <span className="text-[8px] font-black uppercase tracking-wider text-amber-300 bg-amber-500/25 border border-amber-500/40 px-1 rounded shrink-0">
-                        VOCÊ
-                      </span>
+              {/* Row 1: Identity & Skill Badge */}
+              <div className="flex items-center justify-between gap-2.5 min-w-0">
+                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                  <div className="relative shrink-0">
+                    <PlayerAvatar avatar={p.avatar} size="md" />
+                    {isSlotAdmin && (
+                      <div
+                        className="absolute -top-1 -left-1 w-4 h-4 rounded-full bg-slate-950 text-amber-400 flex items-center justify-center border border-amber-400/80 shadow-md z-10"
+                        title="Administrador / Criador da Sala"
+                      >
+                        <Crown size={9} className="fill-amber-400/30" />
+                      </div>
                     )}
                   </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="font-bold text-sm text-white truncate" title={p.nick}>
+                        {p.nick}
+                      </span>
+                      {isMe && (
+                        <span className="text-[9px] font-black uppercase tracking-wider text-amber-300 bg-amber-500/20 border border-amber-500/40 px-1.5 py-0.5 rounded shrink-0">
+                          VOCÊ
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-[10px] text-slate-500 font-mono shrink-0">
+                        Slot #{idx + 1}
+                      </span>
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full ${
+                          p.ready ? 'bg-emerald-400' : 'bg-slate-600'
+                        }`}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right: Skill Badge & CS2 Hours */}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {p.cs2Hours && (
+                    <span
+                      className="text-[10px] font-mono text-amber-300 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 font-bold shrink-0"
+                      title={`${p.cs2Hours.toLocaleString('pt-BR')} horas no CS2`}
+                    >
+                      {p.cs2Hours.toLocaleString('pt-BR')}h
+                    </span>
+                  )}
+                  {isFaceit ? (
+                    <FaceitBadge level={p.faceitLevel} elo={p.faceitElo} size="sm" showElo={false} />
+                  ) : (
+                    <GCBadge level={p.level} size="sm" />
+                  )}
                 </div>
               </div>
 
-              {/* Middle: Badges based on selected ranking */}
-              <div className="space-y-1.5 my-1.5 min-w-0">
-                {isFaceit ? (
-                  <div className="flex items-center justify-between gap-1.5 bg-slate-950/60 p-1.5 rounded-xl border border-slate-800/80 min-w-0 overflow-hidden">
-                    <FaceitBadge level={p.faceitLevel} elo={p.faceitElo} size="sm" showElo={false} />
-                    {p.cs2Hours ? (
-                      <span className="text-[9px] font-mono text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 font-bold shrink-0 truncate" title={`${p.cs2Hours.toLocaleString('pt-BR')} horas no CS2`}>
-                        🕒 {p.cs2Hours.toLocaleString('pt-BR')}h
-                      </span>
-                    ) : (
-                      <span className="text-[9px] font-mono text-slate-500 truncate">Auto Steam</span>
-                    )}
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-between gap-1.5 bg-slate-950/60 p-1.5 rounded-xl border border-slate-800/80 min-w-0 overflow-hidden">
-                    <GCBadge level={p.level} size="sm" />
-                    {p.cs2Hours ? (
-                      <span className="text-[9px] font-mono text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 font-bold shrink-0 truncate" title={`${p.cs2Hours.toLocaleString('pt-BR')} horas no CS2`}>
-                        🕒 {p.cs2Hours.toLocaleString('pt-BR')}h
-                      </span>
-                    ) : (
-                      <span className="text-[9px] font-mono text-slate-500 truncate">Gamers Club</span>
-                    )}
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between gap-1.5 bg-slate-950/60 border border-slate-800/80 rounded-xl px-2 py-1 text-[10px] text-slate-400 min-w-0">
-                  <span className="text-[9px] font-semibold text-slate-400 shrink-0">Lado:</span>
+              {/* Row 2: Side Selector & Ready / Action Controls */}
+              <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-800/70">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="text-[10px] font-semibold text-slate-400 shrink-0">Lado:</span>
                   {isAdmin && onAdminChangeSide ? (
-                    <div className="grid grid-cols-3 gap-0.5 bg-slate-950 border border-slate-800 rounded-lg p-0.5 flex-1 max-w-[108px] min-w-0">
+                    <div className="grid grid-cols-3 gap-0.5 bg-slate-950 border border-slate-800 rounded-lg p-0.5 w-[124px]">
                       <button
                         type="button"
                         onClick={() => onAdminChangeSide(p.id, 'CT')}
-                        className={`py-0.5 rounded text-[9px] font-bold text-center transition-colors cursor-pointer ${
+                        className={`py-0.5 rounded text-[10px] font-bold text-center transition-colors cursor-pointer ${
                           p.side === 'CT' ? 'bg-sky-500/25 text-sky-300 border border-sky-500/40' : 'text-slate-500 hover:text-slate-300'
                         }`}
                         title="Fixar no lado CT"
@@ -605,7 +542,7 @@ export default function Lobby({
                       <button
                         type="button"
                         onClick={() => onAdminChangeSide(p.id, 'TR')}
-                        className={`py-0.5 rounded text-[9px] font-bold text-center transition-colors cursor-pointer ${
+                        className={`py-0.5 rounded text-[10px] font-bold text-center transition-colors cursor-pointer ${
                           p.side === 'TR' ? 'bg-amber-500/25 text-amber-300 border border-amber-500/40' : 'text-slate-500 hover:text-slate-300'
                         }`}
                         title="Fixar no lado TR"
@@ -615,7 +552,7 @@ export default function Lobby({
                       <button
                         type="button"
                         onClick={() => onAdminChangeSide(p.id, 'ANY')}
-                        className={`py-0.5 rounded text-[9px] font-bold text-center transition-colors cursor-pointer truncate ${
+                        className={`py-0.5 rounded text-[10px] font-bold text-center transition-colors cursor-pointer ${
                           !p.side || p.side === 'ANY' ? 'bg-slate-800 text-slate-200 border border-slate-700' : 'text-slate-500 hover:text-slate-300'
                         }`}
                         title="Qualquer lado (Flex / Automático)"
@@ -625,7 +562,7 @@ export default function Lobby({
                     </div>
                   ) : (
                     <span
-                      className={`font-bold font-mono px-1.5 py-0.5 rounded text-[9px] shrink-0 ${
+                      className={`font-bold font-mono px-2 py-0.5 rounded text-[10px] shrink-0 ${
                         p.side === 'CT'
                           ? 'bg-sky-500/20 text-sky-400 border border-sky-500/30'
                           : p.side === 'TR'
@@ -637,69 +574,77 @@ export default function Lobby({
                     </span>
                   )}
                 </div>
-              </div>
 
-              {/* Bottom: Action buttons */}
-              <div className="flex items-center justify-between pt-2 border-t border-slate-800/80 mt-1">
-                {(isMe || isAdmin) ? (
-                  <button
-                    onClick={() => {
-                      if (soundEnabled) playReadySound();
-                      onToggleReady(p.id);
-                    }}
-                    className={`text-[10px] font-bold px-2 py-1 rounded-lg transition-colors cursor-pointer ${
-                      p.ready
-                        ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
-                        : 'bg-slate-800 text-slate-400 hover:text-white'
-                    }`}
-                    title={isMe ? 'Alternar meu status de pronto' : 'Alternar status (Admin)'}
-                  >
-                    {p.ready ? 'Pronto ✓' : 'Aguardando'}
-                  </button>
-                ) : (
-                  <span
-                    className={`text-[10px] font-bold px-2 py-1 rounded-lg select-none ${
-                      p.ready
-                        ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'
-                        : 'bg-slate-900 text-slate-500 border border-slate-800'
-                    }`}
-                  >
-                    {p.ready ? 'Pronto ✓' : 'Aguardando'}
-                  </span>
-                )}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {(isMe || isAdmin) ? (
+                    <button
+                      onClick={() => {
+                        if (soundEnabled) playReadySound();
+                        onToggleReady(p.id);
+                      }}
+                      className={`text-[10px] font-bold px-2.5 py-1 rounded-lg transition-colors cursor-pointer ${
+                        p.ready
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/30'
+                          : 'bg-slate-800 text-slate-300 hover:text-white border border-slate-700'
+                      }`}
+                      title={isMe ? 'Alternar meu status de pronto' : 'Alternar status (Admin)'}
+                    >
+                      {p.ready ? 'Pronto ✓' : 'Aguardando'}
+                    </button>
+                  ) : (
+                    <span
+                      className={`text-[10px] font-bold px-2.5 py-1 rounded-lg select-none ${
+                        p.ready
+                          ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'
+                          : 'bg-slate-950 text-slate-500 border border-slate-800'
+                      }`}
+                    >
+                      {p.ready ? 'Pronto ✓' : 'Aguardando'}
+                    </span>
+                  )}
 
-                {(isAdmin || isMe) && (
-                  <button
-                    onClick={() => {
-                      if (soundEnabled) playClickSound();
-                      if (isAdmin && !isMe && onKickPlayer) {
-                        onKickPlayer(p.id);
-                      } else {
-                        onRemovePlayer(p.id);
-                      }
-                    }}
-                    className="p-1 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
-                    title={isAdmin && p.id !== myProfile?.id ? 'Expulsar jogador da sala (Admin)' : 'Sair da sala'}
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                )}
+                  {(isAdmin || isMe) && (
+                    <button
+                      onClick={() => {
+                        if (soundEnabled) playClickSound();
+                        if (isAdmin && !isMe && onKickPlayer) {
+                          onKickPlayer(p.id);
+                        } else {
+                          onRemovePlayer(p.id);
+                        }
+                      }}
+                      className="p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
+                      title={isAdmin && p.id !== myProfile?.id ? 'Expulsar jogador da sala (Admin)' : 'Sair da sala'}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           );
         })}
 
-        {/* Empty Slot Placeholders */}
+        {/* Empty Slot Placeholders (Horizontal Rhythm Match) */}
         {Array.from({ length: emptySlots }).map((_, i) => (
           <div
             key={`empty-${i}`}
-            className="border-2 border-dashed border-slate-800/70 hover:border-amber-500/35 rounded-2xl p-3.5 flex flex-col items-center justify-center text-center min-h-[126px] text-slate-600 bg-slate-950/30 hover:bg-slate-900/40 transition-all select-none group"
+            className="border-2 border-dashed border-slate-800/70 hover:border-amber-500/35 rounded-2xl px-4 py-3 flex items-center justify-between min-h-[86px] text-slate-600 bg-slate-950/30 hover:bg-slate-900/40 transition-all select-none group"
           >
-            <div className="w-8 h-8 rounded-full bg-slate-900 border border-slate-800 group-hover:border-amber-500/40 flex items-center justify-center text-slate-500 group-hover:text-amber-400 mb-1.5 transition-colors">
-              <Users size={14} />
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-full bg-slate-900 border border-slate-800 group-hover:border-amber-500/40 flex items-center justify-center text-slate-500 group-hover:text-amber-400 transition-colors shrink-0">
+                <Users size={15} />
+              </div>
+              <div>
+                <span className="text-xs font-mono font-bold text-slate-400 block">
+                  Vaga #{players.length + i + 1}
+                </span>
+                <span className="text-[11px] text-slate-600 block">Livre para entrar</span>
+              </div>
             </div>
-            <span className="text-[11px] font-mono font-bold text-slate-400">Vaga #{players.length + i + 1}</span>
-            <span className="text-[10px] text-slate-600 mt-0.5">Livre para entrar</span>
+            <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-md border border-slate-800/80 text-slate-500">
+              Aberta
+            </span>
           </div>
         ))}
       </div>

@@ -459,7 +459,7 @@ GL HF! 🔥 Boa sorte a ambas as equipes!`;
               <Trophy size={12} className="text-amber-400" />
               <span>Formato da Partida (Série)</span>
             </span>
-            <span className="text-[9px] font-mono font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.2 rounded-full">
+            <span className="text-[9px] font-mono font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full">
               {matchFormat === 'MD1' ? '1 Mapa' : matchFormat === 'MD3' ? '3 Mapas' : '5 Mapas'}
             </span>
           </div>
@@ -689,7 +689,7 @@ GL HF! 🔥 Boa sorte a ambas as equipes!`;
               <span>Fita da Roleta CS2</span>
             </span>
             <div className="flex items-center gap-1.5">
-              <span className="text-[9px] font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-1.5 py-0.2 rounded-full flex items-center gap-1">
+              <span className="text-[9px] font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-1.5 py-0.5 rounded-full flex items-center gap-1">
                 <ShieldCheck size={9} /> CSPRNG Seguro
               </span>
               <button
@@ -900,7 +900,7 @@ GL HF! 🔥 Boa sorte a ambas as equipes!`;
                     <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/80 to-transparent" />
 
                     <div className="relative z-10 flex items-center justify-between gap-1 mb-2">
-                      <span className="text-[10px] font-mono font-bold text-amber-300 bg-amber-500/20 px-1.5 py-0.2 rounded border border-amber-500/30">
+                      <span className="text-[10px] font-mono font-bold text-amber-300 bg-amber-500/20 px-1.5 py-0.5 rounded border border-amber-500/30">
                         #{idx + 1}
                       </span>
                       <span className="text-[9px] font-bold text-slate-300 truncate">

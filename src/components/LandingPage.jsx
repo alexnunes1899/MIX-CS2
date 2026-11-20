@@ -125,11 +125,11 @@ export default function LandingPage({
       
       {/* Top Navbar — Menu Único Profissional Padrão FACEIT / HLTV */}
       <header className="border-b border-slate-800/80 bg-[#070b15]/95 backdrop-blur-xl sticky top-0 z-40 shadow-2xl">
-        <div className="max-w-7xl mx-auto px-3 sm:px-5 h-16 sm:h-20 flex items-center justify-between gap-3">
+        <div className="max-w-[1400px] mx-auto px-3 sm:px-5 h-16 flex items-center justify-between gap-2.5">
           
           {/* 1. Left: Brand Identity */}
           <div
-            className="flex items-center gap-2.5 sm:gap-3 cursor-pointer group shrink-0 select-none whitespace-nowrap"
+            className="flex items-center gap-2 sm:gap-2.5 cursor-pointer group shrink-0 select-none whitespace-nowrap"
             onClick={() => {
               if (soundEnabled) playClickSound();
               if (onGoHome) onGoHome();
@@ -137,24 +137,24 @@ export default function LandingPage({
             }}
           >
             <div className="relative shrink-0">
-              <MixHubLogo className="w-9 h-9 sm:w-10 sm:h-10 shrink-0" />
+              <MixHubLogo className="w-9 h-9 shrink-0" />
               <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 ring-2 ring-[#070b15] animate-pulse" />
             </div>
             <div className="shrink-0">
               <div className="flex items-center gap-1.5 shrink-0 whitespace-nowrap">
-                <span className="text-base sm:text-lg font-bold font-heading tracking-wider text-white group-hover:text-amber-400 transition-colors">
+                <span className="text-base font-bold font-heading tracking-wider text-white group-hover:text-amber-400 transition-colors">
                   MIX HUB
                 </span>
-                <span className="text-amber-400 text-[9px] sm:text-[10px] font-black px-1.5 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/30 font-mono">
+                <span className="text-amber-400 text-[9px] font-black px-1.5 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/30 font-mono">
                   GC
                 </span>
               </div>
-              <p className="text-[10px] text-slate-400 font-mono tracking-tight hidden sm:block">5V5 COMPETITIVO</p>
+              <p className="text-[10px] text-slate-400 font-mono tracking-tight hidden 2xl:block">5V5 COMPETITIVO</p>
             </div>
           </div>
 
           {/* 2. Center: Sleek Responsive Menu (Zero Wrap on >= 1024px) */}
-          <div className="hidden lg:flex items-center justify-center shrink-0">
+          <div className="hidden lg:flex items-center justify-center flex-1 min-w-0 px-1">
             <MainNavigationMenu
               activeTab="inicio"
               onGoHome={() => {
@@ -176,81 +176,77 @@ export default function LandingPage({
             />
           </div>
 
-          {/* 3. Right: Discord, Audio Toggle, Steam Login & Criar Mix CTA */}
-          <div className="flex items-center gap-1 sm:gap-1.5 xl:gap-2 shrink-0 whitespace-nowrap">
-            {/* Discord Bot Button */}
-            <button
-              type="button"
-              onClick={() => {
-                if (soundEnabled) playClickSound();
-                if (onOpenDiscordModal) onOpenDiscordModal();
-              }}
-              title="Bot e Notificações Oficiais no Discord"
-              className="p-1.5 xl:px-2.5 xl:py-1.5 rounded-xl text-xs font-bold tracking-tight transition-all cursor-pointer select-none flex items-center gap-1.5 bg-[#5865F2]/15 hover:bg-[#5865F2]/25 text-[#7983f5] hover:text-white border border-[#5865F2]/30 hover:border-[#5865F2]/60 shadow-sm shadow-[#5865F2]/10 active:scale-95 shrink-0"
-            >
-              <Bell size={14} className="text-[#5865F2] shrink-0" />
-              <span className="hidden xl:inline">Discord</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-[#5865F2] animate-pulse shrink-0" />
-            </button>
-
-            {/* Browser Alerts Toggle */}
-            {onToggleNotifications && (
+          {/* 3. Right: Compact Utility Dock, Steam Login & Criar Mix CTA */}
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 whitespace-nowrap">
+            <div className="flex items-center gap-0.5 p-1 rounded-xl bg-slate-900/90 border border-slate-800/90 shrink-0">
+              {/* Discord Bot Icon Button */}
               <button
                 type="button"
                 onClick={() => {
                   if (soundEnabled) playClickSound();
-                  onToggleNotifications();
+                  if (onOpenDiscordModal) onOpenDiscordModal();
                 }}
-                title={notificationsEnabled ? 'Alertas no navegador ativos (salas 8-9/10 e updates CS2)' : 'Ativar alertas no navegador para filas quase fechando e updates CS2'}
-                className={`p-1.5 xl:px-2.5 xl:py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer hidden sm:flex items-center gap-1 border active:scale-95 shrink-0 ${
-                  notificationsEnabled
-                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                    : 'bg-slate-900/90 hover:bg-slate-800 text-slate-400 hover:text-white border-slate-700/60'
-                }`}
+                title="Bot e Central Discord"
+                className="relative p-1.5 rounded-lg text-[#7983f5] hover:text-white hover:bg-[#5865F2]/25 transition-all cursor-pointer active:scale-95 shrink-0"
               >
-                <Bell size={14} className={notificationsEnabled ? 'text-amber-300' : 'text-slate-400'} />
-                <span className="hidden 2xl:inline">{notificationsEnabled ? 'Alertas ON' : 'Alertas'}</span>
+                <Bot size={15} className="text-[#5865F2]" />
+                <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[#5865F2] animate-pulse" />
               </button>
-            )}
 
-            {/* PWA Install Button */}
-            {canInstallPwa && onInstallPwa && (
-              <button
-                type="button"
-                onClick={() => {
-                  if (soundEnabled) playClickSound();
-                  onInstallPwa();
-                }}
-                title="Instalar CS2 Mix Hub como aplicativo (PWA)"
-                className="p-1.5 xl:px-2.5 xl:py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer hidden sm:flex items-center gap-1 bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/40 active:scale-95 shrink-0"
-              >
-                <Download size={13} />
-                <span className="hidden 2xl:inline">Instalar App</span>
-              </button>
-            )}
-
-            {/* Hairline Divider */}
-            <div className="h-4 w-px bg-slate-800 hidden sm:block mx-0.5 shrink-0" />
-
-            {/* Sound Toggle (hidden on small mobile to give breathing room) */}
-            <button
-              type="button"
-              onClick={onToggleSound}
-              className={`p-1.5 xl:p-2 rounded-xl transition-all cursor-pointer border hidden sm:flex items-center gap-1.5 shadow-sm active:scale-95 shrink-0 ${
-                soundEnabled
-                  ? 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border-emerald-500/40'
-                  : 'bg-slate-900/90 hover:bg-slate-800 text-slate-400 hover:text-white border-slate-700/60'
-              }`}
-              title={soundEnabled ? 'Sons Ativados' : 'Sons Silenciados'}
-            >
-              {soundEnabled ? (
-                <Volume2 size={15} className="text-emerald-400 shrink-0" />
-              ) : (
-                <VolumeX size={15} className="text-slate-400 shrink-0" />
+              {/* Browser Alerts Toggle */}
+              {onToggleNotifications && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (soundEnabled) playClickSound();
+                    onToggleNotifications();
+                  }}
+                  title={notificationsEnabled ? 'Alertas no navegador ativos (salas 8-9/10 e updates CS2)' : 'Ativar alertas no navegador para filas quase fechando e updates CS2'}
+                  className={`p-1.5 rounded-lg transition-all cursor-pointer hidden sm:flex items-center justify-center active:scale-95 shrink-0 ${
+                    notificationsEnabled
+                      ? 'bg-amber-500/20 text-amber-300'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                  }`}
+                >
+                  <Bell size={15} className={notificationsEnabled ? 'text-amber-300' : 'text-slate-400'} />
+                </button>
               )}
-            </button>
 
-            {/* Steam Login / Stats */}
+              {/* PWA Install Button */}
+              {canInstallPwa && onInstallPwa && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (soundEnabled) playClickSound();
+                    onInstallPwa();
+                  }}
+                  title="Instalar CS2 Mix Hub como aplicativo (PWA)"
+                  className="p-1.5 rounded-lg text-sky-300 hover:text-white hover:bg-sky-500/20 transition-all cursor-pointer hidden sm:flex items-center justify-center active:scale-95 shrink-0"
+                >
+                  <Download size={15} />
+                </button>
+              )}
+
+              {/* Sound Toggle */}
+              <button
+                type="button"
+                onClick={onToggleSound}
+                className={`p-1.5 rounded-lg transition-all cursor-pointer hidden sm:flex items-center justify-center active:scale-95 shrink-0 ${
+                  soundEnabled
+                    ? 'bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                }`}
+                title={soundEnabled ? 'Sons Ativados' : 'Sons Silenciados'}
+              >
+                {soundEnabled ? (
+                  <Volume2 size={15} className="text-emerald-400 shrink-0" />
+                ) : (
+                  <VolumeX size={15} className="text-slate-400 shrink-0" />
+                )}
+              </button>
+            </div>
+
+            {/* Steam Login / Profile */}
             {isSteamLogged ? (
               <button
                 type="button"
@@ -259,16 +255,14 @@ export default function LandingPage({
                 className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 border border-emerald-500/40 hover:border-emerald-400 rounded-xl px-2 py-1.5 shadow-sm transition-all cursor-pointer group shrink-0"
               >
                 <PlayerAvatar avatar={myProfile.avatar} nick={myProfile.nick} size="sm" />
-                <span className="text-xs font-bold text-white hidden xl:inline group-hover:text-amber-400 transition-colors truncate max-w-[70px]">
+                <span className="text-xs font-bold text-white hidden xl:inline group-hover:text-amber-400 transition-colors truncate max-w-[76px]">
                   {myProfile.nick}
-                </span>
-                <span className="text-[9px] text-emerald-400 font-bold bg-emerald-500/10 px-1 py-0.2 rounded group-hover:bg-emerald-500/25 font-mono hidden sm:inline shrink-0">
-                  Stats
                 </span>
               </button>
             ) : (
               <a
                 href="/api/auth/steam"
+                title="Fazer Login com a Steam"
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-[#171a21] to-[#1b2838] hover:from-[#1b2838] hover:to-[#2a475e] border border-[#66c0f4]/40 hover:border-[#66c0f4] text-white text-xs font-bold transition-all shadow-md group cursor-pointer shrink-0"
               >
                 <SteamIcon className="w-4 h-4 text-[#66c0f4] group-hover:scale-110 transition-transform shrink-0" />
@@ -282,7 +276,7 @@ export default function LandingPage({
                 if (soundEnabled) playClickSound();
                 onOpenRoomsHub();
               }}
-              className="px-2.5 py-1.5 sm:px-3 sm:py-1.5 xl:px-4 xl:py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs uppercase tracking-wider transition-all shadow-lg shadow-amber-500/25 cursor-pointer flex items-center gap-1.5 active:scale-95 shrink-0"
+              className="px-3 sm:px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs uppercase tracking-wider transition-all shadow-lg shadow-amber-500/25 cursor-pointer flex items-center gap-1.5 active:scale-95 whitespace-nowrap shrink-0"
             >
               <Play size={12} fill="currentColor" className="shrink-0" />
               <span className="hidden sm:inline">Criar Mix</span>
@@ -322,7 +316,7 @@ export default function LandingPage({
         <div className="absolute top-1/4 left-1/3 -translate-y-1/2 w-[680px] h-[340px] bg-amber-500/10 rounded-full blur-[140px] pointer-events-none" />
         <div className="absolute top-1/3 right-1/4 w-[380px] h-[260px] bg-sky-500/10 rounded-full blur-[120px] pointer-events-none" />
 
-        <div className="relative z-10 max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-center">
+        <div className="relative z-10 max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-7 lg:gap-8 items-stretch">
           {/* Left Column: Core Pitch + Room Entry */}
           <div className="lg:col-span-7 space-y-5 text-center lg:text-left">
             {/* Tactical Pill */}
@@ -332,7 +326,7 @@ export default function LandingPage({
             </div>
 
             {/* Main Title */}
-            <h1 className="text-4xl sm:text-5xl xl:text-6xl font-black font-heading text-white tracking-wider leading-[1.06] text-balance">
+            <h1 className="text-3xl sm:text-5xl xl:text-[52px] font-black font-heading text-white tracking-wider leading-[1.08] text-balance">
               JOGUE MIX 5V5 <br className="hidden sm:block" />
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-orange-400 to-yellow-200 drop-shadow-sm">
                 COMO UM PROFISSIONAL
@@ -438,15 +432,15 @@ export default function LandingPage({
                     if (soundEnabled) playClickSound();
                     onOpenUpdatesPage();
                   }}
-                  className="p-3 rounded-2xl bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/35 hover:border-orange-400 transition-all shadow-lg group cursor-pointer active:scale-95 text-left"
+                  className="p-3 rounded-2xl bg-slate-900/75 hover:bg-slate-800/90 border border-white/[0.08] hover:border-orange-400/60 transition-all shadow-lg group cursor-pointer active:scale-95 text-left"
                 >
                   <div className="flex items-center gap-2 mb-0.5">
-                    <div className="w-6 h-6 rounded-lg bg-orange-500/20 text-orange-300 flex items-center justify-center border border-orange-500/40">
+                    <div className="w-6 h-6 rounded-lg bg-orange-500/15 text-orange-400 flex items-center justify-center border border-orange-500/30">
                       <Newspaper size={13} />
                     </div>
-                    <span className="text-xs font-black uppercase text-orange-300 group-hover:text-white transition-colors">Atualizações CS2</span>
+                    <span className="text-xs font-black uppercase text-white group-hover:text-orange-300 transition-colors">Atualizações CS2</span>
                   </div>
-                  <p className="text-[11px] text-slate-300 leading-snug">Notas oficiais Valve em PT-BR</p>
+                  <p className="text-[11px] text-slate-400 leading-snug">Notas oficiais Valve em PT-BR</p>
                 </button>
               )}
             </div>
@@ -454,7 +448,7 @@ export default function LandingPage({
 
           {/* Right Column: Live Match Center Panel (Above the Fold) */}
           <div className="lg:col-span-5">
-            <div className="glass-panel rounded-3xl border border-white/[0.1] p-5 shadow-2xl space-y-4">
+            <div className="glass-panel rounded-3xl border border-white/[0.1] p-5 shadow-2xl space-y-4 h-full flex flex-col justify-between">
               <div className="flex items-center justify-between gap-2 pb-3 border-b border-white/[0.08]">
                 <div className="flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
@@ -481,11 +475,11 @@ export default function LandingPage({
                         <div className="min-w-0 flex-1 space-y-1.5">
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="text-xs font-bold text-white truncate">{r.name || r.id}</span>
-                            <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-slate-900 text-slate-400 border border-slate-800 shrink-0">
+                            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-900 text-slate-400 border border-slate-800 shrink-0">
                               #{r.id}
                             </span>
                             {live && (
-                              <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 shrink-0 flex items-center gap-1">
+                              <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 shrink-0 flex items-center gap-1">
                                 <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
                                 {live.mapName} • CT {live.scoreCT}×{live.scoreTR} TR • R{live.roundNumber}
                               </span>
@@ -546,13 +540,13 @@ export default function LandingPage({
                       { step: '02', title: 'Times 100% Equilibrados', desc: 'Algoritmo GC (1–21), FACEIT ELO ou Draft de Capitães', color: 'text-sky-400 border-sky-500/30 bg-sky-500/10' },
                       { step: '03', title: 'Veto Oficial & Connect Direto', desc: 'Pick & Ban estilo Major + Bot do Discord + Valve GSI', color: 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10' },
                     ].map((item) => (
-                      <div key={item.step} className="p-2.5 rounded-2xl bg-slate-950/70 border border-slate-800/80 flex items-center gap-3">
+                      <div key={item.step} className="p-3 rounded-2xl bg-slate-950/70 border border-slate-800/80 flex items-center gap-3">
                         <span className={`w-8 h-8 rounded-xl border font-mono font-black text-xs flex items-center justify-center shrink-0 ${item.color}`}>
                           {item.step}
                         </span>
                         <div className="min-w-0">
                           <div className="text-xs font-bold text-white">{item.title}</div>
-                          <div className="text-[11px] text-slate-400 truncate">{item.desc}</div>
+                          <div className="text-[11px] text-slate-400 leading-snug">{item.desc}</div>
                         </div>
                       </div>
                     ))}
@@ -573,8 +567,8 @@ export default function LandingPage({
       </section>
 
       {/* Stats Ribbon */}
-      <div className="border-y border-white/[0.08] bg-[#0c1220]/60 backdrop-blur-md py-6">
-        <div className="max-w-7xl mx-auto px-4 grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
+      <div className="border-y border-white/[0.08] bg-[#0c1220]/60 backdrop-blur-md py-5">
+        <div className="max-w-7xl mx-auto px-4 grid grid-cols-2 md:grid-cols-4 gap-6 text-center md:divide-x md:divide-white/[0.06]">
           <div>
             <div className="text-2xl sm:text-3xl font-black font-heading text-amber-400 tracking-wider">7 MAPAS</div>
             <div className="text-[11px] text-slate-400 uppercase font-semibold mt-0.5">Rotação Active Duty Valve</div>
@@ -668,11 +662,11 @@ export default function LandingPage({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        <div className="flex flex-wrap justify-center gap-5">
           {currentDisplayMaps.map((map) => (
             <div
               key={map.id}
-              className="relative overflow-hidden rounded-2xl border-2 border-white/[0.08] hover:border-amber-400/80 bg-slate-950 shadow-2xl min-h-[240px] flex flex-col justify-between p-4 group transition-all duration-300 hover:-translate-y-1"
+              className="relative overflow-hidden rounded-2xl border-2 border-white/[0.08] hover:border-amber-400/80 bg-slate-950 shadow-2xl min-h-[240px] w-full sm:w-[calc(50%-0.625rem)] lg:w-[calc(25%-0.9375rem)] flex flex-col justify-between p-4 group transition-all duration-300 hover:-translate-y-1"
             >
               {/* Map Screenshot */}
               <div
@@ -880,7 +874,7 @@ export default function LandingPage({
                   if (soundEnabled) playClickSound();
                   if (onOpenDiscordModal) onOpenDiscordModal();
                 }}
-                className="px-5 py-3 rounded-2xl bg-slate-800/80 hover:bg-slate-750 text-indigo-300 border border-indigo-500/30 text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                className="px-5 py-3 rounded-2xl bg-slate-800/80 hover:bg-slate-700/80 text-indigo-300 border border-indigo-500/30 text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
               >
                 <ShieldCheck size={16} className="text-amber-400" />
                 <span>Ver Critérios & Como Configurar</span>

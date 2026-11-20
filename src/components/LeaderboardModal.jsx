@@ -283,7 +283,7 @@ export default function LeaderboardModal({
                 fetchMatches();
               }}
               disabled={loadingPlayers || loadingMatches}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 border border-slate-700 text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700/80 text-slate-300 border border-slate-700 text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
               title="Recarregar dados"
             >
               <RefreshCw size={13} className={loadingPlayers || loadingMatches ? 'animate-spin text-amber-400' : ''} />
@@ -318,7 +318,7 @@ export default function LeaderboardModal({
             >
               <Trophy size={14} />
               <span>Classificação de Jogadores</span>
-              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-black/20">
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-black/20">
                 {players.length}
               </span>
             </button>
@@ -336,11 +336,11 @@ export default function LeaderboardModal({
             >
               <Layers size={14} />
               <span>Histórico de Mixes Registrados</span>
-              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-black/30 text-purple-200">
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-black/30 text-purple-200">
                 {matchesStats.total}
               </span>
               {matchesStats.discordCount > 0 && (
-                <span className="hidden md:inline-flex items-center gap-1 text-[10px] font-mono bg-purple-950/80 border border-purple-500/40 text-purple-300 px-1.5 py-0.2 rounded">
+                <span className="hidden md:inline-flex items-center gap-1 text-[10px] font-mono bg-purple-950/80 border border-purple-500/40 text-purple-300 px-1.5 py-0.5 rounded">
                   <DiscordIcon size={10} />
                   <span>{matchesStats.discordCount} Discord</span>
                 </span>
@@ -389,7 +389,7 @@ export default function LeaderboardModal({
                   >
                     <span>📅 {s.label}</span>
                     {s.isCurrent && (
-                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-black/25 uppercase">Atual</span>
+                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-black/25 uppercase">Atual</span>
                     )}
                   </button>
                 ))}
@@ -886,7 +886,7 @@ export default function LeaderboardModal({
                                     <Crown size={10} /> MVP DA PARTIDA
                                   </span>
                                   {m.mvp?.level && (
-                                    <span className="text-[10px] font-mono font-black text-slate-300 bg-slate-800 px-1.5 py-0.2 rounded border border-slate-700">
+                                    <span className="text-[10px] font-mono font-black text-slate-300 bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700">
                                       Lvl {m.mvp.level} GC
                                     </span>
                                   )}
@@ -955,12 +955,12 @@ export default function LeaderboardModal({
                                   <PlayerAvatar avatar={p.avatar} nick={p.nick} size="xs" />
                                   <span className="font-medium text-white">{p.nick}</span>
                                   {p.role === 'Capitão' && (
-                                    <span className="text-[9px] font-bold text-amber-400 bg-amber-500/10 px-1 py-0.2 rounded">
+                                    <span className="text-[9px] font-bold text-amber-400 bg-amber-500/10 px-1 py-0.5 rounded">
                                       C
                                     </span>
                                   )}
                                   {m.mvpNick === p.nick && (
-                                    <span className="text-[9px] font-bold text-amber-400 bg-amber-500/20 border border-amber-500/30 px-1 py-0.2 rounded flex items-center gap-0.5">
+                                    <span className="text-[9px] font-bold text-amber-400 bg-amber-500/20 border border-amber-500/30 px-1 py-0.5 rounded flex items-center gap-0.5">
                                       👑 MVP
                                     </span>
                                   )}
@@ -992,7 +992,7 @@ export default function LeaderboardModal({
                                   <PlayerAvatar avatar={p.avatar} nick={p.nick} size="xs" />
                                   <span className="font-medium text-slate-300">{p.nick}</span>
                                   {p.role === 'Capitão' && (
-                                    <span className="text-[9px] font-bold text-slate-400 bg-slate-800 px-1 py-0.2 rounded">
+                                    <span className="text-[9px] font-bold text-slate-400 bg-slate-800 px-1 py-0.5 rounded">
                                       C
                                     </span>
                                   )}

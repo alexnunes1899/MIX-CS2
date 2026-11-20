@@ -288,7 +288,7 @@ export default function MapVeto({
                 <div className="flex items-center justify-between gap-1 mb-1">
                   <span className="text-[10px] font-mono font-bold text-slate-400">#{st.step}</span>
                   <span
-                    className={`text-[9px] font-mono font-black uppercase px-1.5 py-0.2 rounded ${
+                    className={`text-[9px] font-mono font-black uppercase px-1.5 py-0.5 rounded ${
                       isBan
                         ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
                         : isPick
@@ -488,7 +488,7 @@ export default function MapVeto({
       )}
 
       {/* Maps Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+      <div className="flex flex-wrap justify-center gap-4">
         {maps.map((map) => {
           const banned = isBanned(map.id);
           const banInfo = getBanInfo(map.id);
@@ -500,7 +500,7 @@ export default function MapVeto({
           return (
             <div
               key={map.id}
-              className={`group relative overflow-hidden rounded-2xl transition-all duration-300 flex flex-col justify-between min-h-[230px] ${
+              className={`group relative overflow-hidden rounded-2xl transition-all duration-300 flex flex-col justify-between min-h-[230px] w-full sm:w-[calc(50%-0.5rem)] lg:w-[calc(33.333%-0.67rem)] xl:w-[calc(25%-0.75rem)] ${
                 isDecider
                   ? 'border-2 border-amber-400 ring-4 ring-amber-400/35 shadow-2xl scale-[1.02]'
                   : picked

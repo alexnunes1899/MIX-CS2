@@ -384,7 +384,7 @@ export default function GrenadePlaybookModal({
           >
             <span>🗺️</span>
             <span>Mapas da Oficina Steam ({WORKSHOP_PRACTICE_MAPS.length})</span>
-            <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.2 rounded-md font-mono">
+            <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded-md font-mono">
               Confiáveis
             </span>
           </button>
@@ -774,7 +774,7 @@ export default function GrenadePlaybookModal({
                       </h3>
                       <p className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1">
                         <span>Por <strong>{mapItem.author}</strong></span>
-                        <span className="text-[10px] bg-sky-500/15 text-sky-300 border border-sky-500/30 px-1.5 py-0.2 rounded font-mono">
+                        <span className="text-[10px] bg-sky-500/15 text-sky-300 border border-sky-500/30 px-1.5 py-0.5 rounded font-mono">
                           {mapItem.authorBadge}
                         </span>
                       </p>
@@ -1126,7 +1126,7 @@ export default function GrenadePlaybookModal({
 
         {/* In-Site Video & Media Player Sub-Modal (100% Inside Website) */}
         {videoModalLineup && (
-          <div className="fixed inset-0 z-60 flex items-center justify-center p-3 sm:p-5 bg-black/90 backdrop-blur-md animate-fadeIn">
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-5 bg-black/90 backdrop-blur-md animate-fadeIn">
             <div className="bg-slate-900 border-2 border-purple-500/50 rounded-3xl w-full max-w-3xl max-h-[92vh] flex flex-col shadow-2xl relative overflow-hidden">
               {/* Header */}
               <div className="px-5 sm:px-6 py-4 border-b border-slate-800 flex items-start justify-between bg-slate-950/80 shrink-0">

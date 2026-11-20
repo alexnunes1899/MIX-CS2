@@ -313,7 +313,7 @@ export default function ServerConnectBar({
                   className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
                     showRcon
                       ? 'bg-amber-500/20 border-amber-400 text-amber-300'
-                      : 'bg-slate-800 hover:bg-slate-750 border-slate-700 text-slate-300'
+                      : 'bg-slate-800 hover:bg-slate-700/80 border-slate-700 text-slate-300'
                   }`}
                   title="Administrar servidor via RCON (FireGames)"
                 >
@@ -330,7 +330,7 @@ export default function ServerConnectBar({
                     if (soundEnabled) playClickSound();
                     onOpenServersPage();
                   }}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-750 border border-slate-700 text-slate-300 text-xs font-bold transition-all cursor-pointer"
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700/80 border border-slate-700 text-slate-300 text-xs font-bold transition-all cursor-pointer"
                   title="Central Completa de Servidores (Dedicado Online, LAN Party, Radmin VPN e Testador de Portas)"
                 >
                   <Server size={13} className="text-amber-400" />

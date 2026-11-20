@@ -565,7 +565,7 @@ export default function DiscordWebhookModal({
                     type="button"
                     onClick={() => fetchBotStatus()}
                     disabled={loadingStatus}
-                    className="p-2 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 border border-slate-700/60 text-xs transition-colors cursor-pointer"
+                    className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700/80 text-slate-300 border border-slate-700/60 text-xs transition-colors cursor-pointer"
                     title="Atualizar Status"
                   >
                     <RefreshCw size={14} className={loadingStatus ? 'animate-spin' : ''} />
@@ -635,7 +635,7 @@ export default function DiscordWebhookModal({
                   <button
                     type="button"
                     onClick={handleCopyInvite}
-                    className="p-2 rounded-xl bg-slate-800/90 hover:bg-slate-750 text-slate-300 border border-slate-700/70 text-xs transition-colors cursor-pointer flex items-center gap-1.5"
+                    className="p-2 rounded-xl bg-slate-800/90 hover:bg-slate-700/80 text-slate-300 border border-slate-700/70 text-xs transition-colors cursor-pointer flex items-center gap-1.5"
                     title="Copiar link de convite do Bot"
                   >
                     {copiedInvite ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
@@ -849,7 +849,7 @@ export default function DiscordWebhookModal({
                   type="button"
                   disabled={actionLoading || !botStatus.running || !defaultChannelId.trim()}
                   onClick={handleSendPanel}
-                  className="py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-750 text-indigo-300 border border-indigo-500/30 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-40"
+                  className="py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700/80 text-indigo-300 border border-indigo-500/30 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-40"
                   title="Envia uma mensagem permanente no canal de texto com botão para abrir mix a qualquer hora"
                 >
                   <Sparkles size={14} className="text-amber-400" />
@@ -1057,7 +1057,7 @@ export default function DiscordWebhookModal({
                 type="button"
                 disabled={testingVoice || !token.trim() || !guildId.trim() || !lobbyVoiceId.trim()}
                 onClick={handleTestVoiceMover}
-                className="py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-750 text-indigo-300 border border-indigo-500/30 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                className="py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700/80 text-indigo-300 border border-indigo-500/30 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
               >
                 <Zap size={13} className={testingVoice ? 'animate-spin' : ''} />
                 <span>{testingVoice ? 'Validando...' : 'Testar Permissão de Mover'}</span>
@@ -1196,7 +1196,7 @@ export default function DiscordWebhookModal({
                   type="button"
                   disabled={testingWebhook || !url.trim()}
                   onClick={handleTestWebhook}
-                  className="py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-750 text-indigo-300 border border-indigo-500/30 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+                  className="py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700/80 text-indigo-300 border border-indigo-500/30 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
                 >
                   <Send size={13} className={testingWebhook ? 'animate-pulse' : ''} />
                   <span>{testingWebhook ? 'Enviando...' : 'Enviar Teste'}</span>

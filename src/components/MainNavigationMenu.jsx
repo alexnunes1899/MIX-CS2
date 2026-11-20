@@ -69,6 +69,8 @@ export default function MainNavigationMenu({
   };
 
   const isTacticsActive = ['granadas', 'mira', 'roleta'].includes(activeTab);
+  const isMoreAlwaysHiddenInBar = ['torneio', 'updates'].includes(activeTab);
+  const isMoreServerSub = activeTab === 'servers';
 
   // Core Main Game Tabs
   const primaryTabs = [
@@ -111,7 +113,7 @@ export default function MainNavigationMenu({
       action: onOpenTournament,
       title: 'Modo Torneio & Chaveamento Profissional',
       iconColor: 'text-purple-400',
-      visibility: 'xl', // visible on xl (>= 1280px), in Mais ▾ on < 1280px
+      visibility: '2xl', // visible on 2xl (>= 1536px), in Mais ▾ on < 1536px
     },
     {
       id: 'servers',
@@ -133,7 +135,7 @@ export default function MainNavigationMenu({
             action: onOpenUpdatesPage,
             title: 'Notas de Atualização Oficiais do CS2 (PT-BR)',
             iconColor: 'text-orange-400',
-            visibility: 'xl',
+            visibility: '2xl', // visible on 2xl (>= 1536px), in Mais ▾ on < 1536px
           },
         ]
       : []),
@@ -190,7 +192,12 @@ export default function MainNavigationMenu({
           {primaryTabs.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
-            const visibilityClass = item.visibility === 'xl' ? 'hidden xl:flex' : 'flex';
+            const visibilityClass =
+              item.visibility === '2xl'
+                ? 'hidden 2xl:flex'
+                : item.visibility === 'xl'
+                ? 'hidden xl:flex'
+                : 'flex';
 
             return (
               <button
@@ -213,7 +220,7 @@ export default function MainNavigationMenu({
 
                 {item.badge !== undefined && (
                   <span
-                    className={`text-[10px] font-mono font-black px-1.5 py-0.2 rounded-full border shrink-0 ${
+                    className={`text-[10px] font-mono font-black px-1.5 py-0.5 rounded-full border shrink-0 ${
                       item.badge > 0
                         ? 'bg-emerald-500/25 text-emerald-300 border-emerald-500/50 shadow-sm shadow-emerald-500/20 animate-pulse'
                         : 'bg-slate-800/80 text-slate-400 border-slate-700'
@@ -285,8 +292,8 @@ export default function MainNavigationMenu({
             )}
           </div>
 
-          {/* Overflow "Mais ▾" Dropdown for Medium Screens (< 1280px) */}
-          <div className="relative xl:hidden shrink-0" ref={moreRef}>
+          {/* Overflow "Mais ▾" Dropdown for Screens < 2xl (1536px) */}
+          <div className="relative 2xl:hidden shrink-0" ref={moreRef}>
             <button
               type="button"
               onClick={() => {
@@ -294,14 +301,18 @@ export default function MainNavigationMenu({
                 setMoreOpen(!moreOpen);
                 setTacticsOpen(false);
               }}
-              className={`px-2 py-1.5 rounded-xl text-xs font-bold tracking-tight transition-all cursor-pointer shrink-0 select-none whitespace-nowrap flex items-center gap-1 ${
+              className={`px-2 py-1.5 rounded-xl text-xs font-bold tracking-tight transition-all cursor-pointer shrink-0 select-none whitespace-nowrap flex items-center gap-1 border ${
                 moreOpen
-                  ? 'bg-slate-800 text-white border border-slate-700 shadow-sm'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800/70 border border-transparent hover:border-slate-700/60'
+                  ? 'bg-slate-800 text-white border-slate-700 shadow-sm'
+                  : isMoreAlwaysHiddenInBar
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-sm'
+                  : isMoreServerSub
+                  ? 'max-xl:bg-amber-500/20 max-xl:text-amber-300 max-xl:border-amber-500/40 text-slate-300 hover:text-white hover:bg-slate-800/70 border-transparent hover:border-slate-700/60'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800/70 border-transparent hover:border-slate-700/60'
               }`}
               title="Mais recursos"
             >
-              <MoreHorizontal size={14} className="text-slate-400 shrink-0" />
+              <MoreHorizontal size={14} className={`${isMoreAlwaysHiddenInBar ? 'text-amber-300' : 'text-slate-400'} shrink-0`} />
               <span>Mais</span>
               <ChevronDown
                 size={12}
@@ -311,37 +322,49 @@ export default function MainNavigationMenu({
 
             {/* Overflow Dropdown */}
             {moreOpen && (
-              <div className="absolute top-full right-0 mt-2 w-56 bg-[#0a101d] border border-slate-700/80 rounded-2xl p-1.5 shadow-2xl backdrop-blur-xl z-50 animate-fadeIn space-y-1">
+              <div className="absolute top-full right-0 mt-2 w-60 bg-[#0a101d] border border-slate-700/80 rounded-2xl p-1.5 shadow-2xl backdrop-blur-xl z-50 animate-fadeIn space-y-1">
                 <div className="px-3 py-1.5 text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800/80">
                   Mais Recursos CS2
                 </div>
 
-                {/* Torneio (hidden on < 1280px) */}
+                {/* Torneio (hidden on < 2xl) */}
                 <button
                   type="button"
                   onClick={() => handleClick(onOpenTournament)}
-                  className="w-full p-2 rounded-xl text-left text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-800/80 flex items-center gap-2 cursor-pointer"
+                  className={`w-full p-2 rounded-xl text-left text-xs font-bold flex items-center gap-2 cursor-pointer ${
+                    activeTab === 'torneio'
+                      ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                      : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
+                  }`}
                 >
                   <Swords size={14} className="text-purple-400" />
                   <span>Torneio & Chaveamento</span>
                 </button>
 
-                {/* Servidores (hidden on < 1280px) */}
+                {/* Servidores (hidden on < 1280px only — shown directly in bar at xl) */}
                 <button
                   type="button"
                   onClick={() => handleClick(onOpenServersPage)}
-                  className="w-full p-2 rounded-xl text-left text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-800/80 flex items-center gap-2 cursor-pointer"
+                  className={`w-full p-2 rounded-xl text-left text-xs font-bold flex xl:hidden items-center gap-2 cursor-pointer ${
+                    activeTab === 'servers'
+                      ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                      : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
+                  }`}
                 >
                   <Server size={14} className="text-emerald-400" />
                   <span>Servidores & LAN 0ms</span>
                 </button>
 
-                {/* Atualizações CS2 (hidden on < 1280px) */}
+                {/* Atualizações CS2 (hidden on < 2xl) */}
                 {onOpenUpdatesPage && (
                   <button
                     type="button"
                     onClick={() => handleClick(onOpenUpdatesPage)}
-                    className="w-full p-2 rounded-xl text-left text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-800/80 flex items-center gap-2 cursor-pointer"
+                    className={`w-full p-2 rounded-xl text-left text-xs font-bold flex items-center gap-2 cursor-pointer ${
+                      activeTab === 'updates'
+                        ? 'bg-orange-500/15 text-orange-300 border border-orange-500/30'
+                        : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
+                    }`}
                   >
                     <Newspaper size={14} className="text-orange-400" />
                     <span>Atualizações CS2 (PT-BR)</span>

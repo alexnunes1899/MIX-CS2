@@ -1085,7 +1085,7 @@ export default function TournamentBracketModal({
                       <span className="flex items-center gap-1.5 truncate">
                         <span className={`w-2 h-2 rounded-full shrink-0 ${match.status === 'live' ? 'bg-rose-500 animate-pulse' : isFinal ? 'bg-amber-400' : 'bg-slate-500'}`} />
                         <span className="truncate">{customTitle || match.title || match.roundName || 'Confronto'}</span>
-                        <span className="text-[10px] text-purple-300 bg-purple-500/15 border border-purple-500/30 px-1.5 py-0.2 rounded font-bold shrink-0">
+                        <span className="text-[10px] text-purple-300 bg-purple-500/15 border border-purple-500/30 px-1.5 py-0.5 rounded font-bold shrink-0">
                           {match.format || 'MD1'}
                         </span>
                       </span>
@@ -1441,16 +1441,16 @@ export default function TournamentBracketModal({
                           <span className="font-heading font-black text-sm text-white uppercase tracking-wide">
                             {m.title}
                           </span>
-                          <span className="text-[10px] font-mono text-purple-300 bg-purple-500/15 border border-purple-500/30 px-2 py-0.2 rounded font-bold">
+                          <span className="text-[10px] font-mono text-purple-300 bg-purple-500/15 border border-purple-500/30 px-2 py-0.5 rounded font-bold">
                             {m.format}
                           </span>
                           {isLive && (
-                            <span className="text-[10px] font-mono text-rose-400 bg-rose-500/20 border border-rose-500/40 px-2 py-0.2 rounded-full font-bold flex items-center gap-1 animate-pulse">
+                            <span className="text-[10px] font-mono text-rose-400 bg-rose-500/20 border border-rose-500/40 px-2 py-0.5 rounded-full font-bold flex items-center gap-1 animate-pulse">
                               <Radio size={10} /> AO VIVO
                             </span>
                           )}
                           {isFinished && (
-                            <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.2 rounded font-bold">
+                            <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded font-bold">
                               ✓ FINALIZADO
                             </span>
                           )}
@@ -1720,7 +1720,7 @@ export default function TournamentBracketModal({
   );
 
   const exportModalElement = exportModalOpen ? (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-3 sm:p-5 bg-black/90 backdrop-blur-lg animate-fadeIn">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-5 bg-black/90 backdrop-blur-lg animate-fadeIn">
           <div className="bg-slate-900 border border-amber-500/40 rounded-3xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
             <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950/70">
               <div className="flex items-center gap-2">

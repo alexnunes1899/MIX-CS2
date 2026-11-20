@@ -58,7 +58,7 @@ function TeamSpectatorTable({ title, players = [], totalMoney = 0, aliveCount = 
                     />
                     <span className="font-bold text-white truncate">{p.name || 'Jogador'}</span>
                     {p.activeWeapon && (
-                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-900 border border-slate-800 text-slate-300 truncate max-w-[95px]">
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300 truncate max-w-[95px]">
                         {p.activeWeapon}
                       </span>
                     )}

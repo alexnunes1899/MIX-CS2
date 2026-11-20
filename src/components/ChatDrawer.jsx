@@ -110,7 +110,7 @@ export default function ChatDrawer({
           </div>
 
           {/* Quick Banter / Phrases Bar */}
-          <div className="bg-slate-950/60 px-3 py-2 border-b border-slate-800/80 flex gap-1.5 overflow-x-auto scrollbar-none text-[11px]">
+          <div className="bg-slate-950/60 px-3 py-2 border-b border-slate-800/80 flex gap-1.5 overflow-x-auto no-scrollbar text-[11px]">
             {QUICK_CALLOUTS.map((phrase) => (
               <button
                 key={phrase}
