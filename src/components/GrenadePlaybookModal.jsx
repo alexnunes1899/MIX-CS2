@@ -29,6 +29,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { GRENADE_LINEUPS, GRENADE_TYPES, WORKSHOP_PRACTICE_MAPS } from '../data/grenades';
+import { getAdminAuthHeaders } from '../utils/adminAuth';
 import { DEFAULT_PUBLIC_URL } from '../../shared/appConfig.js';
 import {
   TREINO_DEFAULT_BINDS,
@@ -111,7 +112,8 @@ export default function GrenadePlaybookModal({
     try {
       const res = await fetch('/api/rcon/practice', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        headers: getAdminAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           host,
           port,

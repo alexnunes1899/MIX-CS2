@@ -356,7 +356,7 @@ export default function AppModalsHost({
           isOpen={aimReflexModalOpen}
           onClose={() => setAimReflexModalOpen(false)}
           soundEnabled={soundEnabled}
-          onShareToChat={(text) => onSendMessage(text)}
+          onShareToChat={view === 'mix' && roomId ? (text) => onSendMessage(text) : null}
         />
       )}
 

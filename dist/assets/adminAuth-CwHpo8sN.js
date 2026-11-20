@@ -1,0 +1,1 @@
+function e(e={},t=null){let n=``;if(typeof t==`string`)n=t.trim();else if(typeof window<`u`)try{n=String(localStorage.getItem(`cs2_admin_api_key`)||``).trim()}catch{n=``}return{...e,...n?{"x-admin-key":n}:{}}}export{e as t};

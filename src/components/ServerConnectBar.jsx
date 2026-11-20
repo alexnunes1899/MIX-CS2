@@ -3,6 +3,7 @@ import { Server, Copy, Check, Edit2, Play, Trash2, Key, Radio, Terminal, Refresh
 import { playClickSound } from '../utils/audio';
 import { parseServerDetails } from '../utils/serverParser';
 import { copyText } from '../utils/clipboard';
+import { getAdminAuthHeaders } from '../utils/adminAuth';
 
 export default function ServerConnectBar({
   serverIp,
@@ -98,7 +99,8 @@ export default function ServerConnectBar({
     try {
       const res = await fetch('/api/rcon/test', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        headers: getAdminAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           host: parsed.ip.split(':')[0],
           port: parsed.port || 27015,
@@ -128,7 +130,8 @@ export default function ServerConnectBar({
     try {
       const res = await fetch('/api/rcon/exec', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        headers: getAdminAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           host: parsed.ip.split(':')[0],
           port: parsed.port || 27015,

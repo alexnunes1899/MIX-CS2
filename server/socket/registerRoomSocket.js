@@ -24,6 +24,18 @@ import {
   sanitizeRconCommand,
 } from '../roomHelpers.js';
 
+function reassignRoomAdminIfRemoved(room, removedPlayerId, removedSteamId = null) {
+  if (!room) return;
+  const wasAdmin =
+    (removedPlayerId && (room.creatorId === removedPlayerId || room.adminId === removedPlayerId)) ||
+    (removedSteamId && room.creatorSteamId === removedSteamId);
+  if (!wasAdmin) return;
+  const nextAdmin = room.players[0] || null;
+  room.creatorId = nextAdmin?.id || null;
+  room.adminId = room.creatorId;
+  room.creatorSteamId = nextAdmin?.steamId || null;
+}
+
 function advanceVetoToDeciderOrNext(room, schedule, actionIdx, remaining) {
   const nextStep = schedule[actionIdx + 1];
   if (remaining.length === 1 || !nextStep || nextStep.type === 'decider') {
@@ -792,30 +804,36 @@ export function registerRoomSocket({
 
     socket.on('send_chat', ({ roomId, message }) => {
       const room = lifecycle.getRoomAndTouch(roomId);
-      if (!room || !message || !message.text) return;
+      const rawText = typeof message === 'string' ? message : message?.text;
+      if (!room || !rawText || !String(rawText).trim()) return;
       if (!isRoomParticipant(room, socket)) return;
 
+      const callerPlayerId = socket.playerId || socket.id;
+      const callerPlayer = room.players?.find((p) => p.id === callerPlayerId || p.socketId === socket.id);
+
       let senderObj = {
-        nick: 'Jogador',
-        level: 10,
-        faceitLevel: 5,
-        faceitElo: null,
-        avatar: '🎯',
+        nick: sanitizeInput(callerPlayer?.nick || socket.sessionUser?.nick || 'Jogador', 32) || 'Jogador',
+        level: Math.max(1, Math.min(21, Number(callerPlayer?.level) || 10)),
+        faceitLevel: Math.max(1, Math.min(10, Number(callerPlayer?.faceitLevel) || 5)),
+        faceitElo: callerPlayer?.faceitElo ? Number(callerPlayer.faceitElo) : null,
+        avatar: sanitizeInput(callerPlayer?.avatar || socket.sessionUser?.avatar || '🎯', 240) || '🎯',
       };
 
-      if (typeof message.sender === 'object' && message.sender !== null) {
-        senderObj = {
-          nick: sanitizeInput(message.sender.nick, 32) || 'Jogador',
-          level: Math.max(1, Math.min(21, Number(message.sender.level) || 10)),
-          faceitLevel: Math.max(1, Math.min(10, Number(message.sender.faceitLevel) || 5)),
-          faceitElo: message.sender.faceitElo ? Number(message.sender.faceitElo) : null,
-          avatar: sanitizeInput(message.sender.avatar, 240) || '🎯',
-        };
-      } else if (typeof message.sender === 'string') {
-        senderObj.nick = sanitizeInput(message.sender, 32) || 'Jogador';
+      if (message && typeof message === 'object') {
+        if (typeof message.sender === 'object' && message.sender !== null) {
+          senderObj = {
+            nick: sanitizeInput(message.sender.nick, 32) || senderObj.nick,
+            level: Math.max(1, Math.min(21, Number(message.sender.level) || senderObj.level)),
+            faceitLevel: Math.max(1, Math.min(10, Number(message.sender.faceitLevel) || senderObj.faceitLevel)),
+            faceitElo: message.sender.faceitElo ? Number(message.sender.faceitElo) : senderObj.faceitElo,
+            avatar: sanitizeInput(message.sender.avatar, 240) || senderObj.avatar,
+          };
+        } else if (typeof message.sender === 'string') {
+          senderObj.nick = sanitizeInput(message.sender, 32) || senderObj.nick;
+        }
       }
 
-      const cleanText = sanitizeInput(message.text, 250);
+      const cleanText = sanitizeInput(String(rawText), 250);
       if (!cleanText) return;
 
       const chatMsg = {
@@ -875,10 +893,12 @@ export function registerRoomSocket({
         socket.emit('admin_error', { message: 'Você só pode sair com o seu próprio jogador.' });
         return;
       }
+      const removed = room.players.find((p) => p.id === playerId);
       room.players = room.players.filter((p) => p.id !== playerId);
       room.teamA = room.teamA.filter((p) => p.id !== playerId);
       room.teamB = room.teamB.filter((p) => p.id !== playerId);
       removeRoomPlayerDuo(room, playerId);
+      reassignRoomAdminIfRemoved(room, playerId, removed?.steamId);
       lifecycle.emitRoomState(room.id, room);
       lifecycle.broadcastRoomsList();
     });
@@ -904,6 +924,7 @@ export function registerRoomSocket({
       room.teamA = room.teamA.filter((p) => p.id !== targetPlayerId);
       room.teamB = room.teamB.filter((p) => p.id !== targetPlayerId);
       removeRoomPlayerDuo(room, targetPlayerId);
+      reassignRoomAdminIfRemoved(room, targetPlayerId, target?.steamId);
       if (room.unassignedPlayers) {
         room.unassignedPlayers = room.unassignedPlayers.filter((p) => p.id !== targetPlayerId);
       }
@@ -1232,12 +1253,16 @@ export function registerRoomSocket({
     });
 
     socket.on('load_tournament_match', ({ roomId, nameA, nameB, teamA, teamB, matchFormat = 'MD3' }) => {
-      const room = lifecycle.getRoomAndTouch(roomId) || lifecycle.getOrCreateRoom(roomId, `${nameA} vs ${nameB}`, 'gc', '', '', false, socket.playerId || socket.id, socket.sessionUser?.steamId);
+      const actorId = socket.playerId || socket.id;
+      const room = lifecycle.getRoomAndTouch(roomId) || lifecycle.getOrCreateRoom(roomId, `${nameA} vs ${nameB}`, 'gc', '', '', false, actorId, socket.sessionUser?.steamId);
       if (!room) return;
       if (!isRoomAdmin(room, socket)) {
         socket.emit('admin_error', { message: 'Apenas o administrador da sala pode carregar confrontos.' });
         return;
       }
+
+      room.creatorId = room.creatorId || actorId;
+      room.adminId = room.adminId || actorId;
 
       const cleanA = sanitizeInput(nameA, 32) || 'Time A';
       const cleanB = sanitizeInput(nameB, 32) || 'Time B';
@@ -1363,6 +1388,11 @@ export function registerRoomSocket({
       );
       const resolvedImage = getMapImageUrl(resolvedMap);
 
+      const teamALabel = room.teamAName || room.nameA || 'Time A';
+      const teamBLabel = room.teamBName || room.nameB || 'Time B';
+      const winnerLabel = numA > numB ? teamALabel : numB > numA ? teamBLabel : 'Empate';
+      const loserLabel = numA > numB ? teamBLabel : numB > numA ? teamALabel : 'Empate';
+
       room.history.unshift({
         id: `match-${Date.now()}`,
         date: new Date().toLocaleDateString('pt-BR'),
@@ -1371,7 +1401,7 @@ export function registerRoomSocket({
         mapImage: resolvedImage,
         scoreA: numA,
         scoreB: numB,
-        winner: numA > numB ? 'Time A' : numB > numA ? 'Time B' : 'Empate',
+        winner: winnerLabel,
       });
 
       if (room.history.length > 20) room.history.pop();
@@ -1390,8 +1420,8 @@ export function registerRoomSocket({
         timestamp: Date.now(),
         map: resolvedMap,
         mapImage: resolvedImage,
-        winner: numA > numB ? 'Time A' : numB > numA ? 'Time B' : 'Empate',
-        loser: numA > numB ? 'Time B' : numB > numA ? 'Time A' : 'Empate',
+        winner: winnerLabel,
+        loser: loserLabel,
         score: `${Math.max(numA, numB)}-${Math.min(numA, numB)}`,
         scoreWinner: Math.max(numA, numB),
         scoreLoser: Math.min(numA, numB),
@@ -1449,7 +1479,13 @@ export function registerRoomSocket({
       webMatchRecord.hasRealGsiStats = Boolean(performerResult?.hasRealGsiStats);
       webMatchRecord.evaluatedPlayers = performerResult?.hasRealGsiStats ? performerResult.evaluatedPlayers : [];
 
-      if (hasWinner) {
+      const isRealMatch =
+        hasWinner &&
+        hasRealHumanTeams(room) &&
+        (room.teamA?.length || 0) >= 1 &&
+        (room.teamB?.length || 0) >= 1;
+
+      if (isRealMatch) {
         const updated = recordMatch({
           winners: numA > numB ? room.teamA : room.teamB,
           losers: numA > numB ? room.teamB : room.teamA,
@@ -1461,9 +1497,7 @@ export function registerRoomSocket({
           timestamp: webMatchRecord.timestamp,
         });
         io.emit('leaderboard_updated', updated);
-      }
 
-      if (room.teamA?.length === 5 && room.teamB?.length === 5) {
         recordMatchHistoryEntry(webMatchRecord);
         io.emit('match_history_updated', getMatchHistoryState());
       }

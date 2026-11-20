@@ -6,6 +6,8 @@ function resolveViewFromLocation() {
   const path = String(window.location.pathname || '/').replace(/\/+$/, '').toLowerCase() || '/';
   const viewParam = params.get('view');
 
+  if (params.get('room') && params.get('steam_auth') !== '1') return 'mix';
+
   if (path === '/servidores' || viewParam === 'servers') return 'servers';
   if (path === '/atualizacoes' || viewParam === 'updates') return 'updates';
   if (path === '/ranking' || viewParam === 'ranking') return 'ranking';

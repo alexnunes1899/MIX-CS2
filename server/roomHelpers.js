@@ -68,7 +68,7 @@ export function getRoomAdminId(room) {
     const adminPlayer = room.players.find((p) => p.id === room.adminId);
     if (adminPlayer) return adminPlayer.id;
   }
-  return room.players.length > 0 ? room.players[0].id : null;
+  return room.creatorId || room.adminId || (room.players.length > 0 ? room.players[0].id : null);
 }
 
 export function isRoomAdmin(room, socket) {

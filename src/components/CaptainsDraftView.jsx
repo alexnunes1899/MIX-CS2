@@ -30,6 +30,7 @@ export default function CaptainsDraftView({
   const isTurnA = captainTurn === 'captainA';
   const currentCaptain = isTurnA ? captainA : captainB;
   const isFaceit = rankingSystem === 'faceit';
+  const canPick = Boolean(isAdmin || !currentCaptain?.id || (myProfile?.id && currentCaptain.id === myProfile.id));
   const [secondsLeft, setSecondsLeft] = useState(null);
 
   useEffect(() => {
@@ -46,6 +47,7 @@ export default function CaptainsDraftView({
   }, [turnDeadline]);
 
   const handlePick = (playerId) => {
+    if (!canPick) return;
     if (soundEnabled) playPickSound();
     onPickPlayer(playerId);
   };
@@ -144,12 +146,22 @@ export default function CaptainsDraftView({
             <div
               key={p.id}
               onClick={() => handlePick(p.id)}
-              className="bg-slate-950 hover:bg-slate-800 border border-slate-800 hover:border-amber-400/80 rounded-xl p-3 flex items-center justify-between gap-2 cursor-pointer transition-all shadow-md group overflow-hidden"
+              aria-disabled={!canPick}
+              className={`bg-slate-950 border border-slate-800 rounded-xl p-3 flex items-center justify-between gap-2 transition-all shadow-md group overflow-hidden ${
+                canPick
+                  ? 'hover:bg-slate-800 hover:border-amber-400/80 cursor-pointer'
+                  : 'opacity-75 cursor-not-allowed'
+              }`}
             >
               <div className="flex items-center gap-2.5 min-w-0 flex-1">
                 <PlayerAvatar avatar={p.avatar} nick={p.nick} size="md" />
                 <div className="min-w-0 flex-1">
-                  <h4 className="font-bold text-sm text-white group-hover:text-amber-400 transition-colors truncate" title={p.nick}>
+                  <h4
+                    className={`font-bold text-sm text-white transition-colors truncate ${
+                      canPick ? 'group-hover:text-amber-400' : ''
+                    }`}
+                    title={p.nick}
+                  >
                     {p.nick}
                   </h4>
                   <span className="text-[10px] text-slate-500 font-mono block truncate">
@@ -164,8 +176,16 @@ export default function CaptainsDraftView({
                 ) : (
                   <GCBadge level={p.level} size="sm" />
                 )}
-                <button className="text-xs font-bold text-amber-400 bg-amber-500/10 px-2 py-1 rounded group-hover:bg-amber-500 group-hover:text-slate-950 transition-colors shrink-0">
-                  Escolher
+                <button
+                  type="button"
+                  disabled={!canPick}
+                  className={`text-xs font-bold px-2 py-1 rounded transition-colors shrink-0 ${
+                    canPick
+                      ? 'text-amber-400 bg-amber-500/10 group-hover:bg-amber-500 group-hover:text-slate-950 cursor-pointer'
+                      : 'text-slate-500 bg-slate-900 cursor-not-allowed'
+                  }`}
+                >
+                  {canPick ? 'Escolher' : 'Aguardando'}
                 </button>
               </div>
             </div>

@@ -39,6 +39,7 @@ import { playClickSound } from '../utils/audio';
 import { parseServerDetails } from '../utils/serverParser';
 import { ACTIVE_DUTY_MAPS } from '../data/maps';
 import { copyText } from '../utils/clipboard';
+import { getAdminAuthHeaders } from '../utils/adminAuth';
 import { DEFAULT_PUBLIC_URL } from '../../shared/appConfig.js';
 
 export default function DedicatedServersHub({
@@ -341,7 +342,8 @@ pause
       const parts = parsedActive.ip.split(':');
       const res = await fetch('/api/rcon/test', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        headers: getAdminAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           host: parts[0],
           port: parts[1] || 27015,
@@ -374,7 +376,8 @@ pause
       const parts = parsedActive.ip.split(':');
       const res = await fetch('/api/rcon/exec', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        headers: getAdminAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           host: parts[0],
           port: parts[1] || 27015,

@@ -31,16 +31,23 @@ const PT_BR_MONTHS = [
 let memoryLeaderboard = [];
 let memorySeasons = {};
 
+export function isSyntheticPlayerId(id) {
+  const idStr = String(id || '').trim();
+  if (!idStr) return false;
+  return (
+    idStr === 't1' ||
+    idStr === 't2' ||
+    idStr.startsWith('seed-') ||
+    idStr.startsWith('bot-') ||
+    idStr.startsWith('user_test_') ||
+    idStr.startsWith('tourney-')
+  );
+}
+
 function filterValidEntries(list) {
   if (!Array.isArray(list)) return [];
   return list
-    .filter(
-      (item) =>
-        item &&
-        !String(item.id || '').startsWith('seed-') &&
-        !String(item.id || '').startsWith('bot-') &&
-        !String(item.id || '').startsWith('user_test_')
-    )
+    .filter((item) => item && !isSyntheticPlayerId(item.id))
     .map((item) => {
       const steamStr = String(item.steamId || '').trim();
       const discordStr = String(item.discordId || '').trim();
@@ -234,7 +241,7 @@ function applyMatchToList(list, { winners = [], losers = [], mvpId = null, bagre
   };
 
   winners.forEach((p) => {
-    if (!p || !(p.nick || p.username || p.displayName || p.name) || String(p.id || '').startsWith('bot-')) return;
+    if (!p || !(p.nick || p.username || p.displayName || p.name) || isSyntheticPlayerId(p.id)) return;
     const { entry, ids } = findOrCreateEntryInList(list, p, now);
 
     entry.matchesPlayed = (entry.matchesPlayed || 0) + 1;
@@ -255,7 +262,7 @@ function applyMatchToList(list, { winners = [], losers = [], mvpId = null, bagre
   });
 
   losers.forEach((p) => {
-    if (!p || !(p.nick || p.username || p.displayName || p.name) || String(p.id || '').startsWith('bot-')) return;
+    if (!p || !(p.nick || p.username || p.displayName || p.name) || isSyntheticPlayerId(p.id)) return;
     const { entry, ids } = findOrCreateEntryInList(list, p, now);
 
     entry.matchesPlayed = (entry.matchesPlayed || 0) + 1;

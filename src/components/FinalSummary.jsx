@@ -9,6 +9,7 @@ import { playClickSound, playReadySound } from '../utils/audio';
 import { getTeamNames } from '../utils/teamNames';
 import ServerConnectBar from './ServerConnectBar';
 import { copyText } from '../utils/clipboard';
+import { getAdminAuthHeaders } from '../utils/adminAuth';
 
 export default function FinalSummary({
   room,
@@ -95,7 +96,8 @@ export default function FinalSummary({
     try {
       const res = await fetch('/api/discord/webhook', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        headers: getAdminAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           webhookUrl: discordWebhook,
           eventType: 'mix_ready',
@@ -159,7 +161,8 @@ export default function FinalSummary({
 
       const res = await fetch('/api/discord/webhook', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        headers: getAdminAuthHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           webhookUrl: discordWebhook,
           eventType: 'match_stats',

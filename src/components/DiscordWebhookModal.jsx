@@ -28,6 +28,7 @@ import {
   Plug,
 } from 'lucide-react';
 import { playClickSound } from '../utils/audio';
+import { getAdminAuthHeaders } from '../utils/adminAuth';
 import { DEFAULT_DISCORD_CLIENT_ID, buildDiscordBotInviteUrl } from '../../shared/appConfig.js';
 
 export default function DiscordWebhookModal({
@@ -95,21 +96,16 @@ export default function DiscordWebhookModal({
   // Status / Feedback alerts
   const [statusMsg, setStatusMsg] = useState(null);
 
-  const getAdminHeaders = (extra = {}) => {
-    const trimmed = adminKey.trim();
-    return {
-      ...extra,
-      ...(trimmed ? { 'x-admin-key': trimmed } : {}),
-    };
-  };
+  const getAdminHeaders = (extra = {}, overrideKey = adminKey) => getAdminAuthHeaders(extra, overrideKey);
 
   // Fetch bot status and initial configuration from server
   const fetchBotStatus = async (overrideKey) => {
     try {
       setLoadingStatus(true);
-      const effectiveKey = typeof overrideKey === 'string' ? overrideKey.trim() : adminKey.trim();
+      const effectiveKey = typeof overrideKey === 'string' ? overrideKey : adminKey;
       const res = await fetch('/api/discord/bot/status', {
-        headers: effectiveKey ? { 'x-admin-key': effectiveKey } : {},
+        credentials: 'same-origin',
+        headers: getAdminHeaders({}, effectiveKey),
       });
       if (res.ok) {
         const data = await res.json();
@@ -180,6 +176,7 @@ export default function DiscordWebhookModal({
       // Save configuration first if fields were filled
       const cfgRes = await fetch('/api/discord/bot/config', {
         method: 'POST',
+        credentials: 'same-origin',
         headers: getAdminHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           ...(token.trim() ? { token: token.trim() } : {}),
@@ -205,6 +202,7 @@ export default function DiscordWebhookModal({
 
       const res = await fetch('/api/discord/bot/start', {
         method: 'POST',
+        credentials: 'same-origin',
         headers: getAdminHeaders(),
       });
       const data = await res.json().catch(() => ({}));
@@ -234,6 +232,7 @@ export default function DiscordWebhookModal({
     try {
       const res = await fetch('/api/discord/bot/stop', {
         method: 'POST',
+        credentials: 'same-origin',
         headers: getAdminHeaders(),
       });
       const data = await res.json().catch(() => ({}));
@@ -268,6 +267,7 @@ export default function DiscordWebhookModal({
     try {
       const res = await fetch('/api/discord/bot/config', {
         method: 'POST',
+        credentials: 'same-origin',
         headers: getAdminHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           ...(token.trim() ? { token: token.trim() } : {}),
@@ -308,6 +308,7 @@ export default function DiscordWebhookModal({
     try {
       const res = await fetch('/api/discord/bot/panel', {
         method: 'POST',
+        credentials: 'same-origin',
         headers: getAdminHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ channelId: targetChannel }),
       });
@@ -339,6 +340,7 @@ export default function DiscordWebhookModal({
     try {
       const res = await fetch('/api/discord/test-voice-channel', {
         method: 'POST',
+        credentials: 'same-origin',
         headers: getAdminHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           botToken: token.trim(),
@@ -374,7 +376,8 @@ export default function DiscordWebhookModal({
     try {
       const res = await fetch('/api/discord/webhook', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        headers: getAdminHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({
           webhookUrl: url.trim(),
           eventType: 'test',

@@ -726,6 +726,7 @@ export default function App() {
     } else {
       fetch(`/api/rooms/${encodeURIComponent(cleanId)}`, {
         method: 'DELETE',
+        credentials: 'same-origin',
         headers: myProfile?.id ? { 'x-creator-id': myProfile.id } : {},
       })
         .then(async (res) => {
@@ -800,6 +801,7 @@ export default function App() {
     } else {
       fetch('/api/commendations', {
         method: 'POST',
+        credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           targetId: targetPlayerId,
@@ -906,17 +908,35 @@ export default function App() {
 
   // Send chat message
   const handleSendMessage = (message) => {
+    if (view !== 'mix' || !roomId) return;
     if (!isSteamLogged) {
       handleRequireSteamLogin('enviar mensagens no chat da sala');
       return;
     }
+
+    const normalizedMessage =
+      typeof message === 'string'
+        ? {
+            sender: {
+              nick: myProfile?.nick || 'Jogador',
+              level: myProfile?.level || 10,
+              faceitLevel: myProfile?.faceitLevel || 5,
+              faceitElo: myProfile?.faceitElo || null,
+              avatar: myProfile?.avatar || '🎯',
+            },
+            text: message.trim(),
+          }
+        : message;
+
+    if (!normalizedMessage?.text || !String(normalizedMessage.text).trim()) return;
+
     if (socket.connected) {
-      socket.emit('send_chat', { roomId, message });
+      socket.emit('send_chat', { roomId, message: normalizedMessage });
     } else {
       const chatMsg = {
         id: `msg-${Date.now()}`,
-        sender: message.sender,
-        text: message.text,
+        sender: normalizedMessage.sender,
+        text: normalizedMessage.text,
         timestamp: Date.now(),
       };
       setRoom((prev) => ({ ...prev, chat: [...prev.chat, chatMsg] }));
@@ -1045,12 +1065,23 @@ export default function App() {
             map: mapToSave,
             scoreA: numA,
             scoreB: numB,
-            winner: numA > numB ? 'Time A' : numB > numA ? 'Time B' : 'Empate',
+            winner: numA > numB ? (prev.teamAName || prev.nameA || 'Time A') : numB > numA ? (prev.teamBName || prev.nameB || 'Time B') : 'Empate',
           },
           ...prev.history,
         ],
       }));
     }
+  };
+
+  const syncRoomUrl = (targetRoomId) => {
+    const url = new URL(window.location);
+    url.pathname = '/';
+    url.searchParams.delete('view');
+    url.searchParams.delete('tab');
+    url.searchParams.delete('code');
+    url.searchParams.delete('treino');
+    url.searchParams.set('room', targetRoomId);
+    window.history.pushState({}, '', url);
   };
 
   // Direct Veto Start (Teams already made — Pro MD1 / MD3 / MD5)
@@ -1059,6 +1090,7 @@ export default function App() {
     const targetRoomId = roomId || `VETO-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
     if (!roomId) setRoomId(targetRoomId);
     setView('mix');
+    syncRoomUrl(targetRoomId);
 
     const cleanA = (teamAName || 'Time A').trim();
     const cleanB = (teamBName || 'Time B').trim();
@@ -1088,7 +1120,7 @@ export default function App() {
       socket.emit('join_room', {
         roomId: targetRoomId,
         roomName: `${cleanA} vs ${cleanB}`,
-        player: myProfile?.nick ? myProfile : null,
+        player: myProfile?.id ? myProfile : null,
         createIfMissing: true,
       });
       socket.emit('quick_start_veto', {
@@ -1107,6 +1139,7 @@ export default function App() {
     const targetRoomId = roomId || `MAPA-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
     if (!roomId) setRoomId(targetRoomId);
     setView('mix');
+    syncRoomUrl(targetRoomId);
 
     const sideTeamA = (typeof startingSide === 'object' && startingSide?.sideTimeA) ? startingSide.sideTimeA : (typeof startingSide === 'string' ? startingSide : 'CT');
     const sideTeamB = (typeof startingSide === 'object' && startingSide?.sideTimeB) ? startingSide.sideTimeB : (sideTeamA === 'CT' ? 'TR' : 'CT');
@@ -1136,7 +1169,7 @@ export default function App() {
       socket.emit('join_room', {
         roomId: targetRoomId,
         roomName: `Sorteio ${map?.name || 'CS2'}`,
-        player: myProfile?.nick ? myProfile : null,
+        player: myProfile?.id ? myProfile : null,
         createIfMissing: true,
       });
       socket.emit('quick_random_map', {
@@ -1157,9 +1190,6 @@ export default function App() {
     const cleanRoom = (roomId && roomId.trim()) ? roomId.trim() : `COPA-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
     if (!roomId) {
       setRoomId(cleanRoom);
-      const u = new URL(window.location);
-      u.searchParams.set('room', cleanRoom);
-      window.history.replaceState({}, '', u);
     }
 
     const formattedTeamA = (teamAObj?.players || []).map((p, i) => ({
@@ -1188,6 +1218,7 @@ export default function App() {
       socket.emit('join_room', {
         roomId: cleanRoom,
         roomName: `${nameA} vs ${nameB}`,
+        player: myProfile?.id ? myProfile : null,
         createIfMissing: true,
       });
       socket.emit('load_tournament_match', {
@@ -1213,16 +1244,9 @@ export default function App() {
       phase: allTourneyPlayers.length >= 10 ? 'teams' : (prev.players.length >= 10 ? 'teams' : 'lobby'),
     }));
 
-    if (view !== 'mix') {
+    if (!roomId || view !== 'mix') {
       setView('mix');
-      const u = new URL(window.location);
-      u.pathname = '/';
-      u.searchParams.delete('view');
-      u.searchParams.delete('tab');
-      u.searchParams.delete('code');
-      u.searchParams.delete('treino');
-      u.searchParams.set('room', cleanRoom);
-      window.history.pushState({}, '', u);
+      syncRoomUrl(cleanRoom);
     }
     setTournamentModalOpen(false);
   };

@@ -296,6 +296,7 @@ export default function TournamentBracketModal({
     try {
       const res = await fetch(`/api/tournaments/${encodeURIComponent(clean)}`, {
         method: 'PUT',
+        credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: tournamentName,
